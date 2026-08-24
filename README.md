@@ -45,6 +45,7 @@ Do not run the full monorepo validation locally without checking resource impact
 - [Monorepo guide](docs/monorepo.md)
 - [Phase 1 scope](docs/product/phase-1.md)
 - [Agent rules](AGENTS.md)
+- [Agent skill catalog](docs/agents/skills.md)
 - [ADRs](docs/adr/README.md)
 
 Infrastructure and incident procedures live under `docs/infrastructure/` and `docs/runbooks/`.

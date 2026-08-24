@@ -19,14 +19,17 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "skills:check": "node tools/validate-skills.mjs",
+    "skills:test": "node --test tools/validate-skills.test.mjs",
     "test": "turbo run test",
     "test:ci": "turbo run test:ci",
     "typecheck": "turbo run typecheck",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci"
+    "check": "pnpm format:check && pnpm skills:check && pnpm skills:test && pnpm lint && pnpm typecheck && pnpm test:ci"
   },
   "devDependencies": {
     "prettier": "3.9.6",
     "supabase": "2.115.0",
-    "turbo": "2.10.11"
+    "turbo": "2.10.11",
+    "yaml": "2.9.0"
   }
 }

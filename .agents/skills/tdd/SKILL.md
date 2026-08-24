@@ -1,0 +1,56 @@
+---
+name: tdd
+description: Implement Student Showcase behavior through focused red-green-refactor cycles. Use when the user requests TDD, test-first development, red-green-refactor, a regression test, or behavior whose domain rules should be established through executable examples.
+---
+
+# Test-Driven Development
+
+Build one observable behavior at a time through a public seam.
+
+## Prepare
+
+Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, ADRs, and the governing spec. State:
+
+- behavior changing and behavior staying unchanged;
+- public seam under test;
+- focused command that will prove red and green;
+- external dependencies replaced by a real test adapter or controlled integration.
+
+Prefer existing seams. Ask only when multiple plausible seams would materially change product behavior or architecture.
+
+## Cycle
+
+1. **Red**: add one test for one requirement using an independently known expected result. Run only that test and confirm it fails for the intended reason.
+2. **Green**: implement the smallest correct production behavior. Keep validation, authorization, error handling, and typing required by that slice.
+3. **Verify**: rerun the focused test and confirm it passes.
+4. **Refactor**: remove duplication or improve names without changing behavior. Rerun the focused test after each meaningful refactor.
+5. Repeat for the next vertical slice.
+
+Never write all tests before all implementation. Each cycle should leave a narrow, working path through the required layers.
+
+## Choose the seam
+
+Use [test-seams.md](references/test-seams.md) to choose the highest stable interface that gives a fast deterministic signal. Use [mocking.md](references/mocking.md) before replacing dependencies.
+
+Common Showcase seams:
+
+- pure domain policy or value object for state and validation rules;
+- Nest application use case with repository/provider adapters;
+- focused Nest HTTP E2E for guards, DTO validation, and response contracts;
+- persistence integration for migrations, constraints, RLS assumptions, and queries;
+- Next route, Server Component, or smallest interactive Client Component;
+- browser E2E only for critical cross-surface journeys that lower seams cannot prove.
+
+## Test quality rules
+
+- Assert observable behavior, not private methods, call order, or incidental markup.
+- Name tests with canonical terms from `CONTEXT.md`.
+- Include negative authorization and privacy behavior at trust boundaries.
+- Use deterministic clocks, IDs, and data. Never use real Student IDs or roster rows.
+- Avoid snapshots for domain behavior and large UI trees.
+- Do not mock code owned by the same module merely to make a test easy.
+- A test must fail when the behavior is removed or inverted.
+
+## Finish
+
+Run affected lint, typecheck, and test commands one package at a time. Expand to broader suites only when justified; never run the full monorepo suite without explicit confirmation for that run. Report every red/green command, final checks, checks not run, and remaining integration gaps.

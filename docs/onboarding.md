@@ -34,11 +34,13 @@ Bootstrap is idempotent: dependency install uses the frozen lockfile and existin
 ## Normal workflow
 
 1. Read `CONTEXT.md`, relevant ADRs, root rules, and the nearest app `AGENTS.md`.
-2. Branch from current `main` and keep the change scoped.
-3. Add migration before persistence code when schema changes.
-4. Add or update behavior tests with the implementation.
-5. Run package-level lint, typecheck, test, and build as affected.
-6. Open a reviewed pull request; do not deploy from a developer machine.
+2. Choose the narrowest workflow from `docs/agents/skills.md`; use `grill-with-docs` before implementation when product behavior is unsettled.
+3. Branch from current `main` and keep the change scoped.
+4. Add migration before persistence code when schema changes.
+5. Add or update behavior tests with the implementation.
+6. Run package-level lint, typecheck, test, and build as affected.
+7. Run `code-review` against both repository standards and the governing spec.
+8. Open a reviewed pull request; do not deploy from a developer machine.
 
 ## Database workflow
 

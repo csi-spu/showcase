@@ -33,5 +33,11 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Validate agent skills
+        run: pnpm skills:check
+
+      - name: Test agent skill validator
+        run: pnpm skills:test
+
       - name: Run affected gates
         run: pnpm turbo run lint typecheck test:ci build --affected
