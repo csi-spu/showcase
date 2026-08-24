@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthCheckService, MemoryHealthIndicator } from '@nestjs/terminus';
 import { HealthController } from './health.controller';
+import { DatabaseReadinessIndicator } from './database-readiness.indicator';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -17,6 +18,10 @@ describe('HealthController', () => {
         {
           provide: MemoryHealthIndicator,
           useValue: { checkHeap: jest.fn() },
+        },
+        {
+          provide: DatabaseReadinessIndicator,
+          useValue: { check: jest.fn() },
         },
       ],
     }).compile();

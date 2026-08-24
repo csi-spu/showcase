@@ -33,7 +33,9 @@ Staging uses isolated hostnames and must not share authentication cookies with p
 - Keep container filesystem ephemeral. Persist metadata in Supabase and objects in R2.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, and provider variables introduced by its adapters. Frontends need runtime `CORE_URL` for their environment.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS` and `STUDENT_ORIGIN`, `DATABASE_URL`, `AUTH_IDENTITY_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Frontends need runtime `CORE_URL` for their environment.
+
+Before routing traffic to a new environment, set the singleton `academic_settings.current_academic_year` through an authorized database operation. Core readiness stays down while this value is missing; migrations intentionally do not guess an environment's current academic year.
 
 ## GitHub wiring
 

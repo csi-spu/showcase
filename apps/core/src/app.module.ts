@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { parseEnvironment } from './config/environment.schema';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 
 @Module({
@@ -10,6 +11,7 @@ import { HealthModule } from './modules/health/health.module';
       isGlobal: true,
       validate: parseEnvironment,
     }),
+    AuthModule,
     HealthModule,
   ],
 })
