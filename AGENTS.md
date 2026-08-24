@@ -107,9 +107,17 @@ Full rules and runbooks live under `docs/rules/`, `docs/infrastructure/`, and `d
 
 ## Agent skills
 
-### Product grilling
+Repository-local skills live under `.agents/skills/`. Read [the skill catalog](docs/agents/skills.md) and invoke the narrowest matching skill instead of improvising a parallel workflow.
 
-Use the repository-local `.agents/skills/grill-with-docs` skill to challenge plans against Showcase terminology and update domain decisions before implementation.
+### Delivery workflow
+
+- Use `$grill-with-docs`, `$domain-modeling`, `$research`, or `$prototype` to resolve uncertainty before production implementation.
+- Use `$to-spec` and `$to-tickets` to create durable, vertically sliced work.
+- Use `$implement` with `$tdd`, then `$code-review`, for behavior changes.
+- Use `$diagnosing-bugs` for evidence-first debugging and `$handoff` before changing sessions.
+- Use `$codebase-design` and `$improve-codebase-architecture` for explicit architecture work. Use `$wayfinder` only when the route to an implementation-ready spec exceeds one session.
+
+Skills do not expand authorization. Creating issues, committing, pushing, opening pull requests, deploying, or changing external services still requires the authority defined by the user request and these rules.
 
 ### Issue tracker
 
