@@ -1,0 +1,11 @@
+{
+  "Home": {
+    "description": "Harness พร้อมสำหรับ Review workflow ใน Phase 1",
+    "eyebrow": "ADMIN",
+    "title": "ระบบผู้ดูแล Student Showcase"
+  },
+  "Metadata": {
+    "description": "ระบบตรวจสอบและจัดการผลงานนักศึกษา",
+    "title": "ผู้ดูแลระบบ | Student Showcase"
+  }
+}

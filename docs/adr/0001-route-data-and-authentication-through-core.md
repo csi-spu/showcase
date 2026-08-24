@@ -1,0 +1,3 @@
+# Route data and authentication through Core
+
+All Admin, Student, and Visitor applications access domain data and authentication through the NestJS Core service; Core provides an authentication BFF backed by Supabase Auth, while clients upload files to R2 only through Core-issued presigned URLs. We chose this boundary over direct client access to Supabase so authorization, workflow, validation, auditing, and session lifecycle remain consistent across subdomains and infrastructure providers remain replaceable, accepting that Core must own authentication flows and scale for all application traffic.

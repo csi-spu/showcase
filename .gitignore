@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Builds and tests
+.next/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Environment and local credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local services
+.supabase/
+.wrangler/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+*.swp
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Agent scratch space
+.scratch/

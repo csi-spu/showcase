@@ -1,0 +1,2 @@
+-- Keep development seed data deterministic and non-sensitive.
+-- Domain fixtures will be added alongside the migrations that introduce them.

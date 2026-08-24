@@ -1,0 +1,129 @@
+name: Deploy to Coolify
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: Application name used in logs
+        required: true
+        type: string
+      application_uuid:
+        description: Coolify application UUID
+        required: true
+        type: string
+      environment:
+        description: GitHub Environment containing Coolify credentials
+        required: true
+        type: string
+      image_tag:
+        description: Immutable GHCR image tag
+        required: true
+        type: string
+      timeout_minutes:
+        default: 10
+        required: false
+        type: number
+    secrets:
+      COOLIFY_TOKEN:
+        required: true
+      COOLIFY_URL:
+        required: true
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Pin image and wait for deployment
+        env:
+          APP_NAME: ${{ inputs.app }}
+          APPLICATION_UUID: ${{ inputs.application_uuid }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          DEPLOY_TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          api() {
+            local attempts=0
+            local delay=2
+            local max_attempts=3
+
+            while true; do
+              if curl --fail-with-body --silent --show-error --max-time 15 \
+                --header "Authorization: Bearer $COOLIFY_TOKEN" \
+                --header "Accept: application/json" \
+                --header "Content-Type: application/json" \
+                "$@"; then
+                return 0
+              fi
+
+              attempts=$((attempts + 1))
+              if [ "$attempts" -ge "$max_attempts" ]; then
+                return 1
+              fi
+              sleep "$delay"
+              delay=$((delay * 2))
+            done
+          }
+
+          parse_json() {
+            tr -d '\000-\010\013\014\016-\037'
+          }
+
+          patch_body=$(jq -cn --arg tag "$IMAGE_TAG" '{docker_registry_image_tag: $tag}')
+          api --request PATCH "$COOLIFY_URL/api/v1/applications/$APPLICATION_UUID" \
+            --data "$patch_body" >/dev/null
+
+          trigger_response=$(api --request POST \
+            "$COOLIFY_URL/api/v1/deploy?uuid=$APPLICATION_UUID&force=false")
+          deployment_uuid=$(printf '%s' "$trigger_response" | parse_json | \
+            jq -r '.deployments[0].deployment_uuid // empty')
+
+          if [ -z "$deployment_uuid" ]; then
+            echo "No deployment UUID returned for $APP_NAME" >&2
+            exit 1
+          fi
+
+          poll_interval=5
+          max_polls=$((DEPLOY_TIMEOUT_MINUTES * 60 / poll_interval))
+          consecutive_api_failures=0
+
+          for poll in $(seq 1 "$max_polls"); do
+            if ! response=$(api "$COOLIFY_URL/api/v1/deployments/$deployment_uuid" 2>/dev/null); then
+              consecutive_api_failures=$((consecutive_api_failures + 1))
+              if [ "$consecutive_api_failures" -ge 5 ]; then
+                echo "Coolify API failed five consecutive times for $APP_NAME" >&2
+                exit 1
+              fi
+              sleep "$poll_interval"
+              continue
+            fi
+
+            consecutive_api_failures=0
+            status=$(printf '%s' "$response" | parse_json | jq -r '.status // empty')
+            case "$status" in
+              finished)
+                echo "$APP_NAME deployed as $IMAGE_TAG"
+                exit 0
+                ;;
+              failed|cancelled|skipped)
+                echo "$APP_NAME deployment ended with status: $status" >&2
+                exit 1
+                ;;
+              queued|pending|in_progress|running|processing)
+                echo "$APP_NAME: $status ($poll/$max_polls)"
+                sleep "$poll_interval"
+                ;;
+              *)
+                echo "Unexpected Coolify status '$status' for $APP_NAME" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "$APP_NAME did not deploy within ${DEPLOY_TIMEOUT_MINUTES} minutes" >&2
+          exit 1

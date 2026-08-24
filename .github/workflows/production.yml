@@ -1,0 +1,98 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full main-branch commit SHA already verified in staging
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify full SHA belongs to main
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$SOURCE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "source_sha must be a full 40-character commit SHA" >&2
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+
+  verify-images:
+    needs: verify-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        app: [core, admin, student, visitor]
+    steps:
+      - name: Sign in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify staged image exists
+        env:
+          APP: ${{ matrix.app }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/showcase-$APP:sha-$SOURCE_SHA"
+
+  approve-production:
+    needs: verify-images
+    environment: production
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Production promotion approved for ${{ inputs.source_sha }}"
+
+  deploy-core:
+    needs: approve-production
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_CORE }}
+      environment: production
+      image_tag: sha-${{ inputs.source_sha }}
+    secrets: inherit
+
+  deploy-frontends:
+    needs: deploy-core
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: admin
+            application_uuid: ${{ vars.COOLIFY_PRODUCTION_ADMIN }}
+          - app: student
+            application_uuid: ${{ vars.COOLIFY_PRODUCTION_STUDENT }}
+          - app: visitor
+            application_uuid: ${{ vars.COOLIFY_PRODUCTION_VISITOR }}
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: ${{ matrix.app }}
+      application_uuid: ${{ matrix.application_uuid }}
+      environment: production
+      image_tag: sha-${{ inputs.source_sha }}
+    secrets: inherit
