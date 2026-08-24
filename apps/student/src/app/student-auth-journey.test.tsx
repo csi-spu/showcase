@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/th.json';
@@ -48,8 +48,12 @@ describe('StudentAuthJourney', () => {
     const user = userEvent.setup();
     renderJourney();
 
-    await user.type(await screen.findByLabelText('รหัสนักศึกษา'), '69000001');
-    await user.type(screen.getByLabelText('รหัสผ่าน'), '69000001');
+    fireEvent.change(await screen.findByLabelText('รหัสนักศึกษา'), {
+      target: { value: '69000001' },
+    });
+    fireEvent.change(screen.getByLabelText('รหัสผ่าน'), {
+      target: { value: '69000001' },
+    });
     await user.click(screen.getByRole('button', { name: 'เข้าสู่ระบบ' }));
 
     expect(
@@ -64,9 +68,15 @@ describe('StudentAuthJourney', () => {
       method: 'POST',
     });
 
-    await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), '69000001');
-    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'correct horse battery staple');
-    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'correct horse battery staple');
+    fireEvent.change(screen.getByLabelText('รหัสผ่านปัจจุบัน'), {
+      target: { value: '69000001' },
+    });
+    fireEvent.change(screen.getByLabelText('รหัสผ่านใหม่'), {
+      target: { value: 'correct horse battery staple' },
+    });
+    fireEvent.change(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), {
+      target: { value: 'correct horse battery staple' },
+    });
     await user.click(screen.getByRole('button', { name: 'บันทึกรหัสผ่านใหม่' }));
 
     expect(await screen.findByRole('heading', { name: 'บัญชีพร้อมใช้งาน' })).not.toBeNull();
@@ -98,8 +108,12 @@ describe('StudentAuthJourney', () => {
     const user = userEvent.setup();
     renderJourney();
 
-    await user.type(await screen.findByLabelText('รหัสนักศึกษา'), '69000001');
-    await user.type(screen.getByLabelText('รหัสผ่าน'), 'wrong-password');
+    fireEvent.change(await screen.findByLabelText('รหัสนักศึกษา'), {
+      target: { value: '69000001' },
+    });
+    fireEvent.change(screen.getByLabelText('รหัสผ่าน'), {
+      target: { value: 'wrong-password' },
+    });
     await user.click(screen.getByRole('button', { name: 'เข้าสู่ระบบ' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
