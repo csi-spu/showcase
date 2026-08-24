@@ -1,0 +1,3 @@
+# Store sanitized image masters and generated variants
+
+Work images upload first to private R2 quarantine, then an isolated resource-bounded processor validates decoded content, removes metadata, normalizes color and orientation, and stores an immutable sanitized WebP master plus bounded responsive variants before deleting the raw object; we rejected permanently retaining untrusted originals and request-time-only transformation because they preserve avoidable payload and metadata risk or repeatedly spend compute on public reads, accepting asynchronous processing, extra variant objects, and the inability to regenerate from the untouched source.

@@ -1,0 +1,3 @@
+# Dispatch derived effects through a durable outbox
+
+Core records cache-invalidation and Notification-delivery intent durably with the authoritative domain transition, then dispatches those derived effects asynchronously through idempotent consumers with reconciliation and observable lag; we rejected inline CDN and delivery-provider calls because an external failure must not create a partial or rolled-back publication, consent, or Review transition, accepting eventual propagation within the Phase 1 cache and Notification targets plus the operational cost of outbox storage, workers, retries, and monitoring.
