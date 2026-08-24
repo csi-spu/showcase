@@ -1,0 +1,35 @@
+{
+  "name": "@showcase/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./library": "./library.mjs",
+    "./nestjs": "./nestjs.mjs",
+    "./next": "./next.mjs"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "test": "node --test",
+    "test:ci": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint-config-next": "16.3.2",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^17.0.0",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  }
+}
