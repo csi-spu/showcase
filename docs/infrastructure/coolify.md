@@ -22,7 +22,7 @@ Use one hostname per application in each environment. Production shape:
 - Student: `student.<domain>`
 - Core: `core.<domain>`
 
-Staging uses isolated hostnames and must not share authentication cookies with production. Force HTTPS. Core CORS origins list exact Admin, Student, and Visitor origins without wildcard credentials.
+Staging uses isolated hostnames and must not share authentication cookies or BFF secrets with production. Force HTTPS. Route Core internal authentication endpoints only where the frontend containers can reach them; the BFF secret remains mandatory even on a private network.
 
 ## Runtime settings
 
@@ -33,7 +33,9 @@ Staging uses isolated hostnames and must not share authentication cookies with p
 - Keep container filesystem ephemeral. Persist metadata in Supabase and objects in R2.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS` and `STUDENT_ORIGIN`, `DATABASE_URL`, `AUTH_IDENTITY_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Frontends need runtime `CORE_URL` for their environment.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `AUTH_IDENTITY_SECRET`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Student needs runtime `CORE_URL` and the same environment's `STUDENT_BFF_SECRET`. Keep both server-only; never prefix either with `NEXT_PUBLIC_`.
+
+The reverse proxy in front of Student must overwrite, not append from untrusted clients, the client address header supplied to the application. Student forwards the normalized address to Core only after authenticating with its BFF secret so login rate limiting remains source-aware.
 
 Before routing traffic to a new environment, set the singleton `academic_settings.current_academic_year` through an authorized database operation. Core readiness stays down while this value is missing; migrations intentionally do not guess an environment's current academic year.
 

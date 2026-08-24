@@ -6,12 +6,9 @@ import {
   Headers,
   HttpCode,
   Post,
-  Req,
-  Res,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
 import { AuthError } from '../application/auth.error';
 import {
   StudentAuthService,
@@ -19,97 +16,75 @@ import {
   StudentSessionStatusResult,
 } from '../application/student-auth.service';
 import { AuthExceptionFilter } from './auth-exception.filter';
-import { StudentAuthCookieService } from './student-auth-cookie.service';
+import { StudentBffGuard } from './student-bff.guard';
 import { StudentChangePasswordDto, StudentLoginDto } from './student-auth.dto';
-import { StudentOriginGuard } from './student-origin.guard';
 
-@Controller('student/auth')
+@Controller('internal/student/auth')
 @UseFilters(AuthExceptionFilter)
+@UseGuards(StudentBffGuard)
 export class StudentAuthController {
-  constructor(
-    private readonly auth: StudentAuthService,
-    private readonly cookies: StudentAuthCookieService,
-  ) {}
+  constructor(private readonly auth: StudentAuthService) {}
 
   @Post('login')
   @HttpCode(200)
-  @UseGuards(StudentOriginGuard)
   @Header('Cache-Control', 'no-store')
   async login(
     @Body() input: StudentLoginDto,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<StudentSessionStatusResult> {
-    const result = await this.auth.login({
+    @Headers('x-client-address') sourceAddress: string | undefined,
+  ): Promise<StudentSessionResult> {
+    return this.auth.login({
       password: input.password,
-      sourceAddress: request.ip ?? request.socket.remoteAddress ?? 'unknown',
+      sourceAddress: this.normalizeSourceAddress(sourceAddress),
       studentId: input.studentId,
     });
-    return this.setSession(response, result);
   }
 
   @Get('session')
   @Header('Cache-Control', 'no-store')
-  async session(@Req() request: Request): Promise<StudentSessionStatusResult> {
-    return this.auth.getSession(this.requireSessionToken(request));
+  async session(
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<StudentSessionStatusResult> {
+    return this.auth.getSession(this.requireSessionToken(authorization));
   }
 
   @Post('change-password')
   @HttpCode(200)
-  @UseGuards(StudentOriginGuard)
   @Header('Cache-Control', 'no-store')
   async changePassword(
     @Body() input: StudentChangePasswordDto,
-    @Headers('x-csrf-token') csrfToken: string | undefined,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<StudentSessionStatusResult> {
-    const result = await this.auth.changePassword({
-      csrfToken: this.requireCsrfToken(csrfToken),
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<StudentSessionResult> {
+    return this.auth.changePassword({
       currentPassword: input.currentPassword,
       newPassword: input.newPassword,
-      sessionToken: this.requireSessionToken(request),
+      sessionToken: this.requireSessionToken(authorization),
     });
-    return this.setSession(response, result);
   }
 
   @Post('logout')
   @HttpCode(204)
-  @UseGuards(StudentOriginGuard)
   @Header('Cache-Control', 'no-store')
-  async logout(
-    @Headers('x-csrf-token') csrfToken: string | undefined,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<void> {
+  async logout(@Headers('authorization') authorization: string | undefined): Promise<void> {
     await this.auth.logout({
-      csrfToken: this.requireCsrfToken(csrfToken),
-      sessionToken: this.requireSessionToken(request),
+      sessionToken: this.requireSessionToken(authorization),
     });
-    this.cookies.clear(response);
   }
 
-  private requireCsrfToken(csrfToken: string | undefined): string {
-    if (csrfToken === undefined || csrfToken.length === 0) {
-      throw new AuthError('FORBIDDEN', 403);
-    }
-    return csrfToken;
+  private normalizeSourceAddress(sourceAddress: string | undefined): string {
+    const normalized = sourceAddress?.trim();
+    return normalized !== undefined && normalized.length > 0 && normalized.length <= 128
+      ? normalized
+      : 'unknown';
   }
 
-  private requireSessionToken(request: Request): string {
-    const sessionToken = this.cookies.read(request);
-    if (sessionToken === null) {
+  private requireSessionToken(authorization: string | undefined): string {
+    const prefix = 'Bearer ';
+    const sessionToken = authorization?.startsWith(prefix)
+      ? authorization.slice(prefix.length).trim()
+      : '';
+    if (sessionToken.length === 0 || sessionToken.length > 512) {
       throw new AuthError('UNAUTHENTICATED', 401);
     }
     return sessionToken;
-  }
-
-  private setSession(response: Response, result: StudentSessionResult): StudentSessionStatusResult {
-    this.cookies.set(response, result.sessionToken);
-    return {
-      canUseStudentCapabilities: result.canUseStudentCapabilities,
-      csrfToken: result.csrfToken,
-      sessionState: result.sessionState,
-    };
   }
 }

@@ -7,7 +7,7 @@ apps/                 deployable applications
   admin/              Next.js administration surface
   student/            Next.js Student surface
   visitor/            Next.js public catalog
-  core/               NestJS API and authentication BFF
+  core/               NestJS domain API and authentication service
 docs/                 product, architecture, rules, infrastructure, runbooks
 supabase/             local config, migrations, and deterministic seed
 tools/                repository automation

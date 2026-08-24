@@ -1,13 +1,10 @@
 import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthError } from '../application/auth.error';
-import { StudentAuthCookieService } from './student-auth-cookie.service';
 
 @Catch()
 export class AuthExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(AuthExceptionFilter.name);
-
-  constructor(private readonly cookies: StudentAuthCookieService) {}
 
   catch(error: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
@@ -25,9 +22,6 @@ export class AuthExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    if (['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)) {
-      this.cookies.clear(response);
-    }
     if (error.retryAfterSeconds !== undefined) {
       response.setHeader('Retry-After', error.retryAfterSeconds.toString());
     }

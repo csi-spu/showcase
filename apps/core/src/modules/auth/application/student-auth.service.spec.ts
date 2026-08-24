@@ -118,9 +118,8 @@ const identityProtector: IdentityProtector = {
 };
 
 function createService(repository = new FakeAuthRepository(), provider = new FakeAuthProvider()) {
-  const tokenValues = ['opaque-session-token', 'csrf-token'];
   const tokenGenerator: TokenGenerator = {
-    generate: () => tokenValues.shift() ?? 'unexpected-token',
+    generate: () => 'opaque-session-token',
   };
 
   return {
@@ -136,7 +135,6 @@ function createStoredSession(
   return {
     ...account,
     absoluteExpiresAt: new Date('2026-08-31T12:00:00.000Z'),
-    csrfToken: 'current-csrf-token',
     lastActivityAt: new Date('2026-08-24T11:00:00.000Z'),
     providerAccessToken: 'provider-access-token',
     providerRefreshToken: 'provider-refresh-token',
@@ -154,7 +152,6 @@ describe('StudentAuthService login', () => {
       service.login({ password: '69000001', sourceAddress: '192.0.2.1', studentId: '69000001' }),
     ).resolves.toEqual({
       canUseStudentCapabilities: false,
-      csrfToken: 'csrf-token',
       sessionState: 'password_change_required',
       sessionToken: 'opaque-session-token',
     });
@@ -162,7 +159,6 @@ describe('StudentAuthService login', () => {
       absoluteExpiresAt: new Date('2026-08-31T12:00:00.000Z'),
       accountId: '00000000-0000-4000-8000-000000000002',
       audience: 'student',
-      csrfToken: 'csrf-token',
       eventType: 'student_login',
       now: new Date('2026-08-24T12:00:00.000Z'),
       providerSession: new FakeAuthProvider().session,
@@ -210,14 +206,12 @@ describe('StudentAuthService password change', () => {
 
     await expect(
       service.changePassword({
-        csrfToken: 'current-csrf-token',
         currentPassword: '69000001',
         newPassword: 'correct horse battery staple',
         sessionToken: 'current-session-token',
       }),
     ).resolves.toEqual({
       canUseStudentCapabilities: true,
-      csrfToken: 'csrf-token',
       sessionState: 'active',
       sessionToken: 'opaque-session-token',
     });
@@ -235,7 +229,6 @@ describe('StudentAuthService password change', () => {
 
     await expect(
       service.changePassword({
-        csrfToken: 'current-csrf-token',
         currentPassword: '69000001',
         newPassword: '69000001',
         sessionToken: 'current-session-token',
@@ -253,7 +246,6 @@ describe('StudentAuthService session lifecycle', () => {
 
     await expect(service.getSession('current-session-token')).resolves.toEqual({
       canUseStudentCapabilities: false,
-      csrfToken: 'current-csrf-token',
       sessionState: 'password_change_required',
     });
   });
@@ -308,7 +300,6 @@ describe('StudentAuthService session lifecycle', () => {
 
     await expect(
       service.logout({
-        csrfToken: 'current-csrf-token',
         sessionToken: 'current-session-token',
       }),
     ).resolves.toBeUndefined();

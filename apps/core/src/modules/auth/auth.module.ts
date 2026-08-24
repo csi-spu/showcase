@@ -18,16 +18,14 @@ import { PostgresAuthRepository } from './infrastructure/postgres-auth.repositor
 import { SupabaseAuthAdapter } from './infrastructure/supabase-auth.adapter';
 import { AuthExceptionFilter } from './transport/auth-exception.filter';
 import { StudentAuthController } from './transport/student-auth.controller';
-import { StudentAuthCookieService } from './transport/student-auth-cookie.service';
-import { StudentOriginGuard } from './transport/student-origin.guard';
+import { StudentBffGuard } from './transport/student-bff.guard';
 
 @Module({
   controllers: [StudentAuthController],
   providers: [
     DatabaseClient,
     StudentAuthService,
-    StudentAuthCookieService,
-    StudentOriginGuard,
+    StudentBffGuard,
     AuthExceptionFilter,
     { provide: AUTH_CLOCK, useClass: NodeClock },
     {

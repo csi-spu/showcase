@@ -9,9 +9,9 @@ Monorepo for preserving and publishing work from สาขาวิทยาก�
 | `@showcase/visitor` | Public Catalog                    |       3000 | public subdomain    |
 | `@showcase/admin`   | roster and Review operations      |       3001 | admin subdomain     |
 | `@showcase/student` | Student profile and Work workflow |       3002 | student subdomain   |
-| `@showcase/core`    | API and authentication BFF        |       4100 | core subdomain      |
+| `@showcase/core`    | Domain API and authentication     |       4100 | core service        |
 
-All browser applications use Core. Supabase Auth and Postgres remain behind Core; R2 access uses Core-issued presigned URLs.
+Browser applications use their Next.js surface as a BFF and call Core server-to-server. Supabase Auth and Postgres remain behind Core; R2 access uses Core-issued presigned URLs.
 
 ## Start
 

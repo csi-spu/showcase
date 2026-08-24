@@ -55,7 +55,6 @@ create table private.authentication_sessions (
     check (session_id_hash ~ '^[0-9a-f]{64}$'),
   account_id uuid not null references public.accounts (id),
   audience text not null check (audience in ('student', 'admin')),
-  csrf_token text not null check (length(csrf_token) >= 32),
   provider_access_token text not null,
   provider_refresh_token text not null,
   provider_token_expires_at timestamptz not null,

@@ -117,7 +117,6 @@ describe('PostgresAuthRepository integration', () => {
       absoluteExpiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1_000),
       accountId: ACCOUNT_ID,
       audience: 'student',
-      csrfToken: `csrf-${hashCharacter.repeat(32)}`,
       eventType,
       now,
       providerSession: {

@@ -65,7 +65,6 @@ export interface LoginAccount {
 
 export interface AuthenticationSessionRecord extends LoginAccount {
   absoluteExpiresAt: Date;
-  csrfToken: string;
   lastActivityAt: Date;
   providerAccessToken: string;
   providerRefreshToken: string;
@@ -78,7 +77,6 @@ export interface NewAuthenticationSession {
   absoluteExpiresAt: Date;
   accountId: string;
   audience: SessionAudience;
-  csrfToken: string;
   eventType: 'student_login' | 'student_password_changed';
   now: Date;
   providerSession: ProviderSession;

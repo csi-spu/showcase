@@ -1,33 +1,27 @@
 import { parseEnvironment } from './environment.schema';
 
 describe('parseEnvironment auth configuration', () => {
-  it('requires the exact Student Origin to be included in credentialed CORS', () => {
-    expect(() =>
-      parseEnvironment({
-        CORS_ALLOWED_ORIGINS: 'https://visitor.example.test',
-        STUDENT_ORIGIN: 'https://student.example.test',
-      }),
-    ).toThrow('STUDENT_ORIGIN must be present in CORS_ALLOWED_ORIGINS');
-  });
-
-  it('rejects local placeholder secrets in staging', () => {
+  it('rejects local placeholder authentication secrets in staging', () => {
     expect(() =>
       parseEnvironment({
         APP_ENV: 'staging',
         AUTH_IDENTITY_SECRET: 'local-development-only-identity-secret',
         CORS_ALLOWED_ORIGINS: 'https://student.example.test',
-        STUDENT_ORIGIN: 'https://student.example.test',
+        STUDENT_BFF_SECRET: 'staging-student-bff-secret-that-is-long-enough',
         SUPABASE_PUBLISHABLE_KEY: 'staging-publishable-key',
       }),
     ).toThrow('AUTH_IDENTITY_SECRET must be environment-specific');
   });
 
-  it('rejects a Student URL with a path because browser Origin headers cannot match it', () => {
+  it('rejects the local Student BFF placeholder secret in staging', () => {
     expect(() =>
       parseEnvironment({
-        CORS_ALLOWED_ORIGINS: 'https://student.example.test/auth',
-        STUDENT_ORIGIN: 'https://student.example.test/auth',
+        APP_ENV: 'staging',
+        AUTH_IDENTITY_SECRET: 'staging-identity-secret-that-is-long-enough',
+        CORS_ALLOWED_ORIGINS: 'https://student.example.test',
+        STUDENT_BFF_SECRET: 'local-development-only-student-bff-secret',
+        SUPABASE_PUBLISHABLE_KEY: 'staging-publishable-key',
       }),
-    ).toThrow('Must be an origin without a path');
+    ).toThrow('STUDENT_BFF_SECRET must be environment-specific');
   });
 });

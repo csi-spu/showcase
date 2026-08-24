@@ -13,7 +13,7 @@ A credential that lets a Person authenticate. Removing an Account does not remov
 _Avoid_: Profile, identity
 
 **Authentication Session**:
-A Core-owned, server-side session bound to either the Student or Admin surface. A Person who uses both surfaces has separate sessions, and authorization is resolved from current server-owned role and Account state on every request.
+A Core-owned, server-side session bound to either the Student or Admin surface. The matching frontend BFF stores its opaque identifier in a host-only browser cookie; Core retains provider credentials and resolves authorization from current server-owned role and Account state on every request. A Person who uses both surfaces has separate sessions.
 _Avoid_: Supabase token, shared browser session
 
 **Student**:

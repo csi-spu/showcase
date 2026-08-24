@@ -10,7 +10,6 @@ export function configureApplication(app: INestApplication): void {
 
   express.set('trust proxy', 1);
   app.enableCors({
-    credentials: true,
     origin: allowedOrigins,
   });
   app.enableShutdownHooks();

@@ -39,14 +39,14 @@ Current required keys:
 - `GIT_SHA`, baked into the image by CI
 - `NODE_ENV`
 - `PORT`
-- `STUDENT_ORIGIN`, the exact Student browser origin accepted by Student auth mutations
+- `STUDENT_BFF_SECRET`, an environment-specific high-entropy secret shared only with the Student server runtime
 - `SUPABASE_AUTH_TIMEOUT_MS`
 - `SUPABASE_PUBLISHABLE_KEY`, used by Core for Supabase Auth password and refresh grants
 - `SUPABASE_URL`
 
 R2 adapters will add validated keys in the implementation change that introduces them. Supabase service-role access is not required for runtime Student login and must not be added to Core until an authorized provisioning use case needs it.
 
-Frontends receive `CORE_URL` at container runtime. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
+Student receives `CORE_URL` and the matching `STUDENT_BFF_SECRET` at container runtime. The secret must differ between staging and production and rotate on both Core and Student as one change. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
 
 ## Rotation
 

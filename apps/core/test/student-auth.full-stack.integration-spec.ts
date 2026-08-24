@@ -15,6 +15,8 @@ const PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const IDENTITY_SECRET =
   process.env.AUTH_IDENTITY_SECRET ?? 'local-development-only-identity-secret';
+const STUDENT_BFF_SECRET =
+  process.env.STUDENT_BFF_SECRET ?? 'local-development-only-student-bff-secret';
 const hasLocalCredentials = PUBLISHABLE_KEY !== undefined && SECRET_KEY !== undefined;
 
 (hasLocalCredentials ? describe : describe.skip)('Student authentication full-stack smoke', () => {
@@ -96,8 +98,7 @@ const hasLocalCredentials = PUBLISHABLE_KEY !== undefined && SECRET_KEY !== unde
         delete from private.authentication_rate_limits
         where key_hash in (
           ${identityProtector.hashStudentId(studentId)},
-          ${identityProtector.hashSourceAddress('127.0.0.1')},
-          ${identityProtector.hashSourceAddress('::ffff:127.0.0.1')}
+          ${identityProtector.hashSourceAddress('192.0.2.10')}
         )
       `;
       await transaction`
@@ -134,35 +135,35 @@ const hasLocalCredentials = PUBLISHABLE_KEY !== undefined && SECRET_KEY !== unde
     await request(app.getHttpServer()).get('/v1/health/ready').expect(200);
     const agent = request.agent(app.getHttpServer());
     const login = await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .post('/v1/internal/student/auth/login')
+      .set('x-client-address', '192.0.2.10')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ password: studentId, studentId })
       .expect(200);
-    const loginBody = login.body as { csrfToken: string; sessionState: string };
+    const loginBody = login.body as { sessionState: string; sessionToken: string };
     expect(loginBody.sessionState).toBe('password_change_required');
     expect(JSON.stringify(login.body)).not.toContain(studentId);
-    const oldCookie = login.headers['set-cookie']?.[0]?.split(';')[0];
-    expect(oldCookie).toBeDefined();
 
     const changed = await agent
-      .post('/v1/student/auth/change-password')
-      .set('Origin', 'http://localhost:3002')
-      .set('x-csrf-token', loginBody.csrfToken)
+      .post('/v1/internal/student/auth/change-password')
+      .set('Authorization', `Bearer ${loginBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ currentPassword: studentId, newPassword: 'full stack changed password' })
       .expect(200);
-    const changedBody = changed.body as { csrfToken: string; sessionState: string };
+    const changedBody = changed.body as { sessionState: string; sessionToken: string };
     expect(changedBody.sessionState).toBe('active');
 
     await request(app.getHttpServer())
-      .get('/v1/student/auth/session')
-      .set('Cookie', oldCookie ?? '')
+      .get('/v1/internal/student/auth/session')
+      .set('Authorization', `Bearer ${loginBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .expect(401)
       .expect({ error: { code: 'SESSION_EXPIRED' } });
 
     await agent
-      .post('/v1/student/auth/logout')
-      .set('Origin', 'http://localhost:3002')
-      .set('x-csrf-token', changedBody.csrfToken)
+      .post('/v1/internal/student/auth/logout')
+      .set('Authorization', `Bearer ${changedBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .expect(204);
   });
 

@@ -22,6 +22,8 @@ import {
 } from '../src/modules/auth/application/auth.ports';
 import { configureApplication } from '../src/configure-application';
 
+const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+
 class E2eAuthProvider implements AuthProvider {
   currentPassword = '69000001';
 
@@ -92,7 +94,6 @@ class E2eAuthRepository implements AuthRepository {
     return Promise.resolve({
       ...this.account,
       absoluteExpiresAt: stored.input.absoluteExpiresAt,
-      csrfToken: stored.input.csrfToken,
       lastActivityAt: stored.input.now,
       providerAccessToken: stored.input.providerSession.accessToken,
       providerRefreshToken: stored.input.providerSession.refreshToken,
@@ -145,9 +146,7 @@ describe('Student authentication (e2e)', () => {
     const tokenGenerator: TokenGenerator = {
       generate: () => {
         tokenNumber += 1;
-        return tokenNumber % 2 === 1
-          ? `opaque-session-token-${tokenNumber}`
-          : `csrf-token-${tokenNumber}`;
+        return `opaque-session-token-${tokenNumber}`;
       },
     };
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -177,13 +176,13 @@ describe('Student authentication (e2e)', () => {
 
   it('keeps unknown Account and wrong-password failures generic', async () => {
     const unknown = await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .post('/v1/internal/student/auth/login')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ password: '69000001', studentId: '69999999' })
       .expect(401);
     const wrongPassword = await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .post('/v1/internal/student/auth/login')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ password: 'wrong-password', studentId: '69000001' })
       .expect(401);
 
@@ -192,95 +191,94 @@ describe('Student authentication (e2e)', () => {
     expect(JSON.stringify(unknown.body)).not.toContain('69999999');
   });
 
-  it('rejects unknown DTO fields and a non-exact Origin', async () => {
+  it('rejects missing or incorrect BFF authentication and unknown DTO fields', async () => {
     await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'https://student.example.test.attacker.invalid')
+      .post('/v1/internal/student/auth/login')
       .send({ password: '69000001', studentId: '69000001' })
       .expect(403)
       .expect({ error: { code: 'FORBIDDEN' } });
 
     await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .post('/v1/internal/student/auth/login')
+      .set('x-student-bff-secret', `${STUDENT_BFF_SECRET}-wrong`)
+      .send({ password: '69000001', studentId: '69000001' })
+      .expect(403)
+      .expect({ error: { code: 'FORBIDDEN' } });
+
+    await agent
+      .post('/v1/internal/student/auth/login')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ extra: true, password: '69000001', studentId: '69000001' })
       .expect(400)
       .expect({ error: { code: 'INVALID_REQUEST' } });
   });
 
-  it('allows credentialed CORS only for an exact configured Origin', async () => {
-    const allowed = await request(app.getHttpServer())
-      .options('/v1/student/auth/login')
-      .set('Access-Control-Request-Method', 'POST')
-      .set('Origin', 'http://localhost:3002')
-      .expect(204);
-    expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:3002');
-    expect(allowed.headers['access-control-allow-credentials']).toBe('true');
-
-    const denied = await request(app.getHttpServer())
-      .options('/v1/student/auth/login')
-      .set('Access-Control-Request-Method', 'POST')
-      .set('Origin', 'https://student.example.test.attacker.invalid')
-      .expect(204);
-    expect(denied.headers['access-control-allow-origin']).toBeUndefined();
-  });
-
   it('completes login, forced password change, session rotation, and logout', async () => {
     const login = await agent
-      .post('/v1/student/auth/login')
-      .set('Origin', 'http://localhost:3002')
+      .post('/v1/internal/student/auth/login')
+      .set('x-client-address', '192.0.2.10')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ password: '69000001', studentId: '69000001' })
       .expect(200);
     const loginBody = login.body as {
       canUseStudentCapabilities: boolean;
-      csrfToken: string;
       sessionState: string;
+      sessionToken: string;
     };
     expect(loginBody).toEqual({
       canUseStudentCapabilities: false,
-      csrfToken: 'csrf-token-2',
       sessionState: 'password_change_required',
+      sessionToken: 'opaque-session-token-1',
     });
-    const loginCookie = login.headers['set-cookie']?.[0];
-    expect(loginCookie).toContain('showcase_student_session=opaque-session-token-1');
-    expect(loginCookie).toContain('HttpOnly');
-    expect(loginCookie).toContain('SameSite=Lax');
-    expect(loginCookie).not.toContain('Domain=');
+    expect(login.headers['set-cookie']).toBeUndefined();
 
-    await agent
-      .post('/v1/student/auth/change-password')
-      .set('Origin', 'http://localhost:3002')
-      .send({ currentPassword: '69000001', newPassword: 'correct horse battery staple' })
-      .expect(403);
-
-    const changed = await agent
-      .post('/v1/student/auth/change-password')
-      .set('Origin', 'http://localhost:3002')
-      .set('x-csrf-token', loginBody.csrfToken)
+    const passwordChange = await agent
+      .post('/v1/internal/student/auth/change-password')
+      .set('Authorization', `Bearer ${loginBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .send({ currentPassword: '69000001', newPassword: 'correct horse battery staple' })
       .expect(200);
-    const changedBody = changed.body as {
+    const passwordChangeBody = passwordChange.body as {
       canUseStudentCapabilities: boolean;
-      csrfToken: string;
+      sessionState: string;
+      sessionToken: string;
+    };
+    expect(passwordChangeBody).toEqual({
+      canUseStudentCapabilities: true,
+      sessionState: 'active',
+      sessionToken: 'opaque-session-token-2',
+    });
+
+    const currentSession = await agent
+      .get('/v1/internal/student/auth/session')
+      .set('Authorization', `Bearer ${passwordChangeBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
+      .expect(200);
+    const currentSessionBody = currentSession.body as {
+      canUseStudentCapabilities: boolean;
       sessionState: string;
     };
-    expect(changedBody).toEqual({
+    expect(currentSessionBody).toEqual({
       canUseStudentCapabilities: true,
-      csrfToken: 'csrf-token-4',
       sessionState: 'active',
     });
 
     await request(app.getHttpServer())
-      .get('/v1/student/auth/session')
-      .set('Cookie', 'showcase_student_session=opaque-session-token-1')
+      .get('/v1/internal/student/auth/session')
+      .set('Authorization', `Bearer ${loginBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .expect(401)
       .expect({ error: { code: 'SESSION_EXPIRED' } });
 
     await agent
-      .post('/v1/student/auth/logout')
-      .set('Origin', 'http://localhost:3002')
-      .set('x-csrf-token', changedBody.csrfToken)
+      .post('/v1/internal/student/auth/logout')
+      .set('Authorization', `Bearer ${passwordChangeBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .expect(204);
-    await agent.get('/v1/student/auth/session').expect(401);
+    await agent
+      .get('/v1/internal/student/auth/session')
+      .set('Authorization', `Bearer ${passwordChangeBody.sessionToken}`)
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
+      .expect(401);
   });
 });

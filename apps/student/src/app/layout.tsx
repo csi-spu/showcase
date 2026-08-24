@@ -1,8 +1,15 @@
 import type { Metadata } from 'next';
+import { Noto_Sans_Thai } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages, getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import './globals.css';
+
+const notoSansThai = Noto_Sans_Thai({
+  display: 'swap',
+  subsets: ['latin', 'thai'],
+  variable: '--font-student-sans',
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('Metadata');
@@ -14,8 +21,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
 
   return (
-    <html lang={locale}>
-      <body>
+    <html className={notoSansThai.variable} lang={locale}>
+      <body className="font-sans antialiased">
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
       </body>
     </html>

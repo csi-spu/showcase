@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { evaluatePasswordChange } from '../domain/password-policy';
 import { AuthError } from './auth.error';
 import {
@@ -33,20 +32,17 @@ interface LoginInput {
 }
 
 interface ChangePasswordInput {
-  csrfToken: string;
   currentPassword: string;
   newPassword: string;
   sessionToken: string;
 }
 
 interface LogoutInput {
-  csrfToken: string;
   sessionToken: string;
 }
 
 export interface StudentSessionResult {
   canUseStudentCapabilities: boolean;
-  csrfToken: string;
   sessionState: 'active' | 'password_change_required';
   sessionToken: string;
 }
@@ -98,12 +94,10 @@ export class StudentAuthService {
     }
 
     const sessionToken = this.tokenGenerator.generate(32);
-    const csrfToken = this.tokenGenerator.generate(32);
     const session: NewAuthenticationSession = {
       absoluteExpiresAt: new Date(now.getTime() + STUDENT_ABSOLUTE_SESSION_MILLISECONDS),
       accountId: account.accountId,
       audience: 'student',
-      csrfToken,
       eventType: 'student_login',
       now,
       providerSession,
@@ -116,7 +110,6 @@ export class StudentAuthService {
     return {
       canUseStudentCapabilities:
         !isPasswordChangeRequired && this.canUseStudentCapabilities(account),
-      csrfToken,
       sessionState: isPasswordChangeRequired ? 'password_change_required' : 'active',
       sessionToken,
     };
@@ -125,7 +118,6 @@ export class StudentAuthService {
   async changePassword(input: ChangePasswordInput): Promise<StudentSessionResult> {
     const now = this.clock.now();
     const currentSession = await this.resolveCurrentSession(input.sessionToken, now);
-    this.assertCsrfToken(currentSession.csrfToken, input.csrfToken);
 
     const policy = evaluatePasswordChange({
       currentPassword: input.currentPassword,
@@ -169,12 +161,10 @@ export class StudentAuthService {
     }
 
     const sessionToken = this.tokenGenerator.generate(32);
-    const csrfToken = this.tokenGenerator.generate(32);
     await this.repository.replaceAllAccountSessions({
       absoluteExpiresAt: new Date(now.getTime() + STUDENT_ABSOLUTE_SESSION_MILLISECONDS),
       accountId: currentSession.accountId,
       audience: 'student',
-      csrfToken,
       eventType: 'student_password_changed',
       now,
       providerSession,
@@ -183,7 +173,6 @@ export class StudentAuthService {
 
     return {
       canUseStudentCapabilities: this.canUseStudentCapabilities(currentSession),
-      csrfToken,
       sessionState: 'active',
       sessionToken,
     };
@@ -208,7 +197,6 @@ export class StudentAuthService {
     return {
       canUseStudentCapabilities:
         !isPasswordChangeRequired && this.canUseStudentCapabilities(session),
-      csrfToken: session.csrfToken,
       sessionState: isPasswordChangeRequired ? 'password_change_required' : 'active',
     };
   }
@@ -216,7 +204,6 @@ export class StudentAuthService {
   async logout(input: LogoutInput): Promise<void> {
     const now = this.clock.now();
     const session = await this.resolveCurrentSession(input.sessionToken, now);
-    this.assertCsrfToken(session.csrfToken, input.csrfToken);
     await this.repository.revokeSession(session.sessionIdHash, now, 'logout');
 
     try {
@@ -251,14 +238,6 @@ export class StudentAuthService {
       await this.provider.revoke(accessToken, 'local');
     } catch {
       // Core rejects the login regardless; provider cleanup is best-effort for a non-owned Account.
-    }
-  }
-
-  private assertCsrfToken(expected: string, actual: string): void {
-    const expectedDigest = createHash('sha256').update(expected).digest();
-    const actualDigest = createHash('sha256').update(actual).digest();
-    if (!timingSafeEqual(expectedDigest, actualDigest)) {
-      throw new AuthError('FORBIDDEN', 403, undefined);
     }
   }
 

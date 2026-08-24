@@ -25,7 +25,6 @@ interface AccountRow {
 
 interface SessionRow extends AccountRow {
   absolute_expires_at: Date;
-  csrf_token: string;
   last_activity_at: Date;
   provider_access_token: string;
   provider_refresh_token: string;
@@ -152,7 +151,6 @@ export class PostgresAuthRepository implements AuthRepository {
     const rows = await this.database.sql<SessionRow[]>`
       select
         session.session_id_hash,
-        session.csrf_token,
         session.provider_access_token,
         session.provider_refresh_token,
         session.provider_token_expires_at,
@@ -188,7 +186,6 @@ export class PostgresAuthRepository implements AuthRepository {
     return {
       ...this.mapAccount(row),
       absoluteExpiresAt: row.absolute_expires_at,
-      csrfToken: row.csrf_token,
       lastActivityAt: row.last_activity_at,
       providerAccessToken: row.provider_access_token,
       providerRefreshToken: row.provider_refresh_token,
@@ -272,7 +269,6 @@ export class PostgresAuthRepository implements AuthRepository {
         session_id_hash,
         account_id,
         audience,
-        csrf_token,
         provider_access_token,
         provider_refresh_token,
         provider_token_expires_at,
@@ -283,7 +279,6 @@ export class PostgresAuthRepository implements AuthRepository {
         ${input.sessionIdHash},
         ${input.accountId},
         ${input.audience},
-        ${input.csrfToken},
         ${input.providerSession.accessToken},
         ${input.providerSession.refreshToken},
         ${input.providerSession.expiresAt},

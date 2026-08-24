@@ -1,7 +1,6 @@
 import { ArgumentsHost, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthExceptionFilter } from './auth-exception.filter';
-import { StudentAuthCookieService } from './student-auth-cookie.service';
 
 describe('AuthExceptionFilter', () => {
   afterEach(() => {
@@ -19,9 +18,8 @@ describe('AuthExceptionFilter', () => {
     const host = {
       switchToHttp: () => ({ getResponse: () => response }),
     } as unknown as ArgumentsHost;
-    const cookies = { clear: jest.fn() } as unknown as StudentAuthCookieService;
     const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
-    const filter = new AuthExceptionFilter(cookies);
+    const filter = new AuthExceptionFilter();
 
     filter.catch(new Error('provider-token=must-not-appear'), host);
 
