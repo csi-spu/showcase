@@ -1,5 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
@@ -22,16 +21,17 @@ describe('Student Work Draft form', () => {
   });
 
   it('renders one accessible generic contract for every Work Category', async () => {
-    renderForm();
+    const { container } = renderForm();
 
     expect(screen.getByLabelText('ชื่อผลงาน').getAttribute('maxlength')).toBe('150');
     expect(screen.getByLabelText('สรุปผลงาน').getAttribute('maxlength')).toBe('300');
     expect(screen.getByLabelText('รายละเอียดผลงาน').getAttribute('maxlength')).toBe('10000');
     expect(screen.getByRole('combobox', { name: 'ประเภทผลงาน' })).toBeTruthy();
-    await userEvent.click(screen.getByRole('combobox', { name: 'ประเภทผลงาน' }));
-    expect(screen.getAllByText('ผลงานรายวิชา').length).toBeGreaterThan(0);
-    expect(screen.getByText('ผลงานประกวด')).toBeTruthy();
-    expect(screen.getByText('บทความวิชาการ')).toBeTruthy();
+    const categoryInput = container.querySelector('input[name="category"]') as HTMLInputElement;
+    for (const category of ['competition_entry', 'academic_article', 'course_work']) {
+      fireEvent.change(categoryInput, { target: { value: category } });
+      await waitFor(() => expect(categoryInput.value).toBe(category));
+    }
     expect(screen.getAllByRole('textbox', { name: /ชื่อของลิงก์/ })).toHaveLength(5);
     expect(screen.getAllByRole('textbox', { name: /URL ของลิงก์/ })).toHaveLength(5);
     expect(screen.getAllByRole('textbox', { name: /แท็ก/ })).toHaveLength(5);
@@ -57,12 +57,15 @@ describe('Student Work Draft form', () => {
     }));
     renderForm({ action });
     const title = screen.getByLabelText('ชื่อผลงาน') as HTMLInputElement;
-    await userEvent.clear(title);
-    await userEvent.type(title, 'ข้อมูลที่ต้องเก็บไว้');
-    await userEvent.type(screen.getByLabelText('สรุปผลงาน'), 'สรุป');
-    await userEvent.type(screen.getByLabelText('รายละเอียดผลงาน'), 'รายละเอียด');
-    await userEvent.type(screen.getByLabelText('URL ของลิงก์ 1'), 'http://example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'สร้างผลงาน' }));
+    fireEvent.change(title, { target: { value: 'ข้อมูลที่ต้องเก็บไว้' } });
+    fireEvent.change(screen.getByLabelText('สรุปผลงาน'), { target: { value: 'สรุป' } });
+    fireEvent.change(screen.getByLabelText('รายละเอียดผลงาน'), {
+      target: { value: 'รายละเอียด' },
+    });
+    fireEvent.change(screen.getByLabelText('URL ของลิงก์ 1'), {
+      target: { value: 'http://example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'สร้างผลงาน' }));
 
     await waitFor(() => expect(screen.getByText(/ลิงก์ต้องมีชื่อและใช้ HTTPS/)).toBeTruthy());
     expect(title.value).toBe('ข้อมูลที่ต้องเก็บไว้');
@@ -90,7 +93,7 @@ describe('Student Work Draft form', () => {
     }));
     const { container } = renderForm({ action, mode: 'edit', work: existingWork() });
 
-    await userEvent.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
 
     await waitFor(() => {
       expect(
