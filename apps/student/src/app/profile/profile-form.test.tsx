@@ -9,7 +9,10 @@ import type { ProfileActionState } from './profile-action-state';
 const action = vi.fn(async (): Promise<ProfileActionState> => ({ error: null, success: true }));
 
 describe('Student Public Profile UI', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it('renders bounded Thai fields and up to five labeled HTTPS links', async () => {
     renderProfile(<ProfileForm {...baseProps()} />);
@@ -96,6 +99,37 @@ describe('Student Public Profile UI', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'นำรูปออก' }));
     expect((container.querySelector('input[name="photoId"]') as HTMLInputElement).value).toBe('');
+  });
+
+  it('preserves a draft when a persisted Public Profile rerenders without a Base UI warning', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rendered = renderProfile(<ProfileForm {...baseProps()} />);
+    const profile = {
+      bio: 'ผู้พัฒนาซอฟต์แวร์',
+      consent: null,
+      displayName: 'ณัฐดนัย',
+      entryYear: 2569,
+      links: [{ label: 'เว็บไซต์', url: 'https://example.test' }],
+      photo: null,
+      photoId: null,
+      publicId: '71000000-0000-4000-8000-000000000001',
+      version: 1,
+    };
+
+    await userEvent.type(screen.getByLabelText('ชื่อที่แสดง'), profile.displayName);
+
+    rendered.rerender(
+      <NextIntlClientProvider locale="th" messages={messages}>
+        <ProfileForm {...baseProps()} profile={profile} />
+      </NextIntlClientProvider>,
+    );
+
+    expect((screen.getByLabelText('ชื่อที่แสดง') as HTMLInputElement).value).toBe(
+      profile.displayName,
+    );
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('changing the default value state of an uncontrolled FieldControl'),
+    );
   });
 });
 

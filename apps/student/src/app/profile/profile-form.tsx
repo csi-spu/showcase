@@ -30,6 +30,11 @@ type CreatePhotoUpload = (input: {
 type FinalizePhotoUpload = (
   uploadId: string,
 ) => Promise<{ data: { photoId: string; status: 'ready' } } | { error: ProfileActionError }>;
+interface ProfileDraftState {
+  bio: string;
+  displayName: string;
+  links: Array<{ label: string; url: string }>;
+}
 
 export function ProfileForm({
   canEditProfile,
@@ -48,6 +53,7 @@ export function ProfileForm({
 }) {
   const t = useTranslations('Profile');
   const [state, formAction] = useActionState(updateAction, INITIAL_PROFILE_ACTION_STATE);
+  const [draft, setDraft] = useState(() => createDraft(profile));
   const [photoId, setPhotoId] = useState(profile?.photoId ?? '');
   const [isUploading, setIsUploading] = useState(false);
   const [photoError, setPhotoError] = useState(false);
@@ -103,23 +109,31 @@ export function ProfileForm({
         <Field>
           <FieldLabel htmlFor="display-name">{t('displayName')}</FieldLabel>
           <Input
-            defaultValue={profile?.displayName ?? ''}
             disabled={!canEditProfile}
             id="display-name"
             maxLength={100}
             name="displayName"
+            onChange={(event) => {
+              const displayName = event.currentTarget.value;
+              setDraft((current) => ({ ...current, displayName }));
+            }}
             required
+            value={draft.displayName}
           />
         </Field>
         <Field>
           <FieldLabel htmlFor="bio">{t('bio')}</FieldLabel>
           <textarea
             className="min-h-32 w-full resize-y rounded-control border border-input bg-card px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:bg-disabled disabled:text-disabled-foreground md:text-sm"
-            defaultValue={profile?.bio ?? ''}
             disabled={!canEditProfile}
             id="bio"
             maxLength={500}
             name="bio"
+            onChange={(event) => {
+              const bio = event.currentTarget.value;
+              setDraft((current) => ({ ...current, bio }));
+            }}
+            value={draft.bio}
           />
           <FieldDescription>{t('bioHelp')}</FieldDescription>
         </Field>
@@ -162,7 +176,7 @@ export function ProfileForm({
         <legend className="px-2 text-lg font-semibold">{t('links')}</legend>
         <p className="text-sm text-muted-foreground">{t('linksHelp')}</p>
         {Array.from({ length: 5 }, (_, index) => {
-          const link = profile?.links[index];
+          const link = draft.links[index];
           return (
             <div className="grid gap-3 border-t border-border pt-5 sm:grid-cols-2" key={index}>
               <Field>
@@ -170,11 +184,20 @@ export function ProfileForm({
                   {t('linkLabel', { number: index + 1 })}
                 </FieldLabel>
                 <Input
-                  defaultValue={link?.label ?? ''}
                   disabled={!canEditProfile}
                   id={`link-label-${index}`}
                   maxLength={50}
                   name={`linkLabel${index}`}
+                  onChange={(event) => {
+                    const label = event.currentTarget.value;
+                    setDraft((current) => ({
+                      ...current,
+                      links: current.links.map((currentLink, currentIndex) =>
+                        currentIndex === index ? { ...currentLink, label } : currentLink,
+                      ),
+                    }));
+                  }}
+                  value={link?.label ?? ''}
                 />
               </Field>
               <Field>
@@ -182,13 +205,22 @@ export function ProfileForm({
                   {t('linkUrl', { number: index + 1 })}
                 </FieldLabel>
                 <Input
-                  defaultValue={link?.url ?? ''}
                   disabled={!canEditProfile}
                   id={`link-url-${index}`}
                   maxLength={2048}
                   name={`linkUrl${index}`}
+                  onChange={(event) => {
+                    const url = event.currentTarget.value;
+                    setDraft((current) => ({
+                      ...current,
+                      links: current.links.map((currentLink, currentIndex) =>
+                        currentIndex === index ? { ...currentLink, url } : currentLink,
+                      ),
+                    }));
+                  }}
                   placeholder="https://"
                   type="url"
+                  value={link?.url ?? ''}
                 />
               </Field>
             </div>
@@ -200,6 +232,17 @@ export function ProfileForm({
       {canEditProfile ? <SubmitButton label={t('save')} pendingLabel={t('saving')} /> : null}
     </form>
   );
+}
+
+function createDraft(profile: PrivatePublicProfile | null): ProfileDraftState {
+  return {
+    bio: profile?.bio ?? '',
+    displayName: profile?.displayName ?? '',
+    links: Array.from({ length: 5 }, (_, index) => ({
+      label: profile?.links[index]?.label ?? '',
+      url: profile?.links[index]?.url ?? '',
+    })),
+  };
 }
 
 export function ConsentPanel({
