@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type postgres from 'postgres';
 import {
+  AdminAuthenticationSessionRecord,
+  AdminLoginAccount,
   AuthenticationSessionRecord,
   AuthRepository,
   LoginAccount,
@@ -24,6 +26,26 @@ interface AccountRow {
 }
 
 interface SessionRow extends AccountRow {
+  absolute_expires_at: Date;
+  last_activity_at: Date;
+  provider_access_token: string;
+  provider_refresh_token: string;
+  provider_token_expires_at: Date;
+  revoked_at: Date | null;
+  session_id_hash: string;
+}
+
+interface AdminAccountRow {
+  account_id: string;
+  account_status: AdminLoginAccount['accountStatus'];
+  admin_login_hash: string;
+  credential_state: AdminLoginAccount['credentialState'];
+  has_admin_role: boolean;
+  provider_user_id: string;
+  synthetic_identity: string;
+}
+
+interface AdminSessionRow extends AdminAccountRow {
   absolute_expires_at: Date;
   last_activity_at: Date;
   provider_access_token: string;
@@ -147,6 +169,68 @@ export class PostgresAuthRepository implements AuthRepository {
     return rows[0] === undefined ? null : this.mapAccount(rows[0]);
   }
 
+  async findAdminLoginAccount(adminLoginHash: string): Promise<AdminLoginAccount | null> {
+    const rows = await this.database.sql<AdminAccountRow[]>`
+      select
+        account.id as account_id,
+        account.status as account_status,
+        account.credential_state,
+        (admin_role.account_id is not null) as has_admin_role,
+        account.provider_user_id,
+        identity.admin_login_hash,
+        identity.synthetic_identity
+      from private.admin_auth_identities as identity
+      join public.accounts as account on account.id = identity.account_id
+      left join public.account_roles as admin_role
+        on admin_role.account_id = account.id and admin_role.role = 'admin'
+      where identity.admin_login_hash = ${adminLoginHash}
+      limit 1
+    `;
+    return rows[0] === undefined ? null : this.mapAdminAccount(rows[0]);
+  }
+
+  async findAdminSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null> {
+    const rows = await this.database.sql<AdminSessionRow[]>`
+      select
+        session.session_id_hash,
+        session.provider_access_token,
+        session.provider_refresh_token,
+        session.provider_token_expires_at,
+        session.last_activity_at,
+        session.absolute_expires_at,
+        session.revoked_at,
+        account.id as account_id,
+        account.status as account_status,
+        account.credential_state,
+        (admin_role.account_id is not null) as has_admin_role,
+        account.provider_user_id,
+        identity.admin_login_hash,
+        identity.synthetic_identity
+      from private.authentication_sessions as session
+      join public.accounts as account on account.id = session.account_id
+      join private.admin_auth_identities as identity on identity.account_id = account.id
+      left join public.account_roles as admin_role
+        on admin_role.account_id = account.id and admin_role.role = 'admin'
+      where session.session_id_hash = ${sessionIdHash}
+        and session.audience = 'admin'
+      limit 1
+    `;
+    const row = rows[0];
+    if (row === undefined) {
+      return null;
+    }
+    return {
+      ...this.mapAdminAccount(row),
+      absoluteExpiresAt: row.absolute_expires_at,
+      lastActivityAt: row.last_activity_at,
+      providerAccessToken: row.provider_access_token,
+      providerRefreshToken: row.provider_refresh_token,
+      providerTokenExpiresAt: row.provider_token_expires_at,
+      revokedAt: row.revoked_at,
+      sessionIdHash: row.session_id_hash,
+    };
+  }
+
   async findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
     const rows = await this.database.sql<SessionRow[]>`
       select
@@ -221,17 +305,17 @@ export class PostgresAuthRepository implements AuthRepository {
     reason: 'authorization_changed' | 'expired' | 'logout' | 'provider_invalid',
   ): Promise<void> {
     await this.database.sql.begin(async (transaction) => {
-      const rows = await transaction<{ account_id: string }[]>`
+      const rows = await transaction<{ account_id: string; audience: string }[]>`
         update private.authentication_sessions
         set revoked_at = ${now}, revocation_reason = ${reason}
         where session_id_hash = ${sessionIdHash} and revoked_at is null
-        returning account_id
+        returning account_id, audience
       `;
       const row = rows[0];
       if (row !== undefined) {
         await transaction`
           insert into private.authentication_audit_events (account_id, event_type, occurred_at)
-          values (${row.account_id}, ${`student_session_${reason}`}, ${now})
+          values (${row.account_id}, ${`${row.audience}_session_${reason}`}, ${now})
         `;
       }
     });
@@ -300,6 +384,18 @@ export class PostgresAuthRepository implements AuthRepository {
       providerUserId: row.provider_user_id,
       studentAccessEndsAcademicYear: row.student_access_ends_academic_year,
       studentIdHash: row.student_id_hash,
+      syntheticIdentity: row.synthetic_identity,
+    };
+  }
+
+  private mapAdminAccount(row: AdminAccountRow): AdminLoginAccount {
+    return {
+      accountId: row.account_id,
+      accountStatus: row.account_status,
+      adminLoginHash: row.admin_login_hash,
+      credentialState: row.credential_state,
+      hasAdminRole: row.has_admin_role,
+      providerUserId: row.provider_user_id,
       syntheticIdentity: row.synthetic_identity,
     };
   }

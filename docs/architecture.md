@@ -29,14 +29,15 @@ Each `apps/*` workspace is independently deployable, health-checked, and horizon
 
 ## Authentication flow
 
-1. Student submits Student ID and password to a Student Server Action over TLS.
-2. The Student BFF validates input and calls a BFF-authenticated internal Core endpoint.
-3. Core maps Student ID to a private synthetic Supabase Auth identity and creates the authoritative session.
-4. The Student BFF stores only the opaque session token in a Secure, HttpOnly, host-only cookie on the Student hostname.
-5. Subsequent Server Components and Server Actions forward that token to Core; Core guards resolve Account and role from current server-owned state. Request bodies never choose actor identity.
-6. A newly provisioned Account remains restricted to password change until the forced-change requirement is cleared.
+1. An Admin or Student submits private login data to a Server Action on the matching frontend over TLS.
+2. The frontend validates input and calls its audience-specific, BFF-authenticated internal Core endpoint through `@showcase/core-client`.
+3. Core maps the private login identifier to a private synthetic Supabase Auth identity and creates an audience-bound authoritative session.
+4. The frontend stores only the opaque session token in its own Secure, HttpOnly, host-only cookie. Admin and Student cookies and BFF secrets remain distinct.
+5. Subsequent Server Components and Server Actions forward that token through the shared transport client. The client validates response contracts but owns no authorization policy.
+6. Core guards resolve current Account, role, audience, forced-change, and access state. Request bodies never choose actor identity.
+7. A newly provisioned Account remains restricted to password change until the forced-change requirement is cleared.
 
-Admin uses the same Core/Supabase boundary. Public profile identifiers are random and unrelated to Student ID or Supabase identity IDs.
+Public profile identifiers are random and unrelated to Student ID, Admin login, or Supabase identity IDs.
 
 ## Work publication model
 

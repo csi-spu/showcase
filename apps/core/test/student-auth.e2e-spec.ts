@@ -9,6 +9,8 @@ import {
   AUTH_PROVIDER,
   AUTH_REPOSITORY,
   AUTH_TOKEN_GENERATOR,
+  AdminAuthenticationSessionRecord,
+  AdminLoginAccount,
   AuthenticationSessionRecord,
   AuthProvider,
   AuthProviderError,
@@ -86,6 +88,14 @@ class E2eAuthRepository implements AuthRepository {
     );
   }
 
+  findAdminLoginAccount(): Promise<AdminLoginAccount | null> {
+    return Promise.resolve(null);
+  }
+
+  findAdminSession(): Promise<AdminAuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
     const stored = this.sessions.get(sessionIdHash);
     if (stored === undefined) {
@@ -136,9 +146,11 @@ describe('Student authentication (e2e)', () => {
   beforeEach(async () => {
     const clock: Clock = { now: () => new Date('2026-08-24T12:00:00.000Z') };
     const identityProtector: IdentityProtector = {
+      hashAdminLogin: (value) => `admin-${value}`,
       hashSessionToken: (value) => `hashed-${value}`,
       hashSourceAddress: (value) => `source-${value}`,
       hashStudentId: (value) => (value === '69000001' ? 'student-hash' : `hash-${value}`),
+      toAdminSyntheticIdentity: (value) => `admin-${value}@admin.auth.invalid`,
       toSyntheticIdentity: (value) =>
         value === '69000001' ? 'student-hash@auth.invalid' : `unknown-${value}@auth.invalid`,
     };

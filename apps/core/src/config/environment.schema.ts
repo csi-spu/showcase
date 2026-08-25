@@ -2,14 +2,17 @@ import { z } from 'zod';
 
 const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const LOCAL_IDENTITY_SECRET = 'local-development-only-identity-secret';
+const LOCAL_ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
 const LOCAL_STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const LOCAL_SUPABASE_KEY = 'local-publishable-key-set-by-supabase-status';
+const LOCAL_SUPABASE_SECRET_KEY = 'local-secret-key-set-by-supabase-status';
 const originSchema = z
   .url()
   .refine((value) => new URL(value).origin === value, 'Must be an origin without a path');
 
 const environmentSchema = z
   .object({
+    ADMIN_BFF_SECRET: z.string().min(32).default(LOCAL_ADMIN_BFF_SECRET),
     APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     AUTH_IDENTITY_SECRET: z.string().min(32).default(LOCAL_IDENTITY_SECRET),
     CORS_ALLOWED_ORIGINS: z
@@ -24,9 +27,21 @@ const environmentSchema = z
     STUDENT_BFF_SECRET: z.string().min(32).default(LOCAL_STUDENT_BFF_SECRET),
     SUPABASE_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
     SUPABASE_PUBLISHABLE_KEY: z.string().min(1).default(LOCAL_SUPABASE_KEY),
+    SUPABASE_SECRET_KEY: z.string().min(1).default(LOCAL_SUPABASE_SECRET_KEY),
     SUPABASE_URL: z.url().default('http://127.0.0.1:54321'),
   })
   .superRefine((environment, context) => {
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.ADMIN_BFF_SECRET === LOCAL_ADMIN_BFF_SECRET
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'ADMIN_BFF_SECRET must be environment-specific outside local development',
+        path: ['ADMIN_BFF_SECRET'],
+      });
+    }
+
     if (
       ['production', 'staging'].includes(environment.APP_ENV) &&
       environment.AUTH_IDENTITY_SECRET === LOCAL_IDENTITY_SECRET
@@ -57,6 +72,17 @@ const environmentSchema = z
         code: 'custom',
         message: 'SUPABASE_PUBLISHABLE_KEY must be configured outside local development',
         path: ['SUPABASE_PUBLISHABLE_KEY'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.SUPABASE_SECRET_KEY === LOCAL_SUPABASE_SECRET_KEY
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'SUPABASE_SECRET_KEY must be configured outside local development',
+        path: ['SUPABASE_SECRET_KEY'],
       });
     }
   });

@@ -33,7 +33,8 @@ Protect the `production` Environment with required reviewers and restrict it to 
 Current required keys:
 
 - `APP_ENV`
-- `AUTH_IDENTITY_SECRET`, an environment-specific high-entropy HMAC secret for private Student identity derivation
+- `ADMIN_BFF_SECRET`, an environment-specific high-entropy secret shared only with the Admin server runtime
+- `AUTH_IDENTITY_SECRET`, an environment-specific high-entropy HMAC secret for private Student ID and Admin login derivation
 - `CORS_ALLOWED_ORIGINS`
 - `DATABASE_URL`, the pooled Supabase Postgres connection used only by Core
 - `GIT_SHA`, baked into the image by CI
@@ -42,11 +43,22 @@ Current required keys:
 - `STUDENT_BFF_SECRET`, an environment-specific high-entropy secret shared only with the Student server runtime
 - `SUPABASE_AUTH_TIMEOUT_MS`
 - `SUPABASE_PUBLISHABLE_KEY`, used by Core for Supabase Auth password and refresh grants
+- `SUPABASE_SECRET_KEY`, used only by Core's authorized Admin provisioning command
 - `SUPABASE_URL`
 
-R2 adapters will add validated keys in the implementation change that introduces them. Supabase service-role access is not required for runtime Student login and must not be added to Core until an authorized provisioning use case needs it.
+R2 adapters will add validated keys in the implementation change that introduces them. The Supabase secret key is restricted to the Admin provisioning adapter; normal Admin and Student authentication use the publishable key.
+
+Admin receives `CORE_URL` and the matching `ADMIN_BFF_SECRET` at container runtime. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 
 Student receives `CORE_URL` and the matching `STUDENT_BFF_SECRET` at container runtime. The secret must differ between staging and production and rotate on both Core and Student as one change. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
+
+Provision an Admin from an authorized Core container after migrations are current:
+
+```sh
+pnpm --filter @showcase/core admin:provision -- <admin-login>
+```
+
+The command displays the random temporary password once. Transfer it through the approved private channel, do not record it in tickets or logs, and require the Admin to replace it on first sign-in.
 
 ## Rotation
 

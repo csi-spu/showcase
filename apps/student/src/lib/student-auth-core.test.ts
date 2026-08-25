@@ -30,14 +30,15 @@ describe('StudentAuthCoreClient', () => {
       expect.objectContaining({
         body: JSON.stringify({ password: 'initial-password', studentId: '69000001' }),
         cache: 'no-store',
-        headers: expect.objectContaining({
-          'x-client-address': '192.0.2.10',
-          'x-student-bff-secret': config.studentBffSecret,
-        }),
+        credentials: 'omit',
+        headers: expect.any(Headers),
         method: 'POST',
       }),
     );
-    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('credentials');
+    const loginHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(loginHeaders.get('x-client-address')).toBe('192.0.2.10');
+    expect(loginHeaders.get('x-student-bff-secret')).toBe(config.studentBffSecret);
+    expect(fetchMock.mock.calls[0]?.[1]).toHaveProperty('credentials', 'omit');
   });
 
   it('sends the opaque session as bearer and rejects malformed Core responses', async () => {
@@ -53,9 +54,8 @@ describe('StudentAuthCoreClient', () => {
       canUseStudentCapabilities: true,
       sessionState: 'active',
     });
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      headers: expect.objectContaining({ Authorization: 'Bearer opaque-session-token' }),
-    });
+    const sessionHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(sessionHeaders.get('authorization')).toBe('Bearer opaque-session-token');
     await expect(client.getSession('opaque-session-token')).rejects.toMatchObject({
       code: 'AUTH_SERVICE_UNAVAILABLE',
     });

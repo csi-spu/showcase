@@ -6,16 +6,18 @@ export const AUTH_TOKEN_GENERATOR = Symbol('AUTH_TOKEN_GENERATOR');
 
 export type AccountStatus = 'active' | 'suspended';
 export type CredentialState = 'initial' | 'reset_required' | 'set';
-export type SessionAudience = 'student';
+export type SessionAudience = 'admin' | 'student';
 
 export interface Clock {
   now(): Date;
 }
 
 export interface IdentityProtector {
+  hashAdminLogin(value: string): string;
   hashSessionToken(value: string): string;
   hashSourceAddress(value: string): string;
   hashStudentId(value: string): string;
+  toAdminSyntheticIdentity(adminLogin: string): string;
   toSyntheticIdentity(studentId: string): string;
 }
 
@@ -63,7 +65,27 @@ export interface LoginAccount {
   syntheticIdentity: string;
 }
 
+export interface AdminLoginAccount {
+  accountId: string;
+  accountStatus: AccountStatus;
+  adminLoginHash: string;
+  credentialState: CredentialState;
+  hasAdminRole: boolean;
+  providerUserId: string;
+  syntheticIdentity: string;
+}
+
 export interface AuthenticationSessionRecord extends LoginAccount {
+  absoluteExpiresAt: Date;
+  lastActivityAt: Date;
+  providerAccessToken: string;
+  providerRefreshToken: string;
+  providerTokenExpiresAt: Date;
+  revokedAt: Date | null;
+  sessionIdHash: string;
+}
+
+export interface AdminAuthenticationSessionRecord extends AdminLoginAccount {
   absoluteExpiresAt: Date;
   lastActivityAt: Date;
   providerAccessToken: string;
@@ -77,7 +99,8 @@ export interface NewAuthenticationSession {
   absoluteExpiresAt: Date;
   accountId: string;
   audience: SessionAudience;
-  eventType: 'student_login' | 'student_password_changed';
+  eventType:
+    'admin_login' | 'admin_password_changed' | 'student_login' | 'student_password_changed';
   now: Date;
   providerSession: ProviderSession;
   sessionIdHash: string;
@@ -98,6 +121,8 @@ export interface AuthRepository {
     windowSeconds: number;
   }): Promise<RateLimitResult>;
   createSession(input: NewAuthenticationSession): Promise<void>;
+  findAdminLoginAccount(adminLoginHash: string): Promise<AdminLoginAccount | null>;
+  findAdminSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null>;
   findLoginAccount(studentIdHash: string): Promise<LoginAccount | null>;
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null>;
   replaceAllAccountSessions(input: NewAuthenticationSession): Promise<void>;

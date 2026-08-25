@@ -7,6 +7,7 @@ const PERSON_ID = '10000000-0000-4000-8000-000000000001';
 const ACCOUNT_ID = '10000000-0000-4000-8000-000000000002';
 const PROVIDER_USER_ID = '10000000-0000-4000-8000-000000000003';
 const STUDENT_ID_HASH = 'a'.repeat(64);
+const ADMIN_LOGIN_HASH = 'e'.repeat(64);
 const SOURCE_KEY_HASH = 'b'.repeat(64);
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -28,7 +29,19 @@ describe('PostgresAuthRepository integration', () => {
         values (${ACCOUNT_ID}, ${PERSON_ID}, ${PROVIDER_USER_ID})
       `;
       await transaction`
-        insert into public.account_roles (account_id, role) values (${ACCOUNT_ID}, 'student')
+        insert into public.account_roles (account_id, role)
+        values (${ACCOUNT_ID}, 'student'), (${ACCOUNT_ID}, 'admin')
+      `;
+      await transaction`
+        insert into private.admin_auth_identities (
+          account_id,
+          admin_login_hash,
+          synthetic_identity
+        ) values (
+          ${ACCOUNT_ID},
+          ${ADMIN_LOGIN_HASH},
+          ${`${ADMIN_LOGIN_HASH}@admin.auth.invalid`}
+        )
       `;
       await transaction`
         insert into private.student_auth_identities (
@@ -37,6 +50,17 @@ describe('PostgresAuthRepository integration', () => {
           synthetic_identity
         ) values (${ACCOUNT_ID}, ${STUDENT_ID_HASH}, ${`${STUDENT_ID_HASH}@auth.invalid`})
       `;
+    });
+  });
+
+  it('reads current Admin Account and role through its private login identity', async () => {
+    await expect(repository.findAdminLoginAccount(ADMIN_LOGIN_HASH)).resolves.toMatchObject({
+      accountId: ACCOUNT_ID,
+      accountStatus: 'active',
+      adminLoginHash: ADMIN_LOGIN_HASH,
+      credentialState: 'initial',
+      hasAdminRole: true,
+      providerUserId: PROVIDER_USER_ID,
     });
   });
 
@@ -107,6 +131,26 @@ describe('PostgresAuthRepository integration', () => {
     });
   });
 
+  it('resolves sessions only through their matching audience for a dual-role Person', async () => {
+    const student = createSession('f', 'student_login', '2026-08-24T13:00:00.000Z');
+    const admin: NewAuthenticationSession = {
+      ...createSession('9', 'admin_login', '2026-08-24T13:01:00.000Z'),
+      absoluteExpiresAt: new Date('2026-08-24T21:01:00.000Z'),
+      audience: 'admin',
+    };
+    await repository.createSession(student);
+    await repository.createSession(admin);
+
+    await expect(repository.findSession(student.sessionIdHash)).resolves.toMatchObject({
+      sessionIdHash: student.sessionIdHash,
+    });
+    await expect(repository.findAdminSession(student.sessionIdHash)).resolves.toBeNull();
+    await expect(repository.findAdminSession(admin.sessionIdHash)).resolves.toMatchObject({
+      sessionIdHash: admin.sessionIdHash,
+    });
+    await expect(repository.findSession(admin.sessionIdHash)).resolves.toBeNull();
+  });
+
   function createSession(
     hashCharacter: string,
     eventType: NewAuthenticationSession['eventType'],
@@ -139,7 +183,10 @@ describe('PostgresAuthRepository integration', () => {
       `;
       await transaction`
         delete from private.authentication_rate_limits
-        where key_hash in (${STUDENT_ID_HASH}, ${SOURCE_KEY_HASH})
+        where key_hash in (${STUDENT_ID_HASH}, ${ADMIN_LOGIN_HASH}, ${SOURCE_KEY_HASH})
+      `;
+      await transaction`
+        delete from private.admin_auth_identities where account_id = ${ACCOUNT_ID}
       `;
       await transaction`
         delete from private.student_auth_identities where account_id = ${ACCOUNT_ID}
