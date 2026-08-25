@@ -1,0 +1,81 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  UseFilters,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthError } from '../../auth/application/auth.error';
+import { StudentAuthService } from '../../auth/application/student-auth.service';
+import { StudentBffGuard } from '../../auth/transport/student-bff.guard';
+import { WorksService } from '../application/works.service';
+import { CreateWorkDto, UpdateWorkDraftDto } from './works.dto';
+import { WorksExceptionFilter } from './works-exception.filter';
+
+@Controller('internal/student/works')
+@UseFilters(WorksExceptionFilter)
+@UseGuards(StudentBffGuard)
+export class StudentWorksController {
+  constructor(
+    private readonly auth: StudentAuthService,
+    private readonly works: WorksService,
+  ) {}
+
+  @Post()
+  @HttpCode(201)
+  @Header('Cache-Control', 'no-store')
+  async createWork(
+    @Body() input: CreateWorkDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.createWork({ ...input, actorAccountId: actor.accountId });
+  }
+
+  @Get('authoring-context')
+  @Header('Cache-Control', 'no-store')
+  async getAuthoringContext(@Headers('authorization') authorization: string | undefined) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.getAuthoringContext(actor.accountId);
+  }
+
+  @Get(':publicId')
+  @Header('Cache-Control', 'no-store')
+  async getDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.getDraft(actor.accountId, publicId);
+  }
+
+  @Put(':publicId')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async updateDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: UpdateWorkDraftDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.updateDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  private requireSessionToken(authorization: string | undefined): string {
+    const prefix = 'Bearer ';
+    const sessionToken = authorization?.startsWith(prefix)
+      ? authorization.slice(prefix.length).trim()
+      : '';
+    if (sessionToken.length === 0 || sessionToken.length > 512) {
+      throw new AuthError('UNAUTHENTICATED', 401);
+    }
+    return sessionToken;
+  }
+}
