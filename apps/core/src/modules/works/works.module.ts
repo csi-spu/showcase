@@ -31,16 +31,28 @@ import { AttributionInvitationsService } from './application/attribution-invitat
 import { NodeAttributionSecretProtector } from './infrastructure/node-attribution-secret-protector';
 import { PostgresAttributionInvitationsRepository } from './infrastructure/postgres-attribution-invitations.repository';
 import { StudentAttributionInvitationsController } from './transport/student-attribution-invitations.controller';
+import { WorkRevisionsService } from './application/work-revisions.service';
+import { WORK_REVISIONS_REPOSITORY } from './application/work-revisions.ports';
+import { PostgresWorkRevisionsRepository } from './infrastructure/postgres-work-revisions.repository';
+import { AdminWorkRevisionsController } from './transport/admin-work-revisions.controller';
+import { StudentWorkRevisionsController } from './transport/student-work-revisions.controller';
 
 @Module({
-  controllers: [StudentAttributionInvitationsController, StudentWorksController],
+  controllers: [
+    AdminWorkRevisionsController,
+    StudentAttributionInvitationsController,
+    StudentWorkRevisionsController,
+    StudentWorksController,
+  ],
   imports: [AuthModule],
   providers: [
     WorksService,
     AttributionInvitationsService,
     WorkMediaService,
+    WorkRevisionsService,
     WorksExceptionFilter,
     { provide: WORKS_REPOSITORY, useClass: PostgresWorksRepository },
+    { provide: WORK_REVISIONS_REPOSITORY, useClass: PostgresWorkRevisionsRepository },
     {
       provide: ATTRIBUTION_INVITATIONS_REPOSITORY,
       useClass: PostgresAttributionInvitationsRepository,

@@ -278,6 +278,10 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
                 select 1 from private.work_draft_media as draft_media
                 where draft_media.asset_id = asset.id
               )
+              and not exists (
+                select 1 from private.work_revision_media as revision_media
+                where revision_media.asset_id = asset.id
+              )
             )
           )
         order by asset.expires_at, asset.id
@@ -322,6 +326,10 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
           and not exists (
             select 1 from private.work_draft_media as draft_media
             where draft_media.asset_id = asset.id
+          )
+          and not exists (
+            select 1 from private.work_revision_media as revision_media
+            where revision_media.asset_id = asset.id
           )
         for update of asset
       `;

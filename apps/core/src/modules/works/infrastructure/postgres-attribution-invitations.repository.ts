@@ -694,10 +694,11 @@ export class PostgresAttributionInvitationsRepository implements AttributionInvi
       select work.id
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
+      join private.work_drafts as draft on draft.work_id = work.id
       where account.id = ${accountId}
         and work.public_id = ${publicId}
         and work.activity_state = 'active'
-      for update of work
+      for update of work, draft
     `;
     return rows[0]?.id ?? null;
   }
@@ -739,10 +740,12 @@ export class PostgresAttributionInvitationsRepository implements AttributionInvi
       select ${this.columns(sql)}
       from private.attribution_invitations as invitation
       join public.accounts as account on account.person_id = invitation.invitee_person_id
+      join public.works as work on work.id = invitation.work_id
+      join private.work_drafts as draft on draft.work_id = work.id
       where account.id = ${accountId}
         and invitation.public_id = ${publicId}
         and invitation.kind = 'account'
-      for update of invitation
+      for update of work, draft, invitation
     `;
     return rows[0];
   }
@@ -757,11 +760,13 @@ export class PostgresAttributionInvitationsRepository implements AttributionInvi
       from private.attribution_invitations as invitation
       join private.attribution_invitation_sessions as session
         on session.invitation_id = invitation.id
+      join public.works as work on work.id = invitation.work_id
+      join private.work_drafts as draft on draft.work_id = work.id
       where session.session_hash = ${sessionHash}
         and session.revoked_at is null
         and session.expires_at > ${now}
         and invitation.kind = 'external'
-      for update of invitation, session
+      for update of work, draft, invitation, session
     `;
     return rows[0];
   }
