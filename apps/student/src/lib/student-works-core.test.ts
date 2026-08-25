@@ -121,6 +121,51 @@ describe('StudentWorksCoreClient', () => {
       mediaKind: 'poster',
     });
   });
+
+  it('uses bounded invitation contracts without exposing Account or Person identifiers', async () => {
+    const invitation = {
+      affiliation: null,
+      attributionName: null,
+      contributionRole: null,
+      createdAt: '2026-08-25T10:00:00.000Z',
+      expiresAt: '2026-09-08T10:00:00.000Z',
+      kind: 'account' as const,
+      proposedAttributionName: null,
+      publicId: '64000000-0000-4000-8000-000000000004',
+      state: 'pending' as const,
+      studyYear: null,
+      version: 1,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ items: [invitation], nextCursor: null }))
+      .mockResolvedValueOnce(Response.json({ outcome: 'received' }))
+      .mockResolvedValueOnce(Response.json({ outcome: 'accepted' }));
+    const client = createClient(fetchMock);
+
+    await expect(client.listReceivedInvitations(SESSION)).resolves.toEqual({
+      items: [invitation],
+      nextCursor: null,
+    });
+    await client.createAccountInvitation(SESSION, PUBLIC_ID, {
+      idempotencyKey: IDEMPOTENCY_KEY,
+      studentId: '69000001',
+    });
+    await client.transitionAccountInvitation(SESSION, invitation.publicId, 'accept', {
+      attributionName: 'ผู้ร่วมผลงาน',
+      consent: true,
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      studyYear: 4,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://core.example.test/v1/internal/student/contributor-invitations',
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/contributor-invitations/account`,
+      `https://core.example.test/v1/internal/student/contributor-invitations/${invitation.publicId}/accept`,
+    ]);
+    expect(JSON.stringify(invitation)).not.toMatch(/accountId|personId|studentId/i);
+  });
 });
 
 function createClient(fetchImpl: typeof fetch) {

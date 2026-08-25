@@ -58,6 +58,29 @@ const mediaUploadSchema = z
     uploadUrl: z.url(),
   })
   .strict();
+const attributionInvitationSchema = z
+  .object({
+    affiliation: z.string().nullable(),
+    attributionName: z.string().nullable(),
+    contributionRole: z.string().nullable(),
+    createdAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    kind: z.enum(['account', 'external']),
+    proposedAttributionName: z.string().nullable(),
+    publicId: z.uuid(),
+    state: z.enum(['pending', 'accepted', 'rejected', 'revoked', 'expired', 'withdrawn']),
+    studyYear: z.number().int().min(1).max(8).nullable(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const attributionInvitationPageSchema = z
+  .object({ items: z.array(attributionInvitationSchema), nextCursor: z.string().nullable() })
+  .strict();
+const invitationOutcomeSchema = z
+  .object({
+    outcome: z.enum(['accepted', 'received', 'rejected', 'replayed', 'revoked', 'withdrawn']),
+  })
+  .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
@@ -74,6 +97,8 @@ export type WorkMutationInput = {
 };
 export type WorkUpdateInput = WorkMutationInput & { expectedVersion: number };
 export type WorkMediaKind = 'gallery' | 'poster';
+export type AttributionInvitation = z.infer<typeof attributionInvitationSchema>;
+export type AttributionInvitationPage = z.infer<typeof attributionInvitationPageSchema>;
 
 interface StudentWorksCoreConfig {
   coreUrl: string;
@@ -201,6 +226,154 @@ export class StudentWorksCoreClient {
         .object({ outcome: z.literal('attached'), version: z.number().int().positive() })
         .strict(),
       sessionToken,
+    });
+  }
+
+  listWorkInvitations(sessionToken: string, publicId: string) {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/contributor-invitations`,
+      responseSchema: attributionInvitationPageSchema,
+      sessionToken,
+    });
+  }
+
+  listReceivedInvitations(sessionToken: string) {
+    return this.client.request({
+      method: 'GET',
+      path: '/v1/internal/student/contributor-invitations',
+      responseSchema: attributionInvitationPageSchema,
+      sessionToken,
+    });
+  }
+
+  createAccountInvitation(
+    sessionToken: string,
+    publicId: string,
+    input: { idempotencyKey: string; studentId: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/contributor-invitations/account`,
+      responseSchema: invitationOutcomeSchema,
+      sessionToken,
+    });
+  }
+
+  createExternalInvitation(
+    sessionToken: string,
+    publicId: string,
+    input: {
+      affiliation?: string;
+      attributionName: string;
+      contributionRole: string;
+      idempotencyKey: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/contributor-invitations/external`,
+      responseSchema: z
+        .object({
+          invitation: attributionInvitationSchema,
+          invitationToken: z.string().optional(),
+          outcome: z.enum(['created', 'replayed']),
+        })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  transitionAccountInvitation(
+    sessionToken: string,
+    invitationPublicId: string,
+    action: 'accept' | 'reject' | 'withdraw',
+    input:
+      | { expectedVersion: number; idempotencyKey: string }
+      | {
+          attributionName: string;
+          consent: boolean;
+          expectedVersion: number;
+          idempotencyKey: string;
+          studyYear: number;
+        },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/contributor-invitations/${invitationPublicId}/${action}`,
+      responseSchema: invitationOutcomeSchema,
+      sessionToken,
+    });
+  }
+
+  revokeInvitation(
+    sessionToken: string,
+    publicId: string,
+    invitationPublicId: string,
+    input: { expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/contributor-invitations/${invitationPublicId}/revoke`,
+      responseSchema: invitationOutcomeSchema,
+      sessionToken,
+    });
+  }
+
+  exchangeExternalInvitation(token: string, studentSessionToken?: string) {
+    return this.client.request({
+      body: { token },
+      method: 'POST',
+      path: '/v1/internal/student/external-contributor-invitations/exchange',
+      responseSchema: z
+        .object({
+          invitation: attributionInvitationSchema,
+          invitationSessionToken: z.string(),
+          sessionExpiresAt: z.iso.datetime(),
+        })
+        .strict(),
+      ...(studentSessionToken === undefined ? {} : { sessionToken: studentSessionToken }),
+    });
+  }
+
+  getExternalInvitation(invitationSessionToken: string) {
+    return this.client.request({
+      method: 'GET',
+      path: '/v1/internal/student/external-contributor-invitations/current',
+      responseSchema: attributionInvitationSchema,
+      sessionToken: invitationSessionToken,
+    });
+  }
+
+  transitionExternalInvitation(
+    invitationSessionToken: string,
+    action: 'accept' | 'reject',
+    input:
+      | { expectedVersion: number; idempotencyKey: string }
+      | {
+          affiliation?: string;
+          attributionName: string;
+          consent: boolean;
+          contributionRole: string;
+          expectedVersion: number;
+          idempotencyKey: string;
+        },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/external-contributor-invitations/${action}`,
+      responseSchema: z
+        .object({
+          outcome: z.enum(['accepted', 'rejected', 'replayed']),
+          recoveryCode: z.string().optional(),
+        })
+        .strict(),
+      sessionToken: invitationSessionToken,
     });
   }
 }

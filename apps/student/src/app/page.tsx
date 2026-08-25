@@ -109,6 +109,12 @@ export default async function Home({ searchParams }: HomeProps) {
                   >
                     {t('active.profile')}
                   </Link>
+                  <Link
+                    className={buttonVariants({ variant: 'outline' })}
+                    href="/contributor-invitations"
+                  >
+                    {t('active.invitations')}
+                  </Link>
                 </div>
               </div>
             ) : null}

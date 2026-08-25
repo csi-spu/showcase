@@ -9,6 +9,7 @@ import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
 import { WorkForm } from '../work-form';
 import { updateWorkAction } from '../work.actions';
+import { ContributorInvitationsPanel } from './contributor-invitations-panel';
 
 export default async function EditWorkPage({ params }: { params: Promise<{ publicId: string }> }) {
   const { publicId: rawPublicId } = await params;
@@ -21,11 +22,13 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
 
   const client = new StudentWorksCoreClient(getStudentServerEnvironment());
   let context;
+  let invitations;
   let work;
   try {
-    [context, work] = await Promise.all([
+    [context, work, invitations] = await Promise.all([
       client.getAuthoringContext(sessionToken),
       client.getWork(sessionToken, parsedPublicId.data),
+      client.listWorkInvitations(sessionToken, parsedPublicId.data),
     ]);
   } catch (error: unknown) {
     handleLoadError(error);
@@ -65,6 +68,10 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
             mode="edit"
             publicId={parsedPublicId.data}
             work={work}
+          />
+          <ContributorInvitationsPanel
+            invitations={invitations.items}
+            publicId={parsedPublicId.data}
           />
         </div>
       </div>

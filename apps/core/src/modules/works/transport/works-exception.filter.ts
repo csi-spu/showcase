@@ -1,6 +1,7 @@
 import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
+import { AttributionInvitationError } from '../application/attribution-invitations.service';
 import { WorkError } from '../application/works.service';
 import { WorkMediaError } from '../application/work-media.service';
 
@@ -17,6 +18,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
     }
     if (
       error instanceof AuthError ||
+      error instanceof AttributionInvitationError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError
     ) {
