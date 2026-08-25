@@ -45,14 +45,6 @@ export function AccountControlsPanel({
 
   return (
     <section aria-labelledby="account-controls-title" className="flex max-w-5xl flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <p className="text-sm font-medium text-muted-foreground">{t('kicker')}</p>
-        <h2 className="text-2xl font-semibold" id="account-controls-title">
-          {t('title')}
-        </h2>
-        <p className="max-w-3xl text-sm text-muted-foreground">{t('description')}</p>
-      </header>
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <Card className="xl:col-span-5">
           <CardHeader>
