@@ -25,8 +25,6 @@ describe('parseRosterCsv', () => {
       'student_id,first_name_th,last_name_th,unknown\n69000001,สมชาย,ใจดี,value\n',
       'INVALID_ROSTER_HEADER',
     ],
-    ['student_id,first_name_th,last_name_th\n๖๙๐๐๐๐๐๑,สมชาย,ใจดี\n', 'INVALID_STUDENT_ID'],
-    ['student_id,first_name_th,last_name_th\n69000001, ,ใจดี\n', 'INVALID_FIRST_NAME'],
   ] as const)('rejects a non-conforming file with a stable code', (csv, code) => {
     expect(() => parseRosterCsv(Buffer.from(csv, 'utf8'))).toThrow(new RosterCsvError(code));
   });
@@ -47,7 +45,41 @@ describe('parseRosterCsv', () => {
     ]);
   });
 
-  it('rejects every duplicated Student ID without depending on row order', () => {
+  it('returns a stable row error while preserving independently valid rows', () => {
+    const csv = Buffer.from(
+      [
+        'student_id,first_name_th,last_name_th',
+        '69000001,สมชาย,ใจดี',
+        'not-an-id,สมหญิง,มั่นคง',
+        '70000001,สมปอง,กล้าหาญ',
+      ].join('\n'),
+      'utf8',
+    );
+
+    expect(parseRosterCsv(csv)).toEqual([
+      {
+        entryYear: 2569,
+        firstNameTh: 'สมชาย',
+        lastNameTh: 'ใจดี',
+        rowNumber: 2,
+        studentId: '69000001',
+      },
+      {
+        errorCode: 'INVALID_STUDENT_ID',
+        rowNumber: 3,
+        studentId: 'not-an-id',
+      },
+      {
+        entryYear: 2570,
+        firstNameTh: 'สมปอง',
+        lastNameTh: 'กล้าหาญ',
+        rowNumber: 4,
+        studentId: '70000001',
+      },
+    ]);
+  });
+
+  it('returns an error for every duplicated Student ID without depending on row order', () => {
     const csv = Buffer.from(
       [
         'student_id,first_name_th,last_name_th',
@@ -58,7 +90,11 @@ describe('parseRosterCsv', () => {
       'utf8',
     );
 
-    expect(() => parseRosterCsv(csv)).toThrow(new RosterCsvError('DUPLICATE_STUDENT_ID'));
+    expect(parseRosterCsv(csv)).toEqual([
+      { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 2, studentId: '69000001' },
+      expect.objectContaining({ rowNumber: 3, studentId: '69000002' }),
+      { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 4, studentId: '69000001' },
+    ]);
   });
 
   it('rejects a header-only file so a Batch cannot remain pending forever', () => {

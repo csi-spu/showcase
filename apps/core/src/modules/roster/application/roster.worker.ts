@@ -6,12 +6,12 @@ import {
   ROSTER_REPOSITORY,
   STUDENT_IDENTITY_PROVIDER,
   type ClaimedRosterRow,
-  type ExistingRosterStudent,
   type RosterRepository,
   type StudentIdentityProvider,
 } from './roster.ports';
 
 const CHUNK_SIZE = 100;
+const CLEANUP_CHUNK_SIZE = 1_000;
 const CONCURRENCY = 10;
 const LEASE_MILLISECONDS = 60_000;
 const MAX_ATTEMPTS = 3;
@@ -45,7 +45,7 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
 
   async processNextChunk(): Promise<number> {
     const now = this.clock.now();
-    await this.repository.deleteExpiredRowContent(now);
+    await this.repository.deleteExpiredRowContent({ limit: CLEANUP_CHUNK_SIZE, now });
     const rows = await this.repository.claimRows({
       leaseUntil: new Date(now.getTime() + LEASE_MILLISECONDS),
       limit: CHUNK_SIZE,
@@ -71,23 +71,14 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
 
   private async processRow(row: ClaimedRosterRow): Promise<void> {
     const now = this.clock.now();
-    const attemptCount = row.attemptCount + 1;
-    const existing = await this.repository.findExistingStudent(row.studentIdHash);
-    if (existing !== null) {
-      if (this.hasSameName(existing, row)) {
-        await this.repository.markUnchanged({ batchId: row.batchId, now, rowId: row.rowId });
-        return;
-      }
-      await this.repository.recordFailure({
-        attemptCount: MAX_ATTEMPTS,
-        batchId: row.batchId,
-        errorCode: 'ROSTER_CONFLICT',
-        nextAttemptAt: now,
-        now,
-        rowId: row.rowId,
-      });
-      return;
-    }
+    const attemptCount = Math.min(row.attemptCount + 1, MAX_ATTEMPTS);
+    const existingOutcome = await this.repository.settleExistingRow({
+      batchId: row.batchId,
+      now,
+      rowId: row.rowId,
+      studentIdHash: row.studentIdHash,
+    });
+    if (existingOutcome !== 'missing') return;
 
     try {
       await this.provider.ensureIdentity({
@@ -112,18 +103,7 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
         studentIdHash: row.studentIdHash,
         syntheticIdentity: row.syntheticIdentity,
       });
-    } catch (error: unknown) {
-      if (error instanceof Error && error.message === 'ROSTER_CONFLICT') {
-        await this.repository.recordFailure({
-          attemptCount: MAX_ATTEMPTS,
-          batchId: row.batchId,
-          errorCode: 'ROSTER_CONFLICT',
-          nextAttemptAt: now,
-          now,
-          rowId: row.rowId,
-        });
-        return;
-      }
+    } catch {
       await this.recordRetryableFailure(row, attemptCount, 'ROSTER_PROCESSING_FAILED', now);
     }
   }
@@ -142,9 +122,5 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
       now,
       rowId: row.rowId,
     });
-  }
-
-  private hasSameName(existing: ExistingRosterStudent, row: ClaimedRosterRow): boolean {
-    return existing.firstNameTh === row.firstNameTh && existing.lastNameTh === row.lastNameTh;
   }
 }

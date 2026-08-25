@@ -91,6 +91,40 @@ describe('CoreClient', () => {
     expect(requestHeaders.get('content-type')).toBe('text/csv');
   });
 
+  it('downloads a private text response with server and session credentials', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('row_number,student_id\r\n', {
+        headers: { 'Content-Type': 'text/csv; charset=utf-8' },
+        status: 200,
+      }),
+    );
+
+    await expect(
+      client(fetchMock).requestText({
+        method: 'GET',
+        path: '/v1/internal/admin/roster-batches/batch/errors.csv',
+        sessionToken: 'opaque-session-token',
+      }),
+    ).resolves.toBe('row_number,student_id\r\n');
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get('accept')).toBe('text/csv');
+    expect(headers.get('authorization')).toBe('Bearer opaque-session-token');
+    expect(headers.get('x-test-bff-secret')).toBe('server-only-secret');
+  });
+
+  it('rejects a non-CSV success response from the private download endpoint', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('<html>unexpected</html>', { status: 200 }));
+
+    await expect(
+      client(fetchMock).requestText({
+        method: 'GET',
+        path: '/v1/internal/admin/roster-batches/batch/errors.csv',
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code: 'AUTH_SERVICE_UNAVAILABLE', status: 503 }));
+  });
+
   it.each([
     ['malformed success', Response.json({ state: 'unexpected' })],
     ['malformed error', Response.json({ secret: 'provider detail' }, { status: 502 })],

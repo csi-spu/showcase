@@ -57,6 +57,7 @@ describe('Admin Roster upload', () => {
         }}
         labels={{
           created: 'สร้างใหม่',
+          downloadErrors: 'ดาวน์โหลดรายงานข้อผิดพลาด CSV',
           entryYears: 'ปีแรกเข้าที่พบ 2566, 2570',
           failed: 'ไม่สำเร็จ',
           progress: 'ความคืบหน้าการนำเข้า',
@@ -96,5 +97,38 @@ describe('Admin Roster upload', () => {
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(document.activeElement).toBe(alert));
     expect(alert.textContent).toContain('อ่านไฟล์ไม่ได้');
+  });
+
+  it('offers the private error report only after a Batch completes with errors', () => {
+    renderWithMessages(
+      <RosterBatchStatusView
+        batch={{
+          batchId: '20000000-0000-4000-8000-000000000001',
+          createdCount: 1,
+          entryYears: [2569],
+          failedCount: 1,
+          processedRowCount: 2,
+          status: 'completed_with_errors',
+          totalRowCount: 2,
+          unchangedCount: 0,
+          uploadedAt: '2026-08-25T06:00:00.000Z',
+        }}
+        labels={{
+          created: 'สร้างใหม่',
+          downloadErrors: 'ดาวน์โหลดรายงานข้อผิดพลาด CSV',
+          entryYears: 'ปีแรกเข้าที่พบ 2569',
+          failed: 'ไม่สำเร็จ',
+          liveStatus: 'สถานะล่าสุด',
+          progress: 'ความคืบหน้าการนำเข้า',
+          status: 'นำเข้าเสร็จโดยมีรายการไม่สำเร็จ',
+          unchanged: 'ข้อมูลเดิม',
+          uploadedAt: 'อัปโหลดเมื่อ 25 ส.ค. 2569 13:00',
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'ดาวน์โหลดรายงานข้อผิดพลาด CSV' }).getAttribute('href'),
+    ).toBe('/roster-batches/20000000-0000-4000-8000-000000000001/errors.csv');
   });
 });
