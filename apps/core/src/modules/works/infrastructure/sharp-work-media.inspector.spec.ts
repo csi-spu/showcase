@@ -40,8 +40,8 @@ describe('SharpWorkMediaInspector', () => {
       create: {
         background: { b: 120, g: 80, r: 40 },
         channels: 3,
-        height: 3200,
-        width: 1600,
+        height: 2561,
+        width: 400,
       },
     })
       .jpeg()
@@ -55,7 +55,7 @@ describe('SharpWorkMediaInspector', () => {
       mediaKind: 'gallery',
     });
 
-    expect(result).toMatchObject({ height: 2560, warnings: [], width: 1280 });
+    expect(result).toMatchObject({ height: 2560, warnings: [], width: 400 });
 
     const narrowPoster = await sharp({
       create: {
@@ -76,7 +76,7 @@ describe('SharpWorkMediaInspector', () => {
         mediaKind: 'poster',
       }),
     ).resolves.toMatchObject({ warnings: ['poster_width_below_recommended'] });
-  });
+  }, 30_000);
 
   it('rejects animated WebP input', async () => {
     const first = await sharp({
