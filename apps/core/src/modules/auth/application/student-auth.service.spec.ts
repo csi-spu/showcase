@@ -262,6 +262,20 @@ describe('StudentAuthService session lifecycle', () => {
     });
   });
 
+  it('restricts the first authenticated session after an Admin reset to password change', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = { ...createStoredSession(), credentialState: 'reset_required' };
+    const { service } = createService(repository);
+
+    await expect(service.getSession('current-session-token')).resolves.toEqual({
+      canUseStudentCapabilities: false,
+      sessionState: 'password_change_required',
+    });
+    await expect(service.authorizeStudentMutation('current-session-token')).rejects.toEqual(
+      new AuthError('FORBIDDEN', 403),
+    );
+  });
+
   it('expires a Student session after 24 hours of inactivity', async () => {
     const repository = new FakeAuthRepository();
     repository.session = {
@@ -337,5 +351,22 @@ describe('StudentAuthService session lifecycle', () => {
     await expect(service.authorizeStudentMutation('current-session-token')).resolves.toEqual({
       accountId: repository.account?.accountId,
     });
+  });
+
+  it.each([
+    ['missing Current Academic Year', null],
+    ['expired Student Access Period', 2577],
+  ] as const)('denies every Student mutation with %s', async (_case, currentAcademicYear) => {
+    const repository = new FakeAuthRepository();
+    repository.session = {
+      ...createStoredSession(),
+      credentialState: 'set',
+      currentAcademicYear,
+    };
+    const { service } = createService(repository);
+
+    await expect(service.authorizeStudentMutation('current-session-token')).rejects.toEqual(
+      new AuthError('FORBIDDEN', 403),
+    );
   });
 });

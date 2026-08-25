@@ -1,4 +1,5 @@
 import { Button } from '@showcase/ui/button';
+import { randomUUID } from 'node:crypto';
 import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -11,6 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
+import { getAdminAcademicYear } from '@/lib/admin-account-controls-page-state';
 import { getAdminRosterBatch, getAdminRosterConflicts } from '@/lib/admin-roster-page-state';
 import {
   changePasswordAction,
@@ -23,6 +25,8 @@ import { RosterBatchStatus } from './roster-batch-status';
 import { RosterConflictList } from './roster-conflict-list';
 import { RosterUploadForm } from './roster-upload-form';
 import { resolveRosterConflictAction, uploadRosterAction } from './roster.actions';
+import { AccountControlsPanel } from './account-controls-panel';
+import { manageStudentAccountAction, updateAcademicYearAction } from './account-controls.actions';
 
 interface HomeProps {
   searchParams: Promise<{
@@ -35,12 +39,14 @@ interface HomeProps {
 
 export default async function Home({ searchParams }: HomeProps) {
   const { batchId, conflictAfter, expired, resolved } = await searchParams;
-  const [state, t, rosterT] = await Promise.all([
+  const [state, t, rosterT, accountT] = await Promise.all([
     getAdminAuthPageState(expired === '1'),
     getTranslations('Auth'),
     getTranslations('Roster'),
+    getTranslations('AccountControls'),
   ]);
   const batch = state.kind === 'active' && batchId ? await getAdminRosterBatch(batchId) : null;
+  const academicYear = state.kind === 'active' ? await getAdminAcademicYear() : null;
   const conflictPage =
     batch && batchId ? await getAdminRosterConflicts(batchId, conflictAfter) : null;
 
@@ -53,9 +59,24 @@ export default async function Home({ searchParams }: HomeProps) {
           <p className="text-sm text-muted-foreground">ADMIN WORKSPACE</p>
           {state.kind === 'active' ? (
             <nav aria-label="เมนูผู้ดูแล" className="mt-6">
-              <p className="border-l-2 border-primary py-2 pl-3 text-sm font-medium">
-                {rosterT('navigation')}
-              </p>
+              <ul className="flex flex-col gap-1 text-sm font-medium">
+                <li>
+                  <a
+                    className="block border-l-2 border-primary py-2 pl-3"
+                    href="#account-controls-title"
+                  >
+                    {accountT('navigation')}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="block border-l-2 border-transparent py-2 pl-3 text-muted-foreground hover:text-foreground"
+                    href="#roster-title"
+                  >
+                    {rosterT('navigation')}
+                  </a>
+                </li>
+              </ul>
             </nav>
           ) : null}
         </div>
@@ -80,6 +101,20 @@ export default async function Home({ searchParams }: HomeProps) {
           </header>
 
           <div className="flex max-w-5xl flex-col gap-6">
+            <AccountControlsPanel
+              academicYear={academicYear}
+              academicYearAction={updateAcademicYearAction}
+              academicYearIdempotencyKey={randomUUID()}
+              studentAction={manageStudentAccountAction}
+              studentIdempotencyKey={randomUUID()}
+            />
+
+            <div className="border-t border-border pt-8">
+              <h2 className="text-2xl font-semibold" id="roster-title">
+                {rosterT('title')}
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">{rosterT('description')}</p>
+            </div>
             {resolved === '1' ? (
               <Alert className="border-success/30 bg-success-background text-success">
                 <CheckCircle2Icon aria-hidden="true" />

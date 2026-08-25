@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { evaluatePasswordChange } from '../domain/password-policy';
+import { evaluateStudentAccess } from '../domain/student-access-policy';
 import { AuthError } from './auth.error';
 import {
   AUTH_CLOCK,
@@ -214,11 +215,11 @@ export class StudentAuthService {
   }
 
   private canUseStudentCapabilities(account: LoginAccount): boolean {
-    return (
-      account.currentAcademicYear !== null &&
-      account.currentAcademicYear >= account.entryYear &&
-      account.currentAcademicYear <= account.studentAccessEndsAcademicYear
-    );
+    return evaluateStudentAccess({
+      accessEndsAcademicYear: account.studentAccessEndsAcademicYear,
+      currentAcademicYear: account.currentAcademicYear,
+      entryYear: account.entryYear,
+    }).canUseStudentCapabilities;
   }
 
   private isAuthenticatableStudentAccount(
