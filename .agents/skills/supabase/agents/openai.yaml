@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Supabase'
+  short_description: 'Build and diagnose secure Supabase integrations'
+  default_prompt: 'Use $supabase to implement this Supabase task with current documentation and verification.'

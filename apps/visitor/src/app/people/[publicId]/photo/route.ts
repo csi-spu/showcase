@@ -1,0 +1,43 @@
+import { z } from 'zod';
+import { getVisitorCoreUrl, PublicProfileCoreClient } from '@/lib/public-profile-core';
+
+const MAX_SANITIZED_PHOTO_BYTES = 8 * 1_024 * 1_024;
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ publicId: string }> },
+): Promise<Response> {
+  const { publicId } = await params;
+  if (!z.uuid().safeParse(publicId).success) return notFound();
+  const profile = await new PublicProfileCoreClient(getVisitorCoreUrl()).getProfile(publicId);
+  if (profile === null || profile.photo === null) return notFound();
+
+  const upstream = await fetch(profile.photo.url, {
+    cache: 'no-store',
+    credentials: 'omit',
+    headers: { accept: 'image/webp' },
+    signal: AbortSignal.timeout(5_000),
+  });
+  const declaredLength = Number(upstream.headers.get('content-length'));
+  if (
+    !upstream.ok ||
+    !upstream.headers.get('content-type')?.toLowerCase().startsWith('image/webp') ||
+    (Number.isFinite(declaredLength) && declaredLength > MAX_SANITIZED_PHOTO_BYTES)
+  ) {
+    return notFound();
+  }
+  const bytes = await upstream.arrayBuffer();
+  if (bytes.byteLength > MAX_SANITIZED_PHOTO_BYTES) return notFound();
+  return new Response(bytes, {
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'Content-Length': String(bytes.byteLength),
+      'Content-Type': 'image/webp',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
+function notFound(): Response {
+  return Response.json({ error: { code: 'PUBLIC_PROFILE_NOT_FOUND' } }, { status: 404 });
+}

@@ -80,6 +80,8 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
     AUTH_IDENTITY_PROTECTOR,
     AUTH_TOKEN_GENERATOR,
     DatabaseClient,
+    StudentAuthService,
+    StudentBffGuard,
   ],
 })
 export class AuthModule {}

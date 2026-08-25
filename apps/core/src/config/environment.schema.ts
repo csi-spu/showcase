@@ -24,6 +24,15 @@ const environmentSchema = z
     GIT_SHA: z.string().min(7).default('development'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().max(65_535).default(4100),
+    PUBLIC_MEDIA_ORIGIN: originSchema.optional(),
+    R2_ACCESS_KEY_ID: z.string().min(1).optional(),
+    R2_BUCKET_NAME: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+      .optional(),
+    R2_ENDPOINT: originSchema.optional(),
+    R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    R2_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
     STUDENT_BFF_SECRET: z.string().min(32).default(LOCAL_STUDENT_BFF_SECRET),
     SUPABASE_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
     SUPABASE_PUBLISHABLE_KEY: z.string().min(1).default(LOCAL_SUPABASE_KEY),
@@ -84,6 +93,24 @@ const environmentSchema = z
         message: 'SUPABASE_SECRET_KEY must be configured outside local development',
         path: ['SUPABASE_SECRET_KEY'],
       });
+    }
+
+    if (['production', 'staging'].includes(environment.APP_ENV)) {
+      for (const key of [
+        'PUBLIC_MEDIA_ORIGIN',
+        'R2_ACCESS_KEY_ID',
+        'R2_BUCKET_NAME',
+        'R2_ENDPOINT',
+        'R2_SECRET_ACCESS_KEY',
+      ] as const) {
+        if (environment[key] === undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: `${key} must be configured outside local development`,
+            path: [key],
+          });
+        }
+      }
     }
   });
 

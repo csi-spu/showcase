@@ -23,6 +23,13 @@ Run `pnpm skills:check` after editing a skill and `pnpm skills:test` after chang
 | Map uncertain work spanning multiple sessions               | `$wayfinder`                     | GitHub decision map leading to a spec            |
 | Transfer unfinished work to a fresh session                 | `$handoff`                       | Redacted temporary continuation brief            |
 
+## Technology guardrails
+
+| Need                                             | Skill                               |
+| ------------------------------------------------ | ----------------------------------- |
+| Work with any Supabase product or integration    | `$supabase`                         |
+| Change or review Postgres schema, SQL, or tuning | `$supabase-postgres-best-practices` |
+
 ## Normal paths
 
 Feature with settled behavior:

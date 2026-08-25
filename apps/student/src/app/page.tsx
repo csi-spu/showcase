@@ -1,4 +1,5 @@
-import { Button } from '@showcase/ui/button';
+import { Button, buttonVariants } from '@showcase/ui/button';
+import Link from 'next/link';
 import { ShieldCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -88,11 +89,16 @@ export default async function Home({ searchParams }: HomeProps) {
               <ChangePasswordForm action={changePasswordAction} />
             ) : null}
             {state.kind === 'active' ? (
-              <Alert>
-                <ShieldCheckIcon />
-                <AlertTitle>{heading}</AlertTitle>
-                <AlertDescription>{description}</AlertDescription>
-              </Alert>
+              <div className="grid gap-5">
+                <Alert>
+                  <ShieldCheckIcon />
+                  <AlertTitle>{heading}</AlertTitle>
+                  <AlertDescription>{description}</AlertDescription>
+                </Alert>
+                <Link className={buttonVariants()} href="/profile">
+                  {t('active.profile')}
+                </Link>
+              </div>
             ) : null}
             {state.kind === 'expired' ? (
               <form action={clearExpiredSessionAction}>

@@ -189,6 +189,21 @@ export class StudentAuthService {
     return { accountId: session.accountId };
   }
 
+  async authorizeProfileAccess(
+    sessionToken: string,
+  ): Promise<{ accountId: string; canEditProfile: boolean }> {
+    const now = this.clock.now();
+    const session = await this.resolveCurrentSession(sessionToken, now);
+    if (session.credentialState !== 'set') {
+      throw new AuthError('FORBIDDEN', 403, undefined);
+    }
+    await this.refreshProviderSessionIfRequired(session, now);
+    return {
+      accountId: session.accountId,
+      canEditProfile: this.canUseStudentCapabilities(session),
+    };
+  }
+
   async getSession(sessionToken: string): Promise<StudentSessionStatusResult> {
     const now = this.clock.now();
     const session = await this.resolveCurrentSession(sessionToken, now);
