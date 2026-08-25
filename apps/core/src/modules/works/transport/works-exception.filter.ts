@@ -5,6 +5,7 @@ import { AttributionInvitationError } from '../application/attribution-invitatio
 import { WorkError } from '../application/works.service';
 import { WorkMediaError } from '../application/work-media.service';
 import { WorkRevisionError } from '../application/work-revisions.service';
+import { ReviewError } from '../application/reviews.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -22,6 +23,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof AttributionInvitationError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError ||
+      error instanceof ReviewError ||
       error instanceof WorkRevisionError
     ) {
       response.status(error.status).json({ error: { code: error.code } });

@@ -278,8 +278,9 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     }
   }
 
-  findRevisionForReview(revisionPublicId: string): Promise<WorkRevisionView | null> {
-    return this.findRevision(this.database.sql, 'public_id', revisionPublicId);
+  async findRevisionForReview(revisionPublicId: string): Promise<WorkRevisionView | null> {
+    const revision = await this.findRevision(this.database.sql, 'public_id', revisionPublicId);
+    return revision?.status === 'pending_review' ? revision : null;
   }
 
   async findPendingRevision(
@@ -332,9 +333,9 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
           cursor === null
             ? this.database.sql`true`
             : this.database
-                .sql`(revision.submitted_at, revision.id) > (${cursor.submittedAt}, ${cursor.id}::uuid)`
+                .sql`(revision.submitted_at, revision.id) < (${cursor.submittedAt}, ${cursor.id}::uuid)`
         }
-      order by revision.submitted_at, revision.id
+      order by revision.submitted_at desc, revision.id desc
       limit ${input.limit + 1}
     `;
     const visible = rows.slice(0, input.limit);

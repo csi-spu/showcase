@@ -109,6 +109,67 @@
     "description": "ระบบตรวจสอบและจัดการผลงานนักศึกษา",
     "title": "ผู้ดูแลระบบ | Student Showcase"
   },
+  "Review": {
+    "categories": {
+      "academic_article": "บทความวิชาการ",
+      "competition_entry": "ผลงานประกวด",
+      "course_work": "ผลงานรายวิชา"
+    },
+    "description": "ตรวจ snapshot ที่ส่งเข้ามาตามลำดับล่าสุด และส่งคำขอแก้ไขโดยไม่เปลี่ยนผลงานที่เผยแพร่อยู่",
+    "detail": {
+      "academicPeriod": "ปีการศึกษา {year} ภาค {semester}",
+      "attributions": "การแสดงชื่อ",
+      "back": "กลับคิวตรวจ",
+      "category": "ประเภท",
+      "content": "เนื้อหา Revision",
+      "description": "รายละเอียด",
+      "gallery": "แกลเลอรี",
+      "links": "ลิงก์",
+      "media": "สื่อ",
+      "poster": "โปสเตอร์",
+      "submittedAt": "ส่งเมื่อ {value}",
+      "summary": "สรุป",
+      "tags": "แท็ก",
+      "title": "ตรวจ Revision {number}",
+      "videos": "วิดีโอ"
+    },
+    "empty": "ยังไม่มี Revision รอตรวจ",
+    "errors": {
+      "invalid": "กรุณาเลือกเหตุผลและเขียนคำแนะนำ 10–2,000 ตัวอักษร",
+      "network": "เชื่อมต่อระบบไม่ได้ ข้อมูลที่กรอกยังอยู่ กรุณาลองใหม่",
+      "stale": "Revision นี้ถูกตัดสินแล้ว กรุณากลับไปดูคิวล่าสุด",
+      "unavailable": "ยังส่งคำขอแก้ไขไม่ได้ กรุณาลองใหม่ภายหลัง"
+    },
+    "form": {
+      "errorHeading": "ยังส่งคำขอแก้ไขไม่ได้",
+      "feedback": "คำแนะนำที่นำไปแก้ไขได้",
+      "feedbackHelp": "ระบุสิ่งที่ต้องแก้และผลลัพธ์ที่คาดหวัง 10–2,000 ตัวอักษร นักศึกษาจะเห็นข้อความทั้งหมด",
+      "heading": "ส่งคำขอแก้ไข",
+      "reason": "เหตุผลที่ขอให้แก้ไข",
+      "submit": "ส่งคำขอแก้ไข",
+      "submitting": "กำลังส่งคำขอแก้ไข…",
+      "success": "ส่งคำขอแก้ไขแล้ว",
+      "successHelp": "Revision ยังคงไม่เผยแพร่ และระบบสร้างร่างส่วนตัวให้นักศึกษาแก้ไขต่อแล้ว"
+    },
+    "kicker": "การตรวจผลงาน",
+    "navigation": "คิวตรวจผลงาน",
+    "next": "หน้าถัดไป",
+    "queue": {
+      "revision": "Revision {number}",
+      "submittedAt": "ส่งเมื่อ {value}",
+      "submitter": "ผู้ส่ง {name}",
+      "view": "เปิดตรวจ"
+    },
+    "reasons": {
+      "attribution": "การแสดงชื่อ",
+      "content": "เนื้อหา",
+      "links_tags": "ลิงก์หรือแท็ก",
+      "media": "สื่อ",
+      "other": "อื่น ๆ",
+      "policy": "ข้อกำหนด"
+    },
+    "title": "คิวตรวจผลงาน"
+  },
   "Roster": {
     "counts": {
       "created": "สร้างใหม่",

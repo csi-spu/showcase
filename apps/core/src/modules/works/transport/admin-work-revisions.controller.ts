@@ -1,10 +1,13 @@
 import {
+  Body,
   Controller,
   Get,
   Header,
   Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   UseFilters,
   UseGuards,
@@ -13,7 +16,8 @@ import { AdminAuthService } from '../../auth/application/admin-auth.service';
 import { AuthError } from '../../auth/application/auth.error';
 import { AdminBffGuard } from '../../auth/transport/admin-bff.guard';
 import { WorkRevisionsService } from '../application/work-revisions.service';
-import { ReviewQueueQueryDto } from './work-revisions.dto';
+import { ReviewsService } from '../application/reviews.service';
+import { RequestChangesDto, ReviewQueueQueryDto } from './work-revisions.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
 
 @Controller('internal/admin')
@@ -23,6 +27,7 @@ export class AdminWorkRevisionsController {
   constructor(
     private readonly auth: AdminAuthService,
     private readonly revisions: WorkRevisionsService,
+    private readonly reviews: ReviewsService,
   ) {}
 
   @Get('review-queue')
@@ -42,7 +47,38 @@ export class AdminWorkRevisionsController {
     @Headers('authorization') authorization: string | undefined,
   ) {
     await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
-    return this.revisions.getRevisionForReview(revisionPublicId);
+    const revision = await this.revisions.getRevisionForReview(revisionPublicId);
+    return {
+      ...revision,
+      media: await Promise.all(
+        revision.media.map(async (media) => {
+          const preview = await this.reviews.getRevisionMediaPreview(
+            revisionPublicId,
+            media.assetId,
+          );
+          return {
+            ...media,
+            preview: { expiresAt: preview.expiresAt, url: preview.url },
+          };
+        }),
+      ),
+    };
+  }
+
+  @Post('revisions/:revisionPublicId/change-request')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async requestChanges(
+    @Param('revisionPublicId', new ParseUUIDPipe({ version: '4' })) revisionPublicId: string,
+    @Body() input: RequestChangesDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
+    return this.reviews.requestChanges({
+      ...input,
+      actorAccountId: actor.accountId,
+      revisionPublicId,
+    });
   }
 
   private requireSessionToken(authorization: string | undefined): string {

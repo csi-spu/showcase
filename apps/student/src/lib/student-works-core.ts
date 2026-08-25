@@ -130,6 +130,18 @@ const workRevisionMutationSchema = z
     revision: workRevisionSchema,
   })
   .strict();
+const changeRequestSchema = z
+  .object({
+    decision: z.literal('changes_requested'),
+    feedback: z.string().min(10).max(2_000),
+    publicId: z.uuid(),
+    reason: z.enum(['content', 'attribution', 'media', 'links_tags', 'policy', 'other']),
+    revisionNumber: z.number().int().positive(),
+    revisionPublicId: z.uuid(),
+    reviewedAt: z.iso.datetime(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
@@ -149,6 +161,7 @@ export type WorkMediaKind = 'gallery' | 'poster';
 export type AttributionInvitation = z.infer<typeof attributionInvitationSchema>;
 export type AttributionInvitationPage = z.infer<typeof attributionInvitationPageSchema>;
 export type WorkRevision = z.infer<typeof workRevisionSchema>;
+export type WorkChangeRequest = z.infer<typeof changeRequestSchema>;
 
 interface StudentWorksCoreConfig {
   coreUrl: string;
@@ -307,6 +320,16 @@ export class StudentWorksCoreClient {
       sessionToken,
     });
     return result.revision;
+  }
+
+  async getLatestChangeRequest(sessionToken: string, publicId: string): Promise<WorkChangeRequest> {
+    const result = await this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/change-request`,
+      responseSchema: z.object({ review: changeRequestSchema }).strict(),
+      sessionToken,
+    });
+    return result.review;
   }
 
   withdrawRevision(

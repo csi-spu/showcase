@@ -198,7 +198,12 @@ describe('PostgresWorkRevisionsRepository integration', () => {
     `;
     expect(draft).toEqual([{ title: 'ระบบแนะนำผลงาน', version: '1' }]);
     const retained = await repository.findRevisionForReview(revisionPublicId);
-    expect(retained).toMatchObject({ status: 'withdrawn', content: { title: 'ระบบแนะนำผลงาน' } });
+    expect(retained).toBeNull();
+    const history = await database.sql<Array<{ count: number }>>`
+      select count(*)::integer as count from private.work_revisions
+      where public_id = ${revisionPublicId} and status = 'withdrawn'
+    `;
+    expect(history).toEqual([{ count: 1 }]);
   });
 
   it('serializes concurrent submissions and cursor-paginates the Admin Review queue', async () => {
@@ -213,6 +218,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
     const secondInput = submitInput({
       expectedDraftVersion: 1,
       idempotencyKey: key(6),
+      now: new Date(NOW.getTime() + 1_000),
       workPublicId: SECOND_WORK_PUBLIC_ID,
     });
     const equivalentRetries = await Promise.all([
@@ -227,6 +233,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
     const first = await repository.listReviewQueue({ limit: 1, cursor: undefined });
     if ('outcome' in first) throw new Error('QUEUE_FAILED');
     expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.workPublicId).toBe(SECOND_WORK_PUBLIC_ID);
     expect(first.nextCursor).not.toBeNull();
     const second = await repository.listReviewQueue({ cursor: first.nextCursor!, limit: 10 });
     if ('outcome' in second) throw new Error('QUEUE_CURSOR_FAILED');
