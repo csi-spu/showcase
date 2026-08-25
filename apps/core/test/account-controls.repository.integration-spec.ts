@@ -372,13 +372,14 @@ describe('PostgresAccountControlsRepository integration', () => {
       temporaryPassword,
     );
 
+    const authenticate = jest.fn().mockResolvedValue({
+      accessToken: 'provider-access-token-after-reset',
+      expiresAt: new Date(NOW.getTime() + 60 * 60 * 1_000),
+      providerUserId: STUDENT_PROVIDER_USER_ID,
+      refreshToken: 'provider-refresh-token-after-reset',
+    });
     const authProvider: AuthProvider = {
-      authenticate: jest.fn().mockResolvedValue({
-        accessToken: 'provider-access-token-after-reset',
-        expiresAt: new Date(NOW.getTime() + 60 * 60 * 1_000),
-        providerUserId: STUDENT_PROVIDER_USER_ID,
-        refreshToken: 'provider-refresh-token-after-reset',
-      }),
+      authenticate,
       changePassword: jest.fn(),
       refresh: jest.fn(),
       revoke: jest.fn(),
@@ -396,10 +397,7 @@ describe('PostgresAccountControlsRepository integration', () => {
       studentId: '69000001',
     });
 
-    expect(authProvider.authenticate).toHaveBeenCalledWith(
-      `${STUDENT_ID_HASH}@auth.invalid`,
-      temporaryPassword,
-    );
+    expect(authenticate).toHaveBeenCalledWith(`${STUDENT_ID_HASH}@auth.invalid`, temporaryPassword);
     expect(login).toEqual({
       canUseStudentCapabilities: false,
       sessionState: 'password_change_required',

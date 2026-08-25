@@ -1,4 +1,4 @@
-import { AccountControlsError, AccountControlsService } from './account-controls.service';
+import { AccountControlsService } from './account-controls.service';
 import type {
   AccountControlsRepository,
   AcademicYearSettings,
@@ -88,7 +88,7 @@ describe('AccountControlsService Current Academic Year', () => {
         expectedVersion: 3,
         idempotencyKey: IDEMPOTENCY_KEY,
       }),
-    ).rejects.toEqual(expect.objectContaining<AccountControlsError>({ code, status }));
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
   });
 });
 
