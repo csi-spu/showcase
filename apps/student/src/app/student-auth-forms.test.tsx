@@ -45,10 +45,10 @@ describe('Student authentication forms', () => {
     await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'initial-password');
     await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'correct horse battery staple');
     await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'different password value');
-    await user.click(screen.getByRole('button', { name: 'บันทึกรหัสผ่านใหม่' }));
+    await user.click(screen.getByRole('button', { name: 'ตั้งรหัสผ่าน' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน',
+      'รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน',
     );
   });
 
