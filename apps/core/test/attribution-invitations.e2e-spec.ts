@@ -121,6 +121,12 @@ describe('Attribution Invitation HTTP contracts (e2e)', () => {
     await student('get', '/v1/internal/student/contributor-invitations', 'recipient-session')
       .expect(200)
       .expect({ items: [invitation('account')], nextCursor: null });
+    expect(repository.listReceivedInvitations).toHaveBeenCalledWith(
+      RECIPIENT_ACCOUNT_ID,
+      20,
+      undefined,
+      new Date('2026-08-25T10:00:00.000Z'),
+    );
     await student(
       'post',
       `/v1/internal/student/contributor-invitations/${INVITATION_PUBLIC_ID}/accept`,
