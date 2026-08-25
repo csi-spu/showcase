@@ -57,6 +57,7 @@ export function validateWorkForm(
   context: WorkAuthoringContext,
 ): WorkFormValidation {
   for (const key of formData.keys()) {
+    if (key.startsWith('$ACTION_')) continue;
     if (!ALLOWED_FIELDS.has(key) || formData.getAll(key).length !== 1) {
       return invalid('form');
     }
