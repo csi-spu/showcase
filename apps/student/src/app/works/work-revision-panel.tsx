@@ -7,7 +7,7 @@ import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import type { WorkRevision } from '@/lib/student-works-core';
+import type { WorkChangeRequest, WorkRevision } from '@/lib/student-works-core';
 import {
   initialWorkRevisionActionState,
   type WorkRevisionActionState,
@@ -17,6 +17,23 @@ type RevisionAction = (
   previousState: WorkRevisionActionState,
   formData: FormData,
 ) => Promise<WorkRevisionActionState>;
+
+export function WorkChangeRequestPanel({ review }: { review: WorkChangeRequest }) {
+  const t = useTranslations('WorkRevision');
+  return (
+    <Alert className="mb-8 border-warning/30 bg-warning-background text-warning">
+      <AlertTitle>
+        {t('changeRequest.heading', { reason: t(`reasons.${review.reason}`) })}
+      </AlertTitle>
+      <AlertDescription>
+        <p className="whitespace-pre-wrap text-foreground">{review.feedback}</p>
+        <p className="mt-3 text-sm text-warning">
+          {t('changeRequest.revision', { number: review.revisionNumber })}
+        </p>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 export function WorkRevisionSubmissionPanel({
   action,

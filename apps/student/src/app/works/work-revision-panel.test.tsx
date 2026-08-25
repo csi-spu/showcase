@@ -2,8 +2,12 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
-import type { WorkRevision } from '@/lib/student-works-core';
-import { WorkRevisionPendingPanel, WorkRevisionSubmissionPanel } from './work-revision-panel';
+import type { WorkChangeRequest, WorkRevision } from '@/lib/student-works-core';
+import {
+  WorkChangeRequestPanel,
+  WorkRevisionPendingPanel,
+  WorkRevisionSubmissionPanel,
+} from './work-revision-panel';
 
 const WORK_PUBLIC_ID = '75000000-0000-4000-8000-000000000001';
 const REVISION_PUBLIC_ID = '75000000-0000-4000-8000-000000000002';
@@ -46,6 +50,15 @@ describe('Work Revision panels', () => {
     expect(screen.getByRole('button', { name: 'ถอนผลงานจากคิวตรวจ' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'ส่งผลงานให้ผู้ดูแลตรวจ' })).toBeNull();
   });
+
+  it('shows the reason and full actionable feedback above the seeded private Draft', () => {
+    renderPanel(<WorkChangeRequestPanel review={changeRequest()} />);
+
+    expect(screen.getByText('ผู้ดูแลขอให้แก้ไขเนื้อหา')).toBeTruthy();
+    expect(screen.getByText('กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน')).toBeTruthy();
+    expect(screen.getByText('Revision 1')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });
 
 function renderPanel(element: React.ReactNode) {
@@ -54,6 +67,19 @@ function renderPanel(element: React.ReactNode) {
       {element}
     </NextIntlClientProvider>,
   );
+}
+
+function changeRequest(): WorkChangeRequest {
+  return {
+    decision: 'changes_requested',
+    feedback: 'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
+    publicId: '75000000-0000-4000-8000-000000000004',
+    reason: 'content',
+    revisionNumber: 1,
+    revisionPublicId: REVISION_PUBLIC_ID,
+    reviewedAt: '2026-08-25T16:00:00.000Z',
+    workPublicId: WORK_PUBLIC_ID,
+  };
 }
 
 function revision(): WorkRevision {

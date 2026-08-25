@@ -5,11 +5,14 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  IsIn,
+  MinLength,
   Max,
   MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
+import { CHANGE_REQUEST_REASONS, type ChangeRequestReason } from '../domain/review-decision-policy';
 
 export class SubmitWorkRevisionDto {
   @IsString()
@@ -57,4 +60,22 @@ export class ReviewQueueQueryDto {
   @Min(1)
   @Max(50)
   limit = 20;
+}
+
+export class RequestChangesDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRevisionVersion!: number;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(2_000)
+  feedback!: string;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+
+  @IsIn(CHANGE_REQUEST_REASONS)
+  reason!: ChangeRequestReason;
 }

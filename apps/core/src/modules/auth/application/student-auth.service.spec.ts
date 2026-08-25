@@ -385,6 +385,30 @@ describe('StudentAuthService session lifecycle', () => {
     });
   });
 
+  it('allows a password-ready Student or Alumnus to read private Change Request feedback', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = {
+      ...createStoredSession(),
+      credentialState: 'set',
+      currentAcademicYear: 2577,
+    };
+    const { service } = createService(repository);
+
+    await expect(service.authorizeStudentRead('current-session-token')).resolves.toEqual({
+      accountId: repository.account?.accountId,
+    });
+  });
+
+  it('keeps private Change Request feedback unavailable until password change completes', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = createStoredSession();
+    const { service } = createService(repository);
+
+    await expect(service.authorizeStudentRead('current-session-token')).rejects.toEqual(
+      new AuthError('FORBIDDEN', 403),
+    );
+  });
+
   it('keeps Profile Consent unavailable until required password change completes', async () => {
     const repository = new FakeAuthRepository();
     repository.session = createStoredSession();

@@ -167,7 +167,7 @@ describe('StudentWorksCoreClient', () => {
     expect(JSON.stringify(invitation)).not.toMatch(/accountId|personId|studentId/i);
   });
 
-  it('submits, reads, and withdraws one private immutable Revision through exact contracts', async () => {
+  it('submits, reads, withdraws, and receives Change Request feedback through exact contracts', async () => {
     const revision = workRevision();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -175,7 +175,8 @@ describe('StudentWorksCoreClient', () => {
       .mockResolvedValueOnce(Response.json({ revision }))
       .mockResolvedValueOnce(
         Response.json({ outcome: 'withdrawn', revision: { ...revision, status: 'withdrawn' } }),
-      );
+      )
+      .mockResolvedValueOnce(Response.json({ review: changeRequest() }));
     const client = createClient(fetchMock);
     const submitInput = {
       attributionName: 'ชื่อผู้ส่ง',
@@ -191,11 +192,15 @@ describe('StudentWorksCoreClient', () => {
       expectedRevisionVersion: 1,
       idempotencyKey: IDEMPOTENCY_KEY,
     });
+    await expect(client.getLatestChangeRequest(SESSION, PUBLIC_ID)).resolves.toEqual(
+      changeRequest(),
+    );
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions`,
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/pending`,
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/${revision.publicId}/withdraw`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/change-request`,
     ]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(submitInput);
   });
@@ -206,6 +211,19 @@ function createClient(fetchImpl: typeof fetch) {
     { coreUrl: 'https://core.example.test', studentBffSecret: 'server-secret' },
     fetchImpl,
   );
+}
+
+function changeRequest() {
+  return {
+    decision: 'changes_requested' as const,
+    feedback: 'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
+    publicId: '64000000-0000-4000-8000-000000000004',
+    reason: 'content' as const,
+    revisionNumber: 1,
+    revisionPublicId: '64000000-0000-4000-8000-000000000003',
+    reviewedAt: '2026-08-25T16:00:00.000Z',
+    workPublicId: PUBLIC_ID,
+  };
 }
 
 function mutationInput() {

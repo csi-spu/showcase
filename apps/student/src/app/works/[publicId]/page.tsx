@@ -8,7 +8,11 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
 import { WorkForm } from '../work-form';
-import { WorkRevisionPendingPanel, WorkRevisionSubmissionPanel } from '../work-revision-panel';
+import {
+  WorkChangeRequestPanel,
+  WorkRevisionPendingPanel,
+  WorkRevisionSubmissionPanel,
+} from '../work-revision-panel';
 import {
   submitWorkRevisionAction,
   updateWorkAction,
@@ -31,6 +35,7 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
         context: Awaited<ReturnType<StudentWorksCoreClient['getAuthoringContext']>>;
         invitations: Awaited<ReturnType<StudentWorksCoreClient['listWorkInvitations']>>;
         kind: 'draft';
+        review: Awaited<ReturnType<StudentWorksCoreClient['getLatestChangeRequest']>> | null;
         work: Awaited<ReturnType<StudentWorksCoreClient['getWork']>>;
       }
     | {
@@ -42,12 +47,13 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
     if (pendingRevision !== null) {
       revisionState = { kind: 'pending', revision: pendingRevision };
     } else {
-      const [context, work, invitations] = await Promise.all([
+      const [context, work, invitations, review] = await Promise.all([
         client.getAuthoringContext(sessionToken),
         client.getWork(sessionToken, parsedPublicId.data),
         client.listWorkInvitations(sessionToken, parsedPublicId.data),
+        loadChangeRequest(client, sessionToken, parsedPublicId.data),
       ]);
-      revisionState = { context, invitations, kind: 'draft', work };
+      revisionState = { context, invitations, kind: 'draft', review, work };
     }
   } catch (error: unknown) {
     handleLoadError(error);
@@ -91,6 +97,14 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
         <div className="lg:col-span-8">
           {revisionState.kind === 'draft' ? (
             <>
+              {revisionState.review === null ? null : (
+                <>
+                  <WorkChangeRequestPanel review={revisionState.review} />
+                  <p className="mb-8 text-sm leading-relaxed text-muted-foreground">
+                    {t('changeRequestHelp')}
+                  </p>
+                </>
+              )}
               <WorkForm
                 action={updateAction}
                 context={revisionState.context}
@@ -125,6 +139,21 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
       </div>
     </main>
   );
+}
+
+async function loadChangeRequest(
+  client: StudentWorksCoreClient,
+  sessionToken: string,
+  workPublicId: string,
+) {
+  try {
+    return await client.getLatestChangeRequest(sessionToken, workPublicId);
+  } catch (error: unknown) {
+    if (error instanceof StudentWorksCoreError && error.code === 'WORK_CHANGE_REQUEST_NOT_FOUND') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function handleLoadError(error: unknown): never {

@@ -3,12 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminWorkspaceShell } from './admin-workspace-shell';
 
 vi.mock('next-intl/server', () => ({
-  getTranslations: vi.fn(
-    async (namespace: string) => (key: string) =>
-      namespace === 'AccountControls' && key === 'navigation'
-        ? 'จัดการสิทธิ์และบัญชี'
-        : 'นำเข้าบัญชีนักศึกษา',
-  ),
+  getTranslations: vi.fn(async (namespace: string) => (key: string) => {
+    if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
+    if (namespace === 'Review' && key === 'navigation') return 'คิวตรวจผลงาน';
+    return 'นำเข้าบัญชีนักศึกษา';
+  }),
 }));
 
 vi.mock('./admin-auth-forms', () => ({
@@ -40,6 +39,9 @@ describe('AdminWorkspaceShell', () => {
     const rosterLink = screen.getByRole('link', { name: 'นำเข้าบัญชีนักศึกษา' });
     expect(rosterLink.getAttribute('href')).toBe('/');
     expect(rosterLink.getAttribute('aria-current')).toBeNull();
+    const reviewLink = screen.getByRole('link', { name: 'คิวตรวจผลงาน' });
+    expect(reviewLink.getAttribute('href')).toBe('/reviews');
+    expect(reviewLink.getAttribute('aria-current')).toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
   });
 });
