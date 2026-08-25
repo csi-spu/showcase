@@ -189,5 +189,17 @@ function draftBase() {
       { displayLabel: 'Web App', normalizedIdentity: 'web app' },
     ],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [
+      {
+        provider: 'youtube' as const,
+        providerVideoId: 'dQw4w9WgXcQ',
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      },
+      {
+        provider: 'tiktok' as const,
+        providerVideoId: '7345678901234567890',
+        url: 'https://www.tiktok.com/@showcase/video/7345678901234567890',
+      },
+    ],
   };
 }

@@ -4,7 +4,7 @@
 
 Application processes run on the host for fast reload. Supabase CLI runs local Postgres, Auth, and Studio in Docker. Realtime, Supabase Storage, Edge Runtime, Analytics, and public signup are disabled because Phase 1 does not use them.
 
-R2 has no committed production credential or bucket fallback. Media adapter unit tests use fakes; provider integration tests use a dedicated non-production R2 bucket with short-lived, least-privilege credentials. Local development without profile-photo uploads needs no R2 access; Core reports that upload capability as unavailable.
+R2 has no committed production credential or bucket fallback. Media adapter unit tests use fakes; provider integration tests use a dedicated non-production R2 bucket with short-lived, least-privilege credentials. Local development without profile-photo or Work-media uploads needs no R2 access; Core reports those upload capabilities as unavailable.
 
 ## Ports
 

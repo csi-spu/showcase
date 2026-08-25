@@ -133,6 +133,7 @@ function existingWork(): WorkDraft {
       summary: 'สรุปผลงาน',
       tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
       title: 'ระบบแนะนำผลงาน',
+      videoLinks: [],
     },
     publicationState: 'never_published',
     publicId: '64000000-0000-4000-8000-000000000001',

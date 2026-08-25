@@ -77,6 +77,84 @@ export async function updateWorkAction(
   };
 }
 
+export async function uploadWorkMediaAction(input: {
+  byteSize: number;
+  contentType: string;
+  fileExtension: string;
+  idempotencyKey: string;
+  mediaKind: 'gallery' | 'poster';
+  publicId: string;
+}) {
+  const parsed = z
+    .object({
+      byteSize: z.number().int().positive().max(5_242_880),
+      contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+      fileExtension: z.enum(['jpeg', 'jpg', 'png', 'webp']),
+      idempotencyKey: z.uuid(),
+      mediaKind: z.enum(['gallery', 'poster']),
+      publicId: z.uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  try {
+    const token = await sessionToken();
+    return await client().authorizeMediaUpload(token, parsed.data.publicId, parsed.data);
+  } catch (error: unknown) {
+    return { error: mapError(error) };
+  }
+}
+
+export async function finalizeWorkMediaAction(input: { assetId: string; publicId: string }) {
+  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  try {
+    const token = await sessionToken();
+    return await client().finalizeMediaUpload(token, parsed.data.publicId, parsed.data.assetId);
+  } catch (error: unknown) {
+    return { error: mapError(error) };
+  }
+}
+
+export async function getWorkMediaStatusAction(input: { assetId: string; publicId: string }) {
+  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  try {
+    return await client().getMediaUploadStatus(
+      await sessionToken(),
+      parsed.data.publicId,
+      parsed.data.assetId,
+    );
+  } catch (error: unknown) {
+    return { error: mapError(error) };
+  }
+}
+
+export async function attachWorkMediaAction(input: {
+  assetId: string;
+  expectedVersion: number;
+  mediaKind: 'gallery' | 'poster';
+  publicId: string;
+}) {
+  const parsed = z
+    .object({
+      assetId: z.uuid(),
+      expectedVersion: z.number().int().positive(),
+      mediaKind: z.enum(['gallery', 'poster']),
+      publicId: z.uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  try {
+    return await client().attachMedia(await sessionToken(), parsed.data.publicId, {
+      assetId: parsed.data.assetId,
+      expectedVersion: parsed.data.expectedVersion,
+      mediaKind: parsed.data.mediaKind,
+    });
+  } catch (error: unknown) {
+    return { error: mapError(error) };
+  }
+}
+
 function client(): StudentWorksCoreClient {
   return new StudentWorksCoreClient(getStudentServerEnvironment());
 }

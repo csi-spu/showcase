@@ -57,6 +57,70 @@ describe('StudentWorksCoreClient', () => {
       /studentId|accountId|personId|media|contributor/i,
     );
   });
+
+  it('uses exact private Work media contracts through Core', async () => {
+    const assetId = '64000000-0000-4000-8000-000000000003';
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          assetId,
+          expiresAt: '2026-08-25T12:10:00.000Z',
+          headers: { 'content-type': 'image/jpeg' },
+          status: 'pending_upload',
+          uploadUrl: 'https://r2.example.test/presigned',
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ assetId, status: 'uploaded' }))
+      .mockResolvedValueOnce(
+        Response.json({
+          assetId,
+          preview: {
+            expiresAt: '2026-08-25T12:10:00.000Z',
+            height: 1600,
+            url: 'https://r2.example.test/preview',
+            width: 1200,
+          },
+          rejectionCode: null,
+          status: 'ready',
+          warnings: [],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ outcome: 'attached', version: 2 }));
+    const client = createClient(fetchMock);
+
+    await client.authorizeMediaUpload(SESSION, PUBLIC_ID, {
+      byteSize: 1024,
+      contentType: 'image/jpeg',
+      fileExtension: 'jpg',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      mediaKind: 'poster',
+    });
+    await client.finalizeMediaUpload(SESSION, PUBLIC_ID, assetId);
+    await expect(client.getMediaUploadStatus(SESSION, PUBLIC_ID, assetId)).resolves.toMatchObject({
+      preview: { width: 1200 },
+      status: 'ready',
+    });
+    await client.attachMedia(SESSION, PUBLIC_ID, {
+      assetId,
+      expectedVersion: 1,
+      mediaKind: 'poster',
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${assetId}/finalize`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${assetId}`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media`,
+    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      byteSize: 1024,
+      contentType: 'image/jpeg',
+      fileExtension: 'jpg',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      mediaKind: 'poster',
+    });
+  });
 });
 
 function createClient(fetchImpl: typeof fetch) {
@@ -76,6 +140,7 @@ function mutationInput() {
     summary: 'สรุปผลงาน',
     tags: ['React'],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
   };
 }
 
@@ -91,6 +156,7 @@ function work() {
       summary: 'สรุปผลงาน',
       tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
       title: 'ระบบแนะนำผลงาน',
+      videoLinks: [],
     },
     publicationState: 'never_published' as const,
     publicId: PUBLIC_ID,

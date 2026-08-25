@@ -7,7 +7,15 @@ import type {
 } from './student-works-core';
 
 export type WorkField =
-  'academicPeriod' | 'category' | 'description' | 'form' | 'links' | 'summary' | 'tags' | 'title';
+  | 'academicPeriod'
+  | 'category'
+  | 'description'
+  | 'form'
+  | 'links'
+  | 'summary'
+  | 'tags'
+  | 'title'
+  | 'videoLinks';
 
 export type WorkFormValidation =
   | { fieldErrors: WorkField[]; success: false }
@@ -34,11 +42,14 @@ const BASE_FIELDS = [
   'summary',
   'title',
 ] as const;
-const COLLECTION_FIELDS = Array.from({ length: 5 }, (_, index) => [
-  `linkLabel${index}`,
-  `linkUrl${index}`,
-  `tag${index}`,
-]).flat();
+const COLLECTION_FIELDS = [
+  ...Array.from({ length: 5 }, (_, index) => [
+    `linkLabel${index}`,
+    `linkUrl${index}`,
+    `tag${index}`,
+  ]).flat(),
+  ...Array.from({ length: 3 }, (_, index) => `videoLink${index}`),
+];
 const ALLOWED_FIELDS = new Set<string>([...BASE_FIELDS, ...COLLECTION_FIELDS]);
 
 export function validateWorkForm(
@@ -79,6 +90,8 @@ export function validateWorkForm(
   if (links === null) return invalid('links');
   const tags = parseTags(formData);
   if (tags === null) return invalid('tags');
+  const videoLinks = parseVideoLinks(formData);
+  if (videoLinks === null) return invalid('videoLinks');
 
   const data: WorkMutationInput = {
     academicPeriod: {
@@ -92,6 +105,7 @@ export function validateWorkForm(
     summary: parsed.data.summary,
     tags,
     title: parsed.data.title,
+    videoLinks,
   };
   return {
     data:
@@ -100,6 +114,17 @@ export function validateWorkForm(
         : { ...data, expectedVersion: parsed.data.expectedVersion },
     success: true,
   };
+}
+
+function parseVideoLinks(formData: FormData): string[] | null {
+  const videoLinks: string[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const value = stringValue(formData, `videoLink${index}`).trim();
+    if (value.length === 0) continue;
+    if (value.length > 2_048) return null;
+    videoLinks.push(value);
+  }
+  return videoLinks;
 }
 
 function parseLinks(formData: FormData): WorkMutationInput['links'] | null {
