@@ -8,6 +8,7 @@ const LINK_LABEL_MAX_LENGTH = 50;
 const LINK_URL_MAX_LENGTH = 2_048;
 const TAG_LIMIT = 5;
 const TAG_MAX_LENGTH = 50;
+const VIDEO_LINK_LIMIT = 3;
 
 export const WORK_CATEGORIES = ['course_work', 'competition_entry', 'academic_article'] as const;
 export const WORK_SEMESTERS = ['1', '2', 'summer'] as const;
@@ -23,10 +24,18 @@ export interface WorkDraftInput {
   summary: string;
   tags: string[];
   title: string;
+  videoLinks?: string[];
 }
 
-export interface NormalizedWorkDraft extends Omit<WorkDraftInput, 'tags'> {
+export interface NormalizedWorkDraft extends Omit<WorkDraftInput, 'tags' | 'videoLinks'> {
   tags: Array<{ displayLabel: string; normalizedIdentity: string }>;
+  videoLinks: NormalizedVideoLink[];
+}
+
+export interface NormalizedVideoLink {
+  provider: 'tiktok' | 'youtube';
+  providerVideoId: string;
+  url: string;
 }
 
 export type WorkDraftEvaluation =
@@ -48,14 +57,16 @@ export function evaluateWorkDraft(
     input.academicPeriod.year < academicRange.entryYear ||
     input.academicPeriod.year > academicRange.currentAcademicYear ||
     input.links.length > LINK_LIMIT ||
-    input.tags.length > TAG_LIMIT
+    input.tags.length > TAG_LIMIT ||
+    (input.videoLinks?.length ?? 0) > VIDEO_LINK_LIMIT
   ) {
     return { isValid: false };
   }
 
   const links = normalizeLinks(input.links);
   const tags = normalizeTags(input.tags);
-  if (links === null || tags === null) {
+  const videoLinks = normalizeVideoLinks(input.videoLinks ?? []);
+  if (links === null || tags === null || videoLinks === null) {
     return { isValid: false };
   }
 
@@ -68,8 +79,59 @@ export function evaluateWorkDraft(
       summary,
       tags,
       title,
+      videoLinks,
     },
     isValid: true,
+  };
+}
+
+function normalizeVideoLinks(input: string[]): NormalizedVideoLink[] | null {
+  const links: NormalizedVideoLink[] = [];
+  const identities = new Set<string>();
+  for (const value of input) {
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    const host = parsed.hostname.toLowerCase();
+    let link: NormalizedVideoLink | null = null;
+    if (host === 'youtu.be') {
+      const providerVideoId = parsed.pathname.slice(1);
+      link = youtubeLink(providerVideoId);
+    } else if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') {
+      const providerVideoId =
+        parsed.pathname === '/watch'
+          ? parsed.searchParams.get('v')
+          : (parsed.pathname.match(/^\/(?:shorts|embed)\/([^/]+)$/u)?.[1] ?? null);
+      link = providerVideoId === null ? null : youtubeLink(providerVideoId);
+    } else if (host === 'tiktok.com' || host === 'www.tiktok.com' || host === 'm.tiktok.com') {
+      const match = parsed.pathname.match(/^\/@[^/]+\/video\/(\d{1,255})$/u);
+      link = match === null ? null : tiktokLink(match[1]!, parsed.pathname);
+    }
+    if (link === null || identities.has(`${link.provider}:${link.providerVideoId}`)) return null;
+    identities.add(`${link.provider}:${link.providerVideoId}`);
+    links.push(link);
+  }
+  return links;
+}
+
+function youtubeLink(providerVideoId: string): NormalizedVideoLink | null {
+  if (!/^[A-Za-z0-9_-]{11}$/u.test(providerVideoId)) return null;
+  return {
+    provider: 'youtube',
+    providerVideoId,
+    url: `https://www.youtube.com/watch?v=${providerVideoId}`,
+  };
+}
+
+function tiktokLink(providerVideoId: string, pathname: string): NormalizedVideoLink {
+  return {
+    provider: 'tiktok',
+    providerVideoId,
+    url: `https://www.tiktok.com${pathname}`,
   };
 }
 

@@ -66,6 +66,12 @@ export class CreateWorkDto {
 
   @IsString()
   title!: string;
+
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  @MaxLength(2_048, { each: true })
+  videoLinks!: string[];
 }
 
 export class UpdateWorkDraftDto extends CreateWorkDto {
@@ -73,4 +79,40 @@ export class UpdateWorkDraftDto extends CreateWorkDto {
   @Min(1)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedVersion!: number;
+}
+
+export class CreateWorkMediaUploadDto {
+  @IsInt()
+  @Min(1)
+  @Max(5_242_880)
+  byteSize!: number;
+
+  @IsString()
+  @IsIn(['image/jpeg', 'image/png', 'image/webp'])
+  contentType!: string;
+
+  @IsString()
+  @IsIn(['jpeg', 'jpg', 'png', 'webp'])
+  fileExtension!: string;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+
+  @IsString()
+  @IsIn(['poster', 'gallery'])
+  mediaKind!: 'gallery' | 'poster';
+}
+
+export class AttachWorkMediaDto {
+  @IsUUID('4')
+  assetId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedVersion!: number;
+
+  @IsString()
+  @IsIn(['poster', 'gallery'])
+  mediaKind!: 'gallery' | 'poster';
 }

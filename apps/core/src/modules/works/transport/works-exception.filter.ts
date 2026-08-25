@@ -2,6 +2,7 @@ import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } fr
 import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
 import { WorkError } from '../application/works.service';
+import { WorkMediaError } from '../application/work-media.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -14,7 +15,11 @@ export class WorksExceptionFilter implements ExceptionFilter {
       response.status(400).json({ error: { code: 'INVALID_REQUEST' } });
       return;
     }
-    if (error instanceof AuthError || error instanceof WorkError) {
+    if (
+      error instanceof AuthError ||
+      error instanceof WorkError ||
+      error instanceof WorkMediaError
+    ) {
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }

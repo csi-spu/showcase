@@ -21,6 +21,7 @@ describe('validateWorkForm', () => {
         summary: 'สรุปผลงาน',
         tags: ['React WEB'],
         title: 'ระบบแนะนำผลงาน',
+        videoLinks: [],
       },
       success: true,
     });
@@ -96,5 +97,6 @@ function validForm(): FormData {
     form.set(`linkUrl${index}`, '');
     form.set(`tag${index}`, '');
   }
+  for (let index = 0; index < 3; index += 1) form.set(`videoLink${index}`, '');
   return form;
 }

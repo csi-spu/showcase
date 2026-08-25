@@ -16,7 +16,13 @@ import { AuthError } from '../../auth/application/auth.error';
 import { StudentAuthService } from '../../auth/application/student-auth.service';
 import { StudentBffGuard } from '../../auth/transport/student-bff.guard';
 import { WorksService } from '../application/works.service';
-import { CreateWorkDto, UpdateWorkDraftDto } from './works.dto';
+import { WorkMediaService } from '../application/work-media.service';
+import {
+  AttachWorkMediaDto,
+  CreateWorkDto,
+  CreateWorkMediaUploadDto,
+  UpdateWorkDraftDto,
+} from './works.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
 
 @Controller('internal/student/works')
@@ -26,6 +32,7 @@ export class StudentWorksController {
   constructor(
     private readonly auth: StudentAuthService,
     private readonly works: WorksService,
+    private readonly media: WorkMediaService,
   ) {}
 
   @Post()
@@ -66,6 +73,53 @@ export class StudentWorksController {
   ) {
     const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
     return this.works.updateDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  @Post(':publicId/media-uploads')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async createMediaUpload(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: CreateWorkMediaUploadDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.media.authorizeUpload({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  @Post(':publicId/media-uploads/:assetId/finalize')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async finalizeMediaUpload(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.media.finalizeUpload({ actorAccountId: actor.accountId, assetId, publicId });
+  }
+
+  @Get(':publicId/media-uploads/:assetId')
+  @Header('Cache-Control', 'no-store')
+  async getMediaUploadStatus(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.media.getUploadStatus({ actorAccountId: actor.accountId, assetId, publicId });
+  }
+
+  @Put(':publicId/media')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async attachMedia(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: AttachWorkMediaDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.media.attachReadyMedia({ ...input, actorAccountId: actor.accountId, publicId });
   }
 
   private requireSessionToken(authorization: string | undefined): string {

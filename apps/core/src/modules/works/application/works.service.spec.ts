@@ -170,6 +170,7 @@ function inputBase() {
     summary: 'สรุปผลงาน',
     tags: ['React'],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
   };
 }
 
@@ -186,6 +187,7 @@ function normalizedDraftBase() {
     summary: 'สรุปผลงาน',
     tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
   };
 }
 

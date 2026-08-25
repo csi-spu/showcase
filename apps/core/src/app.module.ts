@@ -12,6 +12,7 @@ import { WorksModule } from './modules/works/works.module';
   imports: [
     ConfigModule.forRoot({
       cache: true,
+      envFilePath: ['apps/core/.env', '.env'],
       isGlobal: true,
       validate: parseEnvironment,
     }),

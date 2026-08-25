@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { WorkAuthoringContext, WorkDraft } from '@/lib/student-works-core';
 import type { WorkField } from '@/lib/student-work-validation';
 import { initialWorkActionState, type WorkActionState } from './work-action-state';
+import { WorkMediaUpload } from './work-media-upload';
 
 type WorkAction = (previousState: WorkActionState, formData: FormData) => Promise<WorkActionState>;
 
@@ -47,12 +48,14 @@ export function WorkForm({
   context,
   idempotencyKey,
   mode,
+  publicId,
   work,
 }: {
   action: WorkAction;
   context: WorkAuthoringContext;
   idempotencyKey: string;
   mode: 'create' | 'edit';
+  publicId?: string;
   work: WorkDraft | null;
 }) {
   const t = useTranslations('Work');
@@ -128,6 +131,13 @@ export function WorkForm({
           </Field>
         </FieldGroup>
       </FieldSet>
+
+      {publicId === undefined || work === null ? null : (
+        <>
+          <WorkMediaUpload expectedVersion={work.version} mediaKind="poster" publicId={publicId} />
+          <WorkMediaUpload expectedVersion={work.version} mediaKind="gallery" publicId={publicId} />
+        </>
+      )}
 
       <FieldSet className="rounded-surface border border-border bg-card p-6 sm:p-8">
         <FieldLegend>{t('sections.classification')}</FieldLegend>
@@ -313,6 +323,39 @@ export function WorkForm({
         </FieldGroup>
       </FieldSet>
 
+      <FieldSet className="rounded-surface border border-border bg-card p-6 sm:p-8">
+        <FieldLegend>{t('sections.videos')}</FieldLegend>
+        <FieldDescription>{t('sections.videosHelp')}</FieldDescription>
+        <FieldGroup>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Field data-invalid={isInvalid('videoLinks') || undefined} key={index}>
+              <FieldLabel htmlFor={`work-video-link-${index}`}>
+                {t('videoLink', { number: index + 1 })}
+              </FieldLabel>
+              <Input
+                aria-invalid={isInvalid('videoLinks') || undefined}
+                id={`work-video-link-${index}`}
+                maxLength={2_048}
+                name={`videoLink${index}`}
+                onChange={(event) => {
+                  const videoLink = event.target.value;
+                  setDraft((current) => ({
+                    ...current,
+                    videoLinks: current.videoLinks.map((currentLink, currentIndex) =>
+                      currentIndex === index ? videoLink : currentLink,
+                    ),
+                  }));
+                }}
+                placeholder="https://"
+                type="url"
+                value={draft.videoLinks[index] ?? ''}
+              />
+            </Field>
+          ))}
+          {isInvalid('videoLinks') ? <FieldError>{t('fieldErrors.videoLinks')}</FieldError> : null}
+        </FieldGroup>
+      </FieldSet>
+
       <ActionFeedback state={state} />
       <SubmitButton
         label={mode === 'create' ? t('create') : t('save')}
@@ -335,6 +378,7 @@ function createFormDraft(work: WorkDraft | null, context: WorkAuthoringContext) 
     summary: work?.draft.summary ?? '',
     tags: Array.from({ length: 5 }, (_, index) => work?.draft.tags[index]?.displayLabel ?? ''),
     title: work?.draft.title ?? '',
+    videoLinks: Array.from({ length: 3 }, (_, index) => work?.draft.videoLinks[index]?.url ?? ''),
   };
 }
 

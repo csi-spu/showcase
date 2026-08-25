@@ -4,12 +4,13 @@
 
 Create two environments, `staging` and `production`. Each contains four Docker Image applications:
 
-| App     | Image name                         | Container port | Health path        |
-| ------- | ---------------------------------- | -------------: | ------------------ |
-| core    | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
-| admin   | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
-| student | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
-| visitor | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
+| App                  | Image name                         | Container port | Health path        |
+| -------------------- | ---------------------------------- | -------------: | ------------------ |
+| core                 | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
+| core-media-processor | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
+| admin                | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
+| student              | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
+| visitor              | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
 
 Give Coolify read-only GHCR access. Configure an initial valid SHA tag before first start. Do not connect these applications to a Git source or enable automatic deploy.
 
@@ -34,6 +35,10 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 - Configure restarts for process failure, not application-level retry loops.
 
 Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `PUBLIC_MEDIA_ORIGIN`, `R2_ACCESS_KEY_ID`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_SECRET_ACCESS_KEY`, `R2_TIMEOUT_MS`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and the same environment's `STUDENT_BFF_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
+
+Create a fifth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares only Core's database/R2 environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
+
+Configure an R2 lifecycle rule that deletes `work-quarantine/` objects after one day. Do not place an age-based lifecycle rule on `work-media/`: that prefix contains immutable media attached to retained Drafts and future Revisions. Core deletes expired unattached processed objects after seven days from authoritative database claims; the quarantine rule remains the provider-side backstop for raw input that Core could not delete.
 
 The reverse proxies in front of Admin and Student must overwrite, not append from untrusted clients, the client address header supplied to each application. Each application forwards the normalized address to Core only after authenticating with its distinct BFF secret so login rate limiting remains source-aware and session audiences remain isolated.
 

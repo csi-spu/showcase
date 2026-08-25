@@ -28,6 +28,7 @@ describe('Work Draft policy', () => {
           { displayLabel: 'Web App', normalizedIdentity: 'web app' },
         ],
         title: 'ระบบแนะนำผลงาน',
+        videoLinks: [],
       },
       isValid: true,
     });
@@ -45,6 +46,58 @@ describe('Work Draft policy', () => {
       },
       isValid: true,
     });
+  });
+
+  it('normalizes unique HTTPS YouTube and TikTok Video Links to provider IDs', () => {
+    expect(
+      evaluateWorkDraft(
+        validDraft({
+          videoLinks: [
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42',
+            'https://www.tiktok.com/@showcase/video/7345678901234567890?lang=th',
+          ],
+        }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({
+      draft: {
+        videoLinks: [
+          {
+            provider: 'youtube',
+            providerVideoId: 'dQw4w9WgXcQ',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          },
+          {
+            provider: 'tiktok',
+            providerVideoId: '7345678901234567890',
+            url: 'https://www.tiktok.com/@showcase/video/7345678901234567890',
+          },
+        ],
+      },
+      isValid: true,
+    });
+  });
+
+  it.each([
+    ['an arbitrary provider', ['https://vimeo.com/123456']],
+    ['a non-HTTPS provider URL', ['http://youtube.com/watch?v=dQw4w9WgXcQ']],
+    [
+      'a duplicate provider video ID',
+      ['https://youtu.be/dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'],
+    ],
+    [
+      'more than three URLs',
+      [
+        'https://youtu.be/dQw4w9WgXcQ',
+        'https://youtu.be/9bZkp7q19f0',
+        'https://youtu.be/3JZ_D3ELwOQ',
+        'https://youtu.be/kJQP7kiw5Fk',
+      ],
+    ],
+  ])('rejects %s', (_scenario, videoLinks) => {
+    expect(
+      evaluateWorkDraft(validDraft({ videoLinks }), { currentAcademicYear: 2569, entryYear: 2566 }),
+    ).toEqual({ isValid: false });
   });
 
   it.each([
@@ -123,6 +176,7 @@ function validDraft(overrides: Partial<WorkDraftInput> = {}): WorkDraftInput {
     summary: 'สรุปผลงาน',
     tags: [],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
     ...overrides,
   };
 }

@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { configureApplication } from '../src/configure-application';
 import { StudentAuthService } from '../src/modules/auth/application/student-auth.service';
 import { AuthError } from '../src/modules/auth/application/auth.error';
+import { WorkMediaService } from '../src/modules/works/application/work-media.service';
 import {
   WORKS_CLOCK,
   WORKS_REPOSITORY,
@@ -45,9 +46,33 @@ describe('private Work Draft authoring (e2e)', () => {
   let app: INestApplication<App>;
   let canAuthor: boolean;
   let repository: E2eWorksRepository;
+  let media: {
+    attachReadyMedia: jest.Mock;
+    authorizeUpload: jest.Mock;
+    finalizeUpload: jest.Mock;
+    getUploadStatus: jest.Mock;
+  };
 
   beforeEach(async () => {
     repository = new E2eWorksRepository();
+    media = {
+      attachReadyMedia: jest.fn().mockResolvedValue({ outcome: 'attached', version: 2 }),
+      authorizeUpload: jest.fn().mockResolvedValue({
+        assetId: IDEMPOTENCY_KEY,
+        expiresAt: '2026-08-25T10:10:00.000Z',
+        headers: { 'content-type': 'image/jpeg' },
+        status: 'pending_upload',
+        uploadUrl: 'https://r2.example.test/presigned',
+      }),
+      finalizeUpload: jest.fn().mockResolvedValue({ assetId: IDEMPOTENCY_KEY, status: 'uploaded' }),
+      getUploadStatus: jest.fn().mockResolvedValue({
+        assetId: IDEMPOTENCY_KEY,
+        preview: null,
+        rejectionCode: null,
+        status: 'processing',
+        warnings: [],
+      }),
+    };
     canAuthor = true;
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(WORKS_REPOSITORY)
@@ -61,6 +86,8 @@ describe('private Work Draft authoring (e2e)', () => {
           return Promise.resolve({ accountId: ACCOUNT_ID });
         },
       })
+      .overrideProvider(WorkMediaService)
+      .useValue(media)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -159,6 +186,74 @@ describe('private Work Draft authoring (e2e)', () => {
       .expect({ error: { code: 'WORK_VERSION_CONFLICT' } });
   });
 
+  it('authorizes media only through the Student BFF and validates exact upload and attachment contracts', async () => {
+    await studentRequest('post', `/v1/internal/student/works/${PUBLIC_ID}/media-uploads`)
+      .send({
+        byteSize: 1024,
+        contentType: 'image/jpeg',
+        fileExtension: 'jpg',
+        idempotencyKey: IDEMPOTENCY_KEY,
+        mediaKind: 'poster',
+      })
+      .expect(200)
+      .expect({
+        assetId: IDEMPOTENCY_KEY,
+        expiresAt: '2026-08-25T10:10:00.000Z',
+        headers: { 'content-type': 'image/jpeg' },
+        status: 'pending_upload',
+        uploadUrl: 'https://r2.example.test/presigned',
+      });
+    expect(media.authorizeUpload).toHaveBeenCalledWith({
+      actorAccountId: ACCOUNT_ID,
+      byteSize: 1024,
+      contentType: 'image/jpeg',
+      fileExtension: 'jpg',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      mediaKind: 'poster',
+      publicId: PUBLIC_ID,
+    });
+
+    await studentRequest('post', `/v1/internal/student/works/${PUBLIC_ID}/media-uploads`)
+      .send({
+        byteSize: 5_242_881,
+        contentType: 'image/jpeg',
+        fileExtension: 'jpg',
+        idempotencyKey: IDEMPOTENCY_KEY,
+        mediaKind: 'poster',
+      })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await studentRequest(
+      'post',
+      `/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${IDEMPOTENCY_KEY}/finalize`,
+    )
+      .expect(200)
+      .expect({ assetId: IDEMPOTENCY_KEY, status: 'uploaded' });
+    await studentRequest(
+      'get',
+      `/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${IDEMPOTENCY_KEY}`,
+    )
+      .expect(200)
+      .expect({
+        assetId: IDEMPOTENCY_KEY,
+        preview: null,
+        rejectionCode: null,
+        status: 'processing',
+        warnings: [],
+      });
+    await studentRequest('put', `/v1/internal/student/works/${PUBLIC_ID}/media`)
+      .send({ assetId: IDEMPOTENCY_KEY, expectedVersion: 1, mediaKind: 'poster' })
+      .expect(200)
+      .expect({ outcome: 'attached', version: 2 });
+    expect(media.attachReadyMedia).toHaveBeenCalledWith({
+      actorAccountId: ACCOUNT_ID,
+      assetId: IDEMPOTENCY_KEY,
+      expectedVersion: 1,
+      mediaKind: 'poster',
+      publicId: PUBLIC_ID,
+    });
+  });
+
   function studentRequest(method: 'get' | 'post' | 'put', path: string) {
     return request(app.getHttpServer())
       [method](path)
@@ -177,6 +272,7 @@ function createBody() {
     summary: 'สรุปผลงาน',
     tags: ['React', 'Web App'],
     title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
   };
 }
 
@@ -195,6 +291,7 @@ function workDraft(): WorkDraftView {
         { displayLabel: 'Web App', normalizedIdentity: 'web app' },
       ],
       title: 'ระบบแนะนำผลงาน',
+      videoLinks: [],
     },
     publicationState: 'never_published',
     publicId: PUBLIC_ID,

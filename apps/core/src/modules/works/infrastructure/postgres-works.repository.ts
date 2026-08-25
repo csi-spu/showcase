@@ -19,6 +19,7 @@ interface WorkRow {
   description: string;
   draft_links: NormalizedWorkDraft['links'];
   draft_tags: NormalizedWorkDraft['tags'];
+  draft_video_links: NonNullable<NormalizedWorkDraft['videoLinks']>;
   publication_state: 'never_published';
   public_id: string;
   semester: NormalizedWorkDraft['academicPeriod']['semester'];
@@ -208,6 +209,7 @@ export class PostgresWorksRepository implements WorksRepository {
         `;
         await transaction`delete from private.work_draft_links where work_id = ${current.work_id}`;
         await transaction`delete from private.work_draft_tags where work_id = ${current.work_id}`;
+        await transaction`delete from private.work_draft_video_links where work_id = ${current.work_id}`;
         await this.insertLinksAndTags(transaction, current.work_id, input.draft);
         await transaction`
           update public.works set updated_at = ${input.now} where id = ${current.work_id}
@@ -296,6 +298,14 @@ export class PostgresWorksRepository implements WorksRepository {
         )
       `;
     }
+    for (const [index, videoLink] of (draft.videoLinks ?? []).entries()) {
+      await transaction`
+        insert into private.work_draft_video_links (work_id, position, provider, provider_video_id, url)
+        values (
+          ${workId}, ${index + 1}, ${videoLink.provider}, ${videoLink.providerVideoId}, ${videoLink.url}
+        )
+      `;
+    }
   }
 
   private findOwnedDraftByWorkId(
@@ -345,6 +355,17 @@ export class PostgresWorksRepository implements WorksRepository {
           from private.work_draft_tags as tag
           where tag.work_id = work.id
         ), '[]'::jsonb) as draft_tags
+        , coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'provider', video.provider,
+              'providerVideoId', video.provider_video_id,
+              'url', video.url
+            ) order by video.position
+          )
+          from private.work_draft_video_links as video
+          where video.work_id = work.id
+        ), '[]'::jsonb) as draft_video_links
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
       join private.work_drafts as draft on draft.work_id = work.id
@@ -369,6 +390,7 @@ export class PostgresWorksRepository implements WorksRepository {
         summary: row.summary,
         tags: row.draft_tags,
         title: row.title,
+        videoLinks: row.draft_video_links,
       },
       publicationState: row.publication_state,
       publicId: row.public_id,
@@ -505,6 +527,11 @@ export class PostgresWorksRepository implements WorksRepository {
         normalizedIdentity: tag.normalizedIdentity,
       })),
       title: draft.title,
+      videoLinks: (draft.videoLinks ?? []).map((videoLink) => ({
+        provider: videoLink.provider,
+        providerVideoId: videoLink.providerVideoId,
+        url: videoLink.url,
+      })),
     };
   }
 }

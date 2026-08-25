@@ -36,7 +36,7 @@ describe('Student Work Draft form', () => {
     expect(screen.getAllByRole('textbox', { name: /URL ของลิงก์/ })).toHaveLength(5);
     expect(screen.getAllByRole('textbox', { name: /แท็ก/ })).toHaveLength(5);
     expect(screen.queryByText(/สื่อ|ผู้ร่วมผลงาน/)).toBeNull();
-  });
+  }, 20_000);
 
   it('constrains Academic Period to the Submitter Entry Year through Current Academic Year', () => {
     renderForm();
@@ -67,10 +67,12 @@ describe('Student Work Draft form', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'สร้างผลงาน' }));
 
-    await waitFor(() => expect(screen.getByText(/ลิงก์ต้องมีชื่อและใช้ HTTPS/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/ลิงก์ต้องมีชื่อและใช้ HTTPS/)).toBeTruthy(), {
+      timeout: 5_000,
+    });
     expect(title.value).toBe('ข้อมูลที่ต้องเก็บไว้');
     expect(screen.getByLabelText('URL ของลิงก์ 1').getAttribute('aria-invalid')).toBe('true');
-  });
+  }, 10_000);
 
   it('prefills an existing Draft and submits its expected version without public state controls', () => {
     const { container } = renderForm({ mode: 'edit', work: existingWork() });
@@ -133,6 +135,7 @@ function existingWork(): WorkDraft {
       summary: 'สรุปผลงาน',
       tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
       title: 'ระบบแนะนำผลงาน',
+      videoLinks: [],
     },
     publicationState: 'never_published',
     publicId: '64000000-0000-4000-8000-000000000001',

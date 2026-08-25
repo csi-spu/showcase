@@ -63,6 +63,7 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
             context={context}
             idempotencyKey={idempotencyKey}
             mode="edit"
+            publicId={parsedPublicId.data}
             work={work}
           />
         </div>
