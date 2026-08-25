@@ -1,0 +1,65 @@
+import { RosterCsvError, parseRosterCsv } from './roster-csv';
+
+describe('parseRosterCsv', () => {
+  it('accepts the exact header and normalizes trimmed Thai names to NFC', () => {
+    const decomposedName = '\u0E01\u0E33';
+    const csv = Buffer.from(
+      `student_id,first_name_th,last_name_th\r\n69000001, ${decomposedName} , ใจดี \r\n`,
+      'utf8',
+    );
+
+    expect(parseRosterCsv(csv, 2569)).toEqual([
+      {
+        firstNameTh: decomposedName.normalize('NFC'),
+        lastNameTh: 'ใจดี',
+        rowNumber: 2,
+        studentId: '69000001',
+      },
+    ]);
+  });
+
+  it.each([
+    ['student_id,first_name_th\n69000001,สมชาย\n', 'INVALID_ROSTER_HEADER'],
+    [
+      'student_id,first_name_th,last_name_th,unknown\n69000001,สมชาย,ใจดี,value\n',
+      'INVALID_ROSTER_HEADER',
+    ],
+    ['student_id,first_name_th,last_name_th\n68000001,สมชาย,ใจดี\n', 'ENTRY_YEAR_MISMATCH'],
+    ['student_id,first_name_th,last_name_th\n๖๙๐๐๐๐๐๑,สมชาย,ใจดี\n', 'INVALID_STUDENT_ID'],
+    ['student_id,first_name_th,last_name_th\n69000001, ,ใจดี\n', 'INVALID_FIRST_NAME'],
+  ] as const)('rejects a non-conforming file with a stable code', (csv, code) => {
+    expect(() => parseRosterCsv(Buffer.from(csv, 'utf8'), 2569)).toThrow(new RosterCsvError(code));
+  });
+
+  it('rejects every duplicated Student ID without depending on row order', () => {
+    const csv = Buffer.from(
+      [
+        'student_id,first_name_th,last_name_th',
+        '69000001,สมชาย,ใจดี',
+        '69000002,สมหญิง,มั่นคง',
+        '69000001,สมชาย,ใจดี',
+      ].join('\n'),
+      'utf8',
+    );
+
+    expect(() => parseRosterCsv(csv, 2569)).toThrow(new RosterCsvError('DUPLICATE_STUDENT_ID'));
+  });
+
+  it('rejects a header-only file so a Batch cannot remain pending forever', () => {
+    expect(() =>
+      parseRosterCsv(Buffer.from('student_id,first_name_th,last_name_th\n', 'utf8'), 2569),
+    ).toThrow(new RosterCsvError('INVALID_ROSTER_CSV'));
+  });
+
+  it('enforces the 10,000 data-row bound', () => {
+    const rows = Array.from(
+      { length: 10_001 },
+      (_, index) => `69${String(index).padStart(6, '0')},ชื่อ${index},นามสกุล${index}`,
+    );
+    const csv = Buffer.from(['student_id,first_name_th,last_name_th', ...rows].join('\n'), 'utf8');
+
+    expect(() => parseRosterCsv(csv, 2569)).toThrow(
+      new RosterCsvError('ROSTER_ROW_LIMIT_EXCEEDED'),
+    );
+  });
+});

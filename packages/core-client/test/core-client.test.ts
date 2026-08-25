@@ -74,6 +74,23 @@ describe('CoreClient', () => {
     ).rejects.toEqual(expect.objectContaining({ code: 'RATE_LIMITED', retryAfterSeconds: 37 }));
   });
 
+  it('forwards a raw body without JSON serialization for private file transport', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ state: 'active' }));
+    const csv = new Uint8Array([115, 116, 117, 100, 101, 110, 116]);
+
+    await client(fetchMock).request({
+      headers: { 'content-type': 'text/csv', 'x-entry-year': '2569' },
+      method: 'POST',
+      path: '/v1/internal/admin/roster-batches',
+      rawBody: csv,
+      responseSchema: resultSchema,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(csv);
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get('content-type')).toBe('text/csv');
+  });
+
   it.each([
     ['malformed success', Response.json({ state: 'unexpected' })],
     ['malformed error', Response.json({ secret: 'provider detail' }, { status: 502 })],
