@@ -2,10 +2,30 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import { AUTH_CLOCK, AUTH_IDENTITY_PROTECTOR } from '../../auth/application/auth.ports';
 import { MAX_ROSTER_FILE_BYTES, RosterCsvError, parseRosterCsv } from '../domain/roster-csv';
-import { ROSTER_REPOSITORY, type RosterBatch, type RosterRepository } from './roster.ports';
+import { createRosterErrorCsv } from '../domain/roster-error-csv';
+import {
+  RosterConflictResolutionError,
+  prepareRosterConflictResolution,
+  type RosterConflictResolution,
+} from '../domain/roster-conflict-resolution';
+import {
+  ROSTER_REPOSITORY,
+  type RosterBatch,
+  type RosterConflict,
+  type RosterConflictPage,
+  type RosterRepository,
+  type RosterRowErrorPage,
+} from './roster.ports';
 
 export type RosterImportErrorCode =
-  'ROSTER_BATCH_NOT_FOUND' | 'ROSTER_FILE_TOO_LARGE' | RosterCsvError['code'];
+  | 'ROSTER_BATCH_NOT_FOUND'
+  | 'ROSTER_CONFLICT_IDEMPOTENCY_CONFLICT'
+  | 'ROSTER_CONFLICT_NOT_FOUND'
+  | 'ROSTER_CONFLICT_REASON_INVALID'
+  | 'ROSTER_CONFLICT_REASON_REQUIRED'
+  | 'ROSTER_CONFLICT_VERSION_CONFLICT'
+  | 'ROSTER_FILE_TOO_LARGE'
+  | RosterCsvError['code'];
 
 export class RosterImportError extends Error {
   constructor(
@@ -43,6 +63,7 @@ export class RosterImportService {
     return this.repository.createBatch({
       now: this.clock.now(),
       rows: rows.map((row) => {
+        if ('errorCode' in row) return row;
         const studentIdHash = this.identityProtector.hashStudentId(row.studentId);
         return {
           ...row,
@@ -61,6 +82,67 @@ export class RosterImportService {
       throw new RosterImportError('ROSTER_BATCH_NOT_FOUND', 404);
     }
     return batch;
+  }
+
+  async getErrorCsv(batchId: string): Promise<string> {
+    await this.getBatch(batchId);
+    return createRosterErrorCsv(await this.repository.getErrorRows(batchId));
+  }
+
+  async listConflicts(input: {
+    afterRowNumber: number | null;
+    batchId: string;
+    limit: number;
+  }): Promise<RosterConflictPage> {
+    await this.getBatch(input.batchId);
+    return this.repository.listConflicts(input);
+  }
+
+  async listErrorRows(input: {
+    afterRowNumber: number | null;
+    batchId: string;
+    limit: number;
+  }): Promise<RosterRowErrorPage> {
+    await this.getBatch(input.batchId);
+    return this.repository.listErrorRows(input);
+  }
+
+  async resolveConflict(input: {
+    actorAccountId: string;
+    conflictId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    reason?: string;
+    resolution: RosterConflictResolution;
+  }): Promise<RosterConflict> {
+    let prepared;
+    try {
+      prepared = prepareRosterConflictResolution(input);
+    } catch (error: unknown) {
+      if (error instanceof RosterConflictResolutionError) {
+        throw new RosterImportError(error.code, 422);
+      }
+      throw error;
+    }
+    const result = await this.repository.resolveConflict({
+      actorAccountId: input.actorAccountId,
+      conflictId: input.conflictId,
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey,
+      now: this.clock.now(),
+      ...prepared,
+    });
+    switch (result.outcome) {
+      case 'replayed':
+      case 'resolved':
+        return result.conflict;
+      case 'not_found':
+        throw new RosterImportError('ROSTER_CONFLICT_NOT_FOUND', 404);
+      case 'version_conflict':
+        throw new RosterImportError('ROSTER_CONFLICT_VERSION_CONFLICT', 409);
+      case 'idempotency_conflict':
+        throw new RosterImportError('ROSTER_CONFLICT_IDEMPOTENCY_CONFLICT', 409);
+    }
   }
 }
 

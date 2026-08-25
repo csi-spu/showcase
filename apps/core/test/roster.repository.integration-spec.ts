@@ -77,7 +77,7 @@ describe('PostgresRosterRepository integration', () => {
       now: new Date(NOW.getTime() + 1_000),
     });
     expect(secondClaim).toHaveLength(1);
-    await expect(repository.findExistingStudent(STUDENT_ID_HASH)).resolves.toEqual({
+    await expect(repository.findExistingStudent(STUDENT_ID_HASH)).resolves.toMatchObject({
       firstNameTh: 'สมชาย',
       lastNameTh: 'ใจดี',
     });
@@ -148,6 +148,71 @@ describe('PostgresRosterRepository integration', () => {
     ]);
   });
 
+  it('persists every duplicate occurrence as a stable row error while valid rows remain claimable', async () => {
+    const batch = await repository.createBatch({
+      ...batchInput(),
+      rows: [
+        batchInput().rows[0]!,
+        { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 3, studentId: '69000002' },
+        { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 4, studentId: '69000002' },
+      ],
+    });
+
+    await expect(repository.getBatch(batch.batchId)).resolves.toMatchObject({
+      entryYears: [2569],
+      failedCount: 2,
+      processedRowCount: 2,
+      status: 'pending',
+      totalRowCount: 3,
+    });
+    await expect(repository.getErrorRows(batch.batchId)).resolves.toEqual([
+      { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 3, studentId: '69000002' },
+      { errorCode: 'DUPLICATE_STUDENT_ID', rowNumber: 4, studentId: '69000002' },
+    ]);
+    await expect(
+      repository.claimRows({
+        leaseUntil: new Date(NOW.getTime() + 60_000),
+        limit: 100,
+        now: NOW,
+      }),
+    ).resolves.toEqual([expect.objectContaining({ rowNumber: 2, studentId: '69000001' })]);
+  });
+
+  it('completes an all-invalid Batch immediately with an empty Entry Year summary', async () => {
+    const batch = await repository.createBatch({
+      now: NOW,
+      rows: [
+        { errorCode: 'INVALID_STUDENT_ID', rowNumber: 2, studentId: 'not-an-id' },
+        { errorCode: 'INVALID_FIRST_NAME', rowNumber: 3, studentId: '69000002' },
+      ],
+      uploaderAccountId: adminAccountId,
+    });
+
+    expect(batch).toMatchObject({
+      entryYears: [],
+      failedCount: 2,
+      processedRowCount: 2,
+      status: 'completed_with_errors',
+      totalRowCount: 2,
+    });
+    await expect(
+      repository.claimRows({
+        leaseUntil: new Date(NOW.getTime() + 60_000),
+        limit: 100,
+        now: NOW,
+      }),
+    ).resolves.toEqual([]);
+    const outbox = await database.sql<{ count: number }[]>`
+      select count(*)::integer as count from private.outbox_events
+      where aggregate_id = ${batch.batchId} and event_type = 'roster_batch_completed'
+    `;
+    expect(outbox).toEqual([{ count: 1 }]);
+    const expiredAt = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000);
+    await expect(repository.deleteExpiredRowContent({ limit: 1, now: expiredAt })).resolves.toBe(1);
+    await expect(repository.getErrorRows(batch.batchId)).resolves.toHaveLength(1);
+    await expect(repository.deleteExpiredRowContent({ limit: 1, now: expiredAt })).resolves.toBe(1);
+  });
+
   it('rejects an unsorted cohort summary at the database boundary', async () => {
     await expect(
       database.sql`
@@ -156,6 +221,167 @@ describe('PostgresRosterRepository integration', () => {
         ) values (${adminAccountId}, ${[2570, 2566]}, 1, ${NOW})
       `,
     ).rejects.toThrow();
+  });
+
+  it('creates and idempotently resolves an audited name conflict without reassigning identity', async () => {
+    const firstBatch = await repository.createBatch(batchInput());
+    const firstClaim = await repository.claimRows({
+      leaseUntil: new Date(NOW.getTime() + 60_000),
+      limit: 1,
+      now: NOW,
+    });
+    await repository.completeProvisioning({
+      batchId: firstBatch.batchId,
+      entryYear: 2569,
+      firstNameTh: 'สมชาย',
+      lastNameTh: 'ใจดี',
+      now: NOW,
+      providerUserId: STUDENT_PROVIDER_USER_ID,
+      rowId: firstClaim[0]!.rowId,
+      studentIdHash: STUDENT_ID_HASH,
+      syntheticIdentity: SYNTHETIC_IDENTITY,
+    });
+    const existing = await repository.findExistingStudent(STUDENT_ID_HASH);
+
+    const conflictBatch = await repository.createBatch({
+      ...batchInput(),
+      now: new Date(NOW.getTime() + 1_000),
+      rows: [
+        {
+          ...batchInput().rows[0]!,
+          firstNameTh: 'สมหญิง',
+          lastNameTh: 'มั่นคง',
+        },
+      ],
+    });
+    const conflictClaim = await repository.claimRows({
+      leaseUntil: new Date(NOW.getTime() + 61_000),
+      limit: 1,
+      now: new Date(NOW.getTime() + 1_000),
+    });
+
+    await expect(
+      repository.settleExistingRow({
+        batchId: conflictBatch.batchId,
+        now: new Date(NOW.getTime() + 1_000),
+        rowId: conflictClaim[0]!.rowId,
+        studentIdHash: STUDENT_ID_HASH,
+      }),
+    ).resolves.toBe('conflict');
+    const page = await repository.listConflicts({
+      afterRowNumber: null,
+      batchId: conflictBatch.batchId,
+      limit: 50,
+    });
+    expect(page).toMatchObject({
+      conflicts: [
+        {
+          existingFirstNameTh: 'สมชาย',
+          incomingFirstNameTh: 'สมหญิง',
+          rowNumber: 2,
+          status: 'pending',
+          version: 1,
+        },
+      ],
+      nextAfterRowNumber: null,
+    });
+
+    const conflictId = page.conflicts[0]!.conflictId;
+    const resolution = {
+      actorAccountId: adminAccountId,
+      conflictId,
+      expectedVersion: 1,
+      idempotencyKey: '30000000-0000-4000-8000-000000000001',
+      now: new Date(NOW.getTime() + 2_000),
+      reason: 'ตรวจสอบกับทะเบียนแล้ว',
+      resolution: 'accept_incoming_name' as const,
+    };
+    await expect(repository.resolveConflict(resolution)).resolves.toMatchObject({
+      conflict: { status: 'resolved', version: 2 },
+      outcome: 'resolved',
+    });
+    await expect(repository.resolveConflict(resolution)).resolves.toMatchObject({
+      conflict: { status: 'resolved', version: 2 },
+      outcome: 'replayed',
+    });
+    await expect(
+      repository.resolveConflict({
+        ...resolution,
+        idempotencyKey: '30000000-0000-4000-8000-000000000002',
+        resolution: 'keep_existing',
+      }),
+    ).resolves.toEqual({ outcome: 'version_conflict' });
+    await expect(repository.findExistingStudent(STUDENT_ID_HASH)).resolves.toMatchObject({
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นคง',
+      personId: existing!.personId,
+    });
+    const audits = await database.sql<{ count: number }[]>`
+      select count(*)::integer as count
+      from private.roster_conflict_resolution_audit_events
+      where conflict_id = ${conflictId}
+    `;
+    expect(audits).toEqual([{ count: 1 }]);
+
+    const keepBatch = await repository.createBatch({
+      ...batchInput(),
+      now: new Date(NOW.getTime() + 3_000),
+      rows: [
+        {
+          ...batchInput().rows[0]!,
+          firstNameTh: 'สมปอง',
+          lastNameTh: 'กล้าหาญ',
+        },
+      ],
+    });
+    const keepClaim = await repository.claimRows({
+      leaseUntil: new Date(NOW.getTime() + 63_000),
+      limit: 1,
+      now: new Date(NOW.getTime() + 3_000),
+    });
+    await repository.settleExistingRow({
+      batchId: keepBatch.batchId,
+      now: new Date(NOW.getTime() + 3_000),
+      rowId: keepClaim[0]!.rowId,
+      studentIdHash: STUDENT_ID_HASH,
+    });
+    const keepPage = await repository.listConflicts({
+      afterRowNumber: null,
+      batchId: keepBatch.batchId,
+      limit: 50,
+    });
+    await expect(
+      repository.resolveConflict({
+        actorAccountId: adminAccountId,
+        conflictId: keepPage.conflicts[0]!.conflictId,
+        expectedVersion: 1,
+        idempotencyKey: '30000000-0000-4000-8000-000000000003',
+        now: new Date(NOW.getTime() + 4_000),
+        reason: null,
+        resolution: 'keep_existing',
+      }),
+    ).resolves.toMatchObject({
+      conflict: { resolution: 'keep_existing', status: 'resolved', version: 2 },
+      outcome: 'resolved',
+    });
+    await expect(repository.findExistingStudent(STUDENT_ID_HASH)).resolves.toMatchObject({
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นคง',
+      personId: existing!.personId,
+    });
+    await repository.deleteExpiredRowContent({
+      limit: 1_000,
+      now: new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000 + 5_000),
+    });
+    await expect(
+      repository.listConflicts({
+        afterRowNumber: null,
+        batchId: keepBatch.batchId,
+        limit: 50,
+      }),
+    ).resolves.toMatchObject({
+      conflicts: [{ resolution: 'keep_existing', status: 'resolved' }],
+    });
   });
 
   it('retains safe Batch counts while deleting private row content after 30 days', async () => {
@@ -175,7 +401,26 @@ describe('PostgresRosterRepository integration', () => {
     });
 
     await expect(
-      repository.deleteExpiredRowContent(new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000)),
+      repository.listErrorRows({ afterRowNumber: null, batchId: batch.batchId, limit: 50 }),
+    ).resolves.toEqual({
+      errors: [
+        {
+          attemptCount: 3,
+          errorCode: 'ROSTER_AUTH_PROVIDER_UNAVAILABLE',
+          errorMessageTh: 'ไม่สามารถสร้างบัญชียืนยันตัวตนได้หลังลองครบจำนวน',
+          retryState: 'exhausted',
+          rowNumber: 2,
+          studentId: '69000001',
+        },
+      ],
+      nextAfterRowNumber: null,
+    });
+
+    await expect(
+      repository.deleteExpiredRowContent({
+        limit: 1_000,
+        now: new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000),
+      }),
     ).resolves.toBe(1);
     await expect(repository.getBatch(batch.batchId)).resolves.toMatchObject({
       entryYears: [2569],
@@ -183,6 +428,7 @@ describe('PostgresRosterRepository integration', () => {
       status: 'completed_with_errors',
       totalRowCount: 1,
     });
+    await expect(repository.getErrorRows(batch.batchId)).resolves.toEqual([]);
   });
 
   function batchInput(): CreateRosterBatchInput {
@@ -207,6 +453,22 @@ describe('PostgresRosterRepository integration', () => {
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
       await transaction`delete from private.outbox_events where aggregate_type = 'roster_batch'`;
+      await transaction`
+        delete from private.roster_conflict_resolution_audit_events
+        where batch_id in (
+          select roster_batch.id from private.roster_batches as roster_batch
+          join public.accounts as account on account.id = roster_batch.uploader_account_id
+          where account.provider_user_id = ${ADMIN_PROVIDER_USER_ID}
+        )
+      `;
+      await transaction`
+        delete from private.roster_conflicts
+        where batch_id in (
+          select roster_batch.id from private.roster_batches as roster_batch
+          join public.accounts as account on account.id = roster_batch.uploader_account_id
+          where account.provider_user_id = ${ADMIN_PROVIDER_USER_ID}
+        )
+      `;
       await transaction`
         delete from private.roster_audit_events
         where batch_id in (

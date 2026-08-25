@@ -30,7 +30,16 @@ export interface RosterRow {
   studentId: string;
 }
 
-export function parseRosterCsv(content: Uint8Array): RosterRow[] {
+export interface InvalidRosterRow {
+  errorCode:
+    'DUPLICATE_STUDENT_ID' | 'INVALID_FIRST_NAME' | 'INVALID_LAST_NAME' | 'INVALID_STUDENT_ID';
+  rowNumber: number;
+  studentId: string;
+}
+
+export type RosterRowResult = InvalidRosterRow | RosterRow;
+
+export function parseRosterCsv(content: Uint8Array): RosterRowResult[] {
   let source: string;
   try {
     source = new TextDecoder('utf-8', { fatal: true }).decode(content);
@@ -69,31 +78,38 @@ export function parseRosterCsv(content: Uint8Array): RosterRow[] {
   const rows = dataRows.map((record, index) => parseRow(record, index + 2));
   const studentIdCounts = new Map<string, number>();
   for (const row of rows) {
-    studentIdCounts.set(row.studentId, (studentIdCounts.get(row.studentId) ?? 0) + 1);
+    if (/^\d{8}$/.test(row.studentId)) {
+      studentIdCounts.set(row.studentId, (studentIdCounts.get(row.studentId) ?? 0) + 1);
+    }
   }
-  if ([...studentIdCounts.values()].some((count) => count > 1)) {
-    throw new RosterCsvError('DUPLICATE_STUDENT_ID');
-  }
-  return rows;
+  return rows.map((row) =>
+    (studentIdCounts.get(row.studentId) ?? 0) > 1
+      ? {
+          errorCode: 'DUPLICATE_STUDENT_ID',
+          rowNumber: row.rowNumber,
+          studentId: row.studentId,
+        }
+      : row,
+  );
 }
 
-function parseRow(record: string[], rowNumber: number): RosterRow {
+function parseRow(record: string[], rowNumber: number): RosterRowResult {
   if (record.length !== ROSTER_HEADER.length) {
     throw new RosterCsvError('INVALID_ROSTER_CSV');
   }
   const [studentId = '', rawFirstName = '', rawLastName = ''] = record;
   if (!/^\d{8}$/.test(studentId)) {
-    throw new RosterCsvError('INVALID_STUDENT_ID');
+    return { errorCode: 'INVALID_STUDENT_ID', rowNumber, studentId };
   }
   const entryYear = 2500 + Number(studentId.slice(0, 2));
 
   const firstNameTh = normalizeName(rawFirstName);
   if (firstNameTh.length === 0) {
-    throw new RosterCsvError('INVALID_FIRST_NAME');
+    return { errorCode: 'INVALID_FIRST_NAME', rowNumber, studentId };
   }
   const lastNameTh = normalizeName(rawLastName);
   if (lastNameTh.length === 0) {
-    throw new RosterCsvError('INVALID_LAST_NAME');
+    return { errorCode: 'INVALID_LAST_NAME', rowNumber, studentId };
   }
   return { entryYear, firstNameTh, lastNameTh, rowNumber, studentId };
 }

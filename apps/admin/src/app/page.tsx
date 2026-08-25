@@ -1,5 +1,5 @@
 import { Button } from '@showcase/ui/button';
-import { FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
+import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
-import { getAdminRosterBatch } from '@/lib/admin-roster-page-state';
+import { getAdminRosterBatch, getAdminRosterConflicts } from '@/lib/admin-roster-page-state';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -20,21 +20,29 @@ import {
 } from './admin-auth.actions';
 import { ChangePasswordForm, LoginForm, LogoutForm } from './admin-auth-forms';
 import { RosterBatchStatus } from './roster-batch-status';
+import { RosterConflictList } from './roster-conflict-list';
 import { RosterUploadForm } from './roster-upload-form';
-import { uploadRosterAction } from './roster.actions';
+import { resolveRosterConflictAction, uploadRosterAction } from './roster.actions';
 
 interface HomeProps {
-  searchParams: Promise<{ batchId?: string; expired?: string }>;
+  searchParams: Promise<{
+    batchId?: string;
+    conflictAfter?: string;
+    expired?: string;
+    resolved?: string;
+  }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { batchId, expired } = await searchParams;
+  const { batchId, conflictAfter, expired, resolved } = await searchParams;
   const [state, t, rosterT] = await Promise.all([
     getAdminAuthPageState(expired === '1'),
     getTranslations('Auth'),
     getTranslations('Roster'),
   ]);
   const batch = state.kind === 'active' && batchId ? await getAdminRosterBatch(batchId) : null;
+  const conflictPage =
+    batch && batchId ? await getAdminRosterConflicts(batchId, conflictAfter) : null;
 
   return (
     <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -72,6 +80,12 @@ export default async function Home({ searchParams }: HomeProps) {
           </header>
 
           <div className="flex max-w-5xl flex-col gap-6">
+            {resolved === '1' ? (
+              <Alert className="border-success/30 bg-success-background text-success">
+                <CheckCircle2Icon aria-hidden="true" />
+                <AlertTitle>{rosterT('conflicts.resolvedSuccess')}</AlertTitle>
+              </Alert>
+            ) : null}
             {batch || batchId ? (
               <Card>
                 <CardHeader>
@@ -88,6 +102,19 @@ export default async function Home({ searchParams }: HomeProps) {
                   )}
                 </CardContent>
               </Card>
+            ) : null}
+
+            {conflictPage && batchId ? (
+              <RosterConflictList
+                action={resolveRosterConflictAction}
+                batchId={batchId}
+                page={conflictPage}
+              />
+            ) : batch?.status === 'completed_with_errors' ? (
+              <Alert variant="destructive">
+                <AlertTitle>{rosterT('conflicts.title')}</AlertTitle>
+                <AlertDescription>{rosterT('status.conflictsUnavailable')}</AlertDescription>
+              </Alert>
             ) : null}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">

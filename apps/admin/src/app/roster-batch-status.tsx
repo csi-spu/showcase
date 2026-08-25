@@ -1,4 +1,6 @@
-import { CheckCircle2Icon, Clock3Icon, TriangleAlertIcon } from 'lucide-react';
+import { buttonVariants } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
+import { CheckCircle2Icon, Clock3Icon, DownloadIcon, TriangleAlertIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import type { AdminRosterBatch } from '@/lib/admin-roster-core';
 import { RosterBatchAutoRefresh } from './roster-batch-auto-refresh';
@@ -10,7 +12,11 @@ export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) 
       batch={batch}
       labels={{
         created: t('counts.created'),
-        entryYears: t('status.entryYears', { years: batch.entryYears.join(', ') }),
+        downloadErrors: t('status.downloadErrors'),
+        entryYears:
+          batch.entryYears.length === 0
+            ? t('status.noEntryYears')
+            : t('status.entryYears', { years: batch.entryYears.join(', ') }),
         failed: t('counts.failed'),
         liveStatus: t(
           batch.status === 'pending' || batch.status === 'processing'
@@ -34,6 +40,7 @@ export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) 
 
 interface RosterBatchStatusLabels {
   created: string;
+  downloadErrors: string;
   entryYears: string;
   failed: string;
   liveStatus: string;
@@ -94,11 +101,22 @@ export function RosterBatchStatusView({
 
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
         <p className="text-sm text-muted-foreground">{labels.uploadedAt}</p>
-        {isActive ? (
-          <RosterBatchAutoRefresh label={labels.liveStatus} />
-        ) : (
-          <p className="text-sm text-muted-foreground">{labels.liveStatus}</p>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {hasErrors ? (
+            <a
+              className={cn(buttonVariants({ variant: 'outline' }))}
+              href={`/roster-batches/${batch.batchId}/errors.csv`}
+            >
+              <DownloadIcon aria-hidden="true" data-icon="inline-start" />
+              {labels.downloadErrors}
+            </a>
+          ) : null}
+          {isActive ? (
+            <RosterBatchAutoRefresh label={labels.liveStatus} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{labels.liveStatus}</p>
+          )}
+        </div>
       </div>
     </section>
   );

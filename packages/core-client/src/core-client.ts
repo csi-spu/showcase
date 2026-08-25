@@ -39,6 +39,13 @@ interface CoreRequest<T> {
   signal?: AbortSignal;
 }
 
+interface CoreTextRequest {
+  method: 'GET';
+  path: `/${string}`;
+  sessionToken?: string;
+  signal?: AbortSignal;
+}
+
 export class CoreClient {
   private readonly baseOrigin: string;
   private readonly fetchImpl: typeof fetch;
@@ -51,6 +58,30 @@ export class CoreClient {
   }
 
   async request<T>(input: CoreRequest<T>): Promise<T> {
+    const response = await this.execute(input, 'application/json');
+
+    try {
+      return input.responseSchema.parse(
+        response.status === 204 ? undefined : await response.json(),
+      );
+    } catch (cause: unknown) {
+      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503, undefined, { cause });
+    }
+  }
+
+  async requestText(input: CoreTextRequest): Promise<string> {
+    const response = await this.execute(input, 'text/csv');
+    if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/csv')) {
+      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503);
+    }
+    try {
+      return await response.text();
+    } catch (cause: unknown) {
+      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503, undefined, { cause });
+    }
+  }
+
+  private async execute(input: CoreRequest<unknown> | CoreTextRequest, accept: string) {
     const url = new URL(input.path, this.baseOrigin);
     if (url.origin !== this.baseOrigin) {
       throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503);
@@ -58,15 +89,17 @@ export class CoreClient {
 
     const timeoutSignal = AbortSignal.timeout(this.timeoutMilliseconds);
     const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal;
-    const headers = new Headers(input.headers);
-    headers.set('accept', 'application/json');
+    const headers = new Headers('headers' in input ? input.headers : undefined);
+    headers.set('accept', accept);
     if (input.sessionToken !== undefined) {
       headers.set('authorization', `Bearer ${input.sessionToken}`);
     }
-    if (input.body !== undefined && input.rawBody !== undefined) {
+    const body = 'body' in input ? input.body : undefined;
+    const rawBody = 'rawBody' in input ? input.rawBody : undefined;
+    if (body !== undefined && rawBody !== undefined) {
       throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503);
     }
-    if (input.body !== undefined) {
+    if (body !== undefined) {
       headers.set('content-type', 'application/json');
     }
     headers.set(this.config.credential.headerName, this.config.credential.value);
@@ -74,11 +107,11 @@ export class CoreClient {
     let response: Response;
     try {
       response = await this.fetchImpl(url.toString(), {
-        ...(input.rawBody !== undefined
-          ? { body: input.rawBody }
-          : input.body === undefined
+        ...(rawBody !== undefined
+          ? { body: rawBody }
+          : body === undefined
             ? {}
-            : { body: JSON.stringify(input.body) }),
+            : { body: JSON.stringify(body) }),
         cache: 'no-store',
         credentials: 'omit',
         headers,
@@ -105,13 +138,7 @@ export class CoreClient {
       }
     }
 
-    try {
-      return input.responseSchema.parse(
-        response.status === 204 ? undefined : await response.json(),
-      );
-    } catch (cause: unknown) {
-      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503, undefined, { cause });
-    }
+    return response;
   }
 
   private parseRetryAfter(value: string | null): number | undefined {
