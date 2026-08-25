@@ -1,7 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Express } from 'express';
+import { raw } from 'express';
 import helmet from 'helmet';
+import { MAX_ROSTER_FILE_BYTES } from './modules/roster/domain/roster-csv';
 
 export function configureApplication(app: INestApplication): void {
   const config = app.get(ConfigService);
@@ -9,6 +11,10 @@ export function configureApplication(app: INestApplication): void {
   const express = app.getHttpAdapter().getInstance() as Express;
 
   express.set('trust proxy', 1);
+  express.use(
+    '/v1/internal/admin/roster-batches',
+    raw({ limit: MAX_ROSTER_FILE_BYTES + 1024 * 1024, type: 'text/csv' }),
+  );
   app.enableCors({
     origin: allowedOrigins,
   });

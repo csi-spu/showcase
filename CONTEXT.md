@@ -45,7 +45,7 @@ The university-provided list that establishes who is eligible to activate a Stud
 _Avoid_: User import, account list
 
 **Roster Batch**:
-A Student Roster file imported for one Entry Year and processed asynchronously in bounded, retry-safe chunks. Importing the same rows again leaves existing records unchanged and reports the outcome.
+A Student Roster file whose rows may span multiple Entry Years and are processed asynchronously in bounded, retry-safe chunks. Each row derives its Entry Year from its Student ID. Importing the same rows again leaves existing records unchanged and reports the outcome.
 _Avoid_: Account batch, CSV upload
 
 **Roster Conflict**:
@@ -57,7 +57,7 @@ The institutional identifier assigned to a Student. Its leading digits encode th
 _Avoid_: Account ID, profile ID
 
 **Entry Year**:
-The Buddhist academic year in which a Student began studying, derived from their Student ID when the Student Roster is imported. It identifies a cohort, not the Student's current Study Year.
+The Buddhist academic year in which a Student began studying, derived during Student Roster import by prefixing `25` to the first two digits of their Student ID (`66` becomes `2566`). It identifies a cohort, not the Student's current Study Year.
 _Avoid_: Current year, graduation year
 
 **Student Access Period**:

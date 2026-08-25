@@ -33,6 +33,7 @@ interface CoreRequest<T> {
   headers?: Readonly<Record<string, string>>;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: `/${string}`;
+  rawBody?: BodyInit;
   responseSchema: z.ZodType<T>;
   sessionToken?: string;
   signal?: AbortSignal;
@@ -62,6 +63,9 @@ export class CoreClient {
     if (input.sessionToken !== undefined) {
       headers.set('authorization', `Bearer ${input.sessionToken}`);
     }
+    if (input.body !== undefined && input.rawBody !== undefined) {
+      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503);
+    }
     if (input.body !== undefined) {
       headers.set('content-type', 'application/json');
     }
@@ -70,7 +74,11 @@ export class CoreClient {
     let response: Response;
     try {
       response = await this.fetchImpl(url.toString(), {
-        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+        ...(input.rawBody !== undefined
+          ? { body: input.rawBody }
+          : input.body === undefined
+            ? {}
+            : { body: JSON.stringify(input.body) }),
         cache: 'no-store',
         credentials: 'omit',
         headers,

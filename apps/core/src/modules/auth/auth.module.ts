@@ -74,6 +74,6 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
         }),
     },
   ],
-  exports: [DatabaseClient],
+  exports: [AdminAuthService, AUTH_CLOCK, AUTH_IDENTITY_PROTECTOR, DatabaseClient],
 })
 export class AuthModule {}
