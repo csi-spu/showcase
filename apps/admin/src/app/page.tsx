@@ -1,5 +1,5 @@
 import { Button } from '@showcase/ui/button';
-import { FileSpreadsheetIcon, ShieldCheckIcon } from 'lucide-react';
+import { FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -43,6 +43,13 @@ export default async function Home({ searchParams }: HomeProps) {
           <span aria-hidden="true" className="h-1 w-12 bg-primary" />
           <p className="text-sm font-semibold tracking-[0.18em]">STUDENT SHOWCASE</p>
           <p className="text-sm text-muted-foreground">ADMIN WORKSPACE</p>
+          {state.kind === 'active' ? (
+            <nav aria-label="เมนูผู้ดูแล" className="mt-6">
+              <p className="border-l-2 border-primary py-2 pl-3 text-sm font-medium">
+                {rosterT('navigation')}
+              </p>
+            </nav>
+          ) : null}
         </div>
         <div className="hidden flex-col gap-5 lg:flex">
           <p className="max-w-48 text-sm text-muted-foreground">CS &amp; SOFTWARE DEVELOPMENT</p>
@@ -52,7 +59,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
       {state.kind === 'active' ? (
         <section className="p-4 sm:p-8 lg:p-12">
-          <header className="mb-8 flex max-w-3xl flex-col gap-3">
+          <header className="mb-8 flex max-w-4xl flex-col gap-3">
             <p className="text-sm font-medium text-muted-foreground">
               {rosterT('kicker')} / {rosterT('title')}
             </p>
@@ -64,39 +71,51 @@ export default async function Home({ searchParams }: HomeProps) {
             </p>
           </header>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <Card className="xl:col-span-7">
-              <CardHeader>
-                <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
-                <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
-                <CardDescription>{rosterT('form.fileHelp')}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RosterUploadForm action={uploadRosterAction} />
-              </CardContent>
-            </Card>
+          <div className="flex max-w-5xl flex-col gap-6">
+            {batch || batchId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{rosterT('status.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {batch ? (
+                    <RosterBatchStatus batch={batch} />
+                  ) : (
+                    <Alert variant="destructive">
+                      <AlertTitle>{rosterT('status.title')}</AlertTitle>
+                      <AlertDescription>{rosterT('status.unavailable')}</AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
 
-            <Card className="xl:col-span-5">
-              <CardHeader>
-                <CardTitle>{rosterT('status.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {batch ? (
-                  <RosterBatchStatus batch={batch} />
-                ) : batchId ? (
-                  <Alert variant="destructive">
-                    <AlertTitle>{rosterT('status.title')}</AlertTitle>
-                    <AlertDescription>{rosterT('status.unavailable')}</AlertDescription>
-                  </Alert>
-                ) : (
-                  <Alert>
-                    <ShieldCheckIcon />
-                    <AlertTitle>{rosterT('empty.title')}</AlertTitle>
-                    <AlertDescription>{rosterT('empty.description')}</AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+              <Card className="xl:col-span-7">
+                <CardHeader>
+                  <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
+                  <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
+                  <CardDescription>{rosterT('form.fileHelp')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RosterUploadForm action={uploadRosterAction} />
+                </CardContent>
+              </Card>
+
+              <Card className="xl:col-span-5">
+                <CardHeader>
+                  <ListChecksIcon aria-hidden="true" className="size-6 text-primary" />
+                  <CardTitle>{rosterT('preparation.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ol className="flex flex-col gap-5">
+                    <PreparationStep index="1" text={rosterT('preparation.columns')} />
+                    <PreparationStep index="2" text={rosterT('preparation.years')} />
+                    <PreparationStep index="3" text={rosterT('preparation.limits')} />
+                  </ol>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           <div className="mt-6 lg:hidden">
@@ -107,6 +126,20 @@ export default async function Home({ searchParams }: HomeProps) {
         <AuthPanel state={state} t={t} />
       )}
     </main>
+  );
+}
+
+function PreparationStep({ index, text }: { index: string; text: string }) {
+  return (
+    <li className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-3 text-sm leading-relaxed">
+      <span
+        aria-hidden="true"
+        className="flex size-8 items-center justify-center rounded-full border border-border bg-muted font-semibold"
+      >
+        {index}
+      </span>
+      <span className="pt-1.5 text-muted-foreground">{text}</span>
+    </li>
   );
 }
 

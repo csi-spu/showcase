@@ -1,7 +1,7 @@
-import { buttonVariants } from '@showcase/ui/button';
-import { CheckCircle2Icon, Clock3Icon, RefreshCwIcon, TriangleAlertIcon } from 'lucide-react';
+import { CheckCircle2Icon, Clock3Icon, TriangleAlertIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import type { AdminRosterBatch } from '@/lib/admin-roster-core';
+import { RosterBatchAutoRefresh } from './roster-batch-auto-refresh';
 
 export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) {
   const t = await getTranslations('Roster');
@@ -10,10 +10,14 @@ export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) 
       batch={batch}
       labels={{
         created: t('counts.created'),
-        entryYear: t('status.entryYear', { year: batch.entryYear }),
+        entryYears: t('status.entryYears', { years: batch.entryYears.join(', ') }),
         failed: t('counts.failed'),
+        liveStatus: t(
+          batch.status === 'pending' || batch.status === 'processing'
+            ? 'status.autoUpdating'
+            : 'status.latest',
+        ),
         progress: t('progress.label'),
-        refresh: t('status.refresh'),
         status: t(`status.${batch.status}`),
         unchanged: t('counts.unchanged'),
         uploadedAt: t('status.uploadedAt', {
@@ -30,10 +34,10 @@ export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) 
 
 interface RosterBatchStatusLabels {
   created: string;
-  entryYear: string;
+  entryYears: string;
   failed: string;
+  liveStatus: string;
   progress: string;
-  refresh: string;
   status: string;
   unchanged: string;
   uploadedAt: string;
@@ -48,6 +52,7 @@ export function RosterBatchStatusView({
 }) {
   const isComplete = batch.status === 'completed';
   const hasErrors = batch.status === 'completed_with_errors';
+  const isActive = batch.status === 'pending' || batch.status === 'processing';
   const StatusIcon = isComplete ? CheckCircle2Icon : hasErrors ? TriangleAlertIcon : Clock3Icon;
   const statusClass = isComplete
     ? 'bg-success-background text-success'
@@ -62,7 +67,7 @@ export function RosterBatchStatusView({
           <h3 className="font-semibold" id="roster-status-title">
             {labels.status}
           </h3>
-          <p className="text-sm">{labels.entryYear}</p>
+          <p className="text-sm">{labels.entryYears}</p>
         </div>
       </div>
 
@@ -89,13 +94,11 @@ export function RosterBatchStatusView({
 
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
         <p className="text-sm text-muted-foreground">{labels.uploadedAt}</p>
-        <a
-          className={buttonVariants({ size: 'sm', variant: 'outline' })}
-          href={`/?batchId=${batch.batchId}`}
-        >
-          <RefreshCwIcon aria-hidden="true" />
-          {labels.refresh}
-        </a>
+        {isActive ? (
+          <RosterBatchAutoRefresh label={labels.liveStatus} />
+        ) : (
+          <p className="text-sm text-muted-foreground">{labels.liveStatus}</p>
+        )}
       </div>
     </section>
   );

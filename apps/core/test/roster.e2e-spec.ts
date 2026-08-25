@@ -38,7 +38,7 @@ class E2eRosterRepository implements RosterRepository {
     this.batch = {
       batchId: BATCH_ID,
       createdCount: 0,
-      entryYear: input.entryYear,
+      entryYears: [...new Set(input.rows.map((row) => row.entryYear))].sort(),
       failedCount: 0,
       processedRowCount: 0,
       status: 'pending',
@@ -100,25 +100,27 @@ describe('Admin Roster Batch API (e2e)', () => {
     await app.close();
   });
 
-  it('accepts a conforming private CSV for one Entry Year and returns safe Batch status', async () => {
-    const csv = Buffer.from('student_id,first_name_th,last_name_th\n69000001,สมชาย,ใจดี', 'utf8');
+  it('accepts multiple cohorts in one private CSV and returns safe Batch status', async () => {
+    const csv = Buffer.from(
+      'student_id,first_name_th,last_name_th\n66000001,สมชาย,ใจดี\n70000001,สมหญิง,มั่นคง',
+      'utf8',
+    );
     const created = await request(app.getHttpServer())
       .post('/v1/internal/admin/roster-batches')
       .set('Authorization', `Bearer ${SESSION_TOKEN}`)
       .set('Content-Type', 'text/csv')
       .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
-      .set('x-entry-year', '2569')
       .send(csv)
       .expect(202);
 
     expect(created.body).toEqual({
       batchId: BATCH_ID,
       createdCount: 0,
-      entryYear: 2569,
+      entryYears: [2566, 2570],
       failedCount: 0,
       processedRowCount: 0,
       status: 'pending',
-      totalRowCount: 1,
+      totalRowCount: 2,
       unchangedCount: 0,
       uploadedAt: '2026-08-25T06:00:00.000Z',
     });
@@ -139,34 +141,26 @@ describe('Admin Roster Batch API (e2e)', () => {
       .post('/v1/internal/admin/roster-batches')
       .set('Authorization', `Bearer ${SESSION_TOKEN}`)
       .set('Content-Type', 'text/csv')
-      .set('x-entry-year', '2569')
       .send(csv)
       .expect(403);
     await request(app.getHttpServer())
       .post('/v1/internal/admin/roster-batches')
       .set('Content-Type', 'text/csv')
       .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
-      .set('x-entry-year', '2569')
       .send(csv)
       .expect(401);
     expect(repository.batch).toBeNull();
   });
 
   it.each([
-    ['student_id,first_name_th\n69000001,สมชาย', '2569', 'INVALID_ROSTER_HEADER'],
-    ['student_id,first_name_th,last_name_th\n68000001,สมชาย,ใจดี', '2569', 'ENTRY_YEAR_MISMATCH'],
-    [
-      'student_id,first_name_th,last_name_th\n69000001,สมชาย,ใจดี',
-      'not-a-year',
-      'INVALID_ENTRY_YEAR',
-    ],
-  ])('rejects invalid upload input before persistence', async (csv, entryYear, code) => {
+    ['student_id,first_name_th\n69000001,สมชาย', 'INVALID_ROSTER_HEADER'],
+    ['student_id,first_name_th,last_name_th\nnot-an-id,สมชาย,ใจดี', 'INVALID_STUDENT_ID'],
+  ])('rejects invalid upload input before persistence', async (csv, code) => {
     await request(app.getHttpServer())
       .post('/v1/internal/admin/roster-batches')
       .set('Authorization', `Bearer ${SESSION_TOKEN}`)
       .set('Content-Type', 'text/csv')
       .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
-      .set('x-entry-year', entryYear)
       .send(csv)
       .expect(422)
       .expect({ error: { code } });

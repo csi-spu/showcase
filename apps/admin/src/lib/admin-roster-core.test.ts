@@ -7,11 +7,11 @@ const config = {
 };
 
 describe('AdminRosterCoreClient', () => {
-  it('uploads private CSV bytes with Entry Year and opaque Admin session', async () => {
+  it('uploads private CSV bytes with an opaque Admin session', async () => {
     const response = {
       batchId: '20000000-0000-4000-8000-000000000001',
       createdCount: 0,
-      entryYear: 2569,
+      entryYears: [2566, 2570],
       failedCount: 0,
       processedRowCount: 0,
       status: 'pending',
@@ -23,13 +23,13 @@ describe('AdminRosterCoreClient', () => {
     const client = new AdminRosterCoreClient(config, fetchMock);
     const content = new Uint8Array([115, 116, 117, 100, 101, 110, 116]);
 
-    await expect(client.createBatch('opaque-session', 2569, content)).resolves.toEqual(response);
+    await expect(client.createBatch('opaque-session', content)).resolves.toEqual(response);
     const request = fetchMock.mock.calls[0]?.[1];
     expect(request?.body).toBe(content);
     const headers = new Headers(request?.headers);
     expect(headers.get('authorization')).toBe('Bearer opaque-session');
     expect(headers.get('content-type')).toBe('text/csv');
-    expect(headers.get('x-entry-year')).toBe('2569');
+    expect(headers.has('x-entry-year')).toBe(false);
   });
 
   it('validates the bounded safe Batch status response', async () => {
@@ -37,7 +37,7 @@ describe('AdminRosterCoreClient', () => {
       Response.json({
         batchId: '20000000-0000-4000-8000-000000000001',
         createdCount: 1,
-        entryYear: 2569,
+        entryYears: [2569],
         failedCount: 0,
         processedRowCount: 1,
         rawRows: ['private'],

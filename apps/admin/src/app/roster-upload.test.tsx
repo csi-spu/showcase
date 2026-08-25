@@ -18,7 +18,7 @@ function renderWithMessages(node: React.ReactNode) {
 describe('Admin Roster upload', () => {
   afterEach(cleanup);
 
-  it('submits selected Entry Year and CSV only through the supplied Server Action', async () => {
+  it('submits only the CSV through the supplied Server Action', async () => {
     const action = vi.fn<RosterUploadAction>().mockResolvedValue({ error: null });
     const user = userEvent.setup();
     renderWithMessages(<RosterUploadForm action={action} />);
@@ -28,16 +28,15 @@ describe('Admin Roster upload', () => {
       { type: 'text/csv' },
     );
 
-    await user.type(screen.getByLabelText('ปีแรกเข้า (พ.ศ.)'), '2569');
-    await user.upload(screen.getByLabelText('ไฟล์รายชื่อนักศึกษา'), file);
-    const form = screen.getByRole('button', { name: 'เริ่มนำเข้ารายชื่อ' }).closest('form');
+    await user.upload(screen.getByLabelText('เลือกไฟล์รายชื่อนักศึกษา (.csv)'), file);
+    const form = screen.getByRole('button', { name: 'อัปโหลดและสร้างบัญชี' }).closest('form');
     if (form === null) throw new Error('Expected upload form');
     form.noValidate = true;
-    await user.click(screen.getByRole('button', { name: 'เริ่มนำเข้ารายชื่อ' }));
+    await user.click(screen.getByRole('button', { name: 'อัปโหลดและสร้างบัญชี' }));
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
 
     const formData = action.mock.calls[0]?.[1];
-    expect(formData?.get('entryYear')).toBe('2569');
+    expect(formData?.has('entryYear')).toBe(false);
     const submittedFile = formData?.get('rosterFile');
     expect(submittedFile).toBeInstanceOf(File);
   });
@@ -48,7 +47,7 @@ describe('Admin Roster upload', () => {
         batch={{
           batchId: '20000000-0000-4000-8000-000000000001',
           createdCount: 7,
-          entryYear: 2569,
+          entryYears: [2566, 2570],
           failedCount: 0,
           processedRowCount: 10,
           status: 'completed',
@@ -58,10 +57,10 @@ describe('Admin Roster upload', () => {
         }}
         labels={{
           created: 'สร้างใหม่',
-          entryYear: 'ปีแรกเข้า 2569',
+          entryYears: 'ปีแรกเข้าที่พบ 2566, 2570',
           failed: 'ไม่สำเร็จ',
           progress: 'ความคืบหน้าการนำเข้า',
-          refresh: 'อัปเดตสถานะ',
+          liveStatus: 'ระบบอัปเดตสถานะให้อัตโนมัติ',
           status: 'นำเข้าสำเร็จ',
           unchanged: 'ข้อมูลเดิม',
           uploadedAt: 'อัปโหลดเมื่อ 25 ส.ค. 2569 13:00',
@@ -79,16 +78,15 @@ describe('Admin Roster upload', () => {
     expect(screen.getByText('สร้างใหม่ 7 รายการ', { selector: '.sr-only' })).toBeTruthy();
     expect(screen.getByText('ข้อมูลเดิม 3 รายการ', { selector: '.sr-only' })).toBeTruthy();
     expect(screen.queryByText('69000001')).toBeNull();
-    expect(screen.getByRole('link', { name: 'อัปเดตสถานะ' }).getAttribute('href')).toBe(
-      '/?batchId=20000000-0000-4000-8000-000000000001',
-    );
+    expect(screen.getByText('ปีแรกเข้าที่พบ 2566, 2570')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'อัปเดตสถานะ' })).toBeNull();
   });
 
   it('moves focus to an actionable upload error summary', async () => {
     const action = vi.fn<RosterUploadAction>().mockResolvedValue({ error: 'fileInvalid' });
     const user = userEvent.setup();
     renderWithMessages(<RosterUploadForm action={action} />);
-    const button = screen.getByRole('button', { name: 'เริ่มนำเข้ารายชื่อ' });
+    const button = screen.getByRole('button', { name: 'อัปโหลดและสร้างบัญชี' });
     const form = button.closest('form');
     if (form === null) throw new Error('Expected upload form');
     form.noValidate = true;
@@ -97,6 +95,6 @@ describe('Admin Roster upload', () => {
 
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(document.activeElement).toBe(alert));
-    expect(alert.textContent).toContain('ไฟล์ไม่ตรงรูปแบบที่กำหนด');
+    expect(alert.textContent).toContain('อ่านไฟล์ไม่ได้');
   });
 });

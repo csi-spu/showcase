@@ -115,6 +115,49 @@ describe('PostgresRosterRepository integration', () => {
     expect(outbox).toEqual([{ count: 2 }]);
   });
 
+  it('persists and reports distinct Entry Years for a multi-cohort Batch', async () => {
+    const batch = await repository.createBatch({
+      ...batchInput(),
+      rows: [
+        { ...batchInput().rows[0]!, entryYear: 2566, studentId: '66000001' },
+        {
+          ...batchInput().rows[0]!,
+          entryYear: 2570,
+          providerUserId: '70000000-0000-5000-8000-000000000001',
+          rowNumber: 3,
+          studentId: '70000001',
+          studentIdHash: 'b'.repeat(64),
+          syntheticIdentity: `${'b'.repeat(64)}@auth.invalid`,
+        },
+      ],
+    });
+
+    await expect(repository.getBatch(batch.batchId)).resolves.toMatchObject({
+      entryYears: [2566, 2570],
+      totalRowCount: 2,
+    });
+    await expect(
+      repository.claimRows({
+        leaseUntil: new Date(NOW.getTime() + 60_000),
+        limit: 100,
+        now: NOW,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ entryYear: 2566, studentId: '66000001' }),
+      expect.objectContaining({ entryYear: 2570, studentId: '70000001' }),
+    ]);
+  });
+
+  it('rejects an unsorted cohort summary at the database boundary', async () => {
+    await expect(
+      database.sql`
+        insert into private.roster_batches (
+          uploader_account_id, entry_years, total_row_count, uploaded_at
+        ) values (${adminAccountId}, ${[2570, 2566]}, 1, ${NOW})
+      `,
+    ).rejects.toThrow();
+  });
+
   it('retains safe Batch counts while deleting private row content after 30 days', async () => {
     const batch = await repository.createBatch(batchInput());
     const claim = await repository.claimRows({
@@ -135,6 +178,7 @@ describe('PostgresRosterRepository integration', () => {
       repository.deleteExpiredRowContent(new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000)),
     ).resolves.toBe(1);
     await expect(repository.getBatch(batch.batchId)).resolves.toMatchObject({
+      entryYears: [2569],
       failedCount: 1,
       status: 'completed_with_errors',
       totalRowCount: 1,
@@ -143,10 +187,10 @@ describe('PostgresRosterRepository integration', () => {
 
   function batchInput(): CreateRosterBatchInput {
     return {
-      entryYear: 2569,
       now: NOW,
       rows: [
         {
+          entryYear: 2569,
           firstNameTh: 'สมชาย',
           lastNameTh: 'ใจดี',
           providerUserId: STUDENT_PROVIDER_USER_ID,

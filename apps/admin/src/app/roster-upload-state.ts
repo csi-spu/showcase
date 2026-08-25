@@ -1,11 +1,5 @@
 export type RosterUploadErrorMessage =
-  | 'entryYear'
-  | 'fileInvalid'
-  | 'fileRequired'
-  | 'fileTooLarge'
-  | 'fileType'
-  | 'sessionExpired'
-  | 'unavailable';
+  'fileInvalid' | 'fileRequired' | 'fileTooLarge' | 'fileType' | 'sessionExpired' | 'unavailable';
 
 export interface RosterUploadActionState {
   error: RosterUploadErrorMessage | null;

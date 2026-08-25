@@ -21,7 +21,6 @@ export async function uploadRosterAction(
   try {
     batch = await coreClient().createBatch(
       sessionToken,
-      input.entryYear,
       new Uint8Array(await input.file.arrayBuffer()),
     );
   } catch (error: unknown) {
@@ -40,7 +39,6 @@ function mapRosterError(error: unknown): RosterUploadErrorMessage {
   if (
     [
       'DUPLICATE_STUDENT_ID',
-      'ENTRY_YEAR_MISMATCH',
       'INVALID_FIRST_NAME',
       'INVALID_LAST_NAME',
       'INVALID_ROSTER_CSV',
@@ -52,7 +50,6 @@ function mapRosterError(error: unknown): RosterUploadErrorMessage {
   ) {
     return 'fileInvalid';
   }
-  if (error.code === 'INVALID_ENTRY_YEAR') return 'entryYear';
   return 'unavailable';
 }
 

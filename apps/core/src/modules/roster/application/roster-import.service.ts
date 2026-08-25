@@ -25,18 +25,14 @@ export class RosterImportService {
     @Inject(AUTH_IDENTITY_PROTECTOR) private readonly identityProtector: IdentityProtector,
   ) {}
 
-  async createBatch(input: {
-    actorAccountId: string;
-    content: Uint8Array;
-    entryYear: number;
-  }): Promise<RosterBatch> {
+  async createBatch(input: { actorAccountId: string; content: Uint8Array }): Promise<RosterBatch> {
     if (input.content.byteLength > MAX_ROSTER_FILE_BYTES) {
       throw new RosterImportError('ROSTER_FILE_TOO_LARGE', 413);
     }
 
     let rows;
     try {
-      rows = parseRosterCsv(input.content, input.entryYear);
+      rows = parseRosterCsv(input.content);
     } catch (error: unknown) {
       if (error instanceof RosterCsvError) {
         throw new RosterImportError(error.code, 422);
@@ -45,7 +41,6 @@ export class RosterImportService {
     }
 
     return this.repository.createBatch({
-      entryYear: input.entryYear,
       now: this.clock.now(),
       rows: rows.map((row) => {
         const studentIdHash = this.identityProtector.hashStudentId(row.studentId);

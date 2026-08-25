@@ -9,7 +9,7 @@ export type RosterRowErrorCode =
 export interface RosterBatch {
   batchId: string;
   createdCount: number;
-  entryYear: number;
+  entryYears: number[];
   failedCount: number;
   processedRowCount: number;
   status: RosterBatchStatus;
@@ -19,6 +19,7 @@ export interface RosterBatch {
 }
 
 export interface PreparedRosterRow {
+  entryYear: number;
   firstNameTh: string;
   lastNameTh: string;
   providerUserId: string;
@@ -29,7 +30,6 @@ export interface PreparedRosterRow {
 }
 
 export interface CreateRosterBatchInput {
-  entryYear: number;
   now: Date;
   rows: PreparedRosterRow[];
   uploaderAccountId: string;
@@ -38,7 +38,6 @@ export interface CreateRosterBatchInput {
 export interface ClaimedRosterRow extends PreparedRosterRow {
   attemptCount: number;
   batchId: string;
-  entryYear: number;
   rowId: string;
 }
 

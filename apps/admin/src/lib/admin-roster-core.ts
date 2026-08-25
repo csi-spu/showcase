@@ -6,7 +6,7 @@ const rosterBatchSchema = z
   .object({
     batchId: z.uuid(),
     createdCount: z.number().int().nonnegative(),
-    entryYear: z.number().int().min(2400).max(2700),
+    entryYears: z.array(z.number().int().min(2400).max(2700)).min(1),
     failedCount: z.number().int().nonnegative(),
     processedRowCount: z.number().int().nonnegative(),
     status: z.enum(['pending', 'processing', 'completed', 'completed_with_errors']),
@@ -34,13 +34,9 @@ export class AdminRosterCoreClient {
     });
   }
 
-  createBatch(
-    sessionToken: string,
-    entryYear: number,
-    content: Uint8Array<ArrayBuffer>,
-  ): Promise<AdminRosterBatch> {
+  createBatch(sessionToken: string, content: Uint8Array<ArrayBuffer>): Promise<AdminRosterBatch> {
     return this.client.request({
-      headers: { 'content-type': 'text/csv', 'x-entry-year': entryYear.toString() },
+      headers: { 'content-type': 'text/csv' },
       method: 'POST',
       path: '/v1/internal/admin/roster-batches',
       rawBody: content,

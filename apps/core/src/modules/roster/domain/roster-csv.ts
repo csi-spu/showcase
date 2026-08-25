@@ -7,8 +7,6 @@ const ROSTER_HEADER = ['student_id', 'first_name_th', 'last_name_th'] as const;
 
 export type RosterCsvErrorCode =
   | 'DUPLICATE_STUDENT_ID'
-  | 'ENTRY_YEAR_MISMATCH'
-  | 'INVALID_ENTRY_YEAR'
   | 'INVALID_FIRST_NAME'
   | 'INVALID_LAST_NAME'
   | 'INVALID_ROSTER_CSV'
@@ -25,17 +23,14 @@ export class RosterCsvError extends Error {
 }
 
 export interface RosterRow {
+  entryYear: number;
   firstNameTh: string;
   lastNameTh: string;
   rowNumber: number;
   studentId: string;
 }
 
-export function parseRosterCsv(content: Uint8Array, entryYear: number): RosterRow[] {
-  if (!Number.isInteger(entryYear) || entryYear < 2400 || entryYear > 2700) {
-    throw new RosterCsvError('INVALID_ENTRY_YEAR');
-  }
-
+export function parseRosterCsv(content: Uint8Array): RosterRow[] {
   let source: string;
   try {
     source = new TextDecoder('utf-8', { fatal: true }).decode(content);
@@ -71,7 +66,7 @@ export function parseRosterCsv(content: Uint8Array, entryYear: number): RosterRo
     throw new RosterCsvError('ROSTER_ROW_LIMIT_EXCEEDED');
   }
 
-  const rows = dataRows.map((record, index) => parseRow(record, index + 2, entryYear));
+  const rows = dataRows.map((record, index) => parseRow(record, index + 2));
   const studentIdCounts = new Map<string, number>();
   for (const row of rows) {
     studentIdCounts.set(row.studentId, (studentIdCounts.get(row.studentId) ?? 0) + 1);
@@ -82,7 +77,7 @@ export function parseRosterCsv(content: Uint8Array, entryYear: number): RosterRo
   return rows;
 }
 
-function parseRow(record: string[], rowNumber: number, entryYear: number): RosterRow {
+function parseRow(record: string[], rowNumber: number): RosterRow {
   if (record.length !== ROSTER_HEADER.length) {
     throw new RosterCsvError('INVALID_ROSTER_CSV');
   }
@@ -90,9 +85,7 @@ function parseRow(record: string[], rowNumber: number, entryYear: number): Roste
   if (!/^\d{8}$/.test(studentId)) {
     throw new RosterCsvError('INVALID_STUDENT_ID');
   }
-  if (Number(studentId.slice(0, 2)) !== entryYear % 100) {
-    throw new RosterCsvError('ENTRY_YEAR_MISMATCH');
-  }
+  const entryYear = 2500 + Number(studentId.slice(0, 2));
 
   const firstNameTh = normalizeName(rawFirstName);
   if (firstNameTh.length === 0) {
@@ -102,7 +95,7 @@ function parseRow(record: string[], rowNumber: number, entryYear: number): Roste
   if (lastNameTh.length === 0) {
     throw new RosterCsvError('INVALID_LAST_NAME');
   }
-  return { firstNameTh, lastNameTh, rowNumber, studentId };
+  return { entryYear, firstNameTh, lastNameTh, rowNumber, studentId };
 }
 
 function normalizeName(value: string): string {

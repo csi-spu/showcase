@@ -49,14 +49,13 @@ class MemoryRosterRepository implements RosterRepository {
         ...row,
         attemptCount: 0,
         batchId: 'batch-1',
-        entryYear: input.entryYear,
         rowId: `row-${index + 1}`,
       })),
     );
     this.batch = {
       batchId: 'batch-1',
       createdCount: 0,
-      entryYear: input.entryYear,
+      entryYears: [...new Set(input.rows.map((row) => row.entryYear))].sort(),
       failedCount: 0,
       processedRowCount: 0,
       status: 'pending',
@@ -135,16 +134,19 @@ describe('RosterImportService and RosterWorker', () => {
     const service = new RosterImportService(repository, clock, identityProtector);
     const worker = new RosterWorker(repository, provider, clock, new ConfigService());
     const content = Buffer.from(
-      'student_id,first_name_th,last_name_th\n69000001,สมชาย,ใจดี\n69000002,สมหญิง,มั่นคง',
+      'student_id,first_name_th,last_name_th\n66000001,สมชาย,ใจดี\n70000002,สมหญิง,มั่นคง',
       'utf8',
     );
 
     const pending = await service.createBatch({
       actorAccountId: ADMIN_ACCOUNT_ID,
       content,
-      entryYear: 2569,
     });
-    expect(pending).toMatchObject({ status: 'pending', totalRowCount: 2 });
+    expect(pending).toMatchObject({
+      entryYears: [2566, 2570],
+      status: 'pending',
+      totalRowCount: 2,
+    });
 
     await worker.processNextChunk();
 
@@ -171,7 +173,6 @@ describe('RosterImportService and RosterWorker', () => {
     await service.createBatch({
       actorAccountId: ADMIN_ACCOUNT_ID,
       content: Buffer.from('student_id,first_name_th,last_name_th\n69000001,สมชาย,ใจดี', 'utf8'),
-      entryYear: 2569,
     });
     await worker.processNextChunk();
 
@@ -194,7 +195,6 @@ describe('RosterImportService and RosterWorker', () => {
     await service.createBatch({
       actorAccountId: ADMIN_ACCOUNT_ID,
       content: Buffer.from('student_id,first_name_th,last_name_th\n69000001,สมชาย,ใจดี', 'utf8'),
-      entryYear: 2569,
     });
 
     await worker.processNextChunk();
@@ -217,7 +217,6 @@ describe('RosterImportService and RosterWorker', () => {
       service.createBatch({
         actorAccountId: ADMIN_ACCOUNT_ID,
         content: new Uint8Array(5 * 1024 * 1024 + 1),
-        entryYear: 2569,
       }),
     ).rejects.toEqual(new RosterImportError('ROSTER_FILE_TOO_LARGE', 413));
     expect(repository.batch).toBeNull();

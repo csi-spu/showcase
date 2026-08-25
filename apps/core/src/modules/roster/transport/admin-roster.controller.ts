@@ -34,7 +34,6 @@ export class AdminRosterController {
   async createBatch(
     @Req() request: Request,
     @Headers('authorization') authorization: string | undefined,
-    @Headers('x-entry-year') entryYearHeader: string | undefined,
   ): Promise<RosterBatch> {
     const actor = await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
     const content = request.body as unknown;
@@ -44,7 +43,6 @@ export class AdminRosterController {
     return this.roster.createBatch({
       actorAccountId: actor.accountId,
       content,
-      entryYear: this.parseEntryYear(entryYearHeader),
     });
   }
 
@@ -56,13 +54,6 @@ export class AdminRosterController {
   ): Promise<RosterBatch> {
     await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
     return this.roster.getBatch(batchId);
-  }
-
-  private parseEntryYear(value: string | undefined): number {
-    if (value === undefined || !/^\d{4}$/.test(value)) {
-      throw new RosterImportError('INVALID_ENTRY_YEAR', 422);
-    }
-    return Number(value);
   }
 
   private requireSessionToken(authorization: string | undefined): string {

@@ -13,7 +13,7 @@ import type {
 
 interface RosterBatchRow {
   created_count: number;
-  entry_year: number;
+  entry_years: number[];
   failed_count: number;
   id: string;
   processed_row_count: number;
@@ -42,12 +42,15 @@ export class PostgresRosterRepository implements RosterRepository {
   constructor(private readonly database: DatabaseClient) {}
 
   createBatch(input: CreateRosterBatchInput): Promise<RosterBatch> {
+    const entryYears = [...new Set(input.rows.map((row) => row.entryYear))].sort(
+      (left, right) => left - right,
+    );
     return this.database.sql.begin(async (transaction) => {
       const batches = await transaction<RosterBatchRow[]>`
         insert into private.roster_batches (
-          uploader_account_id, entry_year, total_row_count, uploaded_at
+          uploader_account_id, entry_years, total_row_count, uploaded_at
         ) values (
-          ${input.uploaderAccountId}, ${input.entryYear}, ${input.rows.length}, ${input.now}
+          ${input.uploaderAccountId}, ${entryYears}, ${input.rows.length}, ${input.now}
         )
         returning *
       `;
@@ -58,6 +61,7 @@ export class PostgresRosterRepository implements RosterRepository {
         const records = input.rows.slice(index, index + 500).map((row) => ({
           batch_id: batch.id,
           created_at: input.now,
+          entry_year: row.entryYear,
           first_name_th: row.firstNameTh,
           last_name_th: row.lastNameTh,
           next_attempt_at: input.now,
@@ -73,6 +77,7 @@ export class PostgresRosterRepository implements RosterRepository {
             records,
             'batch_id',
             'created_at',
+            'entry_year',
             'first_name_th',
             'last_name_th',
             'next_attempt_at',
@@ -102,7 +107,7 @@ export class PostgresRosterRepository implements RosterRepository {
         select
           roster_row.id,
           roster_row.batch_id,
-          roster_batch.entry_year,
+          roster_row.entry_year,
           roster_row.row_number,
           roster_row.student_id,
           roster_row.student_id_hash,
@@ -112,7 +117,6 @@ export class PostgresRosterRepository implements RosterRepository {
           roster_row.last_name_th,
           roster_row.attempt_count
         from private.roster_rows as roster_row
-        join private.roster_batches as roster_batch on roster_batch.id = roster_row.batch_id
         where (
           roster_row.status = 'pending' and roster_row.next_attempt_at <= ${input.now}
         ) or (
@@ -289,7 +293,8 @@ export class PostgresRosterRepository implements RosterRepository {
 
   async getBatch(batchId: string): Promise<RosterBatch | null> {
     const rows = await this.database.sql<RosterBatchRow[]>`
-      select * from private.roster_batches where id = ${batchId} limit 1
+      select * from private.roster_batches where id = ${batchId}
+      limit 1
     `;
     return rows[0] === undefined ? null : this.mapBatch(rows[0]);
   }
@@ -425,7 +430,7 @@ export class PostgresRosterRepository implements RosterRepository {
     return {
       batchId: row.id,
       createdCount: row.created_count,
-      entryYear: row.entry_year,
+      entryYears: row.entry_years,
       failedCount: row.failed_count,
       processedRowCount: row.processed_row_count,
       status: row.status,

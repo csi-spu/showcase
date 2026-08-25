@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
+import { Field, FieldDescription, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import type { RosterUploadAction } from './roster-upload-state';
@@ -22,27 +22,11 @@ export function RosterUploadForm({ action }: { action: RosterUploadAction }) {
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label={t('form.groupLabel')}>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="entry-year">{t('form.entryYear')}</FieldLabel>
-            <Input
-              id="entry-year"
-              inputMode="numeric"
-              max={2700}
-              min={2400}
-              name="entryYear"
-              placeholder="2569"
-              required
-              type="number"
-            />
-            <FieldDescription>{t('form.entryYearHelp')}</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="roster-file">{t('form.file')}</FieldLabel>
-            <Input accept=".csv,text/csv" id="roster-file" name="rosterFile" required type="file" />
-            <FieldDescription>{t('form.fileHelp')}</FieldDescription>
-          </Field>
-        </FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="roster-file">{t('form.file')}</FieldLabel>
+          <Input accept=".csv,text/csv" id="roster-file" name="rosterFile" required type="file" />
+          <FieldDescription>{t('form.fileHelp')}</FieldDescription>
+        </Field>
       </FieldSet>
       {state.error === null ? null : (
         <Alert ref={errorRef} tabIndex={-1} variant="destructive">
