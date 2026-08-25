@@ -95,9 +95,21 @@ export default async function Home({ searchParams }: HomeProps) {
                   <AlertTitle>{heading}</AlertTitle>
                   <AlertDescription>{description}</AlertDescription>
                 </Alert>
-                <Link className={buttonVariants()} href="/profile">
-                  {t('active.profile')}
-                </Link>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {state.session.canUseStudentCapabilities ? (
+                    <Link className={buttonVariants()} href="/works/new">
+                      {t('active.createWork')}
+                    </Link>
+                  ) : null}
+                  <Link
+                    className={buttonVariants({
+                      variant: state.session.canUseStudentCapabilities ? 'outline' : 'default',
+                    })}
+                    href="/profile"
+                  >
+                    {t('active.profile')}
+                  </Link>
+                </div>
               </div>
             ) : null}
             {state.kind === 'expired' ? (
