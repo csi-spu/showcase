@@ -17,10 +17,10 @@ describe('cn', () => {
 describe('Button', () => {
   it.each([
     ['default', 'bg-primary'],
-    ['outline', 'border-border'],
+    ['outline', 'border-input'],
     ['secondary', 'bg-secondary'],
-    ['ghost', 'hover:bg-muted'],
-    ['destructive', 'bg-destructive/10'],
+    ['ghost', 'hover:bg-accent'],
+    ['destructive', 'bg-destructive-background'],
     ['link', 'text-primary'],
   ] as const)('renders the %s variant and selected size', (variant, expectedClass) => {
     render(
@@ -33,7 +33,8 @@ describe('Button', () => {
 
     expect(button.getAttribute('data-slot')).toBe('button');
     expect(button.classList.contains(expectedClass)).toBe(true);
-    expect(button.classList.contains('h-9')).toBe(true);
+    expect(button.classList.contains('h-11')).toBe(true);
+    expect(button.classList.contains('rounded-control')).toBe(true);
   });
 
   it('preserves class-name override semantics', () => {
@@ -42,7 +43,7 @@ describe('Button', () => {
     const button = screen.getByRole('button', { name: 'เผยแพร่' });
 
     expect(button.classList.contains('h-12')).toBe(true);
-    expect(button.classList.contains('h-8')).toBe(false);
+    expect(button.classList.contains('h-11')).toBe(false);
   });
 
   it('supports ref and keyboard focus activation', async () => {
@@ -61,7 +62,8 @@ describe('Button', () => {
 
     expect(ref.current).toBe(button);
     expect(document.activeElement).toBe(button);
-    expect(button.classList.contains('focus-visible:ring-3')).toBe(true);
+    expect(button.classList.contains('focus-visible:ring-2')).toBe(true);
+    expect(button.classList.contains('focus-visible:ring-offset-2')).toBe(true);
 
     await user.keyboard('{Enter}');
 

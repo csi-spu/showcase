@@ -4,9 +4,9 @@
 
 ```mermaid
 flowchart LR
-  Visitor[Visitor app] --> Core[NestJS Core]
-  Admin[Admin app] --> Core
-  Student[Student app] --> Core
+  Visitor[Visitor Next.js] --> Core[NestJS Core]
+  Admin[Admin Next.js BFF] --> Core
+  Student[Student Next.js BFF] --> Core
   Core --> Auth[Supabase Auth]
   Core --> DB[Supabase Postgres]
   Core --> R2[Cloudflare R2]
@@ -14,26 +14,27 @@ flowchart LR
   Visitor -. cacheable media GET .-> R2
 ```
 
-Core is both domain API and authentication BFF. Frontends may render and proxy transport concerns, but they do not own authorization or query Supabase tables. The only direct browser-to-provider traffic is an R2 operation authorized by a short-lived, operation-specific presigned URL from Core.
+Core is the authoritative domain API and authentication service. Authenticated Next.js frontends are browser-facing BFFs: Server Components perform reads, Server Actions perform mutations, and host-only cookies never leave their frontend hostname. Frontends do not own domain authorization or query Supabase tables. The only direct browser-to-provider traffic is an R2 operation authorized by a short-lived, operation-specific presigned URL from Core.
 
 ## Deployable surfaces
 
 Each `apps/*` workspace is independently deployable, health-checked, and horizontally scalable. Services do not rely on local disk or in-memory session affinity. Coolify routes four subdomains to four containers.
 
-| Surface | Public exposure                           | Stateful dependency | Health                                |
-| ------- | ----------------------------------------- | ------------------- | ------------------------------------- |
-| Visitor | internet                                  | Core                | `/health`                             |
-| Admin   | internet, authentication required         | Core                | `/health`                             |
-| Student | internet, authentication required         | Core                | `/health`                             |
-| Core    | internet through controlled origin policy | Supabase, R2        | `/v1/health/live`, `/v1/health/ready` |
+| Surface | Public exposure                                 | Stateful dependency | Health                                |
+| ------- | ----------------------------------------------- | ------------------- | ------------------------------------- |
+| Visitor | internet                                        | Core                | `/health`                             |
+| Admin   | internet, authentication required               | Core                | `/health`                             |
+| Student | internet, authentication required               | Core                | `/health`                             |
+| Core    | internal endpoints plus controlled public reads | Supabase, R2        | `/v1/health/live`, `/v1/health/ready` |
 
 ## Authentication flow
 
-1. Student submits Student ID and password to Core over TLS.
-2. Core maps Student ID to a private synthetic Supabase Auth identity.
-3. Core establishes Secure, HttpOnly session cookies with an explicit subdomain policy.
-4. Guards resolve Account and role from server-owned session state. Request bodies never choose actor identity.
-5. A newly provisioned Account remains restricted to password change until the forced-change requirement is cleared.
+1. Student submits Student ID and password to a Student Server Action over TLS.
+2. The Student BFF validates input and calls a BFF-authenticated internal Core endpoint.
+3. Core maps Student ID to a private synthetic Supabase Auth identity and creates the authoritative session.
+4. The Student BFF stores only the opaque session token in a Secure, HttpOnly, host-only cookie on the Student hostname.
+5. Subsequent Server Components and Server Actions forward that token to Core; Core guards resolve Account and role from current server-owned state. Request bodies never choose actor identity.
+6. A newly provisioned Account remains restricted to password change until the forced-change requirement is cleared.
 
 Admin uses the same Core/Supabase boundary. Public profile identifiers are random and unrelated to Student ID or Supabase identity IDs.
 
