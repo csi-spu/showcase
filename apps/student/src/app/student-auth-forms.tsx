@@ -16,7 +16,7 @@ export function LoginForm({ action }: { action: AuthAction }) {
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label="ข้อมูลเข้าสู่ระบบ">
         <FieldGroup>
           <Field>
@@ -55,7 +55,7 @@ export function ChangePasswordForm({ action }: { action: AuthAction }) {
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label="ตั้งรหัสผ่านใหม่">
         <FieldGroup>
           <PasswordField
@@ -90,7 +90,7 @@ export function LogoutForm({ action }: { action: AuthAction }) {
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
 
   return (
-    <form action={formAction} className="w-full space-y-3">
+    <form action={formAction} className="flex w-full flex-col gap-3">
       <ActionError error={state.error} />
       <SubmitButton label={t('active.logout')} pendingLabel={t('submitting')} variant="outline" />
     </form>

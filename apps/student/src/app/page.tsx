@@ -49,29 +49,32 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   return (
-    <main className="grid min-h-svh bg-muted/30 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(28rem,1.2fr)]">
-      <aside className="flex min-h-28 flex-col justify-between bg-primary p-6 text-primary-foreground lg:min-h-svh lg:p-12">
-        <p className="text-xs font-semibold tracking-[0.18em]">STUDENT SHOWCASE</p>
-        <p className="hidden max-w-64 text-sm text-primary-foreground/70 lg:block">
+    <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <aside className="flex min-h-28 flex-col justify-between border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-8">
+        <div className="flex flex-col gap-3">
+          <span aria-hidden="true" className="h-1 w-12 bg-primary" />
+          <p className="text-sm font-semibold tracking-[0.18em]">STUDENT SHOWCASE</p>
+        </div>
+        <p className="hidden max-w-44 text-sm text-muted-foreground lg:block">
           CS &amp; SOFTWARE DEVELOPMENT
         </p>
       </aside>
 
       <section className="flex items-center justify-center p-4 sm:p-8 lg:p-12">
-        <Card className="w-full max-w-xl">
+        <Card className="w-full max-w-[45rem]">
           <CardHeader className="gap-3">
-            <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground">
-              {t('kicker')}
-            </p>
+            <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
             <CardTitle>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{heading}</h1>
+              <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
+                {heading}
+              </h1>
             </CardTitle>
             <CardDescription>{description}</CardDescription>
           </CardHeader>
 
           <CardContent>
             {state.kind === 'login' ? (
-              <div className="space-y-5">
+              <div className="flex flex-col gap-5">
                 {state.isServiceUnavailable ? (
                   <Alert variant="destructive">
                     <AlertTitle>{t('errors.unavailable')}</AlertTitle>
@@ -104,7 +107,7 @@ export default async function Home({ searchParams }: HomeProps) {
             {state.kind === 'active' || state.kind === 'password_change_required' ? (
               <LogoutForm action={logoutAction} />
             ) : (
-              <p className="text-xs text-muted-foreground">{t('login.privacy')}</p>
+              <p className="text-sm text-muted-foreground">{t('login.privacy')}</p>
             )}
           </CardFooter>
         </Card>
