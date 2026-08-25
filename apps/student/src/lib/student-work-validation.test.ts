@@ -81,6 +81,22 @@ describe('validateWorkForm', () => {
       success: false,
     });
   });
+
+  it('ignores React Server Action transport fields without weakening domain field checks', () => {
+    const form = validForm();
+    form.set('$ACTION_ID_create-work', '');
+
+    expect(validateWorkForm(form, { currentAcademicYear: 2569, entryYear: 2566 })).toMatchObject({
+      data: { title: 'ระบบแนะนำผลงาน' },
+      success: true,
+    });
+
+    form.append('title', 'ข้อมูลแทรก');
+    expect(validateWorkForm(form, { currentAcademicYear: 2569, entryYear: 2566 })).toEqual({
+      fieldErrors: ['form'],
+      success: false,
+    });
+  });
 });
 
 function validForm(): FormData {
