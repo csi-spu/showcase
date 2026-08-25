@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { RosterModule } from './modules/roster/roster.module';
 import { AccountControlsModule } from './modules/account-controls/account-controls.module';
+import { ProfilesModule } from './modules/profiles/profiles.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AccountControlsModule } from './modules/account-controls/account-contro
     AuthModule,
     AccountControlsModule,
     HealthModule,
+    ProfilesModule,
     RosterModule,
   ],
 })

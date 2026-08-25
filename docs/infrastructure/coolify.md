@@ -33,7 +33,7 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 - Keep container filesystem ephemeral. Persist metadata in Supabase and objects in R2.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL` and the same environment's `STUDENT_BFF_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `PUBLIC_MEDIA_ORIGIN`, `R2_ACCESS_KEY_ID`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_SECRET_ACCESS_KEY`, `R2_TIMEOUT_MS`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and the same environment's `STUDENT_BFF_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
 
 The reverse proxies in front of Admin and Student must overwrite, not append from untrusted clients, the client address header supplied to each application. Each application forwards the normalized address to Core only after authenticating with its distinct BFF secret so login rate limiting remains source-aware and session audiences remain isolated.
 

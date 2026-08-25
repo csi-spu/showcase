@@ -369,4 +369,29 @@ describe('StudentAuthService session lifecycle', () => {
       new AuthError('FORBIDDEN', 403),
     );
   });
+
+  it('allows an Alumnus to read and manage Profile Consent without content edit access', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = {
+      ...createStoredSession(),
+      credentialState: 'set',
+      currentAcademicYear: 2577,
+    };
+    const { service } = createService(repository);
+
+    await expect(service.authorizeProfileAccess('current-session-token')).resolves.toEqual({
+      accountId: repository.account?.accountId,
+      canEditProfile: false,
+    });
+  });
+
+  it('keeps Profile Consent unavailable until required password change completes', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = createStoredSession();
+    const { service } = createService(repository);
+
+    await expect(service.authorizeProfileAccess('current-session-token')).rejects.toEqual(
+      new AuthError('FORBIDDEN', 403),
+    );
+  });
 });

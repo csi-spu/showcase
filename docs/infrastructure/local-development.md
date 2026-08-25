@@ -4,7 +4,7 @@
 
 Application processes run on the host for fast reload. Supabase CLI runs local Postgres, Auth, and Studio in Docker. Realtime, Supabase Storage, Edge Runtime, Analytics, and public signup are disabled because Phase 1 does not use them.
 
-R2 has no committed production credential or bucket fallback. Media adapter unit tests use fakes; provider integration tests use a dedicated non-production R2 bucket with short-lived, least-privilege credentials. Local development without media features needs no R2 access.
+R2 has no committed production credential or bucket fallback. Media adapter unit tests use fakes; provider integration tests use a dedicated non-production R2 bucket with short-lived, least-privilege credentials. Local development without profile-photo uploads needs no R2 access; Core reports that upload capability as unavailable.
 
 ## Ports
 
@@ -46,4 +46,4 @@ pnpm db:stop
 
 ## Integration credentials
 
-When R2 integration work starts, create a separate development bucket and API token restricted to that bucket. Put its endpoint, account ID, access key, secret, bucket, and public media origin in the Core local env. Do not reuse staging or production credentials and do not expose secret values through a `NEXT_PUBLIC_*` variable.
+For profile-photo upload testing, create a separate development bucket and API token restricted to object read, write, and delete operations in that bucket. Put its S3 endpoint, access key, secret, bucket, and controlled public media origin in the Core local env. Configure bucket CORS to allow `PUT` from the exact Student development origin with the `Content-Type` header. Do not reuse staging or production credentials and do not expose secret values through a `NEXT_PUBLIC_*` variable.
