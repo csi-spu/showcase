@@ -12,6 +12,9 @@ COPY apps/admin/package.json apps/admin/package.json
 COPY apps/student/package.json apps/student/package.json
 COPY apps/visitor/package.json apps/visitor/package.json
 COPY apps/core/package.json apps/core/package.json
+COPY packages/core-client/package.json packages/core-client/package.json
+COPY packages/eslint-config/package.json packages/eslint-config/package.json
+COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder

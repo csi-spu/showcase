@@ -16,7 +16,7 @@ export class AuthExceptionFilter implements ExceptionFilter {
     if (!(error instanceof AuthError)) {
       this.logger.error({
         errorCode: 'AUTH_INTERNAL_ERROR',
-        operation: 'student_auth_request',
+        operation: 'authentication_request',
       });
       response.status(503).json({ error: { code: 'AUTH_SERVICE_UNAVAILABLE' } });
       return;

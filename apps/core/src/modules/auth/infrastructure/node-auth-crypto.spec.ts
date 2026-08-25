@@ -10,6 +10,18 @@ describe('NodeIdentityProtector', () => {
     expect(protector.toSyntheticIdentity(studentId)).toMatch(/^[a-f0-9]{64}@auth\.invalid$/);
     expect(protector.toSyntheticIdentity(studentId)).not.toContain(studentId);
   });
+
+  it('domain-separates private Admin login derivation from every other identity', () => {
+    const protector = new NodeIdentityProtector('test-secret-with-at-least-32-characters');
+    const adminLogin = 'operations';
+
+    expect(protector.hashAdminLogin(adminLogin)).toMatch(/^[a-f0-9]{64}$/);
+    expect(protector.hashAdminLogin(adminLogin)).not.toBe(protector.hashSessionToken(adminLogin));
+    expect(protector.toAdminSyntheticIdentity(adminLogin)).toMatch(
+      /^[a-f0-9]{64}@admin\.auth\.invalid$/,
+    );
+    expect(protector.toAdminSyntheticIdentity(adminLogin)).not.toContain(adminLogin);
+  });
 });
 
 describe('NodeTokenGenerator', () => {

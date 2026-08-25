@@ -10,6 +10,10 @@ export class NodeClock implements Clock {
 export class NodeIdentityProtector implements IdentityProtector {
   constructor(private readonly secret: string) {}
 
+  hashAdminLogin(value: string): string {
+    return this.hash('admin-login', value);
+  }
+
   hashSessionToken(value: string): string {
     return this.hash('session', value);
   }
@@ -20,6 +24,10 @@ export class NodeIdentityProtector implements IdentityProtector {
 
   hashStudentId(value: string): string {
     return this.hash('student-id', value);
+  }
+
+  toAdminSyntheticIdentity(adminLogin: string): string {
+    return `${this.hashAdminLogin(adminLogin)}@admin.auth.invalid`;
   }
 
   toSyntheticIdentity(studentId: string): string {

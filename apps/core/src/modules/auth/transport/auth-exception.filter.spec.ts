@@ -29,7 +29,7 @@ describe('AuthExceptionFilter', () => {
     });
     expect(logger).toHaveBeenCalledWith({
       errorCode: 'AUTH_INTERNAL_ERROR',
-      operation: 'student_auth_request',
+      operation: 'authentication_request',
     });
     expect(JSON.stringify(logger.mock.calls)).not.toContain('provider-token');
   });

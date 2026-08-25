@@ -3,6 +3,8 @@ import {
   AuthProviderError,
   AuthRepository,
   AuthenticationSessionRecord,
+  AdminAuthenticationSessionRecord,
+  AdminLoginAccount,
   Clock,
   IdentityProtector,
   LoginAccount,
@@ -85,6 +87,14 @@ class FakeAuthRepository implements AuthRepository {
     return Promise.resolve(studentIdHash === 'student-hash' ? this.account : null);
   }
 
+  findAdminLoginAccount(): Promise<AdminLoginAccount | null> {
+    return Promise.resolve(null);
+  }
+
+  findAdminSession(): Promise<AdminAuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
     return Promise.resolve(sessionIdHash === this.session?.sessionIdHash ? this.session : null);
   }
@@ -111,9 +121,11 @@ class FakeAuthRepository implements AuthRepository {
 
 const clock: Clock = { now: () => new Date('2026-08-24T12:00:00.000Z') };
 const identityProtector: IdentityProtector = {
+  hashAdminLogin: (value) => `admin-${value}`,
   hashSessionToken: (value) => `hashed-${value}`,
   hashSourceAddress: (value) => `source-${value}`,
   hashStudentId: (value) => (value === '69000001' ? 'student-hash' : `hash-${value}`),
+  toAdminSyntheticIdentity: (value) => `admin-${value}@admin.auth.invalid`,
   toSyntheticIdentity: () => 'student-hash@auth.invalid',
 };
 

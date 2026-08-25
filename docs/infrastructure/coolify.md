@@ -33,9 +33,9 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 - Keep container filesystem ephemeral. Persist metadata in Supabase and objects in R2.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `AUTH_IDENTITY_SECRET`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Student needs runtime `CORE_URL` and the same environment's `STUDENT_BFF_SECRET`. Keep both server-only; never prefix either with `NEXT_PUBLIC_`.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL` and the same environment's `STUDENT_BFF_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
 
-The reverse proxy in front of Student must overwrite, not append from untrusted clients, the client address header supplied to the application. Student forwards the normalized address to Core only after authenticating with its BFF secret so login rate limiting remains source-aware.
+The reverse proxies in front of Admin and Student must overwrite, not append from untrusted clients, the client address header supplied to each application. Each application forwards the normalized address to Core only after authenticating with its distinct BFF secret so login rate limiting remains source-aware and session audiences remain isolated.
 
 Before routing traffic to a new environment, set the singleton `academic_settings.current_academic_year` through an authorized database operation. Core readiness stays down while this value is missing; migrations intentionally do not guess an environment's current academic year.
 
