@@ -166,6 +166,39 @@ describe('StudentWorksCoreClient', () => {
     ]);
     expect(JSON.stringify(invitation)).not.toMatch(/accountId|personId|studentId/i);
   });
+
+  it('submits, reads, and withdraws one private immutable Revision through exact contracts', async () => {
+    const revision = workRevision();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ outcome: 'created', revision }))
+      .mockResolvedValueOnce(Response.json({ revision }))
+      .mockResolvedValueOnce(
+        Response.json({ outcome: 'withdrawn', revision: { ...revision, status: 'withdrawn' } }),
+      );
+    const client = createClient(fetchMock);
+    const submitInput = {
+      attributionName: 'ชื่อผู้ส่ง',
+      expectedBasePublishedRevisionId: null,
+      expectedDraftVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      studyYear: 2,
+    };
+
+    await client.submitRevision(SESSION, PUBLIC_ID, submitInput);
+    await expect(client.getPendingRevision(SESSION, PUBLIC_ID)).resolves.toEqual(revision);
+    await client.withdrawRevision(SESSION, PUBLIC_ID, revision.publicId, {
+      expectedRevisionVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/pending`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/${revision.publicId}/withdraw`,
+    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(submitInput);
+  });
 });
 
 function createClient(fetchImpl: typeof fetch) {
@@ -206,5 +239,20 @@ function work() {
     publicationState: 'never_published' as const,
     publicId: PUBLIC_ID,
     version: 1,
+  };
+}
+
+function workRevision() {
+  return {
+    attributions: [],
+    content: work().draft,
+    media: [],
+    number: 1,
+    publicId: '64000000-0000-4000-8000-000000000003',
+    status: 'pending_review' as const,
+    submittedAt: '2026-08-25T15:00:00.000Z',
+    version: 1,
+    withdrawnAt: null,
+    workPublicId: PUBLIC_ID,
   };
 }

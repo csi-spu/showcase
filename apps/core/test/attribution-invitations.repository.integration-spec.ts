@@ -66,9 +66,9 @@ describe('PostgresAttributionInvitationsRepository integration', () => {
       await transaction`
         insert into private.work_drafts (
           work_id, title, summary, description, category, academic_year, semester, created_at, updated_at
-        ) values (
-          ${WORK_ID}, 'ผลงาน', 'สรุป', 'รายละเอียด', 'course_work', 2569, '1', ${NOW}, ${NOW}
-        )
+        ) values
+          (${WORK_ID}, 'ผลงาน', 'สรุป', 'รายละเอียด', 'course_work', 2569, '1', ${NOW}, ${NOW}),
+          (${LIMIT_WORK_ID}, 'ผลงาน', 'สรุป', 'รายละเอียด', 'course_work', 2569, '1', ${NOW}, ${NOW})
       `;
     });
   });

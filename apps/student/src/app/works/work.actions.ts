@@ -9,6 +9,10 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
 import { validateWorkForm } from '@/lib/student-work-validation';
 import type { WorkActionError, WorkActionState } from './work-action-state';
+import type {
+  WorkRevisionActionError,
+  WorkRevisionActionState,
+} from './work-revision-action-state';
 
 export async function createWorkAction(
   previousState: WorkActionState,
@@ -155,6 +159,77 @@ export async function attachWorkMediaAction(input: {
   }
 }
 
+export async function submitWorkRevisionAction(
+  publicId: string,
+  previousState: WorkRevisionActionState,
+  formData: FormData,
+): Promise<WorkRevisionActionState> {
+  const parsedPublicId = z.uuid().safeParse(publicId);
+  const expectedBaseValue = formData.get('expectedBasePublishedRevisionId');
+  const parsed = z
+    .object({
+      attributionName: z.string().trim().min(1).max(100),
+      expectedBasePublishedRevisionId: z.uuid().nullable(),
+      expectedDraftVersion: z.coerce.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      studyYear: z.coerce.number().int().min(1).max(8),
+    })
+    .safeParse({
+      attributionName: formData.get('attributionName'),
+      expectedBasePublishedRevisionId: expectedBaseValue === '' ? null : expectedBaseValue,
+      expectedDraftVersion: formData.get('expectedDraftVersion'),
+      idempotencyKey: formData.get('idempotencyKey'),
+      studyYear: formData.get('studyYear'),
+    });
+  if (!parsedPublicId.success || !parsed.success) {
+    return revisionFailed(previousState, 'invalid');
+  }
+  try {
+    await client().submitRevision(await sessionToken(), parsedPublicId.data, parsed.data);
+  } catch (error: unknown) {
+    return revisionFailed(previousState, mapRevisionError(error));
+  }
+  revalidatePath(`/works/${parsedPublicId.data}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
+export async function withdrawWorkRevisionAction(
+  publicId: string,
+  revisionPublicId: string,
+  previousState: WorkRevisionActionState,
+  formData: FormData,
+): Promise<WorkRevisionActionState> {
+  const parsed = z
+    .object({
+      expectedRevisionVersion: z.coerce.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+      revisionPublicId: z.uuid(),
+    })
+    .safeParse({
+      expectedRevisionVersion: formData.get('expectedRevisionVersion'),
+      idempotencyKey: formData.get('idempotencyKey'),
+      publicId,
+      revisionPublicId,
+    });
+  if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  try {
+    await client().withdrawRevision(
+      await sessionToken(),
+      parsed.data.publicId,
+      parsed.data.revisionPublicId,
+      {
+        expectedRevisionVersion: parsed.data.expectedRevisionVersion,
+        idempotencyKey: parsed.data.idempotencyKey,
+      },
+    );
+  } catch (error: unknown) {
+    return revisionFailed(previousState, mapRevisionError(error));
+  }
+  revalidatePath(`/works/${parsed.data.publicId}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
 function client(): StudentWorksCoreClient {
   return new StudentWorksCoreClient(getStudentServerEnvironment());
 }
@@ -182,4 +257,40 @@ function mapError(error: unknown): WorkActionError {
   return error.code === 'AUTH_SERVICE_UNAVAILABLE' || error.code === 'WORKS_SERVICE_UNAVAILABLE'
     ? 'network'
     : 'unavailable';
+}
+
+function revisionFailed(
+  previousState: WorkRevisionActionState,
+  error: WorkRevisionActionError,
+): WorkRevisionActionState {
+  return { ...previousState, error, success: false };
+}
+
+function mapRevisionError(error: unknown): WorkRevisionActionError {
+  if (!(error instanceof StudentWorksCoreError)) return 'network';
+  if (
+    [
+      'WORK_IDEMPOTENCY_CONFLICT',
+      'WORK_PENDING_REVISION_EXISTS',
+      'WORK_REVISION_STATE_CONFLICT',
+      'WORK_REVISION_VERSION_CONFLICT',
+      'WORK_BASE_REVISION_CONFLICT',
+      'WORK_VERSION_CONFLICT',
+    ].includes(error.code)
+  )
+    return 'conflict';
+  if (error.code === 'WORK_POSTER_REQUIRED') return 'poster';
+  if (error.code === 'WORK_MEDIA_NOT_READY') return 'media';
+  if (
+    [
+      'WORK_ATTRIBUTION_UNRESOLVED',
+      'WORK_ATTRIBUTION_LIMIT_EXCEEDED',
+      'WORK_ATTRIBUTION_DUPLICATE',
+      'WORK_SUBMITTER_ATTRIBUTION_INVALID',
+    ].includes(error.code)
+  )
+    return 'attribution';
+  if (error.code === 'WORK_SUBMISSION_INCOMPLETE') return 'incomplete';
+  if (error.code === 'INVALID_REQUEST') return 'invalid';
+  return error.code === 'WORKS_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
 }

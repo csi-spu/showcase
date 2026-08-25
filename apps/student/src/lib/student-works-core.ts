@@ -81,6 +81,55 @@ const invitationOutcomeSchema = z
     outcome: z.enum(['accepted', 'received', 'rejected', 'replayed', 'revoked', 'withdrawn']),
   })
   .strict();
+const workRevisionSchema = z
+  .object({
+    attributions: z.array(
+      z
+        .object({
+          affiliation: z.string().nullable(),
+          attributionName: z.string(),
+          contributionRole: z.string().nullable(),
+          kind: z.enum(['submitter', 'account', 'external']),
+          studyYear: z.number().int().min(1).max(8).nullable(),
+        })
+        .strict(),
+    ),
+    content: workDraftContentSchema,
+    media: z.array(
+      z
+        .object({
+          assetId: z.uuid(),
+          dominantColor: z.string().regex(/^#[0-9A-F]{6}$/u),
+          height: z.number().int().positive().max(2_560),
+          kind: z.enum(['poster', 'gallery']),
+          position: z.number().int().min(1).max(3),
+          variants: z.array(
+            z
+              .object({
+                height: z.number().int().positive().max(2_560),
+                width: z.number().int().positive().max(2_560),
+              })
+              .strict(),
+          ),
+          width: z.number().int().positive().max(2_560),
+        })
+        .strict(),
+    ),
+    number: z.number().int().positive(),
+    publicId: z.uuid(),
+    status: z.enum(['pending_review', 'changes_requested', 'approved', 'withdrawn']),
+    submittedAt: z.iso.datetime(),
+    version: z.number().int().positive(),
+    withdrawnAt: z.iso.datetime().nullable(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
+const workRevisionMutationSchema = z
+  .object({
+    outcome: z.enum(['created', 'replayed', 'withdrawn']),
+    revision: workRevisionSchema,
+  })
+  .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
@@ -99,6 +148,7 @@ export type WorkUpdateInput = WorkMutationInput & { expectedVersion: number };
 export type WorkMediaKind = 'gallery' | 'poster';
 export type AttributionInvitation = z.infer<typeof attributionInvitationSchema>;
 export type AttributionInvitationPage = z.infer<typeof attributionInvitationPageSchema>;
+export type WorkRevision = z.infer<typeof workRevisionSchema>;
 
 interface StudentWorksCoreConfig {
   coreUrl: string;
@@ -225,6 +275,51 @@ export class StudentWorksCoreClient {
       responseSchema: z
         .object({ outcome: z.literal('attached'), version: z.number().int().positive() })
         .strict(),
+      sessionToken,
+    });
+  }
+
+  submitRevision(
+    sessionToken: string,
+    publicId: string,
+    input: {
+      attributionName: string;
+      expectedBasePublishedRevisionId: string | null;
+      expectedDraftVersion: number;
+      idempotencyKey: string;
+      studyYear: number;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/revisions`,
+      responseSchema: workRevisionMutationSchema,
+      sessionToken,
+    });
+  }
+
+  async getPendingRevision(sessionToken: string, publicId: string): Promise<WorkRevision | null> {
+    const result = await this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/revisions/pending`,
+      responseSchema: z.object({ revision: workRevisionSchema.nullable() }).strict(),
+      sessionToken,
+    });
+    return result.revision;
+  }
+
+  withdrawRevision(
+    sessionToken: string,
+    publicId: string,
+    revisionPublicId: string,
+    input: { expectedRevisionVersion: number; idempotencyKey: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/revisions/${revisionPublicId}/withdraw`,
+      responseSchema: workRevisionMutationSchema,
       sessionToken,
     });
   }
