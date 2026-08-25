@@ -23,6 +23,7 @@ import { RosterBatchStatus } from './roster-batch-status';
 import { RosterConflictList } from './roster-conflict-list';
 import { RosterUploadForm } from './roster-upload-form';
 import { resolveRosterConflictAction, uploadRosterAction } from './roster.actions';
+import { AdminWorkspaceShell } from './admin-workspace-shell';
 
 interface HomeProps {
   searchParams: Promise<{
@@ -44,114 +45,100 @@ export default async function Home({ searchParams }: HomeProps) {
   const conflictPage =
     batch && batchId ? await getAdminRosterConflicts(batchId, conflictAfter) : null;
 
+  if (state.kind === 'active') {
+    return (
+      <AdminWorkspaceShell activePage="roster">
+        <header className="mb-8 flex max-w-4xl flex-col gap-3">
+          <p className="text-sm font-medium text-muted-foreground">
+            {rosterT('kicker')} / {rosterT('title')}
+          </p>
+          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
+            {rosterT('title')}
+          </h1>
+          <p className="text-base leading-relaxed text-muted-foreground">
+            {rosterT('description')}
+          </p>
+        </header>
+
+        <div className="flex max-w-5xl flex-col gap-6">
+          {resolved === '1' ? (
+            <Alert className="border-success/30 bg-success-background text-success">
+              <CheckCircle2Icon aria-hidden="true" />
+              <AlertTitle>{rosterT('conflicts.resolvedSuccess')}</AlertTitle>
+            </Alert>
+          ) : null}
+          {batch || batchId ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{rosterT('status.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {batch ? (
+                  <RosterBatchStatus batch={batch} />
+                ) : (
+                  <Alert variant="destructive">
+                    <AlertTitle>{rosterT('status.title')}</AlertTitle>
+                    <AlertDescription>{rosterT('status.unavailable')}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {conflictPage && batchId ? (
+            <RosterConflictList
+              action={resolveRosterConflictAction}
+              batchId={batchId}
+              page={conflictPage}
+            />
+          ) : batch?.status === 'completed_with_errors' ? (
+            <Alert variant="destructive">
+              <AlertTitle>{rosterT('conflicts.title')}</AlertTitle>
+              <AlertDescription>{rosterT('status.conflictsUnavailable')}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <Card className="xl:col-span-7">
+              <CardHeader>
+                <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
+                <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
+                <CardDescription>{rosterT('form.fileHelp')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <RosterUploadForm action={uploadRosterAction} />
+              </CardContent>
+            </Card>
+
+            <Card className="xl:col-span-5">
+              <CardHeader>
+                <ListChecksIcon aria-hidden="true" className="size-6 text-primary" />
+                <CardTitle>{rosterT('preparation.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="flex flex-col gap-5">
+                  <PreparationStep index="1" text={rosterT('preparation.columns')} />
+                  <PreparationStep index="2" text={rosterT('preparation.years')} />
+                  <PreparationStep index="3" text={rosterT('preparation.limits')} />
+                </ol>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AdminWorkspaceShell>
+    );
+  }
+
   return (
     <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="flex min-h-28 flex-col justify-between border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-8">
+      <aside className="flex min-h-28 flex-col border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-8">
         <div className="flex flex-col gap-3">
           <span aria-hidden="true" className="h-1 w-12 bg-primary" />
           <p className="text-sm font-semibold tracking-[0.18em]">STUDENT SHOWCASE</p>
           <p className="text-sm text-muted-foreground">ADMIN WORKSPACE</p>
-          {state.kind === 'active' ? (
-            <nav aria-label="เมนูผู้ดูแล" className="mt-6">
-              <p className="border-l-2 border-primary py-2 pl-3 text-sm font-medium">
-                {rosterT('navigation')}
-              </p>
-            </nav>
-          ) : null}
-        </div>
-        <div className="hidden flex-col gap-5 lg:flex">
-          <p className="max-w-48 text-sm text-muted-foreground">CS &amp; SOFTWARE DEVELOPMENT</p>
-          {state.kind === 'active' ? <LogoutForm action={logoutAction} /> : null}
         </div>
       </aside>
-
-      {state.kind === 'active' ? (
-        <section className="p-4 sm:p-8 lg:p-12">
-          <header className="mb-8 flex max-w-4xl flex-col gap-3">
-            <p className="text-sm font-medium text-muted-foreground">
-              {rosterT('kicker')} / {rosterT('title')}
-            </p>
-            <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-              {rosterT('title')}
-            </h1>
-            <p className="text-base leading-relaxed text-muted-foreground">
-              {rosterT('description')}
-            </p>
-          </header>
-
-          <div className="flex max-w-5xl flex-col gap-6">
-            {resolved === '1' ? (
-              <Alert className="border-success/30 bg-success-background text-success">
-                <CheckCircle2Icon aria-hidden="true" />
-                <AlertTitle>{rosterT('conflicts.resolvedSuccess')}</AlertTitle>
-              </Alert>
-            ) : null}
-            {batch || batchId ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{rosterT('status.title')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {batch ? (
-                    <RosterBatchStatus batch={batch} />
-                  ) : (
-                    <Alert variant="destructive">
-                      <AlertTitle>{rosterT('status.title')}</AlertTitle>
-                      <AlertDescription>{rosterT('status.unavailable')}</AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {conflictPage && batchId ? (
-              <RosterConflictList
-                action={resolveRosterConflictAction}
-                batchId={batchId}
-                page={conflictPage}
-              />
-            ) : batch?.status === 'completed_with_errors' ? (
-              <Alert variant="destructive">
-                <AlertTitle>{rosterT('conflicts.title')}</AlertTitle>
-                <AlertDescription>{rosterT('status.conflictsUnavailable')}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-              <Card className="xl:col-span-7">
-                <CardHeader>
-                  <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
-                  <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
-                  <CardDescription>{rosterT('form.fileHelp')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <RosterUploadForm action={uploadRosterAction} />
-                </CardContent>
-              </Card>
-
-              <Card className="xl:col-span-5">
-                <CardHeader>
-                  <ListChecksIcon aria-hidden="true" className="size-6 text-primary" />
-                  <CardTitle>{rosterT('preparation.title')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ol className="flex flex-col gap-5">
-                    <PreparationStep index="1" text={rosterT('preparation.columns')} />
-                    <PreparationStep index="2" text={rosterT('preparation.years')} />
-                    <PreparationStep index="3" text={rosterT('preparation.limits')} />
-                  </ol>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          <div className="mt-6 lg:hidden">
-            <LogoutForm action={logoutAction} />
-          </div>
-        </section>
-      ) : (
-        <AuthPanel state={state} t={t} />
-      )}
+      <AuthPanel state={state} t={t} />
     </main>
   );
 }

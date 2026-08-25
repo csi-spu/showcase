@@ -68,6 +68,24 @@ export class SupabaseAdminAuthAdapter implements AdminProvisioningProvider {
     throw new Error('ADMIN_PROVIDER_UNAVAILABLE');
   }
 
+  async resetPassword(providerUserId: string, temporaryPassword: string): Promise<void> {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const response = await fetch(`${this.authUrl}/admin/users/${providerUserId}`, {
+          body: JSON.stringify({ password: temporaryPassword }),
+          headers: this.headers(),
+          method: 'PUT',
+          signal: AbortSignal.timeout(this.options.timeoutMilliseconds),
+        });
+        if (response.ok) return;
+        if (response.status < 500) break;
+      } catch {
+        // Updating to the same generated password is safe to retry once.
+      }
+    }
+    throw new Error('ADMIN_PROVIDER_UNAVAILABLE');
+  }
+
   private headers(): Record<string, string> {
     return {
       apikey: this.options.secretKey,

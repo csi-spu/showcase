@@ -28,6 +28,37 @@ async function close(server: Server): Promise<void> {
 }
 
 describe('SupabaseAdminAuthAdapter', () => {
+  it('resets a provider password through the server-only Admin API', async () => {
+    const received: Array<{ body: unknown; method: string | undefined; url: string | undefined }> =
+      [];
+    const server = createServer((request, response) => {
+      void readJson(request).then((body) => {
+        received.push({ body, method: request.method, url: request.url });
+        sendJson(response, 200, { id: '40000000-0000-4000-8000-000000000001' });
+      });
+    });
+    const adapter = new SupabaseAdminAuthAdapter({
+      baseUrl: await listen(server),
+      secretKey: 'test-secret-key',
+      timeoutMilliseconds: 1_000,
+    });
+
+    await expect(
+      adapter.resetPassword(
+        '40000000-0000-4000-8000-000000000001',
+        'random-temporary-password-value',
+      ),
+    ).resolves.toBeUndefined();
+    expect(received).toEqual([
+      {
+        body: { password: 'random-temporary-password-value' },
+        method: 'PUT',
+        url: '/auth/v1/admin/users/40000000-0000-4000-8000-000000000001',
+      },
+    ]);
+    await close(server);
+  });
+
   it('creates a confirmed provider identity through the server-only Admin API', async () => {
     const received: Array<{
       apikey: string | undefined;
