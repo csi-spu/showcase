@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
@@ -18,12 +18,12 @@ describe('Admin correction form', () => {
     renderForm(action);
     const user = userEvent.setup();
 
-    await user.clear(screen.getByLabelText('สรุป'));
-    await user.type(screen.getByLabelText('สรุป'), 'สรุปที่แก้ไขโดยผู้ดูแล');
-    await user.type(
-      screen.getByLabelText('เหตุผลการแก้ไข'),
-      'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง',
-    );
+    fireEvent.change(screen.getByLabelText('สรุป'), {
+      target: { value: 'สรุปที่แก้ไขโดยผู้ดูแล' },
+    });
+    fireEvent.change(screen.getByLabelText('เหตุผลการแก้ไข'), {
+      target: { value: 'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง' },
+    });
     await user.click(screen.getByRole('button', { name: 'บันทึกเป็น Revision รอตรวจ' }));
 
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
@@ -48,9 +48,10 @@ describe('Admin correction form', () => {
     renderForm(action);
     const user = userEvent.setup();
     const summary = screen.getByLabelText('สรุป');
-    await user.clear(summary);
-    await user.type(summary, 'ข้อความที่ต้องเก็บไว้หลังเกิด conflict');
-    await user.type(screen.getByLabelText('เหตุผลการแก้ไข'), 'แก้ข้อมูลให้ถูกต้องตามหลักฐาน');
+    fireEvent.change(summary, { target: { value: 'ข้อความที่ต้องเก็บไว้หลังเกิด conflict' } });
+    fireEvent.change(screen.getByLabelText('เหตุผลการแก้ไข'), {
+      target: { value: 'แก้ข้อมูลให้ถูกต้องตามหลักฐาน' },
+    });
     await user.click(screen.getByRole('button', { name: 'บันทึกเป็น Revision รอตรวจ' }));
 
     const alert = await screen.findByRole('alert');
