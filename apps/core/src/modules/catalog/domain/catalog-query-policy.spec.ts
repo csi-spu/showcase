@@ -2,7 +2,21 @@ import {
   CatalogQueryError,
   normalizePeopleCatalogQuery,
   normalizeWorkCatalogQuery,
+  type RawWorkCatalogQuery,
 } from './catalog-query-policy';
+
+const INVALID_WORK_QUERIES: Array<[RawWorkCatalogQuery, CatalogQueryError['code']]> = [
+  [{ q: 'ก' }, 'CATALOG_QUERY_LENGTH'],
+  [{ q: '🙂' }, 'CATALOG_QUERY_LENGTH'],
+  [{ q: 'ก'.repeat(101) }, 'CATALOG_QUERY_LENGTH'],
+  [{ category: ['not-a-category'] }, 'CATALOG_CATEGORY_INVALID'],
+  [{ tag: Array.from({ length: 6 }, (_, index) => uuid(index)) }, 'CATALOG_TAG_LIMIT'],
+  [{ tag: ['not-a-uuid'] }, 'CATALOG_TAG_INVALID'],
+  [{ semester: '3' }, 'CATALOG_SEMESTER_INVALID'],
+  [{ year: '2399' }, 'CATALOG_YEAR_INVALID'],
+  [{ year: '2701' }, 'CATALOG_YEAR_INVALID'],
+  [{ limit: '49' }, 'CATALOG_LIMIT_INVALID'],
+];
 
 describe('Public Catalog query policy', () => {
   it('normalizes a Work query into one canonical bounded request', () => {
@@ -52,18 +66,7 @@ describe('Public Catalog query policy', () => {
     });
   });
 
-  it.each([
-    [{ q: 'ก' }, 'CATALOG_QUERY_LENGTH'],
-    [{ q: '🙂' }, 'CATALOG_QUERY_LENGTH'],
-    [{ q: 'ก'.repeat(101) }, 'CATALOG_QUERY_LENGTH'],
-    [{ category: ['not-a-category'] }, 'CATALOG_CATEGORY_INVALID'],
-    [{ tag: Array.from({ length: 6 }, (_, index) => uuid(index)) }, 'CATALOG_TAG_LIMIT'],
-    [{ tag: ['not-a-uuid'] }, 'CATALOG_TAG_INVALID'],
-    [{ semester: '3' }, 'CATALOG_SEMESTER_INVALID'],
-    [{ year: '2399' }, 'CATALOG_YEAR_INVALID'],
-    [{ year: '2701' }, 'CATALOG_YEAR_INVALID'],
-    [{ limit: '49' }, 'CATALOG_LIMIT_INVALID'],
-  ] as const)('rejects an invalid Work request with %s', (input, code) => {
+  it.each(INVALID_WORK_QUERIES)('rejects an invalid Work request with %s', (input, code) => {
     expectQueryError(() => normalizeWorkCatalogQuery(input), code);
   });
 
