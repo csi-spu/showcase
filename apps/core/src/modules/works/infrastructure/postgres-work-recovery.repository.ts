@@ -568,6 +568,7 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
     const submitter = await sql<Array<{ account_id: string }>>`
       select submitter_account_id as account_id from private.removal_requests where id = ${request.id}
     `;
+    const submitterAccountId = this.required(submitter[0]).account_id;
     await sql`
       insert into private.outbox_events (
         aggregate_type, aggregate_id, event_type, payload, occurred_at
@@ -577,12 +578,34 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
           audience: 'student',
           ...(request.state === 'approved' ? { cacheTargets: context.cacheTargets } : {}),
           parameters: { title: request.title },
-          recipientAccountIds: [this.required(submitter[0]).account_id],
+          recipientAccountIds: [submitterAccountId],
           target: { kind: 'work', workPublicId: request.work_public_id },
           type: `removal_request_${request.state}`,
         })}, ${now}
       )
     `;
+    if (request.state === 'approved') {
+      const contributorAccountIds = context.recipientAccountIds.filter(
+        (accountId) => accountId !== submitterAccountId,
+      );
+      if (contributorAccountIds.length > 0) {
+        await sql`
+          insert into private.outbox_events (
+            aggregate_type, aggregate_id, event_type, payload, occurred_at
+          ) values (
+            'work_recovery', ${request.public_id}, 'work_unpublish',
+            ${sql.json({
+              audience: 'student',
+              parameters: { title: request.title },
+              recipientAccountIds: contributorAccountIds,
+              target: { kind: 'work', workPublicId: request.work_public_id },
+              type: 'work_unpublish',
+            })}, ${now}
+          )
+          on conflict (aggregate_type, aggregate_id, event_type) do nothing
+        `;
+      }
+    }
   }
 
   private async effectContext(sql: postgres.TransactionSql, work: WorkRow, submitterOnly: boolean) {

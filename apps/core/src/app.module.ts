@@ -8,6 +8,7 @@ import { AccountControlsModule } from './modules/account-controls/account-contro
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { WorksModule } from './modules/works/works.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
     AccountControlsModule,
     CatalogModule,
     HealthModule,
+    NotificationsModule,
     ProfilesModule,
     RosterModule,
     WorksModule,

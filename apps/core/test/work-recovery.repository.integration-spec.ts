@@ -232,6 +232,16 @@ describe('PostgresWorkRecoveryRepository integration', () => {
       cacheTargets: { workPublicId: WORK_PUBLIC_ID },
       recipientAccountIds: [STUDENT_ACCOUNT_ID],
     });
+    const contributorEvents = await database.sql<Array<{ payload: unknown }>>`
+      select payload from private.outbox_events
+      where aggregate_type = 'work_recovery' and aggregate_id = ${created.request.publicId}
+        and event_type = 'work_unpublish'
+    `;
+    expect(contributorEvents).toHaveLength(1);
+    expect(contributorEvents[0]?.payload).toMatchObject({
+      recipientAccountIds: [CONTRIBUTOR_ACCOUNT_ID],
+      type: 'work_unpublish',
+    });
     expect(rows[0]?.publication_state).toBe('unpublished');
     expect(rows[0]?.published_revision_id).toBe(REVISION_ID);
     expect(rows[0]?.request_count).toBe(1);

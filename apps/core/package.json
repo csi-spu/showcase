@@ -19,6 +19,7 @@
     "admin:provision": "node dist/modules/auth/commands/provision-admin.js",
     "media:process": "node dist/modules/works/commands/process-work-media.js",
     "cache:process": "node dist/modules/catalog/commands/process-cache-invalidations.js",
+    "notifications:process": "node dist/modules/notifications/commands/process-notifications.js",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:ci": "jest --ci --runInBand",

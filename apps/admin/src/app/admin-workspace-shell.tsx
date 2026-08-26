@@ -5,7 +5,8 @@ import type { ReactNode } from 'react';
 import { logoutAction } from './admin-auth.actions';
 import { LogoutForm } from './admin-auth-forms';
 
-type AdminWorkspacePage = 'account-controls' | 'corrections' | 'recovery' | 'reviews' | 'roster';
+type AdminWorkspacePage =
+  'account-controls' | 'corrections' | 'notifications' | 'recovery' | 'reviews' | 'roster';
 
 export async function AdminWorkspaceShell({
   activePage,
@@ -14,13 +15,15 @@ export async function AdminWorkspaceShell({
   activePage: AdminWorkspacePage;
   children: ReactNode;
 }) {
-  const [accountControlsT, correctionT, recoveryT, reviewT, rosterT] = await Promise.all([
-    getTranslations('AccountControls'),
-    getTranslations('Correction'),
-    getTranslations('Recovery'),
-    getTranslations('Review'),
-    getTranslations('Roster'),
-  ]);
+  const [accountControlsT, correctionT, notificationsT, recoveryT, reviewT, rosterT] =
+    await Promise.all([
+      getTranslations('AccountControls'),
+      getTranslations('Correction'),
+      getTranslations('Notifications'),
+      getTranslations('Recovery'),
+      getTranslations('Review'),
+      getTranslations('Roster'),
+    ]);
 
   return (
     <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start">
@@ -45,6 +48,11 @@ export async function AdminWorkspaceShell({
                 href="/corrections"
                 isActive={activePage === 'corrections'}
                 label={correctionT('navigation')}
+              />
+              <NavigationItem
+                href="/notifications"
+                isActive={activePage === 'notifications'}
+                label={notificationsT('navigation')}
               />
               <NavigationItem
                 href="/"

@@ -6,6 +6,7 @@ vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async (namespace: string) => (key: string) => {
     if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
     if (namespace === 'Correction' && key === 'navigation') return 'แก้ไขผลงานที่เผยแพร่';
+    if (namespace === 'Notifications' && key === 'navigation') return 'การแจ้งเตือน';
     if (namespace === 'Recovery' && key === 'navigation') return 'การมองเห็นและการกู้คืน';
     if (namespace === 'Review' && key === 'navigation') return 'คิวตรวจผลงาน';
     return 'นำเข้าบัญชีนักศึกษา';

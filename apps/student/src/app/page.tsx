@@ -115,6 +115,9 @@ export default async function Home({ searchParams }: HomeProps) {
                   >
                     {t('active.invitations')}
                   </Link>
+                  <Link className={buttonVariants({ variant: 'outline' })} href="/notifications">
+                    {t('active.notifications')}
+                  </Link>
                 </div>
               </div>
             ) : null}
