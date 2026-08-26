@@ -25,6 +25,7 @@ interface LockedDraftRow {
   current_academic_year: number;
   description: string;
   entry_year: number;
+  published_revision_id: string | null;
   semester: NormalizedWorkDraft['academicPeriod']['semester'];
   submitter_person_id: string;
   summary: string;
@@ -123,7 +124,10 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
         if (Number(draft.version) !== input.expectedDraftVersion) {
           return { outcome: 'draft_version_conflict' };
         }
-        if (draft.base_published_revision_id !== input.expectedBasePublishedRevisionId) {
+        if (
+          draft.base_published_revision_id !== input.expectedBasePublishedRevisionId ||
+          draft.base_published_revision_id !== draft.published_revision_id
+        ) {
           return { outcome: 'base_revision_conflict' };
         }
         const pending = await transaction<Array<{ exists: boolean }>>`
@@ -367,6 +371,7 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
   ): Promise<LockedDraftRow | null> {
     const rows = await sql<LockedDraftRow[]>`
       select work.id as work_id, work.submitter_person_id, draft.base_published_revision_id,
+        work.published_revision_id,
         draft.title, draft.summary, draft.description, draft.category, draft.academic_year,
         draft.semester, draft.version, student.entry_year, settings.current_academic_year
       from public.works as work

@@ -58,6 +58,53 @@ describe('StudentWorksCoreClient', () => {
     );
   });
 
+  it('reads Published Work authoring state and sends explicit seed/rebase commands', async () => {
+    const publishedRevisionId = '64000000-0000-4000-8000-000000000003';
+    const publishedWork = {
+      ...work(),
+      basePublishedRevisionId: publishedRevisionId,
+      publicationState: 'published' as const,
+      publishedRevisionId,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          activityState: 'active',
+          draft: null,
+          publicationState: 'published',
+          publishedRevisionId,
+          publicId: PUBLIC_ID,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ outcome: 'created', work: publishedWork }))
+      .mockResolvedValueOnce(
+        Response.json({ outcome: 'updated', work: { ...publishedWork, version: 2 } }),
+      );
+    const client = createClient(fetchMock);
+
+    await expect(client.getAuthoringState(SESSION, PUBLIC_ID)).resolves.toMatchObject({
+      draft: null,
+      publishedRevisionId,
+    });
+    await client.seedPublishedDraft(SESSION, PUBLIC_ID, {
+      expectedPublishedRevisionId: publishedRevisionId,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+    await client.rebaseDraft(SESSION, PUBLIC_ID, {
+      expectedPublishedRevisionId: publishedRevisionId,
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/authoring-state`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/draft`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/draft/rebase`,
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'POST']);
+  });
+
   it('uses exact private Work media contracts through Core', async () => {
     const assetId = '64000000-0000-4000-8000-000000000003';
     const fetchMock = vi
@@ -255,6 +302,7 @@ function work() {
       videoLinks: [],
     },
     publicationState: 'never_published' as const,
+    publishedRevisionId: null,
     publicId: PUBLIC_ID,
     version: 1,
   };

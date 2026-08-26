@@ -128,6 +128,76 @@ export function WorkRevisionPendingPanel({
   );
 }
 
+export function WorkPublishedRevisionPanel({
+  action,
+  idempotencyKey,
+  publishedRevisionId,
+}: {
+  action: RevisionAction;
+  idempotencyKey: string;
+  publishedRevisionId: string;
+}) {
+  const t = useTranslations('WorkRevision');
+  const [state, formAction] = useActionState(
+    action,
+    initialWorkRevisionActionState(idempotencyKey),
+  );
+  return (
+    <section className="grid gap-6 rounded-surface border border-information/30 bg-information-background p-6 sm:p-8">
+      <div className="grid gap-2">
+        <p className="text-sm font-semibold tracking-[0.16em] text-information">
+          PUBLISHED REVISION
+        </p>
+        <h2 className="text-2xl font-semibold">{t('published.heading')}</h2>
+        <p className="text-muted-foreground">{t('published.help')}</p>
+      </div>
+      <form action={formAction} className="grid gap-4">
+        <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
+        <input name="expectedPublishedRevisionId" type="hidden" value={publishedRevisionId} />
+        <RevisionFeedback state={state} />
+        <SubmitButton label={t('published.create')} pendingLabel={t('published.creating')} />
+      </form>
+    </section>
+  );
+}
+
+export function WorkRevisionRebasePanel({
+  action,
+  draftVersion,
+  idempotencyKey,
+  publishedRevisionId,
+}: {
+  action: RevisionAction;
+  draftVersion: number;
+  idempotencyKey: string;
+  publishedRevisionId: string;
+}) {
+  const t = useTranslations('WorkRevision');
+  const [state, formAction] = useActionState(
+    action,
+    initialWorkRevisionActionState(idempotencyKey),
+  );
+  return (
+    <Alert className="mb-8 border-warning/30 bg-warning-background text-warning">
+      <AlertTitle>{t('rebase.heading')}</AlertTitle>
+      <AlertDescription>
+        <p className="text-foreground">{t('rebase.help')}</p>
+        <form action={formAction} className="mt-5 grid gap-4">
+          <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
+          <input name="expectedVersion" type="hidden" value={draftVersion} />
+          <input name="expectedPublishedRevisionId" type="hidden" value={publishedRevisionId} />
+          <RevisionFeedback state={state} />
+          <SubmitButton
+            label={t('rebase.submit')}
+            pendingLabel={t('rebase.submitting')}
+            variant="outline"
+          />
+        </form>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function RevisionFeedback({ state }: { state: WorkRevisionActionState }) {
   const t = useTranslations('WorkRevision');
   if (state.error === null) return null;

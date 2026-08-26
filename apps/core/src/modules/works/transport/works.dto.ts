@@ -81,6 +81,21 @@ export class UpdateWorkDraftDto extends CreateWorkDto {
   expectedVersion!: number;
 }
 
+export class SeedPublishedWorkDraftDto {
+  @IsUUID('4')
+  expectedPublishedRevisionId!: string;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+}
+
+export class RebaseWorkDraftDto extends SeedPublishedWorkDraftDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedVersion!: number;
+}
+
 export class CreateWorkMediaUploadDto {
   @IsInt()
   @Min(1)

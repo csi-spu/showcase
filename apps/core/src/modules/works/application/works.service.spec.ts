@@ -11,6 +11,7 @@ const ACCOUNT_ID = '61000000-0000-4000-8000-000000000001';
 const PERSON_ID = '61000000-0000-4000-8000-000000000002';
 const PUBLIC_ID = '61000000-0000-4000-8000-000000000003';
 const IDEMPOTENCY_KEY = '61000000-0000-4000-8000-000000000004';
+const REVISION_ID = '61000000-0000-4000-8000-000000000005';
 
 class FakeWorksRepository implements WorksRepository {
   context: WorkAuthoringContext | null = {
@@ -21,6 +22,8 @@ class FakeWorksRepository implements WorksRepository {
   draft: WorkDraftView | null = null;
   mutationResult: WorkMutationResult = { outcome: 'updated', work: workDraft() };
   lastCreate: Parameters<WorksRepository['createWork']>[0] | undefined;
+  lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
+  lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
   lastUpdate: Parameters<WorksRepository['updateDraft']>[0] | undefined;
 
   createWork(input: Parameters<WorksRepository['createWork']>[0]) {
@@ -34,6 +37,26 @@ class FakeWorksRepository implements WorksRepository {
 
   findOwnedDraft(): Promise<WorkDraftView | null> {
     return Promise.resolve(this.draft);
+  }
+
+  findOwnedWorkState() {
+    return Promise.resolve({
+      activityState: 'active' as const,
+      draft: this.draft,
+      publicationState: 'published' as const,
+      publishedRevisionId: REVISION_ID,
+      publicId: PUBLIC_ID,
+    });
+  }
+
+  rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]) {
+    this.lastRebase = input;
+    return Promise.resolve(this.mutationResult);
+  }
+
+  seedDraft(input: Parameters<WorksRepository['seedDraft']>[0]) {
+    this.lastSeed = input;
+    return Promise.resolve(this.mutationResult);
   }
 
   updateDraft(input: Parameters<WorksRepository['updateDraft']>[0]) {
@@ -131,10 +154,80 @@ describe('WorksService', () => {
     });
   });
 
+  it('seeds a private Draft from the expected Published Revision', async () => {
+    repository.mutationResult = { outcome: 'created', work: publishedDraft() };
+
+    await expect(
+      service.seedPublishedDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).resolves.toEqual(repository.mutationResult);
+    expect(repository.lastSeed).toEqual({
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: REVISION_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+      publicId: PUBLIC_ID,
+    });
+  });
+
+  it('rebases only the Draft base through an optimistic explicit command', async () => {
+    repository.mutationResult = { outcome: 'updated', work: publishedDraft() };
+
+    await expect(
+      service.rebaseDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        expectedVersion: 3,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).resolves.toEqual(repository.mutationResult);
+    expect(repository.lastRebase).toEqual({
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: REVISION_ID,
+      expectedVersion: 3,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+      publicId: PUBLIC_ID,
+    });
+  });
+
+  it('denies Published Draft seed and rebase when Student authoring is no longer eligible', async () => {
+    repository.context = { currentAcademicYear: null, entryYear: 2566, personId: PERSON_ID };
+
+    await expect(
+      service.seedPublishedDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'WORK_AUTHORING_FORBIDDEN', status: 403 });
+    await expect(
+      service.rebaseDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        expectedVersion: 3,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'WORK_AUTHORING_FORBIDDEN', status: 403 });
+    expect(repository.lastSeed).toBeUndefined();
+    expect(repository.lastRebase).toBeUndefined();
+  });
+
   it.each([
+    ['draft_exists', 'WORK_DRAFT_EXISTS'],
     ['idempotency_conflict', 'WORK_IDEMPOTENCY_CONFLICT'],
     ['not_found', 'WORK_NOT_FOUND'],
+    ['pending_revision_exists', 'WORK_PENDING_REVISION_EXISTS'],
+    ['published_revision_conflict', 'WORK_BASE_REVISION_CONFLICT'],
     ['version_conflict', 'WORK_VERSION_CONFLICT'],
+    ['work_not_published', 'WORK_NOT_PUBLISHED'],
   ] as const)('maps %s without overwriting either Draft', async (outcome, code) => {
     repository.mutationResult = { outcome };
     await expect(
@@ -197,7 +290,17 @@ function workDraft(): WorkDraftView {
     basePublishedRevisionId: null,
     draft: normalizedDraft(),
     publicationState: 'never_published',
+    publishedRevisionId: null,
     publicId: PUBLIC_ID,
     version: 1,
+  };
+}
+
+function publishedDraft(): WorkDraftView {
+  return {
+    ...workDraft(),
+    basePublishedRevisionId: REVISION_ID,
+    publicationState: 'published',
+    publishedRevisionId: REVISION_ID,
   };
 }

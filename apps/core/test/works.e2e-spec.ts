@@ -24,6 +24,8 @@ const IDEMPOTENCY_KEY = '63000000-0000-4000-8000-000000000004';
 class E2eWorksRepository implements WorksRepository {
   work: WorkDraftView | null = workDraft();
   mutationResult: WorkMutationResult = { outcome: 'updated', work: workDraft() };
+  lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
+  lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
 
   createWork(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'created', work: workDraft() });
@@ -35,6 +37,26 @@ class E2eWorksRepository implements WorksRepository {
 
   findOwnedDraft(): Promise<WorkDraftView | null> {
     return Promise.resolve(this.work);
+  }
+
+  findOwnedWorkState() {
+    return Promise.resolve({
+      activityState: 'active' as const,
+      draft: this.work,
+      publicationState: 'published' as const,
+      publishedRevisionId: PUBLIC_ID,
+      publicId: PUBLIC_ID,
+    });
+  }
+
+  rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]): Promise<WorkMutationResult> {
+    this.lastRebase = input;
+    return Promise.resolve(this.mutationResult);
+  }
+
+  seedDraft(input: Parameters<WorksRepository['seedDraft']>[0]): Promise<WorkMutationResult> {
+    this.lastSeed = input;
+    return Promise.resolve(this.mutationResult);
   }
 
   updateDraft(): Promise<WorkMutationResult> {
@@ -147,6 +169,53 @@ describe('private Work Draft authoring (e2e)', () => {
       .expect({ error: { code: 'WORK_NOT_FOUND' } });
 
     await request(app.getHttpServer()).get(`/v1/public/works/${PUBLIC_ID}`).expect(404);
+  });
+
+  it('exposes exact optimistic Published Draft seed and rebase contracts', async () => {
+    await studentRequest('get', `/v1/internal/student/works/${PUBLIC_ID}/authoring-state`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          publicationState: 'published',
+          publishedRevisionId: PUBLIC_ID,
+          publicId: PUBLIC_ID,
+        });
+      });
+
+    await studentRequest('post', `/v1/internal/student/works/${PUBLIC_ID}/draft`)
+      .send({ expectedPublishedRevisionId: PUBLIC_ID, idempotencyKey: IDEMPOTENCY_KEY })
+      .expect(201);
+    expect(repository.lastSeed).toMatchObject({
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: PUBLIC_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      publicId: PUBLIC_ID,
+    });
+
+    await studentRequest('post', `/v1/internal/student/works/${PUBLIC_ID}/draft/rebase`)
+      .send({
+        expectedPublishedRevisionId: PUBLIC_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      })
+      .expect(200);
+    expect(repository.lastRebase).toMatchObject({
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: PUBLIC_ID,
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      publicId: PUBLIC_ID,
+    });
+
+    await studentRequest('post', `/v1/internal/student/works/${PUBLIC_ID}/draft/rebase`)
+      .send({
+        expectedPublishedRevisionId: PUBLIC_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        overwritePublishedRevision: true,
+      })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
   });
 
   it('rejects unknown fields, malformed nested values, and category-specific payloads', async () => {
@@ -294,6 +363,7 @@ function workDraft(): WorkDraftView {
       videoLinks: [],
     },
     publicationState: 'never_published',
+    publishedRevisionId: null,
     publicId: PUBLIC_ID,
     version: 1,
   };

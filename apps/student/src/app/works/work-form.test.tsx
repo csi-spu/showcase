@@ -138,6 +138,7 @@ function existingWork(): WorkDraft {
       videoLinks: [],
     },
     publicationState: 'never_published',
+    publishedRevisionId: null,
     publicId: '64000000-0000-4000-8000-000000000001',
     version: 3,
   };

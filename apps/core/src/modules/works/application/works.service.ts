@@ -3,6 +3,7 @@ import { evaluateWorkDraft, type WorkDraftInput } from '../domain/work-draft-pol
 import {
   WORKS_CLOCK,
   WORKS_REPOSITORY,
+  type WorkDraftView,
   type WorkMutationResult,
   type WorksClock,
   type WorksRepository,
@@ -11,8 +12,12 @@ import {
 type WorkErrorCode =
   | 'INVALID_WORK_DRAFT'
   | 'WORK_AUTHORING_FORBIDDEN'
+  | 'WORK_BASE_REVISION_CONFLICT'
+  | 'WORK_DRAFT_EXISTS'
   | 'WORK_IDEMPOTENCY_CONFLICT'
   | 'WORK_NOT_FOUND'
+  | 'WORK_NOT_PUBLISHED'
+  | 'WORK_PENDING_REVISION_EXISTS'
   | 'WORK_VERSION_CONFLICT';
 
 export class WorkError extends Error {
@@ -33,6 +38,17 @@ interface CreateWorkInput extends WorkDraftInput {
 interface UpdateWorkDraftInput extends CreateWorkInput {
   expectedVersion: number;
   publicId: string;
+}
+
+interface SeedPublishedDraftInput {
+  actorAccountId: string;
+  expectedPublishedRevisionId: string;
+  idempotencyKey: string;
+  publicId: string;
+}
+
+interface RebaseDraftInput extends SeedPublishedDraftInput {
+  expectedVersion: number;
 }
 
 @Injectable()
@@ -64,6 +80,12 @@ export class WorksService {
     return draft;
   }
 
+  async getAuthoringState(accountId: string, publicId: string) {
+    const state = await this.repository.findOwnedWorkState(accountId, publicId);
+    if (state === null) throw new WorkError('WORK_NOT_FOUND', 404);
+    return state;
+  }
+
   async getAuthoringContext(accountId: string) {
     const context = await this.requireAuthoringContext(accountId);
     return {
@@ -87,6 +109,20 @@ export class WorksService {
     );
   }
 
+  async seedPublishedDraft(input: SeedPublishedDraftInput): Promise<WorkMutationResult> {
+    await this.requireAuthoringContext(input.actorAccountId);
+    return this.requireSuccessfulMutation(
+      await this.repository.seedDraft({ ...input, now: this.clock.now() }),
+    );
+  }
+
+  async rebaseDraft(input: RebaseDraftInput): Promise<WorkMutationResult> {
+    await this.requireAuthoringContext(input.actorAccountId);
+    return this.requireSuccessfulMutation(
+      await this.repository.rebaseDraft({ ...input, now: this.clock.now() }),
+    );
+  }
+
   private async requireAuthoringContext(accountId: string) {
     const context = await this.repository.findAuthoringContext(accountId);
     if (context === null || context.currentAcademicYear === null) {
@@ -107,15 +143,20 @@ export class WorksService {
   }
 
   private requireSuccessfulMutation(result: WorkMutationResult): WorkMutationResult {
-    if (result.outcome === 'idempotency_conflict') {
-      throw new WorkError('WORK_IDEMPOTENCY_CONFLICT', 409);
-    }
-    if (result.outcome === 'not_found') {
-      throw new WorkError('WORK_NOT_FOUND', 404);
-    }
-    if (result.outcome === 'version_conflict') {
-      throw new WorkError('WORK_VERSION_CONFLICT', 409);
-    }
-    return result;
+    if ('work' in result) return result;
+    const mapping: Record<
+      Exclude<WorkMutationResult, { work: WorkDraftView }>['outcome'],
+      [WorkErrorCode, number]
+    > = {
+      draft_exists: ['WORK_DRAFT_EXISTS', 409],
+      idempotency_conflict: ['WORK_IDEMPOTENCY_CONFLICT', 409],
+      not_found: ['WORK_NOT_FOUND', 404],
+      pending_revision_exists: ['WORK_PENDING_REVISION_EXISTS', 409],
+      published_revision_conflict: ['WORK_BASE_REVISION_CONFLICT', 409],
+      version_conflict: ['WORK_VERSION_CONFLICT', 409],
+      work_not_published: ['WORK_NOT_PUBLISHED', 409],
+    };
+    const [code, status] = mapping[result.outcome];
+    throw new WorkError(code, status);
   }
 }

@@ -15,6 +15,7 @@ import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
 type Sql = postgres.Sql | postgres.TransactionSql;
 
 interface LockedPublicationRow {
+  base_published_revision_id: string | null;
   id: string;
   publication_state: 'never_published' | 'published' | 'unpublished';
   published_revision_id: string | null;
@@ -86,6 +87,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
         const rows = await transaction<LockedPublicationRow[]>`
           select revision.id, revision.public_id as revision_public_id, revision.revision_number,
             revision.status as revision_status, revision.version as revision_version, revision.title,
+            revision.base_published_revision_id,
             work.id as work_id, work.public_id as work_public_id,
             work.publication_state, work.published_revision_id
           from private.work_revisions as revision
@@ -110,11 +112,17 @@ export class PostgresPublicationRepository implements PublicationRepository {
         if (Number(candidate.revision_version) !== input.expectedRevisionVersion) {
           return { outcome: 'revision_version_conflict' };
         }
-        if (
-          Number(candidate.revision_number) !== 1 ||
-          candidate.publication_state !== 'never_published' ||
-          candidate.published_revision_id !== null
-        ) {
+        const isFirstPublication =
+          Number(candidate.revision_number) === 1 &&
+          candidate.publication_state === 'never_published' &&
+          candidate.published_revision_id === null &&
+          candidate.base_published_revision_id === null;
+        const isNewerPublication =
+          Number(candidate.revision_number) > 1 &&
+          candidate.publication_state === 'published' &&
+          candidate.published_revision_id !== null &&
+          candidate.base_published_revision_id === candidate.published_revision_id;
+        if (!isFirstPublication && !isNewerPublication) {
           return { outcome: 'work_state_conflict' };
         }
 
@@ -141,7 +149,12 @@ export class PostgresPublicationRepository implements PublicationRepository {
             updated_at = ${input.now}
           where id = ${candidate.work_id}
         `;
-        await this.activateTags(transaction, candidate.id, input.now);
+        await this.replacePublishedTags(
+          transaction,
+          candidate.id,
+          candidate.published_revision_id,
+          input.now,
+        );
         await this.recordPublicationEvent(transaction, candidate, input.now);
         const publication = await this.findPublicationByReviewId(transaction, reviewId);
         if (publication === null) throw new Error('PUBLICATION_CREATE_READ_FAILED');
@@ -293,9 +306,10 @@ export class PostgresPublicationRepository implements PublicationRepository {
       : new URL(objectKey, `${this.publicMediaOrigin}/`).toString();
   }
 
-  private async activateTags(
+  private async replacePublishedTags(
     transaction: postgres.TransactionSql,
     revisionId: string,
+    previousRevisionId: string | null,
     now: Date,
   ): Promise<void> {
     await transaction`
@@ -304,7 +318,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
       ) select normalized_identity, display_label, ${now}, 0
       from private.work_revision_tags
       where revision_id = ${revisionId}
-      order by position
+      order by normalized_identity
       on conflict (normalized_identity) do nothing
     `;
     await transaction`
@@ -313,6 +327,27 @@ export class PostgresPublicationRepository implements PublicationRepository {
       from private.work_revision_tags as revision_tag
       join public.tags as tag on tag.normalized_identity = revision_tag.normalized_identity
       where revision_tag.revision_id = ${revisionId}
+    `;
+    await transaction<Array<{ id: string }>>`
+      select tag.id
+      from public.tags as tag
+      where exists (
+        select 1 from private.published_revision_tags as published_tag
+        where published_tag.tag_id = tag.id
+          and published_tag.revision_id in (${revisionId}, ${previousRevisionId})
+      )
+      order by tag.id
+      for update
+    `;
+    await transaction`
+      update public.tags as tag
+      set active_work_count = active_work_count - 1
+      where ${previousRevisionId}::uuid is not null
+        and exists (
+          select 1 from private.published_revision_tags as published_tag
+          where published_tag.revision_id = ${previousRevisionId}
+            and published_tag.tag_id = tag.id
+        )
     `;
     await transaction`
       update public.tags as tag
@@ -338,16 +373,16 @@ export class PostgresPublicationRepository implements PublicationRepository {
       order by attribution.position
     `;
     const tags = await transaction<Array<{ public_id: string }>>`
-      select tag.public_id
+      select distinct tag.public_id
       from private.published_revision_tags as published_tag
       join public.tags as tag on tag.id = published_tag.tag_id
-      where published_tag.revision_id = ${candidate.id}
-      order by published_tag.position
+      where published_tag.revision_id in (${candidate.id}, ${candidate.published_revision_id})
+      order by tag.public_id
     `;
     const media = await transaction<Array<{ asset_id: string }>>`
-      select asset_id from private.work_revision_media
-      where revision_id = ${candidate.id}
-      order by media_kind desc, position
+      select distinct asset_id from private.work_revision_media
+      where revision_id in (${candidate.id}, ${candidate.published_revision_id})
+      order by asset_id
     `;
     await transaction`
       insert into private.outbox_events (
