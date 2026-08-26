@@ -17,7 +17,8 @@ import { AuthError } from '../../auth/application/auth.error';
 import { AdminBffGuard } from '../../auth/transport/admin-bff.guard';
 import { WorkRevisionsService } from '../application/work-revisions.service';
 import { ReviewsService } from '../application/reviews.service';
-import { RequestChangesDto, ReviewQueueQueryDto } from './work-revisions.dto';
+import { PublicationService } from '../application/publication.service';
+import { ApproveAndPublishDto, RequestChangesDto, ReviewQueueQueryDto } from './work-revisions.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
 
 @Controller('internal/admin')
@@ -28,6 +29,7 @@ export class AdminWorkRevisionsController {
     private readonly auth: AdminAuthService,
     private readonly revisions: WorkRevisionsService,
     private readonly reviews: ReviewsService,
+    private readonly publication: PublicationService,
   ) {}
 
   @Get('review-queue')
@@ -38,6 +40,22 @@ export class AdminWorkRevisionsController {
   ) {
     await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
     return this.revisions.listReviewQueue(query.limit, query.cursor);
+  }
+
+  @Post('revisions/:revisionPublicId/approve-and-publish')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async approveAndPublish(
+    @Param('revisionPublicId', new ParseUUIDPipe({ version: '4' })) revisionPublicId: string,
+    @Body() input: ApproveAndPublishDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
+    return this.publication.approveAndPublish({
+      ...input,
+      actorAccountId: actor.accountId,
+      revisionPublicId,
+    });
   }
 
   @Get('revisions/:revisionPublicId')

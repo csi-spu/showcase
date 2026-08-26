@@ -9,7 +9,8 @@ import { AdminReviewsCoreClient, AdminReviewsCoreError } from '@/lib/admin-revie
 import { getAdminServerEnvironment } from '@/lib/server-environment';
 import { AdminWorkspaceShell } from '../../admin-workspace-shell';
 import { ChangeRequestForm } from '../change-request-form';
-import { requestChangesAction } from '../review.actions';
+import { ApprovePublicationForm } from '../approve-publication-form';
+import { approveAndPublishAction, requestChangesAction } from '../review.actions';
 import { RevisionSnapshot } from '../revision-snapshot';
 
 export default async function ReviewDetailPage({
@@ -73,13 +74,23 @@ export default async function ReviewDetailPage({
           }}
           revision={revision}
         />
-        <aside className="rounded-surface border border-border bg-card p-6 xl:col-span-5 xl:self-start">
-          <h2 className="mb-5 text-xl font-semibold">{t('form.heading')}</h2>
-          <ChangeRequestForm
-            action={requestChangesAction.bind(null, revision.publicId)}
-            expectedRevisionVersion={revision.version}
-            idempotencyKey={randomUUID()}
-          />
+        <aside className="grid gap-6 xl:col-span-5 xl:self-start">
+          <section className="rounded-surface border border-primary/30 bg-primary-soft p-6">
+            <h2 className="mb-5 text-xl font-semibold">{t('approval.heading')}</h2>
+            <ApprovePublicationForm
+              action={approveAndPublishAction.bind(null, revision.publicId)}
+              expectedRevisionVersion={revision.version}
+              idempotencyKey={randomUUID()}
+            />
+          </section>
+          <section className="rounded-surface border border-border bg-card p-6">
+            <h2 className="mb-5 text-xl font-semibold">{t('form.heading')}</h2>
+            <ChangeRequestForm
+              action={requestChangesAction.bind(null, revision.publicId)}
+              expectedRevisionVersion={revision.version}
+              idempotencyKey={randomUUID()}
+            />
+          </section>
         </aside>
       </div>
     </AdminWorkspaceShell>

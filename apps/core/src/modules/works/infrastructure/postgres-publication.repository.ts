@@ -1,0 +1,452 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type postgres from 'postgres';
+import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import type {
+  PublicationRepository,
+  PublicationResult,
+  PublicationView,
+  PublicWorkAttributionView,
+  PublicWorkMediaView,
+  PublicWorkView,
+} from '../application/publication.ports';
+import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
+
+type Sql = postgres.Sql | postgres.TransactionSql;
+
+interface LockedPublicationRow {
+  id: string;
+  publication_state: 'never_published' | 'published' | 'unpublished';
+  published_revision_id: string | null;
+  revision_number: string;
+  revision_public_id: string;
+  revision_status: 'approved' | 'changes_requested' | 'pending_review' | 'withdrawn';
+  revision_version: string;
+  title: string;
+  work_id: string;
+  work_public_id: string;
+}
+
+interface PublicationRow {
+  published_at: Date;
+  revision_public_id: string;
+  revision_version: string;
+  work_public_id: string;
+}
+
+interface PublicWorkRow {
+  academic_year: number;
+  attributions: PublicWorkAttributionView[];
+  category: NormalizedWorkDraft['category'];
+  description: string;
+  links: NormalizedWorkDraft['links'];
+  media: PublicWorkMediaView[];
+  published_at: Date;
+  revision_number: string;
+  semester: NormalizedWorkDraft['academicPeriod']['semester'];
+  summary: string;
+  tags: PublicWorkView['tags'];
+  title: string;
+  video_links: NormalizedWorkDraft['videoLinks'];
+  work_public_id: string;
+}
+
+type ReplayResolution =
+  { outcome: 'conflict' } | { outcome: 'none' } | { outcome: 'replay'; reviewId: string };
+
+@Injectable()
+export class PostgresPublicationRepository implements PublicationRepository {
+  private readonly publicMediaOrigin: string;
+
+  constructor(
+    private readonly database: DatabaseClient,
+    config: ConfigService,
+  ) {
+    this.publicMediaOrigin = config.get<string>('PUBLIC_MEDIA_ORIGIN') ?? 'https://media.invalid';
+  }
+
+  async approveAndPublish(
+    input: Parameters<PublicationRepository['approveAndPublish']>[0],
+  ): Promise<PublicationResult> {
+    const payload: postgres.JSONValue = {
+      expectedRevisionVersion: input.expectedRevisionVersion,
+      revisionPublicId: input.revisionPublicId,
+    };
+    try {
+      return await this.database.sql.begin(async (transaction) => {
+        const initialReplay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          payload,
+        );
+        const initialResult = await this.toReplayResult(transaction, initialReplay);
+        if (initialResult !== null) return initialResult;
+
+        const rows = await transaction<LockedPublicationRow[]>`
+          select revision.id, revision.public_id as revision_public_id, revision.revision_number,
+            revision.status as revision_status, revision.version as revision_version, revision.title,
+            work.id as work_id, work.public_id as work_public_id,
+            work.publication_state, work.published_revision_id
+          from private.work_revisions as revision
+          join public.works as work on work.id = revision.work_id
+          where revision.public_id = ${input.revisionPublicId}
+          for update of revision, work
+        `;
+        const candidate = rows[0];
+        if (candidate === undefined) return { outcome: 'revision_not_found' };
+
+        const concurrentReplay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          payload,
+        );
+        const concurrentResult = await this.toReplayResult(transaction, concurrentReplay);
+        if (concurrentResult !== null) return concurrentResult;
+        if (candidate.revision_status !== 'pending_review') {
+          return { outcome: 'revision_state_conflict' };
+        }
+        if (Number(candidate.revision_version) !== input.expectedRevisionVersion) {
+          return { outcome: 'revision_version_conflict' };
+        }
+        if (
+          Number(candidate.revision_number) !== 1 ||
+          candidate.publication_state !== 'never_published' ||
+          candidate.published_revision_id !== null
+        ) {
+          return { outcome: 'work_state_conflict' };
+        }
+
+        const inserted = await transaction<Array<{ id: string }>>`
+          insert into private.reviews (
+            revision_id, actor_account_id, decision, reason, feedback,
+            expected_revision_version, resulting_revision_version, idempotency_key,
+            request_payload, reviewed_at
+          ) values (
+            ${candidate.id}, ${input.actorAccountId}, 'approved', null, null,
+            ${input.expectedRevisionVersion}, ${input.expectedRevisionVersion + 1},
+            ${input.idempotencyKey}, ${transaction.json(payload)}, ${input.now}
+          ) returning id
+        `;
+        const reviewId = this.required(inserted[0]).id;
+        await transaction`
+          update private.work_revisions
+          set status = 'approved', version = version + 1
+          where id = ${candidate.id}
+        `;
+        await transaction`
+          update public.works
+          set published_revision_id = ${candidate.id}, publication_state = 'published',
+            updated_at = ${input.now}
+          where id = ${candidate.work_id}
+        `;
+        await this.activateTags(transaction, candidate.id, input.now);
+        await this.recordPublicationEvent(transaction, candidate, input.now);
+        const publication = await this.findPublicationByReviewId(transaction, reviewId);
+        if (publication === null) throw new Error('PUBLICATION_CREATE_READ_FAILED');
+        return { outcome: 'published', publication };
+      });
+    } catch (error: unknown) {
+      if (!this.isIdempotencyConflict(error)) throw error;
+      const replay = await this.resolveReplay(
+        this.database.sql,
+        input.actorAccountId,
+        input.idempotencyKey,
+        payload,
+      );
+      return (
+        (await this.toReplayResult(this.database.sql, replay)) ?? {
+          outcome: 'idempotency_conflict',
+        }
+      );
+    }
+  }
+
+  async findPublicWork(workPublicId: string): Promise<PublicWorkView | null> {
+    const rows = await this.database.sql<PublicWorkRow[]>`
+      select work.public_id as work_public_id, revision.revision_number,
+        revision.title, revision.summary, revision.description, revision.category,
+        revision.academic_year, revision.semester, review.reviewed_at as published_at,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object('label', link.label, 'url', link.url)
+            order by link.position
+          )
+          from private.work_revision_links as link
+          where link.revision_id = revision.id
+        ), '[]'::jsonb) as links,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'provider', video.provider,
+              'providerVideoId', video.provider_video_id,
+              'url', video.url
+            ) order by video.position
+          )
+          from private.work_revision_video_links as video
+          where video.revision_id = revision.id
+        ), '[]'::jsonb) as video_links,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'attributionName', attribution.attribution_name,
+              'studyYear', attribution.study_year,
+              'contributionRole', attribution.contribution_role,
+              'affiliation', attribution.affiliation,
+              'profilePublicId', case when consent.id is null then null else profile.public_id end
+            ) order by attribution.position
+          )
+          from private.work_revision_attributions as attribution
+          left join public.public_profiles as profile on profile.person_id = attribution.person_id
+          left join public.profile_consents as consent
+            on consent.person_id = profile.person_id and consent.withdrawn_at is null
+          where attribution.revision_id = revision.id
+        ), '[]'::jsonb) as attributions,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object('displayLabel', tag.display_label, 'publicId', tag.public_id)
+            order by published_tag.position
+          )
+          from private.published_revision_tags as published_tag
+          join public.tags as tag on tag.id = published_tag.tag_id
+          where published_tag.revision_id = revision.id
+        ), '[]'::jsonb) as tags,
+        coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              'assetId', asset.id,
+              'kind', media.media_kind,
+              'position', media.position,
+              'dominantColor', asset.dominant_color,
+              'width', asset.width,
+              'height', asset.height,
+              'variants', coalesce((
+                select jsonb_agg(
+                  jsonb_build_object('width', variant.width, 'height', variant.height)
+                  order by variant.width
+                )
+                from private.work_media_variants as variant
+                where variant.asset_id = asset.id
+              ), '[]'::jsonb)
+            ) order by media.media_kind desc, media.position
+          )
+          from private.work_revision_media as media
+          join private.work_media_assets as asset
+            on asset.id = media.asset_id and asset.status = 'ready'
+          where media.revision_id = revision.id
+        ), '[]'::jsonb) as media
+      from public.works as work
+      join private.work_revisions as revision on revision.id = work.published_revision_id
+      join private.reviews as review
+        on review.revision_id = revision.id and review.decision = 'approved'
+      where work.public_id = ${workPublicId}
+        and work.activity_state = 'active'
+        and work.publication_state = 'published'
+        and revision.status = 'approved'
+      limit 1
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : {
+          academicPeriod: { semester: row.semester, year: row.academic_year },
+          attributions: row.attributions,
+          category: row.category,
+          description: row.description,
+          links: row.links,
+          media: row.media,
+          publishedAt: row.published_at.toISOString(),
+          revisionNumber: Number(row.revision_number),
+          summary: row.summary,
+          tags: row.tags,
+          title: row.title,
+          videoLinks: row.video_links,
+          workPublicId: row.work_public_id,
+        };
+  }
+
+  async findPublicMediaUrl(
+    workPublicId: string,
+    assetId: string,
+    width: number,
+  ): Promise<string | null> {
+    const rows = await this.database.sql<Array<{ object_key: string }>>`
+      select variant.object_key
+      from public.works as work
+      join private.work_revisions as revision on revision.id = work.published_revision_id
+      join private.work_revision_media as media on media.revision_id = revision.id
+      join private.work_media_assets as asset
+        on asset.id = media.asset_id and asset.status = 'ready'
+      join private.work_media_variants as variant
+        on variant.asset_id = asset.id and variant.width = ${width}
+      where work.public_id = ${workPublicId}
+        and work.activity_state = 'active'
+        and work.publication_state = 'published'
+        and revision.status = 'approved'
+        and asset.id = ${assetId}
+      limit 1
+    `;
+    const objectKey = rows[0]?.object_key;
+    return objectKey === undefined
+      ? null
+      : new URL(objectKey, `${this.publicMediaOrigin}/`).toString();
+  }
+
+  private async activateTags(
+    transaction: postgres.TransactionSql,
+    revisionId: string,
+    now: Date,
+  ): Promise<void> {
+    await transaction`
+      insert into public.tags (
+        normalized_identity, display_label, activated_at, active_work_count
+      ) select normalized_identity, display_label, ${now}, 0
+      from private.work_revision_tags
+      where revision_id = ${revisionId}
+      order by position
+      on conflict (normalized_identity) do nothing
+    `;
+    await transaction`
+      insert into private.published_revision_tags (revision_id, tag_id, position)
+      select revision_tag.revision_id, tag.id, revision_tag.position
+      from private.work_revision_tags as revision_tag
+      join public.tags as tag on tag.normalized_identity = revision_tag.normalized_identity
+      where revision_tag.revision_id = ${revisionId}
+    `;
+    await transaction`
+      update public.tags as tag
+      set active_work_count = active_work_count + 1
+      where exists (
+        select 1 from private.published_revision_tags as published_tag
+        where published_tag.revision_id = ${revisionId} and published_tag.tag_id = tag.id
+      )
+    `;
+  }
+
+  private async recordPublicationEvent(
+    transaction: postgres.TransactionSql,
+    candidate: LockedPublicationRow,
+    now: Date,
+  ): Promise<void> {
+    const recipients = await transaction<Array<{ account_id: string }>>`
+      select account.id as account_id
+      from private.work_revision_attributions as attribution
+      join public.accounts as account on account.person_id = attribution.person_id
+      where attribution.revision_id = ${candidate.id}
+        and attribution.kind in ('submitter', 'account')
+      order by attribution.position
+    `;
+    const tags = await transaction<Array<{ public_id: string }>>`
+      select tag.public_id
+      from private.published_revision_tags as published_tag
+      join public.tags as tag on tag.id = published_tag.tag_id
+      where published_tag.revision_id = ${candidate.id}
+      order by published_tag.position
+    `;
+    const media = await transaction<Array<{ asset_id: string }>>`
+      select asset_id from private.work_revision_media
+      where revision_id = ${candidate.id}
+      order by media_kind desc, position
+    `;
+    await transaction`
+      insert into private.outbox_events (
+        aggregate_type, aggregate_id, event_type, payload, occurred_at
+      ) values (
+        'work_revision', ${candidate.revision_public_id},
+        'work_revision_published',
+        ${transaction.json({
+          audience: 'student',
+          cacheTargets: {
+            mediaAssetIds: media.map((asset) => asset.asset_id),
+            tagPublicIds: tags.map((tag) => tag.public_id),
+            workPublicId: candidate.work_public_id,
+          },
+          parameters: {
+            revisionNumber: Number(candidate.revision_number),
+            title: candidate.title,
+          },
+          recipientAccountIds: recipients.map((recipient) => recipient.account_id),
+          revisionPublicId: candidate.revision_public_id,
+          target: { kind: 'work', workPublicId: candidate.work_public_id },
+          type: 'work_published',
+        })},
+        ${now}
+      )
+    `;
+  }
+
+  private async resolveReplay(
+    sql: Sql,
+    actorAccountId: string,
+    idempotencyKey: string,
+    payload: postgres.JSONValue,
+  ): Promise<ReplayResolution> {
+    const rows = await sql<Array<{ id: string; is_equivalent: boolean }>>`
+      select id, (
+        actor_account_id = ${actorAccountId}
+        and decision = 'approved'
+        and request_payload = ${sql.json(payload)}
+      ) as is_equivalent
+      from private.reviews where idempotency_key = ${idempotencyKey}
+      limit 1
+    `;
+    const row = rows[0];
+    if (row === undefined) return { outcome: 'none' };
+    return row.is_equivalent ? { outcome: 'replay', reviewId: row.id } : { outcome: 'conflict' };
+  }
+
+  private async toReplayResult(
+    sql: Sql,
+    replay: ReplayResolution,
+  ): Promise<PublicationResult | null> {
+    if (replay.outcome === 'none') return null;
+    if (replay.outcome === 'conflict') return { outcome: 'idempotency_conflict' };
+    const publication = await this.findPublicationByReviewId(sql, replay.reviewId);
+    return publication === null
+      ? { outcome: 'revision_not_found' }
+      : { outcome: 'replayed', publication };
+  }
+
+  private async findPublicationByReviewId(
+    sql: Sql,
+    reviewId: string,
+  ): Promise<PublicationView | null> {
+    const rows = await sql<PublicationRow[]>`
+      select review.reviewed_at as published_at,
+        revision.public_id as revision_public_id,
+        revision.version as revision_version,
+        work.public_id as work_public_id
+      from private.reviews as review
+      join private.work_revisions as revision on revision.id = review.revision_id
+      join public.works as work on work.id = revision.work_id
+      where review.id = ${reviewId} and review.decision = 'approved'
+      limit 1
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : {
+          publishedAt: row.published_at.toISOString(),
+          revisionPublicId: row.revision_public_id,
+          revisionVersion: Number(row.revision_version),
+          workPublicId: row.work_public_id,
+        };
+  }
+
+  private isIdempotencyConflict(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505' &&
+      'constraint_name' in error &&
+      error.constraint_name === 'reviews_idempotency_key_key'
+    );
+  }
+
+  private required<T>(value: T | undefined): T {
+    if (value === undefined) throw new Error('PUBLICATION_PERSISTENCE_INVARIANT');
+    return value;
+  }
+}

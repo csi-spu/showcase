@@ -106,6 +106,14 @@ const changeRequestSchema = z
     workPublicId: z.uuid(),
   })
   .strict();
+const publicationSchema = z
+  .object({
+    publishedAt: z.iso.datetime(),
+    revisionPublicId: z.uuid(),
+    revisionVersion: z.number().int().positive(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
 
 export type AdminReviewQueue = z.infer<typeof reviewQueueSchema>;
 export type AdminReviewQueueItem = z.infer<typeof queueItemSchema>;
@@ -147,6 +155,25 @@ export class AdminReviewsCoreClient {
       method: 'GET',
       path: `/v1/internal/admin/revisions/${revisionPublicId}`,
       responseSchema: revisionSchema,
+      sessionToken,
+    });
+  }
+
+  approveAndPublish(
+    sessionToken: string,
+    revisionPublicId: string,
+    input: { expectedRevisionVersion: number; idempotencyKey: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/revisions/${revisionPublicId}/approve-and-publish`,
+      responseSchema: z
+        .object({
+          outcome: z.enum(['published', 'replayed']),
+          publication: publicationSchema,
+        })
+        .strict(),
       sessionToken,
     });
   }
