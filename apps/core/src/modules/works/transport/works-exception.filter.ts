@@ -7,6 +7,7 @@ import { WorkMediaError } from '../application/work-media.service';
 import { WorkRevisionError } from '../application/work-revisions.service';
 import { ReviewError } from '../application/reviews.service';
 import { PublicationError } from '../application/publication.service';
+import { AdminCorrectionError } from '../application/admin-corrections.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -21,6 +22,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
     }
     if (
       error instanceof AuthError ||
+      error instanceof AdminCorrectionError ||
       error instanceof AttributionInvitationError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError ||

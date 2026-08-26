@@ -24,6 +24,7 @@ export interface WorkRevisionMediaView {
 }
 
 export interface WorkRevisionView {
+  authorKind: 'admin_correction' | 'student_submission';
   attributions: WorkRevisionAttributionView[];
   content: NormalizedWorkDraft;
   media: WorkRevisionMediaView[];
@@ -38,6 +39,7 @@ export interface WorkRevisionView {
 
 export interface ReviewQueueItem {
   academicPeriod: NormalizedWorkDraft['academicPeriod'];
+  authorKind: WorkRevisionView['authorKind'];
   category: NormalizedWorkDraft['category'];
   number: number;
   revisionPublicId: string;

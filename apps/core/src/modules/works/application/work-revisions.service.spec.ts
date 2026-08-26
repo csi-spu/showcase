@@ -164,6 +164,7 @@ function submissionInput() {
 
 function revision(): WorkRevisionView {
   return {
+    authorKind: 'student_submission',
     attributions: [],
     content: {
       academicPeriod: { semester: '1', year: 2569 },
