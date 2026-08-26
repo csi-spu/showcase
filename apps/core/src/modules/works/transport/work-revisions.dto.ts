@@ -79,3 +79,13 @@ export class RequestChangesDto {
   @IsIn(CHANGE_REQUEST_REASONS)
   reason!: ChangeRequestReason;
 }
+
+export class ApproveAndPublishDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRevisionVersion!: number;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+}

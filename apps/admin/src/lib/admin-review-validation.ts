@@ -7,6 +7,19 @@ const changeRequestSchema = z.object({
   reason: z.enum(['content', 'attribution', 'media', 'links_tags', 'policy', 'other']),
 });
 
+const approvalSchema = z.object({
+  expectedRevisionVersion: z.coerce.number().int().positive(),
+  idempotencyKey: z.uuid(),
+});
+
+export function validateApproval(formData: FormData) {
+  const result = approvalSchema.safeParse({
+    expectedRevisionVersion: formData.get('expectedRevisionVersion'),
+    idempotencyKey: formData.get('idempotencyKey'),
+  });
+  return result.success ? result.data : null;
+}
+
 export function validateChangeRequest(formData: FormData) {
   const result = changeRequestSchema.safeParse({
     expectedRevisionVersion: formData.get('expectedRevisionVersion'),

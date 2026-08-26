@@ -40,10 +40,15 @@ import { ReviewsService } from './application/reviews.service';
 import { REVIEWS_REPOSITORY } from './application/reviews.ports';
 import { PostgresReviewsRepository } from './infrastructure/postgres-reviews.repository';
 import { StudentReviewsController } from './transport/student-reviews.controller';
+import { PublicationService } from './application/publication.service';
+import { PUBLICATION_REPOSITORY } from './application/publication.ports';
+import { PostgresPublicationRepository } from './infrastructure/postgres-publication.repository';
+import { PublicWorksController } from './transport/public-works.controller';
 
 @Module({
   controllers: [
     AdminWorkRevisionsController,
+    PublicWorksController,
     StudentAttributionInvitationsController,
     StudentReviewsController,
     StudentWorkRevisionsController,
@@ -56,10 +61,12 @@ import { StudentReviewsController } from './transport/student-reviews.controller
     WorkMediaService,
     WorkRevisionsService,
     ReviewsService,
+    PublicationService,
     WorksExceptionFilter,
     { provide: WORKS_REPOSITORY, useClass: PostgresWorksRepository },
     { provide: WORK_REVISIONS_REPOSITORY, useClass: PostgresWorkRevisionsRepository },
     { provide: REVIEWS_REPOSITORY, useClass: PostgresReviewsRepository },
+    { provide: PUBLICATION_REPOSITORY, useClass: PostgresPublicationRepository },
     {
       provide: ATTRIBUTION_INVITATIONS_REPOSITORY,
       useClass: PostgresAttributionInvitationsRepository,

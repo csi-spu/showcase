@@ -19,5 +19,28 @@
     "notFoundHeading": "ไม่พบโปรไฟล์",
     "photoAlt": "รูปโปรไฟล์ของ {name}",
     "retry": "ลองใหม่"
+  },
+  "Works": {
+    "academicPeriod": "ปีการศึกษา {year} ภาค {semester}",
+    "attributions": "ผู้สร้างผลงาน",
+    "back": "กลับหน้าแรก",
+    "categories": {
+      "academic_article": "บทความวิชาการ",
+      "competition_entry": "ผลงานประกวด",
+      "course_work": "ผลงานรายวิชา"
+    },
+    "description": "รายละเอียด",
+    "errorDescription": "ไม่สามารถโหลดผลงานได้ กรุณาลองใหม่อีกครั้ง",
+    "errorHeading": "โหลดผลงานไม่สำเร็จ",
+    "gallery": "แกลเลอรี",
+    "links": "ลิงก์",
+    "navigation": "เมนูสาธารณะ",
+    "notFoundDescription": "ผลงานนี้ไม่มีอยู่หรือยังไม่ได้รับอนุมัติให้เผยแพร่",
+    "notFoundHeading": "ไม่พบผลงาน",
+    "posterAlt": "โปสเตอร์ {title}",
+    "publishedAt": "เผยแพร่เมื่อ {value}",
+    "retry": "ลองใหม่",
+    "studyYear": "ชั้นปีที่ {year}",
+    "videos": "วิดีโอ"
   }
 }

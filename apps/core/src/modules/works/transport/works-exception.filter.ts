@@ -6,6 +6,7 @@ import { WorkError } from '../application/works.service';
 import { WorkMediaError } from '../application/work-media.service';
 import { WorkRevisionError } from '../application/work-revisions.service';
 import { ReviewError } from '../application/reviews.service';
+import { PublicationError } from '../application/publication.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -23,6 +24,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof AttributionInvitationError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError ||
+      error instanceof PublicationError ||
       error instanceof ReviewError ||
       error instanceof WorkRevisionError
     ) {

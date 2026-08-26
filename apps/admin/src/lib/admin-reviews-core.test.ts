@@ -70,6 +70,36 @@ describe('AdminReviewsCoreClient', () => {
       reason: 'content',
     });
   });
+
+  it('sends approval as a separate optimistic idempotent command', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        outcome: 'published',
+        publication: {
+          publishedAt: '2026-08-25T16:00:00.000Z',
+          revisionPublicId: REVISION_PUBLIC_ID,
+          revisionVersion: 2,
+          workPublicId: '77000000-0000-4000-8000-000000000002',
+        },
+      }),
+    );
+    await new AdminReviewsCoreClient(config, fetchMock).approveAndPublish(
+      'opaque-admin-session',
+      REVISION_PUBLIC_ID,
+      {
+        expectedRevisionVersion: 1,
+        idempotencyKey: '77000000-0000-4000-8000-000000000003',
+      },
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/admin/revisions/${REVISION_PUBLIC_ID}/approve-and-publish`,
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedRevisionVersion: 1,
+      idempotencyKey: '77000000-0000-4000-8000-000000000003',
+    });
+  });
 });
 
 function revision() {
