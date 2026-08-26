@@ -21,6 +21,8 @@ import {
   AttachWorkMediaDto,
   CreateWorkDto,
   CreateWorkMediaUploadDto,
+  RebaseWorkDraftDto,
+  SeedPublishedWorkDraftDto,
   UpdateWorkDraftDto,
 } from './works.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
@@ -61,6 +63,40 @@ export class StudentWorksController {
   ) {
     const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
     return this.works.getDraft(actor.accountId, publicId);
+  }
+
+  @Get(':publicId/authoring-state')
+  @Header('Cache-Control', 'no-store')
+  async getAuthoringState(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.getAuthoringState(actor.accountId, publicId);
+  }
+
+  @Post(':publicId/draft')
+  @HttpCode(201)
+  @Header('Cache-Control', 'no-store')
+  async seedPublishedDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: SeedPublishedWorkDraftDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.seedPublishedDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  @Post(':publicId/draft/rebase')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async rebaseDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: RebaseWorkDraftDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.rebaseDraft({ ...input, actorAccountId: actor.accountId, publicId });
   }
 
   @Put(':publicId')

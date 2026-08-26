@@ -10,10 +10,14 @@ import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-wor
 import { WorkForm } from '../work-form';
 import {
   WorkChangeRequestPanel,
+  WorkPublishedRevisionPanel,
+  WorkRevisionRebasePanel,
   WorkRevisionPendingPanel,
   WorkRevisionSubmissionPanel,
 } from '../work-revision-panel';
 import {
+  rebaseWorkDraftAction,
+  seedPublishedWorkDraftAction,
   submitWorkRevisionAction,
   updateWorkAction,
   withdrawWorkRevisionAction,
@@ -39,6 +43,10 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
         work: Awaited<ReturnType<StudentWorksCoreClient['getWork']>>;
       }
     | {
+        kind: 'published';
+        publishedRevisionId: string;
+      }
+    | {
         kind: 'pending';
         revision: NonNullable<Awaited<ReturnType<StudentWorksCoreClient['getPendingRevision']>>>;
       };
@@ -47,13 +55,32 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
     if (pendingRevision !== null) {
       revisionState = { kind: 'pending', revision: pendingRevision };
     } else {
-      const [context, work, invitations, review] = await Promise.all([
-        client.getAuthoringContext(sessionToken),
-        client.getWork(sessionToken, parsedPublicId.data),
-        client.listWorkInvitations(sessionToken, parsedPublicId.data),
-        loadChangeRequest(client, sessionToken, parsedPublicId.data),
-      ]);
-      revisionState = { context, invitations, kind: 'draft', review, work };
+      const authoringState = await client.getAuthoringState(sessionToken, parsedPublicId.data);
+      if (authoringState.draft === null) {
+        if (
+          authoringState.publicationState !== 'published' ||
+          authoringState.publishedRevisionId === null
+        ) {
+          throw new Error('WORK_AUTHORING_STATE_INVARIANT');
+        }
+        revisionState = {
+          kind: 'published',
+          publishedRevisionId: authoringState.publishedRevisionId,
+        };
+      } else {
+        const [context, invitations, review] = await Promise.all([
+          client.getAuthoringContext(sessionToken),
+          client.listWorkInvitations(sessionToken, parsedPublicId.data),
+          loadChangeRequest(client, sessionToken, parsedPublicId.data),
+        ]);
+        revisionState = {
+          context,
+          invitations,
+          kind: 'draft',
+          review,
+          work: authoringState.draft,
+        };
+      }
     }
   } catch (error: unknown) {
     handleLoadError(error);
@@ -64,6 +91,9 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
     Promise.resolve(randomUUID()),
   ]);
   const updateAction = updateWorkAction.bind(null, parsedPublicId.data);
+  const isDraftStale =
+    revisionState.kind === 'draft' &&
+    revisionState.work.basePublishedRevisionId !== revisionState.work.publishedRevisionId;
 
   return (
     <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
@@ -80,23 +110,49 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
       <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-10 lg:grid-cols-12 lg:py-16">
         <header className="grid content-start gap-4 lg:col-span-4">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-            {revisionState.kind === 'draft' ? 'PRIVATE DRAFT' : 'PENDING REVIEW'}
+            {revisionState.kind === 'draft'
+              ? isDraftStale
+                ? 'STALE PRIVATE DRAFT'
+                : 'PRIVATE DRAFT'
+              : revisionState.kind === 'pending'
+                ? 'PENDING REVIEW'
+                : 'PUBLISHED REVISION'}
           </p>
           <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {revisionState.kind === 'draft' ? t('editHeading') : t('pendingHeading')}
+            {revisionState.kind === 'draft'
+              ? t('editHeading')
+              : revisionState.kind === 'pending'
+                ? t('pendingHeading')
+                : t('publishedHeading')}
           </h1>
           <p className="text-muted-foreground">
-            {revisionState.kind === 'draft' ? t('editDescription') : t('pendingDescription')}
+            {revisionState.kind === 'draft'
+              ? isDraftStale
+                ? t('staleDescription')
+                : t('editDescription')
+              : revisionState.kind === 'pending'
+                ? t('pendingDescription')
+                : t('publishedDescription')}
           </p>
           <p className="text-sm text-muted-foreground">
             {revisionState.kind === 'draft'
               ? t('version', { version: revisionState.work.version })
-              : t('revision', { number: revisionState.revision.number })}
+              : revisionState.kind === 'pending'
+                ? t('revision', { number: revisionState.revision.number })
+                : null}
           </p>
         </header>
         <div className="lg:col-span-8">
           {revisionState.kind === 'draft' ? (
             <>
+              {isDraftStale && revisionState.work.publishedRevisionId !== null ? (
+                <WorkRevisionRebasePanel
+                  action={rebaseWorkDraftAction.bind(null, parsedPublicId.data)}
+                  draftVersion={revisionState.work.version}
+                  idempotencyKey={revisionIdempotencyKey}
+                  publishedRevisionId={revisionState.work.publishedRevisionId}
+                />
+              ) : null}
               {revisionState.review === null ? null : (
                 <>
                   <WorkChangeRequestPanel review={revisionState.review} />
@@ -117,14 +173,16 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
                 invitations={revisionState.invitations.items}
                 publicId={parsedPublicId.data}
               />
-              <WorkRevisionSubmissionPanel
-                action={submitWorkRevisionAction.bind(null, parsedPublicId.data)}
-                basePublishedRevisionId={revisionState.work.basePublishedRevisionId}
-                draftVersion={revisionState.work.version}
-                idempotencyKey={revisionIdempotencyKey}
-              />
+              {isDraftStale ? null : (
+                <WorkRevisionSubmissionPanel
+                  action={submitWorkRevisionAction.bind(null, parsedPublicId.data)}
+                  basePublishedRevisionId={revisionState.work.basePublishedRevisionId}
+                  draftVersion={revisionState.work.version}
+                  idempotencyKey={revisionIdempotencyKey}
+                />
+              )}
             </>
-          ) : (
+          ) : revisionState.kind === 'pending' ? (
             <WorkRevisionPendingPanel
               action={withdrawWorkRevisionAction.bind(
                 null,
@@ -133,6 +191,12 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
               )}
               idempotencyKey={revisionIdempotencyKey}
               revision={revisionState.revision}
+            />
+          ) : (
+            <WorkPublishedRevisionPanel
+              action={seedPublishedWorkDraftAction.bind(null, parsedPublicId.data)}
+              idempotencyKey={revisionIdempotencyKey}
+              publishedRevisionId={revisionState.publishedRevisionId}
             />
           )}
         </div>

@@ -3,13 +3,15 @@ import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import type {
   WorkAuthoringContext,
+  WorkAuthoringState,
   WorkDraftView,
   WorkMutationResult,
   WorksRepository,
 } from '../application/works.ports';
 import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
 
-type WorkOperation = 'work_created' | 'work_draft_updated';
+type WorkOperation =
+  'published_work_draft_seeded' | 'work_created' | 'work_draft_rebased' | 'work_draft_updated';
 
 interface WorkRow {
   academic_year: number;
@@ -20,7 +22,8 @@ interface WorkRow {
   draft_links: NormalizedWorkDraft['links'];
   draft_tags: NormalizedWorkDraft['tags'];
   draft_video_links: NonNullable<NormalizedWorkDraft['videoLinks']>;
-  publication_state: 'never_published';
+  publication_state: WorkDraftView['publicationState'];
+  published_revision_id: string | null;
   public_id: string;
   semester: NormalizedWorkDraft['academicPeriod']['semester'];
   summary: string;
@@ -31,6 +34,14 @@ interface WorkRow {
 
 interface OwnedWorkRow {
   version: string;
+  work_id: string;
+}
+
+interface OwnedWorkStateRow {
+  activity_state: 'active';
+  publication_state: WorkDraftView['publicationState'];
+  published_revision_id: string | null;
+  public_id: string;
   work_id: string;
 }
 
@@ -150,6 +161,216 @@ export class PostgresWorksRepository implements WorksRepository {
 
   findOwnedDraft(accountId: string, publicId: string): Promise<WorkDraftView | null> {
     return this.findOneOwnedDraft(this.database.sql, accountId, 'public_id', publicId);
+  }
+
+  async findOwnedWorkState(
+    accountId: string,
+    publicId: string,
+  ): Promise<WorkAuthoringState | null> {
+    const rows = await this.database.sql<OwnedWorkStateRow[]>`
+      select work.id as work_id, work.public_id, work.activity_state,
+        work.publication_state, work.published_revision_id
+      from public.works as work
+      join public.accounts as account on account.person_id = work.submitter_person_id
+      where account.id = ${accountId} and work.public_id = ${publicId}
+        and work.activity_state = 'active'
+      limit 1
+    `;
+    const work = rows[0];
+    if (work === undefined) return null;
+    return {
+      activityState: work.activity_state,
+      draft: await this.findOwnedDraftByWorkId(this.database.sql, accountId, work.work_id),
+      publicationState: work.publication_state,
+      publishedRevisionId: work.published_revision_id,
+      publicId: work.public_id,
+    };
+  }
+
+  async seedDraft(input: Parameters<WorksRepository['seedDraft']>[0]): Promise<WorkMutationResult> {
+    const requestPayload: postgres.JSONValue = {
+      expectedPublishedRevisionId: input.expectedPublishedRevisionId,
+      publicId: input.publicId,
+    };
+    try {
+      return await this.database.sql.begin(async (transaction) => {
+        const replay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          'published_work_draft_seeded',
+          requestPayload,
+        );
+        const replayResult = await this.toReplayResult(transaction, input.actorAccountId, replay);
+        if (replayResult !== null) return replayResult;
+
+        const rows = await transaction<OwnedWorkStateRow[]>`
+          select work.id as work_id, work.public_id, work.activity_state,
+            work.publication_state, work.published_revision_id
+          from public.works as work
+          join public.accounts as account on account.person_id = work.submitter_person_id
+          where account.id = ${input.actorAccountId} and work.public_id = ${input.publicId}
+            and work.activity_state = 'active'
+          for update of work
+        `;
+        const work = rows[0];
+        if (work === undefined) return { outcome: 'not_found' };
+        const concurrentReplay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          'published_work_draft_seeded',
+          requestPayload,
+        );
+        const concurrentReplayResult = await this.toReplayResult(
+          transaction,
+          input.actorAccountId,
+          concurrentReplay,
+        );
+        if (concurrentReplayResult !== null) return concurrentReplayResult;
+        if (work.publication_state !== 'published' || work.published_revision_id === null) {
+          return { outcome: 'work_not_published' };
+        }
+        if (work.published_revision_id !== input.expectedPublishedRevisionId) {
+          return { outcome: 'published_revision_conflict' };
+        }
+        const state = await transaction<Array<{ has_draft: boolean; has_pending: boolean }>>`
+          select
+            exists(select 1 from private.work_drafts where work_id = ${work.work_id}) as has_draft,
+            exists(
+              select 1 from private.work_revisions
+              where work_id = ${work.work_id} and status = 'pending_review'
+            ) as has_pending
+        `;
+        const current = this.required(state[0]);
+        if (current.has_draft) return { outcome: 'draft_exists' };
+        if (current.has_pending) return { outcome: 'pending_revision_exists' };
+
+        await this.seedDraftFromRevision(
+          transaction,
+          work.work_id,
+          work.published_revision_id,
+          input.now,
+        );
+        await transaction`
+          update public.works set updated_at = ${input.now} where id = ${work.work_id}
+        `;
+        await this.recordOperation(transaction, {
+          actorAccountId: input.actorAccountId,
+          idempotencyKey: input.idempotencyKey,
+          now: input.now,
+          operation: 'published_work_draft_seeded',
+          requestPayload,
+          resultingVersion: 1,
+          workId: work.work_id,
+        });
+        const seeded = await this.findOwnedDraftByWorkId(
+          transaction,
+          input.actorAccountId,
+          work.work_id,
+        );
+        if (seeded === null) throw new Error('WORK_DRAFT_SEED_READ_FAILED');
+        return { outcome: 'created', work: seeded };
+      });
+    } catch (error: unknown) {
+      return this.resolveConcurrentReplay(error, {
+        actorAccountId: input.actorAccountId,
+        idempotencyKey: input.idempotencyKey,
+        operation: 'published_work_draft_seeded',
+        requestPayload,
+      });
+    }
+  }
+
+  async rebaseDraft(
+    input: Parameters<WorksRepository['rebaseDraft']>[0],
+  ): Promise<WorkMutationResult> {
+    const requestPayload: postgres.JSONValue = {
+      expectedPublishedRevisionId: input.expectedPublishedRevisionId,
+      expectedVersion: input.expectedVersion,
+      publicId: input.publicId,
+    };
+    try {
+      return await this.database.sql.begin(async (transaction) => {
+        const replay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          'work_draft_rebased',
+          requestPayload,
+        );
+        const replayResult = await this.toReplayResult(transaction, input.actorAccountId, replay);
+        if (replayResult !== null) return replayResult;
+        const rows = await transaction<Array<OwnedWorkStateRow & { draft_version: string }>>`
+          select work.id as work_id, work.public_id, work.activity_state,
+            work.publication_state, work.published_revision_id,
+            draft.version as draft_version
+          from public.works as work
+          join public.accounts as account on account.person_id = work.submitter_person_id
+          join private.work_drafts as draft on draft.work_id = work.id
+          where account.id = ${input.actorAccountId} and work.public_id = ${input.publicId}
+            and work.activity_state = 'active'
+          for update of work, draft
+        `;
+        const work = rows[0];
+        if (work === undefined) return { outcome: 'not_found' };
+        const concurrentReplay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          'work_draft_rebased',
+          requestPayload,
+        );
+        const concurrentReplayResult = await this.toReplayResult(
+          transaction,
+          input.actorAccountId,
+          concurrentReplay,
+        );
+        if (concurrentReplayResult !== null) return concurrentReplayResult;
+        if (work.publication_state !== 'published' || work.published_revision_id === null) {
+          return { outcome: 'work_not_published' };
+        }
+        if (work.published_revision_id !== input.expectedPublishedRevisionId) {
+          return { outcome: 'published_revision_conflict' };
+        }
+        if (Number(work.draft_version) !== input.expectedVersion) {
+          return { outcome: 'version_conflict' };
+        }
+        const resultingVersion = input.expectedVersion + 1;
+        await transaction`
+          update private.work_drafts
+          set base_published_revision_id = ${work.published_revision_id},
+            version = ${resultingVersion}, updated_at = ${input.now}
+          where work_id = ${work.work_id}
+        `;
+        await transaction`
+          update public.works set updated_at = ${input.now} where id = ${work.work_id}
+        `;
+        await this.recordOperation(transaction, {
+          actorAccountId: input.actorAccountId,
+          idempotencyKey: input.idempotencyKey,
+          now: input.now,
+          operation: 'work_draft_rebased',
+          requestPayload,
+          resultingVersion,
+          workId: work.work_id,
+        });
+        const rebased = await this.findOwnedDraftByWorkId(
+          transaction,
+          input.actorAccountId,
+          work.work_id,
+        );
+        if (rebased === null) throw new Error('WORK_DRAFT_REBASE_READ_FAILED');
+        return { outcome: 'updated', work: rebased };
+      });
+    } catch (error: unknown) {
+      return this.resolveConcurrentReplay(error, {
+        actorAccountId: input.actorAccountId,
+        idempotencyKey: input.idempotencyKey,
+        operation: 'work_draft_rebased',
+        requestPayload,
+      });
+    }
   }
 
   async updateDraft(input: {
@@ -309,7 +530,7 @@ export class PostgresWorksRepository implements WorksRepository {
   }
 
   private findOwnedDraftByWorkId(
-    sql: postgres.TransactionSql,
+    sql: postgres.Sql | postgres.TransactionSql,
     accountId: string,
     workId: string,
   ): Promise<WorkDraftView | null> {
@@ -329,6 +550,7 @@ export class PostgresWorksRepository implements WorksRepository {
         work.public_id,
         work.activity_state,
         work.publication_state,
+        work.published_revision_id,
         draft.base_published_revision_id,
         draft.title,
         draft.summary,
@@ -393,9 +615,43 @@ export class PostgresWorksRepository implements WorksRepository {
         videoLinks: row.draft_video_links,
       },
       publicationState: row.publication_state,
+      publishedRevisionId: row.published_revision_id,
       publicId: row.public_id,
       version: Number(row.version),
     };
+  }
+
+  private async seedDraftFromRevision(
+    sql: postgres.TransactionSql,
+    workId: string,
+    revisionId: string,
+    now: Date,
+  ): Promise<void> {
+    await sql`
+      insert into private.work_drafts (
+        work_id, base_published_revision_id, title, summary, description, category,
+        academic_year, semester, version, created_at, updated_at
+      ) select
+        ${workId}, revision.id, revision.title, revision.summary, revision.description,
+        revision.category, revision.academic_year, revision.semester, 1, ${now}, ${now}
+      from private.work_revisions as revision
+      where revision.id = ${revisionId} and revision.work_id = ${workId}
+        and revision.status = 'approved'
+    `;
+    await sql`insert into private.work_draft_links (work_id, position, label, url)
+      select ${workId}, position, label, url
+      from private.work_revision_links where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_tags (work_id, position, display_label, normalized_identity)
+      select ${workId}, position, display_label, normalized_identity
+      from private.work_revision_tags where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_video_links (
+      work_id, position, provider, provider_video_id, url
+    ) select ${workId}, position, provider, provider_video_id, url
+      from private.work_revision_video_links where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_media (
+      work_id, media_kind, position, asset_id, created_at
+    ) select ${workId}, media_kind, position, asset_id, ${now}
+      from private.work_revision_media where revision_id = ${revisionId}`;
   }
 
   private async resolveReplay(
@@ -533,5 +789,10 @@ export class PostgresWorksRepository implements WorksRepository {
         url: videoLink.url,
       })),
     };
+  }
+
+  private required<T>(value: T | undefined): T {
+    if (value === undefined) throw new Error('WORK_PERSISTENCE_INVARIANT');
+    return value;
   }
 }

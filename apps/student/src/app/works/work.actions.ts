@@ -230,6 +230,67 @@ export async function withdrawWorkRevisionAction(
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
 
+export async function seedPublishedWorkDraftAction(
+  publicId: string,
+  previousState: WorkRevisionActionState,
+  formData: FormData,
+): Promise<WorkRevisionActionState> {
+  const parsed = z
+    .object({
+      expectedPublishedRevisionId: z.uuid(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+    })
+    .safeParse({
+      expectedPublishedRevisionId: formData.get('expectedPublishedRevisionId'),
+      idempotencyKey: formData.get('idempotencyKey'),
+      publicId,
+    });
+  if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  try {
+    await client().seedPublishedDraft(await sessionToken(), parsed.data.publicId, {
+      expectedPublishedRevisionId: parsed.data.expectedPublishedRevisionId,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+  } catch (error: unknown) {
+    return revisionFailed(previousState, mapRevisionError(error));
+  }
+  revalidatePath(`/works/${parsed.data.publicId}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
+export async function rebaseWorkDraftAction(
+  publicId: string,
+  previousState: WorkRevisionActionState,
+  formData: FormData,
+): Promise<WorkRevisionActionState> {
+  const parsed = z
+    .object({
+      expectedPublishedRevisionId: z.uuid(),
+      expectedVersion: z.coerce.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+    })
+    .safeParse({
+      expectedPublishedRevisionId: formData.get('expectedPublishedRevisionId'),
+      expectedVersion: formData.get('expectedVersion'),
+      idempotencyKey: formData.get('idempotencyKey'),
+      publicId,
+    });
+  if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  try {
+    await client().rebaseDraft(await sessionToken(), parsed.data.publicId, {
+      expectedPublishedRevisionId: parsed.data.expectedPublishedRevisionId,
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+  } catch (error: unknown) {
+    return revisionFailed(previousState, mapRevisionError(error));
+  }
+  revalidatePath(`/works/${parsed.data.publicId}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
 function client(): StudentWorksCoreClient {
   return new StudentWorksCoreClient(getStudentServerEnvironment());
 }
@@ -275,6 +336,8 @@ function mapRevisionError(error: unknown): WorkRevisionActionError {
       'WORK_REVISION_STATE_CONFLICT',
       'WORK_REVISION_VERSION_CONFLICT',
       'WORK_BASE_REVISION_CONFLICT',
+      'WORK_DRAFT_EXISTS',
+      'WORK_NOT_PUBLISHED',
       'WORK_VERSION_CONFLICT',
     ].includes(error.code)
   )

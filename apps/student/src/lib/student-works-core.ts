@@ -36,9 +36,19 @@ const workDraftSchema = z
     activityState: z.literal('active'),
     basePublishedRevisionId: z.uuid().nullable(),
     draft: workDraftContentSchema,
-    publicationState: z.literal('never_published'),
+    publicationState: z.enum(['never_published', 'published', 'unpublished']),
+    publishedRevisionId: z.uuid().nullable(),
     publicId: z.uuid(),
     version: z.number().int().positive(),
+  })
+  .strict();
+const workAuthoringStateSchema = z
+  .object({
+    activityState: z.literal('active'),
+    draft: workDraftSchema.nullable(),
+    publicationState: z.enum(['never_published', 'published', 'unpublished']),
+    publishedRevisionId: z.uuid().nullable(),
+    publicId: z.uuid(),
   })
   .strict();
 const authoringContextSchema = z
@@ -144,6 +154,7 @@ const changeRequestSchema = z
   .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
+export type WorkAuthoringState = z.infer<typeof workAuthoringStateSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
 export type WorkMutationInput = {
   academicPeriod: z.infer<typeof academicPeriodSchema>;
@@ -193,6 +204,47 @@ export class StudentWorksCoreClient {
       method: 'GET',
       path: `/v1/internal/student/works/${publicId}`,
       responseSchema: workDraftSchema,
+      sessionToken,
+    });
+  }
+
+  getAuthoringState(sessionToken: string, publicId: string): Promise<WorkAuthoringState> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/authoring-state`,
+      responseSchema: workAuthoringStateSchema,
+      sessionToken,
+    });
+  }
+
+  seedPublishedDraft(
+    sessionToken: string,
+    publicId: string,
+    input: { expectedPublishedRevisionId: string; idempotencyKey: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/draft`,
+      responseSchema: mutationResultSchema,
+      sessionToken,
+    });
+  }
+
+  rebaseDraft(
+    sessionToken: string,
+    publicId: string,
+    input: {
+      expectedPublishedRevisionId: string;
+      expectedVersion: number;
+      idempotencyKey: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/draft/rebase`,
+      responseSchema: mutationResultSchema,
       sessionToken,
     });
   }

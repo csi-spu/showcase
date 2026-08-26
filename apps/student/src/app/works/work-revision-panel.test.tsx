@@ -5,6 +5,8 @@ import messages from '../../../messages/th.json';
 import type { WorkChangeRequest, WorkRevision } from '@/lib/student-works-core';
 import {
   WorkChangeRequestPanel,
+  WorkPublishedRevisionPanel,
+  WorkRevisionRebasePanel,
   WorkRevisionPendingPanel,
   WorkRevisionSubmissionPanel,
 } from './work-revision-panel';
@@ -58,6 +60,38 @@ describe('Work Revision panels', () => {
     expect(screen.getByText('กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน')).toBeTruthy();
     expect(screen.getByText('Revision 1')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('offers an explicit private Draft seed without implying the Published Revision changes', () => {
+    renderPanel(
+      <WorkPublishedRevisionPanel
+        action={vi.fn()}
+        idempotencyKey={IDEMPOTENCY_KEY}
+        publishedRevisionId={REVISION_PUBLIC_ID}
+      />,
+    );
+
+    expect(screen.getByText('ผลงานเผยแพร่แล้ว')).toBeTruthy();
+    expect(screen.getByText(/ฉบับที่เผยแพร่ยังคงแสดงต่อสาธารณะ/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'สร้างร่าง Revision ใหม่' })).toBeTruthy();
+  });
+
+  it('requires explicit rebase for a stale Draft and explains that local content is retained', () => {
+    renderPanel(
+      <WorkRevisionRebasePanel
+        action={vi.fn()}
+        draftVersion={4}
+        idempotencyKey={IDEMPOTENCY_KEY}
+        publishedRevisionId={REVISION_PUBLIC_ID}
+      />,
+    );
+
+    expect(screen.getByText('ร่างนี้อ้างอิงฉบับเผยแพร่เก่า')).toBeTruthy();
+    expect(screen.getByText(/เนื้อหาในร่างปัจจุบันจะยังอยู่ครบ/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'รีเบสร่างกับฉบับเผยแพร่ล่าสุด' })).toBeTruthy();
+    expect((document.querySelector('[name="expectedVersion"]') as HTMLInputElement).value).toBe(
+      '4',
+    );
   });
 });
 
