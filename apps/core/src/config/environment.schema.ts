@@ -3,7 +3,10 @@ import { z } from 'zod';
 const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const LOCAL_IDENTITY_SECRET = 'local-development-only-identity-secret';
 const LOCAL_ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const LOCAL_CATALOG_CURSOR_SECRET = 'local-development-only-catalog-cursor-secret';
+const LOCAL_CLOUDFLARE_API_TOKEN = 'local-development-only-cloudflare-api-token';
 const LOCAL_STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const LOCAL_VISITOR_CACHE_SECRET = 'local-development-only-visitor-cache-secret';
 const LOCAL_SUPABASE_KEY = 'local-publishable-key-set-by-supabase-status';
 const LOCAL_SUPABASE_SECRET_KEY = 'local-secret-key-set-by-supabase-status';
 const originSchema = z
@@ -15,6 +18,12 @@ const environmentSchema = z
     ADMIN_BFF_SECRET: z.string().min(32).default(LOCAL_ADMIN_BFF_SECRET),
     APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     AUTH_IDENTITY_SECRET: z.string().min(32).default(LOCAL_IDENTITY_SECRET),
+    CATALOG_CURSOR_SECRET: z.string().min(32).default(LOCAL_CATALOG_CURSOR_SECRET),
+    CLOUDFLARE_API_TOKEN: z.string().min(32).default(LOCAL_CLOUDFLARE_API_TOKEN),
+    CLOUDFLARE_ZONE_ID: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/u)
+      .default('00000000000000000000000000000000'),
     CORS_ALLOWED_ORIGINS: z
       .string()
       .default('http://localhost:3000,http://localhost:3001,http://localhost:3002')
@@ -38,6 +47,8 @@ const environmentSchema = z
     SUPABASE_PUBLISHABLE_KEY: z.string().min(1).default(LOCAL_SUPABASE_KEY),
     SUPABASE_SECRET_KEY: z.string().min(1).default(LOCAL_SUPABASE_SECRET_KEY),
     SUPABASE_URL: z.url().default('http://127.0.0.1:54321'),
+    VISITOR_CACHE_SECRET: z.string().min(32).default(LOCAL_VISITOR_CACHE_SECRET),
+    VISITOR_URL: originSchema.default('http://localhost:3000'),
   })
   .superRefine((environment, context) => {
     if (
@@ -64,12 +75,56 @@ const environmentSchema = z
 
     if (
       ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.CATALOG_CURSOR_SECRET === LOCAL_CATALOG_CURSOR_SECRET
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'CATALOG_CURSOR_SECRET must be environment-specific outside local development',
+        path: ['CATALOG_CURSOR_SECRET'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.CLOUDFLARE_API_TOKEN === LOCAL_CLOUDFLARE_API_TOKEN
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'CLOUDFLARE_API_TOKEN must be configured outside local development',
+        path: ['CLOUDFLARE_API_TOKEN'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.CLOUDFLARE_ZONE_ID === '00000000000000000000000000000000'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'CLOUDFLARE_ZONE_ID must be configured outside local development',
+        path: ['CLOUDFLARE_ZONE_ID'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
       environment.STUDENT_BFF_SECRET === LOCAL_STUDENT_BFF_SECRET
     ) {
       context.addIssue({
         code: 'custom',
         message: 'STUDENT_BFF_SECRET must be environment-specific outside local development',
         path: ['STUDENT_BFF_SECRET'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.VISITOR_CACHE_SECRET === LOCAL_VISITOR_CACHE_SECRET
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'VISITOR_CACHE_SECRET must be configured outside local development',
+        path: ['VISITOR_CACHE_SECRET'],
       });
     }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
 import { PublicWorkCoreClient } from '@/lib/public-work-core';
 
@@ -10,7 +11,7 @@ const paramsSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ assetId: string; publicId: string; width: string }> },
 ): Promise<Response> {
   const parsed = paramsSchema.safeParse(await params);
@@ -39,11 +40,19 @@ export async function GET(
   }
   const bytes = await readBoundedBody(upstream, MAX_MEDIA_BYTES);
   if (bytes === null) return notFound();
+  const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
+  if (request.headers.get('if-none-match') === etag) {
+    return new Response(null, {
+      headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300', ETag: etag },
+      status: 304,
+    });
+  }
   return new Response(bytes, {
     headers: {
       'Cache-Control': 'public, max-age=0, s-maxage=300',
       'Content-Length': String(bytes.byteLength),
       'Content-Type': 'image/webp',
+      ETag: etag,
       'X-Content-Type-Options': 'nosniff',
     },
   });

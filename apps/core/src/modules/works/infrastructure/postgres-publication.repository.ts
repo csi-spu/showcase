@@ -11,6 +11,7 @@ import type {
   PublicWorkView,
 } from '../application/publication.ports';
 import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
+import { refreshPublicWorkCatalog } from '../../catalog/infrastructure/postgres-catalog-projection';
 
 type Sql = postgres.Sql | postgres.TransactionSql;
 
@@ -157,6 +158,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
           candidate.publication_state === 'published' ? candidate.published_revision_id : null,
           input.now,
         );
+        await refreshPublicWorkCatalog(transaction, candidate.work_id, input.now);
         await this.recordPublicationEvent(transaction, candidate, input.now);
         const publication = await this.findPublicationByReviewId(transaction, reviewId);
         if (publication === null) throw new Error('PUBLICATION_CREATE_READ_FAILED');

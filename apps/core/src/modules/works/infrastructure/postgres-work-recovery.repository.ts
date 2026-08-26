@@ -12,6 +12,7 @@ import {
   evaluateWorkRecoveryTransition,
   type WorkRecoveryOperation,
 } from '../domain/work-recovery-policy';
+import { refreshPublicWorkCatalog } from '../../catalog/infrastructure/postgres-catalog-projection';
 
 type Sql = postgres.Sql | postgres.TransactionSql;
 
@@ -182,6 +183,7 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
           }
         }
         await this.updateTagCounts(transaction, work, input.operation);
+        await refreshPublicWorkCatalog(transaction, work.id);
         await this.recordRecoveryEvent(
           transaction,
           work,
@@ -386,6 +388,7 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
           )
         `;
         await this.updateTagCounts(transaction, work, 'unpublish');
+        await refreshPublicWorkCatalog(transaction, work.id);
       }
       await this.recordRemovalDecisionEvent(transaction, updated, work, input.now);
       return { outcome: 'resolved', request: this.toRemoval(updated) };

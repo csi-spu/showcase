@@ -7,6 +7,7 @@ import { RosterModule } from './modules/roster/roster.module';
 import { AccountControlsModule } from './modules/account-controls/account-controls.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { WorksModule } from './modules/works/works.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { WorksModule } from './modules/works/works.module';
     }),
     AuthModule,
     AccountControlsModule,
+    CatalogModule,
     HealthModule,
     ProfilesModule,
     RosterModule,

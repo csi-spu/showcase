@@ -23,8 +23,8 @@ Each GitHub Environment contains secrets named:
 Repository variables identify applications:
 
 - `COOLIFY_STAGING_ENABLED`, exact value `true` only after staging provisioning is complete
-- `COOLIFY_STAGING_CORE`, `COOLIFY_STAGING_ADMIN`, `COOLIFY_STAGING_STUDENT`, `COOLIFY_STAGING_VISITOR`
-- `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_VISITOR`
+- `COOLIFY_STAGING_CORE`, `COOLIFY_STAGING_CACHE_WORKER`, `COOLIFY_STAGING_ADMIN`, `COOLIFY_STAGING_STUDENT`, `COOLIFY_STAGING_VISITOR`
+- `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_CACHE_WORKER`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_VISITOR`
 
 Protect the `production` Environment with required reviewers and restrict it to `main`. Leave `COOLIFY_STAGING_ENABLED` absent while provisioning; staging may deploy automatically after CI succeeds on `main` only after the variable is set to `true`.
 
@@ -35,6 +35,9 @@ Current required keys:
 - `APP_ENV`
 - `ADMIN_BFF_SECRET`, an environment-specific high-entropy secret shared only with the Admin server runtime
 - `AUTH_IDENTITY_SECRET`, an environment-specific high-entropy HMAC secret for private Student ID and Admin login derivation
+- `CATALOG_CURSOR_SECRET`, an environment-specific high-entropy HMAC secret for integrity-protected Public Catalog cursors
+- `CLOUDFLARE_API_TOKEN`, a zone-scoped token with only Cache Purge permission
+- `CLOUDFLARE_ZONE_ID`, the Cloudflare zone containing Core and Visitor public hostnames
 - `CORS_ALLOWED_ORIGINS`
 - `DATABASE_URL`, the pooled Supabase Postgres connection used only by Core
 - `GIT_SHA`, baked into the image by CI
@@ -51,12 +54,16 @@ Current required keys:
 - `SUPABASE_PUBLISHABLE_KEY`, used by Core for Supabase Auth password and refresh grants
 - `SUPABASE_SECRET_KEY`, used only by Core's authorized Admin provisioning command
 - `SUPABASE_URL`
+- `VISITOR_CACHE_SECRET`, an environment-specific high-entropy secret shared only with the Visitor cache-revalidation endpoint
+- `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
 
 R2 credentials must allow only object read, write, and delete operations in the configured private bucket. Presigned URLs use the S3 API origin, never the public media origin. Bucket CORS allows `PUT` only from the exact Student origin and permits the `Content-Type` header. The Supabase secret key is restricted to the Admin provisioning adapter; normal Admin and Student authentication use the publishable key.
 
 Admin receives `CORE_URL` and the matching `ADMIN_BFF_SECRET` at container runtime. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 
 Student receives `CORE_URL` and the matching `STUDENT_BFF_SECRET` at container runtime. The secret must differ between staging and production and rotate on both Core and Student as one change. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
+
+Visitor receives `CORE_URL` and the matching `VISITOR_CACHE_SECRET` at container runtime. Rotate `VISITOR_CACHE_SECRET` on Core and Visitor together. The cache worker sends it only to the same-environment HTTPS Visitor origin; it never enters browser code or logs.
 
 Provision an Admin from an authorized Core container after migrations are current:
 

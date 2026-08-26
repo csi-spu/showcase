@@ -2,12 +2,13 @@
 
 ## Resource layout
 
-Create two environments, `staging` and `production`. Each contains four Docker Image applications:
+Create two environments, `staging` and `production`. Each contains these Docker Image applications and workers:
 
 | App                  | Image name                         | Container port | Health path        |
 | -------------------- | ---------------------------------- | -------------: | ------------------ |
 | core                 | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
 | core-media-processor | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
+| core-cache-worker    | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
 | admin                | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
 | student              | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
 | visitor              | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
@@ -34,9 +35,15 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 - Keep container filesystem ephemeral. Persist metadata in Supabase and objects in R2.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `PUBLIC_MEDIA_ORIGIN`, `R2_ACCESS_KEY_ID`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_SECRET_ACCESS_KEY`, `R2_TIMEOUT_MS`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `SUPABASE_AUTH_TIMEOUT_MS`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and the same environment's `STUDENT_BFF_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `R2_ACCESS_KEY_ID`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_SECRET_ACCESS_KEY`, `R2_TIMEOUT_MS`, `STUDENT_BFF_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_AUTH_TIMEOUT_MS`, `VISITOR_CACHE_SECRET`, and `VISITOR_URL`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and the same environment's `STUDENT_BFF_SECRET`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_CACHE_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
 
 Create a fifth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares only Core's database/R2 environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
+
+Create a sixth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
+
+Configure Cloudflare to cache eligible Core API and Visitor HTML responses using their origin `Cache-Control`, retain the origin `Cache-Tag` values, and keep private/no-store routes out of shared cache. The cache worker expires matching Next.js data/path cache first and then calls Cloudflare's zone cache-purge API by tag. Media remains capped at five minutes without `stale-if-error`; HTML/API remains capped at two minutes if purge delivery is delayed.
+
+Visitor samples one percent of LCP, CLS, and INP observations without public identifiers, URLs, Account data, or Student IDs. Aggregate structured `public_web_vital_recorded` logs by `page` and `device` over a rolling 28-day window and alert when p75 exceeds LCP 2.5 seconds, CLS 0.1, or INP 200 milliseconds. Apply a bounded Cloudflare rate limit to `/api/metrics/web-vitals`; rejected telemetry must never affect page delivery.
 
 Configure an R2 lifecycle rule that deletes `work-quarantine/` objects after one day. Do not place an age-based lifecycle rule on `work-media/`: that prefix contains immutable media attached to retained Drafts and future Revisions. Core deletes expired unattached processed objects after seven days from authoritative database claims; the quarantine rule remains the provider-side backstop for raw input that Core could not delete.
 

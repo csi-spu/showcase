@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import { getVisitorCoreUrl, PublicProfileCoreClient } from '@/lib/public-profile-core';
 
 const MAX_SANITIZED_PHOTO_BYTES = 8 * 1_024 * 1_024;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ publicId: string }> },
 ): Promise<Response> {
   const { publicId } = await params;
@@ -28,11 +29,19 @@ export async function GET(
   }
   const bytes = await upstream.arrayBuffer();
   if (bytes.byteLength > MAX_SANITIZED_PHOTO_BYTES) return notFound();
+  const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
+  if (request.headers.get('if-none-match') === etag) {
+    return new Response(null, {
+      headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300', ETag: etag },
+      status: 304,
+    });
+  }
   return new Response(bytes, {
     headers: {
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': 'public, max-age=0, s-maxage=300',
       'Content-Length': String(bytes.byteLength),
       'Content-Type': 'image/webp',
+      ETag: etag,
       'X-Content-Type-Options': 'nosniff',
     },
   });

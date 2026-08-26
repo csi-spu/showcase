@@ -46,7 +46,8 @@ describe('public profile photo route', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=300');
+    expect(response.headers.get('etag')).toEqual(expect.any(String));
     expect(response.headers.get('content-type')).toBe('image/webp');
     expect((await response.arrayBuffer()).byteLength).toBe(3);
   });
