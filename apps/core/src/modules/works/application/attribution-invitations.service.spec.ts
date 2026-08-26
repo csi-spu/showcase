@@ -40,6 +40,7 @@ describe('AttributionInvitationsService', () => {
       acceptExternalInvitation: jest.fn(),
       createAccountInvitation,
       createExternalInvitation,
+      exchangeExternalRecoveryCode: jest.fn(),
       exchangeExternalToken,
       findExternalSessionInvitation: jest.fn(),
       listReceivedInvitations: jest.fn(),
@@ -148,6 +149,29 @@ describe('AttributionInvitationsService', () => {
       now: NOW,
       sessionExpiresAt: new Date('2026-08-25T10:30:00.000Z'),
     });
+  });
+
+  it('exchanges a recovery code without exposing its hash', async () => {
+    repository.exchangeExternalRecoveryCode.mockResolvedValue({
+      invitation: invitation('external'),
+      outcome: 'exchanged',
+    });
+    await expect(
+      service.exchangeExternalRecoveryCode('recovery-secret-123'),
+    ).resolves.toMatchObject({
+      invitationSessionToken: 'generated-32',
+      sessionExpiresAt: '2026-08-25T10:30:00.000Z',
+    });
+    expect(repository.exchangeExternalRecoveryCode.mock.calls).toEqual([
+      [
+        {
+          invitationSessionHash: 'invitation-session-hash',
+          now: NOW,
+          recoveryCodeHash: 'recovery-code-hash',
+          sessionExpiresAt: new Date('2026-08-25T10:30:00.000Z'),
+        },
+      ],
+    ]);
   });
 
   it.each([

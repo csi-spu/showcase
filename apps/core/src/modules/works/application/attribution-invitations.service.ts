@@ -162,6 +162,26 @@ export class AttributionInvitationsService {
     };
   }
 
+  async exchangeExternalRecoveryCode(recoveryCode: string) {
+    const invitationSessionToken = this.tokenGenerator.generate(32);
+    const now = this.clock.now();
+    const sessionExpiresAt = new Date(now.getTime() + INVITATION_SESSION_MILLISECONDS);
+    const result = await this.repository.exchangeExternalRecoveryCode({
+      invitationSessionHash: this.secretProtector.hashInvitationSession(invitationSessionToken),
+      now,
+      recoveryCodeHash: this.secretProtector.hashRecoveryCode(recoveryCode),
+      sessionExpiresAt,
+    });
+    if (result.outcome === 'invalid_or_expired') {
+      throw new AttributionInvitationError('INVITATION_INVALID_OR_EXPIRED', 404);
+    }
+    return {
+      invitation: result.invitation,
+      invitationSessionToken,
+      sessionExpiresAt: sessionExpiresAt.toISOString(),
+    };
+  }
+
   listReceivedInvitations(accountId: string, limit: number, cursor?: string) {
     return this.repository.listReceivedInvitations(accountId, limit, cursor, this.clock.now());
   }

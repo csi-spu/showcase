@@ -116,12 +116,52 @@ const publicationSchema = z
     workPublicId: z.uuid(),
   })
   .strict();
+const workRecoverySchema = z
+  .object({
+    activityState: z.enum(['active', 'archived']),
+    publicationState: z.enum(['never_published', 'published', 'unpublished']),
+    publicId: z.uuid(),
+    publishedRevisionId: z.uuid().nullable(),
+    publishedRevisionPublicId: z.uuid().nullable(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const removalRequestSchema = z
+  .object({
+    createdAt: z.iso.datetime(),
+    decisionReason: z.string().nullable(),
+    publicId: z.uuid(),
+    reason: z.string().min(10).max(1_000),
+    revisionPublicId: z.uuid(),
+    state: z.enum(['approved', 'cancelled', 'declined', 'pending']),
+    title: z.string().min(1).max(150),
+    version: z.number().int().positive(),
+    workVersion: z.number().int().positive(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
+const attributionRemovalRequestSchema = z
+  .object({
+    attributionName: z.string(),
+    correctionRevisionPublicId: z.uuid().nullable(),
+    createdAt: z.iso.datetime(),
+    publicId: z.uuid(),
+    reason: z.string().min(10).max(1_000),
+    revisionPublicId: z.uuid(),
+    state: z.enum(['accepted', 'declined', 'pending']),
+    version: z.number().int().positive(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
 
 export type AdminReviewQueue = z.infer<typeof reviewQueueSchema>;
 export type AdminReviewQueueItem = z.infer<typeof queueItemSchema>;
 export type AdminReviewRevision = z.infer<typeof revisionSchema>;
 export type AdminCorrectionBase = AdminReviewRevision & { status: 'approved' };
 export type ChangeRequestReason = z.infer<typeof changeRequestReasonSchema>;
+export type AdminWorkRecovery = z.infer<typeof workRecoverySchema>;
+export type AdminRemovalRequest = z.infer<typeof removalRequestSchema>;
+export type AdminAttributionRemovalRequest = z.infer<typeof attributionRemovalRequestSchema>;
 
 interface AdminReviewsCoreConfig {
   adminBffSecret: string;
@@ -244,6 +284,105 @@ export class AdminReviewsCoreClient {
         .object({
           outcome: z.enum(['changed_requested', 'replayed']),
           review: changeRequestSchema,
+        })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  listRemovalRequests(sessionToken: string, limit: number) {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/removal-requests?limit=${limit}`,
+      responseSchema: z.object({ items: z.array(removalRequestSchema).max(50) }).strict(),
+      sessionToken,
+    });
+  }
+
+  listAttributionRemovalRequests(sessionToken: string, limit: number) {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/attribution-removal-requests?limit=${limit}`,
+      responseSchema: z
+        .object({ items: z.array(attributionRemovalRequestSchema).max(50) })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  decideAttributionRemovalRequest(
+    sessionToken: string,
+    requestPublicId: string,
+    input: {
+      decision: 'accept' | 'decline';
+      decisionReason?: string;
+      expectedVersion: number;
+      idempotencyKey: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/attribution-removal-requests/${requestPublicId}/decision`,
+      responseSchema: z
+        .object({
+          outcome: z.enum(['replayed', 'resolved']),
+          request: attributionRemovalRequestSchema,
+        })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  getRecoveryState(sessionToken: string, workPublicId: string): Promise<AdminWorkRecovery> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/works/${workPublicId}/recovery-state`,
+      responseSchema: workRecoverySchema,
+      sessionToken,
+    });
+  }
+
+  transitionWork(
+    sessionToken: string,
+    workPublicId: string,
+    input: {
+      expectedVersion: number;
+      idempotencyKey: string;
+      operation: 'archive' | 'restore_active' | 'restore_publication' | 'unpublish';
+      reason: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/works/${workPublicId}/recovery`,
+      responseSchema: z
+        .object({ outcome: z.enum(['replayed', 'transitioned']), work: workRecoverySchema })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  decideRemovalRequest(
+    sessionToken: string,
+    requestPublicId: string,
+    input: {
+      decision: 'approve' | 'decline';
+      decisionReason?: string;
+      expectedVersion: number;
+      expectedWorkVersion: number;
+      idempotencyKey: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/removal-requests/${requestPublicId}/decision`,
+      responseSchema: z
+        .object({
+          outcome: z.enum(['replayed', 'resolved']),
+          request: removalRequestSchema,
         })
         .strict(),
       sessionToken,

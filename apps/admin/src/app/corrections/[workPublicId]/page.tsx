@@ -53,6 +53,12 @@ export default async function AdminCorrectionPage({
         </h1>
         <p className="text-base leading-relaxed text-muted-foreground">{t('description')}</p>
       </header>
+      <Link
+        className="mt-4 inline-block text-sm font-medium text-primary underline"
+        href={`/recovery/${base.workPublicId}`}
+      >
+        จัดการการมองเห็นและการกู้คืนผลงาน
+      </Link>
       <div className="mt-8 grid gap-8 xl:grid-cols-12">
         <RevisionSnapshot
           labels={{

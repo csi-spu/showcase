@@ -152,6 +152,49 @@ const changeRequestSchema = z
     workPublicId: z.uuid(),
   })
   .strict();
+const workRecoverySchema = z
+  .object({
+    activityState: z.enum(['active', 'archived']),
+    publicationState: z.enum(['never_published', 'published', 'unpublished']),
+    publicId: z.uuid(),
+    publishedRevisionId: z.uuid().nullable(),
+    publishedRevisionPublicId: z.uuid().nullable(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const removalRequestSchema = z
+  .object({
+    createdAt: z.iso.datetime(),
+    decisionReason: z.string().nullable(),
+    publicId: z.uuid(),
+    reason: z.string().min(10).max(1_000),
+    revisionPublicId: z.uuid(),
+    state: z.enum(['approved', 'cancelled', 'declined', 'pending']),
+    title: z.string().min(1).max(150),
+    version: z.number().int().positive(),
+    workVersion: z.number().int().positive(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
+const removalRequestMutationSchema = z
+  .object({
+    outcome: z.enum(['created', 'replayed', 'resolved']),
+    request: removalRequestSchema,
+  })
+  .strict();
+const attributionRemovalRequestSchema = z
+  .object({
+    attributionName: z.string(),
+    correctionRevisionPublicId: z.uuid().nullable(),
+    createdAt: z.iso.datetime(),
+    publicId: z.uuid(),
+    reason: z.string().min(10).max(1_000),
+    revisionPublicId: z.uuid(),
+    state: z.enum(['accepted', 'declined', 'pending']),
+    version: z.number().int().positive(),
+    workPublicId: z.uuid(),
+  })
+  .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
 export type WorkAuthoringState = z.infer<typeof workAuthoringStateSchema>;
@@ -173,6 +216,9 @@ export type AttributionInvitation = z.infer<typeof attributionInvitationSchema>;
 export type AttributionInvitationPage = z.infer<typeof attributionInvitationPageSchema>;
 export type WorkRevision = z.infer<typeof workRevisionSchema>;
 export type WorkChangeRequest = z.infer<typeof changeRequestSchema>;
+export type WorkRecovery = z.infer<typeof workRecoverySchema>;
+export type RemovalRequest = z.infer<typeof removalRequestSchema>;
+export type AttributionRemovalRequest = z.infer<typeof attributionRemovalRequestSchema>;
 
 interface StudentWorksCoreConfig {
   coreUrl: string;
@@ -213,6 +259,56 @@ export class StudentWorksCoreClient {
       method: 'GET',
       path: `/v1/internal/student/works/${publicId}/authoring-state`,
       responseSchema: workAuthoringStateSchema,
+      sessionToken,
+    });
+  }
+
+  getRecoveryState(sessionToken: string, publicId: string): Promise<WorkRecovery> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/recovery-state`,
+      responseSchema: workRecoverySchema,
+      sessionToken,
+    });
+  }
+
+  async getPendingRemovalRequest(
+    sessionToken: string,
+    publicId: string,
+  ): Promise<RemovalRequest | null> {
+    const result = await this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works/${publicId}/removal-request`,
+      responseSchema: z.object({ request: removalRequestSchema.nullable() }).strict(),
+      sessionToken,
+    });
+    return result.request;
+  }
+
+  createRemovalRequest(
+    sessionToken: string,
+    publicId: string,
+    input: { expectedWorkVersion: number; idempotencyKey: string; reason: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/works/${publicId}/removal-requests`,
+      responseSchema: removalRequestMutationSchema,
+      sessionToken,
+    });
+  }
+
+  cancelRemovalRequest(
+    sessionToken: string,
+    requestPublicId: string,
+    input: { expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/student/removal-requests/${requestPublicId}/cancel`,
+      responseSchema: removalRequestMutationSchema,
       sessionToken,
     });
   }
@@ -507,6 +603,48 @@ export class StudentWorksCoreClient {
         })
         .strict(),
       ...(studentSessionToken === undefined ? {} : { sessionToken: studentSessionToken }),
+    });
+  }
+
+  exchangeExternalRecoveryCode(recoveryCode: string) {
+    return this.client.request({
+      body: { recoveryCode },
+      method: 'POST',
+      path: '/v1/internal/student/external-contributor-recovery/exchange',
+      responseSchema: z
+        .object({
+          invitation: attributionInvitationSchema,
+          invitationSessionToken: z.string(),
+          sessionExpiresAt: z.iso.datetime(),
+        })
+        .strict(),
+    });
+  }
+
+  getAttributionRemovalRequest(invitationSessionToken: string) {
+    return this.client.request({
+      method: 'GET',
+      path: '/v1/internal/student/external-contributor-recovery/removal-request',
+      responseSchema: attributionRemovalRequestSchema.nullable(),
+      sessionToken: invitationSessionToken,
+    });
+  }
+
+  createAttributionRemovalRequest(
+    invitationSessionToken: string,
+    input: { idempotencyKey: string; reason: string },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: '/v1/internal/student/external-contributor-recovery/removal-requests',
+      responseSchema: z
+        .object({
+          outcome: z.enum(['created', 'replayed']),
+          request: attributionRemovalRequestSchema,
+        })
+        .strict(),
+      sessionToken: invitationSessionToken,
     });
   }
 

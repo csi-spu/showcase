@@ -102,6 +102,15 @@ export interface AttributionInvitationRepository {
     | { invitation: AttributionInvitationView; outcome: 'exchanged' }
     | { outcome: 'invalid_or_expired' }
   >;
+  exchangeExternalRecoveryCode(input: {
+    invitationSessionHash: string;
+    now: Date;
+    recoveryCodeHash: string;
+    sessionExpiresAt: Date;
+  }): Promise<
+    | { invitation: AttributionInvitationView; outcome: 'exchanged' }
+    | { outcome: 'invalid_or_expired' }
+  >;
   findExternalSessionInvitation(
     invitationSessionHash: string,
     now: Date,

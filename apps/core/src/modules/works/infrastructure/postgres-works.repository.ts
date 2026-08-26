@@ -228,7 +228,7 @@ export class PostgresWorksRepository implements WorksRepository {
           concurrentReplay,
         );
         if (concurrentReplayResult !== null) return concurrentReplayResult;
-        if (work.publication_state !== 'published' || work.published_revision_id === null) {
+        if (work.publication_state === 'never_published' || work.published_revision_id === null) {
           return { outcome: 'work_not_published' };
         }
         if (work.published_revision_id !== input.expectedPublishedRevisionId) {

@@ -46,14 +46,24 @@ import { PostgresPublicationRepository } from './infrastructure/postgres-publica
 import { PublicWorksController } from './transport/public-works.controller';
 import { AdminCorrectionsService } from './application/admin-corrections.service';
 import { ADMIN_CORRECTIONS_REPOSITORY } from './application/admin-corrections.ports';
+import { WorkRecoveryService } from './application/work-recovery.service';
+import { WORK_RECOVERY_REPOSITORY } from './application/work-recovery.ports';
+import { PostgresWorkRecoveryRepository } from './infrastructure/postgres-work-recovery.repository';
+import { AdminWorkRecoveryController } from './transport/admin-work-recovery.controller';
+import { StudentWorkRecoveryController } from './transport/student-work-recovery.controller';
+import { AttributionRemovalService } from './application/attribution-removal.service';
+import { ATTRIBUTION_REMOVAL_REPOSITORY } from './application/attribution-removal.ports';
+import { PostgresAttributionRemovalRepository } from './infrastructure/postgres-attribution-removal.repository';
 
 @Module({
   controllers: [
+    AdminWorkRecoveryController,
     AdminWorkRevisionsController,
     PublicWorksController,
     StudentAttributionInvitationsController,
     StudentReviewsController,
     StudentWorkRevisionsController,
+    StudentWorkRecoveryController,
     StudentWorksController,
   ],
   imports: [AuthModule],
@@ -65,6 +75,8 @@ import { ADMIN_CORRECTIONS_REPOSITORY } from './application/admin-corrections.po
     ReviewsService,
     PublicationService,
     AdminCorrectionsService,
+    WorkRecoveryService,
+    AttributionRemovalService,
     WorksExceptionFilter,
     { provide: WORKS_REPOSITORY, useClass: PostgresWorksRepository },
     PostgresWorkRevisionsRepository,
@@ -72,6 +84,8 @@ import { ADMIN_CORRECTIONS_REPOSITORY } from './application/admin-corrections.po
     { provide: ADMIN_CORRECTIONS_REPOSITORY, useExisting: PostgresWorkRevisionsRepository },
     { provide: REVIEWS_REPOSITORY, useClass: PostgresReviewsRepository },
     { provide: PUBLICATION_REPOSITORY, useClass: PostgresPublicationRepository },
+    { provide: WORK_RECOVERY_REPOSITORY, useClass: PostgresWorkRecoveryRepository },
+    { provide: ATTRIBUTION_REMOVAL_REPOSITORY, useClass: PostgresAttributionRemovalRepository },
     {
       provide: ATTRIBUTION_INVITATIONS_REPOSITORY,
       useClass: PostgresAttributionInvitationsRepository,

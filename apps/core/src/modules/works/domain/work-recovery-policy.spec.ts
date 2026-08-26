@@ -1,0 +1,107 @@
+import {
+  evaluateWorkRecoveryTransition,
+  normalizeRecoveryReason,
+  type WorkRecoveryState,
+} from './work-recovery-policy';
+
+const PUBLISHED_REVISION_ID = '64000000-0000-4000-8000-000000000003';
+
+describe('Work recovery policy', () => {
+  it.each([
+    ['archive', { activityState: 'archived', publicationState: 'unpublished' }],
+    ['unpublish', { activityState: 'active', publicationState: 'unpublished' }],
+  ] as const)('%s removes a Published Revision from public eligibility', (operation, expected) => {
+    expect(evaluateWorkRecoveryTransition(publishedState(), operation)).toEqual({
+      isAllowed: true,
+      state: { ...expected, publishedRevisionId: PUBLISHED_REVISION_ID, version: 8 },
+    });
+  });
+
+  it('restore-active never republishes implicitly', () => {
+    expect(
+      evaluateWorkRecoveryTransition(
+        {
+          activityState: 'archived',
+          publicationState: 'unpublished',
+          publishedRevisionId: PUBLISHED_REVISION_ID,
+          version: 8,
+        },
+        'restore_active',
+      ),
+    ).toEqual({
+      isAllowed: true,
+      state: {
+        activityState: 'active',
+        publicationState: 'unpublished',
+        publishedRevisionId: PUBLISHED_REVISION_ID,
+        version: 9,
+      },
+    });
+  });
+
+  it('restores the unchanged retained Published Revision only through an explicit action', () => {
+    expect(
+      evaluateWorkRecoveryTransition(
+        {
+          activityState: 'active',
+          publicationState: 'unpublished',
+          publishedRevisionId: PUBLISHED_REVISION_ID,
+          version: 3,
+        },
+        'restore_publication',
+      ),
+    ).toEqual({
+      isAllowed: true,
+      state: {
+        activityState: 'active',
+        publicationState: 'published',
+        publishedRevisionId: PUBLISHED_REVISION_ID,
+        version: 4,
+      },
+    });
+  });
+
+  it.each([
+    [publishedState(), 'restore_publication'],
+    [publishedState(), 'restore_active'],
+    [
+      {
+        activityState: 'archived',
+        publicationState: 'unpublished',
+        publishedRevisionId: PUBLISHED_REVISION_ID,
+        version: 1,
+      } satisfies WorkRecoveryState,
+      'unpublish',
+    ],
+    [
+      {
+        activityState: 'active',
+        publicationState: 'unpublished',
+        publishedRevisionId: null,
+        version: 1,
+      } satisfies WorkRecoveryState,
+      'restore_publication',
+    ],
+  ] as const)('rejects an invalid %s transition', (state, operation) => {
+    expect(evaluateWorkRecoveryTransition(state, operation)).toEqual({ isAllowed: false });
+  });
+
+  it('trims and Unicode-normalizes an audited reason', () => {
+    expect(normalizeRecoveryReason('  เหตุผลการนำผลงานออกจากการเผยแพร่  ')).toBe(
+      'เหตุผลการนำผลงานออกจากการเผยแพร่'.normalize('NFKC'),
+    );
+  });
+
+  it.each(['', 'สั้น', 'x'.repeat(1001)])('rejects invalid recovery reason %p', (reason) => {
+    expect(normalizeRecoveryReason(reason)).toBeNull();
+  });
+});
+
+function publishedState(): WorkRecoveryState {
+  return {
+    activityState: 'active',
+    publicationState: 'published',
+    publishedRevisionId: PUBLISHED_REVISION_ID,
+    version: 7,
+  };
+}

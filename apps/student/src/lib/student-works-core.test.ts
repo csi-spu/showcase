@@ -105,6 +105,64 @@ describe('StudentWorksCoreClient', () => {
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'POST']);
   });
 
+  it('uses recovery state and Removal Request contracts without exposing actor identifiers', async () => {
+    const requestPublicId = '64000000-0000-4000-8000-000000000004';
+    const recovery = {
+      activityState: 'active',
+      publicationState: 'published',
+      publicId: PUBLIC_ID,
+      publishedRevisionId: '64000000-0000-4000-8000-000000000005',
+      publishedRevisionPublicId: '64000000-0000-4000-8000-000000000003',
+      version: 2,
+    };
+    const removalRequest = {
+      createdAt: '2026-08-26T05:00:00.000Z',
+      decisionReason: null,
+      publicId: requestPublicId,
+      reason: 'ต้องการหยุดเผยแพร่ผลงานชิ้นนี้',
+      revisionPublicId: recovery.publishedRevisionPublicId,
+      state: 'pending',
+      title: 'ระบบแนะนำผลงาน',
+      version: 1,
+      workVersion: 2,
+      workPublicId: PUBLIC_ID,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(recovery))
+      .mockResolvedValueOnce(Response.json({ request: removalRequest }))
+      .mockResolvedValueOnce(Response.json({ outcome: 'created', request: removalRequest }))
+      .mockResolvedValueOnce(
+        Response.json({
+          outcome: 'resolved',
+          request: { ...removalRequest, state: 'cancelled', version: 2 },
+        }),
+      );
+    const client = createClient(fetchMock);
+
+    await client.getRecoveryState(SESSION, PUBLIC_ID);
+    await client.getPendingRemovalRequest(SESSION, PUBLIC_ID);
+    await client.createRemovalRequest(SESSION, PUBLIC_ID, {
+      expectedWorkVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      reason: removalRequest.reason,
+    });
+    await client.cancelRemovalRequest(SESSION, requestPublicId, {
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/recovery-state`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/removal-request`,
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/removal-requests`,
+      `https://core.example.test/v1/internal/student/removal-requests/${requestPublicId}/cancel`,
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => String(init?.body)).join('')).not.toMatch(
+      /actorAccountId|studentId|personId/i,
+    );
+  });
+
   it('uses exact private Work media contracts through Core', async () => {
     const assetId = '64000000-0000-4000-8000-000000000003';
     const fetchMock = vi
@@ -250,6 +308,54 @@ describe('StudentWorksCoreClient', () => {
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/change-request`,
     ]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(submitInput);
+  });
+  it('uses recovery-code session endpoints for External Contributor removal', async () => {
+    const removal = {
+      attributionName: 'Alex Example',
+      correctionRevisionPublicId: null,
+      createdAt: '2026-08-26T05:00:00.000Z',
+      publicId: '64000000-0000-4000-8000-000000000011',
+      reason: 'ขอถอนชื่อออกจากผลงานนี้',
+      revisionPublicId: '64000000-0000-4000-8000-000000000012',
+      state: 'pending',
+      version: 1,
+      workPublicId: PUBLIC_ID,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          invitation: {
+            affiliation: null,
+            attributionName: 'Alex Example',
+            contributionRole: 'Advisor',
+            createdAt: '2026-08-25T15:00:00.000Z',
+            expiresAt: '2026-09-08T15:00:00.000Z',
+            kind: 'external',
+            proposedAttributionName: 'Alex Example',
+            publicId: '64000000-0000-4000-8000-000000000013',
+            state: 'accepted',
+            studyYear: null,
+            version: 2,
+          },
+          invitationSessionToken: 'session',
+          sessionExpiresAt: '2026-08-26T05:30:00.000Z',
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(null))
+      .mockResolvedValueOnce(Response.json({ outcome: 'created', request: removal }));
+    const client = createClient(fetchMock);
+    await client.exchangeExternalRecoveryCode('recovery-secret-123');
+    await client.getAttributionRemovalRequest('session');
+    await client.createAttributionRemovalRequest('session', {
+      idempotencyKey: IDEMPOTENCY_KEY,
+      reason: removal.reason,
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://core.example.test/v1/internal/student/external-contributor-recovery/exchange',
+      'https://core.example.test/v1/internal/student/external-contributor-recovery/removal-request',
+      'https://core.example.test/v1/internal/student/external-contributor-recovery/removal-requests',
+    ]);
   });
 });
 

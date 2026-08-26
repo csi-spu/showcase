@@ -10,6 +10,7 @@ import type {
 type Sql = postgres.Sql | postgres.TransactionSql;
 
 interface LockedRevisionRow {
+  activity_state: 'active' | 'archived';
   id: string;
   revision_number: string;
   status: 'approved' | 'changes_requested' | 'pending_review' | 'withdrawn';
@@ -56,7 +57,7 @@ export class PostgresReviewsRepository implements ReviewRepository {
         const rows = await transaction<LockedRevisionRow[]>`
           select revision.id, revision.revision_number, revision.status, revision.title,
             revision.version, work.id as work_id, work.public_id as work_public_id,
-            submitter_account.id as submitter_account_id
+            work.activity_state, submitter_account.id as submitter_account_id
           from private.work_revisions as revision
           join public.works as work on work.id = revision.work_id
           join public.accounts as submitter_account
@@ -78,7 +79,7 @@ export class PostgresReviewsRepository implements ReviewRepository {
         const concurrentResult = await this.toReplayResult(transaction, concurrentReplay);
         if (concurrentResult !== null) return concurrentResult;
 
-        if (revision.status !== 'pending_review') {
+        if (revision.activity_state !== 'active' || revision.status !== 'pending_review') {
           return { outcome: 'revision_state_conflict' };
         }
         if (Number(revision.version) !== input.expectedRevisionVersion) {

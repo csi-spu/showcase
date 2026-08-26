@@ -132,10 +132,12 @@ export function WorkPublishedRevisionPanel({
   action,
   idempotencyKey,
   publishedRevisionId,
+  publicationState = 'published',
 }: {
   action: RevisionAction;
   idempotencyKey: string;
   publishedRevisionId: string;
+  publicationState?: 'published' | 'unpublished';
 }) {
   const t = useTranslations('WorkRevision');
   const [state, formAction] = useActionState(
@@ -148,8 +150,12 @@ export function WorkPublishedRevisionPanel({
         <p className="text-sm font-semibold tracking-[0.16em] text-information">
           PUBLISHED REVISION
         </p>
-        <h2 className="text-2xl font-semibold">{t('published.heading')}</h2>
-        <p className="text-muted-foreground">{t('published.help')}</p>
+        <h2 className="text-2xl font-semibold">
+          {t(publicationState === 'published' ? 'published.heading' : 'unpublished.heading')}
+        </h2>
+        <p className="text-muted-foreground">
+          {t(publicationState === 'published' ? 'published.help' : 'unpublished.help')}
+        </p>
       </div>
       <form action={formAction} className="grid gap-4">
         <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />

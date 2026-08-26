@@ -34,6 +34,9 @@ class E2eAttributionRepository implements AttributionInvitationRepository {
   exchangeExternalToken = jest
     .fn()
     .mockResolvedValue({ invitation: invitation(), outcome: 'exchanged' });
+  exchangeExternalRecoveryCode = jest
+    .fn()
+    .mockResolvedValue({ invitation: invitation(), outcome: 'exchanged' });
   findExternalSessionInvitation = jest.fn().mockResolvedValue(invitation());
   listReceivedInvitations = jest
     .fn()
@@ -180,6 +183,18 @@ describe('Attribution Invitation HTTP contracts (e2e)', () => {
       .expect(200);
     expect(accepted.body).toEqual({ outcome: 'accepted', recoveryCode: 'secret-18' });
     expect(accepted.headers['referrer-policy']).toBe('no-referrer');
+  });
+
+  it('exchanges a recovery code behind a no-referrer response', async () => {
+    const response = await bff(
+      'post',
+      '/v1/internal/student/external-contributor-recovery/exchange',
+    )
+      .send({ recoveryCode: 'recovery-secret-123' })
+      .expect(200);
+    expect(response.headers['referrer-policy']).toBe('no-referrer');
+    expect(response.body).toMatchObject({ invitationSessionToken: 'secret-32' });
+    expect(repository.exchangeExternalRecoveryCode).toHaveBeenCalled();
   });
 
   function bff(method: 'get' | 'post', path: string) {

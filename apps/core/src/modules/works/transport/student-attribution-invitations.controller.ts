@@ -18,16 +18,19 @@ import { AuthError } from '../../auth/application/auth.error';
 import { StudentAuthService } from '../../auth/application/student-auth.service';
 import { StudentBffGuard } from '../../auth/transport/student-bff.guard';
 import { AttributionInvitationsService } from '../application/attribution-invitations.service';
+import { AttributionRemovalService } from '../application/attribution-removal.service';
 import {
   AcceptAccountAttributionDto,
   AcceptExternalAttributionDto,
   CreateAccountAttributionInvitationDto,
   CreateExternalAttributionInvitationDto,
   ExchangeExternalAttributionTokenDto,
+  ExchangeExternalRecoveryCodeDto,
   InvitationPageQueryDto,
   InvitationTransitionDto,
 } from './attribution-invitations.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
+import { CreateAttributionRemovalRequestDto } from './work-recovery.dto';
 
 @Controller('internal/student')
 @UseFilters(WorksExceptionFilter)
@@ -36,6 +39,7 @@ export class StudentAttributionInvitationsController {
   constructor(
     private readonly auth: StudentAuthService,
     private readonly invitations: AttributionInvitationsService,
+    private readonly attributionRemoval: AttributionRemovalService,
   ) {}
 
   @Post('works/:publicId/contributor-invitations/account')
@@ -176,6 +180,35 @@ export class StudentAttributionInvitationsController {
     const actor =
       sessionToken === null ? null : await this.auth.authorizeProfileAccess(sessionToken);
     return this.invitations.exchangeExternalToken(input.token, actor?.accountId);
+  }
+
+  @Post('external-contributor-recovery/exchange')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  exchangeExternalRecoveryCode(@Body() input: ExchangeExternalRecoveryCodeDto) {
+    return this.invitations.exchangeExternalRecoveryCode(input.recoveryCode);
+  }
+
+  @Get('external-contributor-recovery/removal-request')
+  @Header('Cache-Control', 'no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  getAttributionRemovalRequest(@Headers('authorization') authorization: string | undefined) {
+    return this.attributionRemoval.findCurrent(this.sessionToken(authorization));
+  }
+
+  @Post('external-contributor-recovery/removal-requests')
+  @HttpCode(201)
+  @Header('Cache-Control', 'no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  createAttributionRemovalRequest(
+    @Body() input: CreateAttributionRemovalRequestDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    return this.attributionRemoval.create({
+      ...input,
+      invitationSessionToken: this.sessionToken(authorization),
+    });
   }
 
   @Post('external-contributor-invitations/accept')

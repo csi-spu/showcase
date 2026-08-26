@@ -380,6 +380,32 @@ export class PostgresAttributionInvitationsRepository implements AttributionInvi
     });
   }
 
+  async exchangeExternalRecoveryCode(
+    input: Parameters<AttributionInvitationRepository['exchangeExternalRecoveryCode']>[0],
+  ): ReturnType<AttributionInvitationRepository['exchangeExternalRecoveryCode']> {
+    return this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<InvitationRow[]>`
+        select ${this.columns(transaction)}
+        from private.attribution_invitations as invitation
+        where invitation.kind = 'external'
+          and invitation.state = 'accepted'
+          and invitation.recovery_code_hash = ${input.recoveryCodeHash}
+        for update of invitation
+      `;
+      const invitation = rows[0];
+      if (invitation === undefined) return { outcome: 'invalid_or_expired' };
+      await transaction`
+        insert into private.attribution_invitation_sessions (
+          session_hash, invitation_id, account_id, expires_at, created_at
+        ) values (
+          ${input.invitationSessionHash}, ${invitation.id}, null,
+          ${input.sessionExpiresAt}, ${input.now}
+        )
+      `;
+      return { invitation: this.map(invitation), outcome: 'exchanged' };
+    });
+  }
+
   async acceptExternalInvitation(
     input: Parameters<AttributionInvitationRepository['acceptExternalInvitation']>[0],
   ): ReturnType<AttributionInvitationRepository['acceptExternalInvitation']> {
