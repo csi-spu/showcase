@@ -4,6 +4,21 @@
     "eyebrow": "PUBLIC CATALOG",
     "title": "Student Showcase"
   },
+  "Catalog": {
+    "academicYear": "ปีการศึกษา",
+    "all": "ทั้งหมด",
+    "apply": "ใช้ตัวกรอง",
+    "category": "ประเภทผลงาน",
+    "emptyWorks": "ไม่พบผลงานที่ตรงกับการค้นหา",
+    "more": "ดูเพิ่มเติม",
+    "posterAlt": "โปสเตอร์ {title}",
+    "searchWorks": "ค้นหาผลงาน",
+    "semester": "ภาค",
+    "sort": "เรียงตาม",
+    "tags": "แท็ก",
+    "worksDescription": "สำรวจผลงานที่ผ่านการตรวจและเผยแพร่แล้ว",
+    "worksTitle": "ผลงานนักศึกษา"
+  },
   "Metadata": {
     "description": "ผลงานนักศึกษาสาขาวิทยาการคอมพิวเตอร์และนวัตกรรมการพัฒนาซอฟต์แวร์",
     "title": "Student Showcase"

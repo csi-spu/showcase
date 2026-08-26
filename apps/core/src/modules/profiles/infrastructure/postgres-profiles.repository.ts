@@ -10,6 +10,7 @@ import type {
 } from '../application/profiles.ports';
 import type { PublicProfileDraftInput } from '../domain/public-profile-policy';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import { normalizeCatalogSearchText } from '../../catalog/domain/catalog-query-policy';
 
 interface ProfileRow {
   bio: string | null;
@@ -185,10 +186,12 @@ export class PostgresProfilesRepository implements ProfilesRepository {
       if (current === null) {
         const inserted = await transaction<VersionRow[]>`
           insert into public.public_profiles (
-            person_id, display_name, bio, photo_id, version, created_at, updated_at
+            person_id, display_name, normalized_display_name, bio, photo_id,
+            version, created_at, updated_at
           ) values (
             ${person.person_id},
             ${input.profile.displayName},
+            ${normalizeCatalogSearchText(input.profile.displayName)},
             ${input.profile.bio},
             ${input.profile.photoId},
             ${resultingVersion},
@@ -206,6 +209,7 @@ export class PostgresProfilesRepository implements ProfilesRepository {
         await transaction`
           update public.public_profiles
           set display_name = ${input.profile.displayName},
+              normalized_display_name = ${normalizeCatalogSearchText(input.profile.displayName)},
               bio = ${input.profile.bio},
               photo_id = ${input.profile.photoId},
               version = ${resultingVersion},

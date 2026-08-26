@@ -109,10 +109,11 @@ jobs:
     secrets: inherit
 
   deploy-frontends:
-    needs: deploy-core
+    needs: [deploy-core, deploy-cache-worker]
     if: >-
       vars.COOLIFY_STAGING_ENABLED == 'true' &&
-      needs.deploy-core.result == 'success'
+      needs.deploy-core.result == 'success' &&
+      needs.deploy-cache-worker.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -127,6 +128,19 @@ jobs:
     with:
       app: ${{ matrix.app }}
       application_uuid: ${{ matrix.application_uuid }}
+      environment: staging
+      image_tag: sha-${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
+    secrets: inherit
+
+  deploy-cache-worker:
+    needs: deploy-core
+    if: >-
+      vars.COOLIFY_STAGING_ENABLED == 'true' &&
+      needs.deploy-core.result == 'success'
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core-cache-worker
+      application_uuid: ${{ vars.COOLIFY_STAGING_CACHE_WORKER }}
       environment: staging
       image_tag: sha-${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
     secrets: inherit

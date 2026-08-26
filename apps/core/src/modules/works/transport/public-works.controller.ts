@@ -5,8 +5,10 @@ import {
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
+  Res,
   UseFilters,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PublicationService } from '../application/publication.service';
 import { WorksExceptionFilter } from './works-exception.filter';
 
@@ -17,7 +19,11 @@ export class PublicWorksController {
 
   @Get(':workPublicId')
   @Header('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=60')
-  getWork(@Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string) {
+  getWork(
+    @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Tag', `showcase-catalog,showcase-work-${workPublicId}`);
     return this.publication.getPublicWork(workPublicId);
   }
 

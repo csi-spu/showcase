@@ -203,6 +203,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
       Array<{
         active_work_count: number;
         audit_count: number;
+        catalog_count: number;
         event_payload: { cacheTargets: { workPublicId: string }; recipientAccountIds: string[] };
         publication_state: string;
         published_revision_id: string;
@@ -213,6 +214,8 @@ describe('PostgresWorkRecoveryRepository integration', () => {
     >`
       select work.publication_state, work.published_revision_id, work.version,
         tag.active_work_count::integer,
+        (select count(*)::integer from private.public_work_catalog
+          where work_id = work.id) as catalog_count,
         (select count(*)::integer from private.removal_requests where work_id = work.id) as request_count,
         (select count(*)::integer from private.work_recovery_audits where work_id = work.id) as audit_count,
         (select count(*)::integer from private.reviews where revision_id = work.published_revision_id) as review_count,
@@ -224,6 +227,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
     `;
     expect(rows[0]?.active_work_count).toBe(0);
     expect(rows[0]?.audit_count).toBe(1);
+    expect(rows[0]?.catalog_count).toBe(0);
     expect(rows[0]?.event_payload).toMatchObject({
       cacheTargets: { workPublicId: WORK_PUBLIC_ID },
       recipientAccountIds: [STUDENT_ACCOUNT_ID],
@@ -267,15 +271,25 @@ describe('PostgresWorkRecoveryRepository integration', () => {
       title: 'ผลงานสำหรับทดสอบการกู้คืน',
     });
     const retained = await database.sql<
-      Array<{ active_work_count: number; audits: number; revisions: number; reviews: number }>
+      Array<{
+        active_work_count: number;
+        audits: number;
+        catalog_count: number;
+        revisions: number;
+        reviews: number;
+      }>
     >`
       select tag.active_work_count::integer,
+        (select count(*)::integer from private.public_work_catalog
+          where work_id = ${WORK_ID}) as catalog_count,
         (select count(*)::integer from private.work_recovery_audits where work_id = ${WORK_ID}) as audits,
         (select count(*)::integer from private.work_revisions where work_id = ${WORK_ID}) as revisions,
         (select count(*)::integer from private.reviews where revision_id = ${REVISION_ID}) as reviews
       from public.tags as tag where tag.id = ${TAG_ID}
     `;
-    expect(retained).toEqual([{ active_work_count: 1, audits: 3, revisions: 1, reviews: 1 }]);
+    expect(retained).toEqual([
+      { active_work_count: 1, audits: 3, catalog_count: 1, revisions: 1, reviews: 1 },
+    ]);
   });
 
   it('declines with retained reason and emits only a private decision intent', async () => {

@@ -243,6 +243,8 @@ describe('PostgresPublicationRepository integration', () => {
     const state = await database.sql<
       Array<{
         active_work_count: number;
+        catalog_normalized_search: string;
+        catalog_revision_id: string;
         decision: string;
         event_count: number;
         event_payload: {
@@ -264,6 +266,8 @@ describe('PostgresPublicationRepository integration', () => {
         revision.status as revision_status, revision.version as revision_version,
         review.decision,
         tag.active_work_count::integer as active_work_count,
+        catalog.revision_id as catalog_revision_id,
+        catalog.normalized_search as catalog_normalized_search,
         (select count(*)::integer from private.outbox_events
           where aggregate_type = 'work_revision' and aggregate_id = revision.public_id
             and event_type = 'work_revision_published') as event_count,
@@ -275,11 +279,13 @@ describe('PostgresPublicationRepository integration', () => {
       join private.reviews as review on review.revision_id = revision.id
       join private.published_revision_tags as published_tag on published_tag.revision_id = revision.id
       join public.tags as tag on tag.id = published_tag.tag_id
+      join private.public_work_catalog as catalog on catalog.work_id = work.id
       where work.id = ${WORK_ID}
     `;
     expect(state).toMatchObject([
       {
         active_work_count: 1,
+        catalog_revision_id: REVISION_ID,
         decision: 'approved',
         event_count: 1,
         publication_state: 'published',
@@ -288,6 +294,7 @@ describe('PostgresPublicationRepository integration', () => {
         revision_version: '2',
       },
     ]);
+    expect(state[0]?.catalog_normalized_search).toContain('react');
     expect(state[0]?.event_payload).toMatchObject({
       audience: 'student',
       cacheTargets: {

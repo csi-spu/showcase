@@ -25,6 +25,21 @@ describe('parseEnvironment auth configuration', () => {
     ).toThrow('STUDENT_BFF_SECRET must be environment-specific');
   });
 
+  it('rejects the local Public Catalog cursor secret in staging', () => {
+    expect(() =>
+      parseEnvironment({
+        ADMIN_BFF_SECRET: 'staging-admin-bff-secret-that-is-long-enough',
+        APP_ENV: 'staging',
+        AUTH_IDENTITY_SECRET: 'staging-identity-secret-that-is-long-enough',
+        CATALOG_CURSOR_SECRET: 'local-development-only-catalog-cursor-secret',
+        CORS_ALLOWED_ORIGINS: 'https://visitor.example.test',
+        STUDENT_BFF_SECRET: 'staging-student-bff-secret-that-is-long-enough',
+        SUPABASE_PUBLISHABLE_KEY: 'staging-publishable-key',
+        SUPABASE_SECRET_KEY: 'staging-secret-key',
+      }),
+    ).toThrow('CATALOG_CURSOR_SECRET must be environment-specific');
+  });
+
   it('rejects the local Admin BFF placeholder secret in staging', () => {
     expect(() =>
       parseEnvironment({

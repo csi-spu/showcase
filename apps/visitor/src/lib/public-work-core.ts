@@ -90,7 +90,10 @@ export class PublicWorkCoreClient {
       {
         credentials: 'omit',
         headers: { accept: 'application/json' },
-        next: { revalidate: 60 },
+        next: {
+          revalidate: 60,
+          tags: ['showcase-catalog', `showcase-work-${publicId}`],
+        },
         signal: AbortSignal.timeout(5_000),
       },
     );
