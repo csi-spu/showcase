@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import type {
+  AdminCorrectionContext,
+  AdminCorrectionResult,
+  AdminCorrectionsRepository,
+} from '../application/admin-corrections.ports';
 import type {
   ReviewQueuePage,
   WorkRevisionAttributionView,
@@ -40,6 +46,7 @@ interface LockedWorkRow {
 
 interface RevisionRow {
   academic_year: number;
+  author_kind: WorkRevisionView['authorKind'];
   attributions: WorkRevisionAttributionView[];
   base_published_revision_id: string | null;
   category: NormalizedWorkDraft['category'];
@@ -69,9 +76,189 @@ interface OperationRow {
 type ReplayResolution =
   { outcome: 'conflict' } | { outcome: 'none' } | { outcome: 'replay'; revisionId: string };
 
+interface LockedCorrectionRow {
+  activity_state: 'active' | 'archived';
+  base_revision_id: string;
+  base_revision_public_id: string;
+  base_revision_version: string;
+  publication_state: 'never_published' | 'published' | 'unpublished';
+  published_revision_id: string | null;
+  submitter_account_id: string;
+  work_id: string;
+}
+
+type CorrectionReplayResolution =
+  { outcome: 'conflict' } | { outcome: 'none' } | { outcome: 'replay'; revisionId: string };
+
 @Injectable()
-export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
+export class PostgresWorkRevisionsRepository
+  implements WorkRevisionRepository, AdminCorrectionsRepository
+{
   constructor(private readonly database: DatabaseClient) {}
+
+  async findCorrectionContext(workPublicId: string): Promise<AdminCorrectionContext | null> {
+    const rows = await this.database.sql<
+      Array<{
+        current_academic_year: number;
+        entry_year: number;
+        revision_id: string;
+      }>
+    >`
+      select revision.id as revision_id, student.entry_year, settings.current_academic_year
+      from public.works as work
+      join private.work_revisions as revision on revision.id = work.published_revision_id
+      join public.students as student on student.person_id = work.submitter_person_id
+      join public.academic_settings as settings on settings.singleton = true
+      where work.public_id = ${workPublicId}
+        and work.activity_state = 'active'
+        and work.publication_state = 'published'
+        and revision.status = 'approved'
+        and settings.current_academic_year is not null
+      limit 1
+    `;
+    const row = rows[0];
+    if (row === undefined) return null;
+    const publishedRevision = await this.findRevisionById(this.database.sql, row.revision_id);
+    return publishedRevision === null
+      ? null
+      : {
+          academicRange: {
+            currentAcademicYear: row.current_academic_year,
+            entryYear: row.entry_year,
+          },
+          publishedRevision,
+        };
+  }
+
+  async createCorrection(
+    input: Parameters<AdminCorrectionsRepository['createCorrection']>[0],
+  ): Promise<AdminCorrectionResult> {
+    const requestFingerprint = this.correctionFingerprint(input);
+    try {
+      return await this.database.sql.begin(async (transaction) => {
+        const initialReplay = await this.resolveCorrectionReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          requestFingerprint,
+        );
+        const initialResult = await this.toCorrectionReplayResult(transaction, initialReplay);
+        if (initialResult !== null) return initialResult;
+
+        const rows = await transaction<LockedCorrectionRow[]>`
+        select work.id as work_id, work.activity_state, work.publication_state,
+          work.published_revision_id, revision.id as base_revision_id,
+          revision.public_id as base_revision_public_id,
+          revision.version as base_revision_version, account.id as submitter_account_id
+        from public.works as work
+        left join private.work_revisions as revision on revision.id = work.published_revision_id
+        join public.accounts as account on account.person_id = work.submitter_person_id
+        where work.public_id = ${input.workPublicId}
+        for update of work
+      `;
+        const work = rows[0];
+        if (work === undefined) return { outcome: 'not_found' };
+
+        const concurrentReplay = await this.resolveCorrectionReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          requestFingerprint,
+        );
+        const concurrentResult = await this.toCorrectionReplayResult(transaction, concurrentReplay);
+        if (concurrentResult !== null) return concurrentResult;
+        if (
+          work.activity_state !== 'active' ||
+          work.publication_state !== 'published' ||
+          work.published_revision_id === null
+        ) {
+          return { outcome: 'work_state_conflict' };
+        }
+        if (work.base_revision_public_id !== input.expectedPublishedRevisionId) {
+          return { outcome: 'base_revision_conflict' };
+        }
+        if (Number(work.base_revision_version) !== input.expectedRevisionVersion) {
+          return { outcome: 'revision_version_conflict' };
+        }
+        const pending = await transaction<Array<{ exists: boolean }>>`
+        select exists(
+          select 1 from private.work_revisions
+          where work_id = ${work.work_id} and status = 'pending_review'
+        ) as exists
+      `;
+        if (this.required(pending[0]).exists) return { outcome: 'pending_revision_exists' };
+
+        const numberRows = await transaction<Array<{ next_number: string }>>`
+        select (coalesce(max(revision_number), 0) + 1)::bigint as next_number
+        from private.work_revisions where work_id = ${work.work_id}
+      `;
+        const revisionNumber = Number(this.required(numberRows[0]).next_number);
+        const inserted = await transaction<Array<{ id: string; public_id: string }>>`
+        insert into private.work_revisions (
+          work_id, revision_number, status, base_published_revision_id, draft_version,
+          author_kind, title, summary, description, category, academic_year, semester, submitted_at
+        ) values (
+          ${work.work_id}, ${revisionNumber}, 'pending_review', ${work.base_revision_id}, null,
+          'admin_correction', ${input.candidate.title}, ${input.candidate.summary},
+          ${input.candidate.description}, ${input.candidate.category},
+          ${input.candidate.academicPeriod.year}, ${input.candidate.academicPeriod.semester},
+          ${input.now}
+        ) returning id, public_id
+      `;
+        const revision = this.required(inserted[0]);
+        await this.copyCorrectionSnapshot(
+          transaction,
+          revision.id,
+          work.base_revision_id,
+          input.candidate,
+        );
+        await transaction`
+        insert into private.admin_correction_audits (
+          idempotency_key, actor_account_id, work_id, base_revision_id, revision_id,
+          reason, diff_metadata, request_fingerprint, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${work.work_id},
+          ${work.base_revision_id}, ${revision.id}, ${input.reason},
+          ${transaction.json({
+            categories: input.diff.categories,
+            fields: input.diff.fields,
+          })}, ${requestFingerprint}, ${input.now}
+        )
+      `;
+        await transaction`update public.works set updated_at = ${input.now} where id = ${work.work_id}`;
+        await this.emitEvent(
+          transaction,
+          revision.public_id,
+          'admin_correction_created',
+          {
+            audience: 'student',
+            parameters: { revisionNumber, title: input.candidate.title },
+            recipientAccountIds: [work.submitter_account_id],
+            revisionPublicId: revision.public_id,
+            target: { kind: 'work', workPublicId: input.workPublicId },
+            type: 'admin_correction_created',
+          },
+          input.now,
+        );
+        const view = await this.findRevisionById(transaction, revision.id);
+        if (view === null) throw new Error('ADMIN_CORRECTION_CREATE_READ_FAILED');
+        return { outcome: 'created', revision: view };
+      });
+    } catch (error: unknown) {
+      if (!this.isCorrectionIdempotencyConflict(error)) throw error;
+      const replay = await this.resolveCorrectionReplay(
+        this.database.sql,
+        input.actorAccountId,
+        input.idempotencyKey,
+        requestFingerprint,
+      );
+      return (
+        (await this.toCorrectionReplayResult(this.database.sql, replay)) ?? {
+          outcome: 'idempotency_conflict',
+        }
+      );
+    }
+  }
 
   async submitRevision(
     input: Parameters<WorkRevisionRepository['submitRevision']>[0],
@@ -313,6 +500,7 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     const rows = await this.database.sql<
       Array<{
         academic_year: number;
+        author_kind: WorkRevisionView['authorKind'];
         category: NormalizedWorkDraft['category'];
         id: string;
         public_id: string;
@@ -324,7 +512,8 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
         work_public_id: string;
       }>
     >`
-      select revision.id, revision.public_id, revision.revision_number, revision.title,
+      select revision.id, revision.public_id, revision.revision_number, revision.author_kind,
+        revision.title,
         revision.category, revision.academic_year, revision.semester, revision.submitted_at,
         work.public_id as work_public_id,
         submitter.attribution_name as submitter_attribution_name
@@ -347,6 +536,7 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     return {
       items: visible.map((row) => ({
         academicPeriod: { semester: row.semester, year: row.academic_year },
+        authorKind: row.author_kind,
         category: row.category,
         number: Number(row.revision_number),
         revisionPublicId: row.public_id,
@@ -543,6 +733,40 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     }
   }
 
+  private async copyCorrectionSnapshot(
+    sql: postgres.TransactionSql,
+    revisionId: string,
+    baseRevisionId: string,
+    candidate: NormalizedWorkDraft,
+  ): Promise<void> {
+    for (const [index, link] of candidate.links.entries()) {
+      await sql`insert into private.work_revision_links (revision_id, position, label, url)
+        values (${revisionId}, ${index + 1}, ${link.label}, ${link.url})`;
+    }
+    for (const [index, tag] of candidate.tags.entries()) {
+      await sql`insert into private.work_revision_tags (
+        revision_id, position, display_label, normalized_identity
+      ) values (${revisionId}, ${index + 1}, ${tag.displayLabel}, ${tag.normalizedIdentity})`;
+    }
+    for (const [index, video] of candidate.videoLinks.entries()) {
+      await sql`insert into private.work_revision_video_links (
+        revision_id, position, provider, provider_video_id, url
+      ) values (
+        ${revisionId}, ${index + 1}, ${video.provider}, ${video.providerVideoId}, ${video.url}
+      )`;
+    }
+    await sql`insert into private.work_revision_media (
+      revision_id, media_kind, position, asset_id
+    ) select ${revisionId}, media_kind, position, asset_id
+      from private.work_revision_media where revision_id = ${baseRevisionId}`;
+    await sql`insert into private.work_revision_attributions (
+      revision_id, position, kind, person_id, attribution_name, study_year,
+      contribution_role, affiliation
+    ) select ${revisionId}, position, kind, person_id, attribution_name, study_year,
+      contribution_role, affiliation
+      from private.work_revision_attributions where revision_id = ${baseRevisionId}`;
+  }
+
   private async seedDraftFromRevision(
     sql: postgres.TransactionSql,
     workId: string,
@@ -585,6 +809,7 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     const identifierSql = identifier === 'id' ? sql`revision.id` : sql`revision.public_id`;
     const rows = await sql<RevisionRow[]>`
       select revision.id as revision_id, revision.public_id, revision.revision_number,
+        revision.author_kind,
         revision.status, revision.base_published_revision_id, revision.title, revision.summary,
         revision.description, revision.category, revision.academic_year, revision.semester,
         revision.submitted_at, revision.withdrawn_at, revision.version,
@@ -629,6 +854,7 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
 
   private mapRevision(row: RevisionRow): WorkRevisionView {
     return {
+      authorKind: row.author_kind,
       attributions: row.attributions,
       content: {
         academicPeriod: { semester: row.semester, year: row.academic_year },
@@ -671,6 +897,48 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
     return row.is_equivalent
       ? { outcome: 'replay', revisionId: row.revision_id }
       : { outcome: 'conflict' };
+  }
+
+  private async resolveCorrectionReplay(
+    sql: Sql,
+    actorAccountId: string,
+    idempotencyKey: string,
+    requestFingerprint: string,
+  ): Promise<CorrectionReplayResolution> {
+    const rows = await sql<Array<{ is_equivalent: boolean; revision_id: string }>>`
+      select revision_id, (
+        actor_account_id = ${actorAccountId}
+        and request_fingerprint = ${requestFingerprint}
+      ) as is_equivalent
+      from private.admin_correction_audits where idempotency_key = ${idempotencyKey}
+      limit 1
+    `;
+    const row = rows[0];
+    if (row === undefined) return { outcome: 'none' };
+    return row.is_equivalent
+      ? { outcome: 'replay', revisionId: row.revision_id }
+      : { outcome: 'conflict' };
+  }
+
+  private async toCorrectionReplayResult(
+    sql: Sql,
+    replay: CorrectionReplayResolution,
+  ): Promise<AdminCorrectionResult | null> {
+    if (replay.outcome === 'none') return null;
+    if (replay.outcome === 'conflict') return { outcome: 'idempotency_conflict' };
+    const revision = await this.findRevisionById(sql, replay.revisionId);
+    return revision === null ? { outcome: 'not_found' } : { outcome: 'replayed', revision };
+  }
+
+  private isCorrectionIdempotencyConflict(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505' &&
+      'constraint_name' in error &&
+      error.constraint_name === 'admin_correction_audits_idempotency_key_key'
+    );
   }
 
   private async toReplayResult(
@@ -775,6 +1043,23 @@ export class PostgresWorkRevisionsRepository implements WorkRevisionRepository {
       revisionPublicId: input.revisionPublicId,
       workPublicId: input.workPublicId,
     };
+  }
+
+  private correctionFingerprint(
+    input: Parameters<AdminCorrectionsRepository['createCorrection']>[0],
+  ): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          candidate: input.candidate,
+          diff: input.diff,
+          expectedPublishedRevisionId: input.expectedPublishedRevisionId,
+          expectedRevisionVersion: input.expectedRevisionVersion,
+          reason: input.reason,
+          workPublicId: input.workPublicId,
+        }),
+      )
+      .digest('hex');
   }
 
   private decodeCursor(cursor?: string): { id: string; submittedAt: Date } | null {

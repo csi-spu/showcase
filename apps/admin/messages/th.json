@@ -100,6 +100,70 @@
     },
     "submitting": "กรุณารอสักครู่…"
   },
+  "Correction": {
+    "back": "กลับคิวตรวจ",
+    "categories": {
+      "academic_article": "บทความวิชาการ",
+      "competition_entry": "ผลงานประกวด",
+      "course_work": "ผลงานรายวิชา"
+    },
+    "description": "เริ่มจาก Revision ที่เผยแพร่อยู่ แก้เฉพาะข้อมูลที่ตรวจสอบแล้ว และบันทึกเป็น Revision ใหม่โดยยังไม่เปลี่ยนสิ่งที่ Visitor เห็น",
+    "errorHeading": "ยังสร้าง Revision แก้ไขไม่ได้",
+    "errors": {
+      "invalid": "ข้อมูลไม่ถูกต้องหรือไม่มีการเปลี่ยนแปลง กรุณาตรวจสอบทุกช่องและเหตุผลอย่างน้อย 10 ตัวอักษร",
+      "network": "เชื่อมต่อระบบไม่ได้ ข้อมูลที่กรอกยังอยู่ กรุณาลองใหม่",
+      "stale": "ผลงานหรือ Revision ที่เผยแพร่เปลี่ยนแล้ว หรือมี Revision รอตรวจอยู่ กรุณาโหลดข้อมูลล่าสุด",
+      "unavailable": "ระบบแก้ไขผลงานยังไม่พร้อม กรุณาลองใหม่ภายหลัง"
+    },
+    "fields": {
+      "addLink": "เพิ่มลิงก์",
+      "addTag": "เพิ่มแท็ก",
+      "addVideoLink": "เพิ่มลิงก์วิดีโอ",
+      "academicYear": "ปีการศึกษา",
+      "category": "ประเภท",
+      "description": "รายละเอียด",
+      "links": "ลิงก์",
+      "linksHelp": "ระบุชื่อและ URL แบบ https สูงสุด 5 ลิงก์",
+      "linkLabel": "ชื่อลิงก์ {number}",
+      "linkUrl": "URL ลิงก์ {number}",
+      "reason": "เหตุผลการแก้ไข",
+      "reasonHelp": "เหตุผลนี้จะถูกเก็บในประวัติการตรวจสอบ ต้องอธิบายสิ่งที่ตรวจสอบและแก้ไขอย่างน้อย 10 ตัวอักษร",
+      "semester": "ภาคการศึกษา",
+      "summary": "สรุป",
+      "tags": "แท็ก",
+      "tagsHelp": "สูงสุด 5 แท็ก",
+      "tag": "แท็ก {number}",
+      "removeTag": "ลบแท็ก {number}",
+      "title": "ชื่อผลงาน",
+      "videoLinks": "ลิงก์วิดีโอ",
+      "videoLinksHelp": "ลิงก์ YouTube หรือ TikTok สูงสุด 3 ลิงก์",
+      "videoLink": "ลิงก์วิดีโอ {number}",
+      "removeVideoLink": "ลบลิงก์วิดีโอ {number}"
+    },
+    "formHeading": "ข้อมูล Revision ใหม่",
+    "formHelp": "สื่อและการแสดงชื่อจะคงตาม Revision ที่เผยแพร่อยู่ เนื้อหาที่แก้จะผ่าน validation เดียวกับการส่งผลงานของนักศึกษา",
+    "kicker": "แก้ไขจาก Revision {number}",
+    "lookupDescription": "ระบุ Public Work ID ของผลงานที่เผยแพร่อยู่ ระบบจะโหลด Revision ล่าสุดเป็นฐานโดยไม่เปิดเผย Student ID หรือข้อมูลบัญชี",
+    "lookupSubmit": "เปิดผลงานเพื่อแก้ไข",
+    "lookupTitle": "เริ่มแก้ไขผลงานที่เผยแพร่",
+    "navigation": "แก้ไขผลงานที่เผยแพร่",
+    "openReview": "เปิด Revision เพื่อตรวจและเผยแพร่",
+    "publishedSnapshot": "Revision ที่เผยแพร่อยู่",
+    "remove": "ลบ",
+    "semesters": {
+      "1": "ภาค 1",
+      "2": "ภาค 2",
+      "summer": "ภาคฤดูร้อน"
+    },
+    "separationWarning": "การบันทึกครั้งนี้จะสร้าง Revision รอตรวจเท่านั้น Visitor ยังเห็น Revision เดิมจนกว่าจะกดอนุมัติและเผยแพร่เป็นคำสั่งแยกต่างหาก",
+    "submit": "บันทึกเป็น Revision รอตรวจ",
+    "submitting": "กำลังสร้าง Revision…",
+    "success": "สร้าง Revision รอตรวจแล้ว",
+    "successHelp": "ผลงานที่เผยแพร่ยังไม่เปลี่ยน เปิด Revision ใหม่เพื่อตรวจแล้วอนุมัติและเผยแพร่ด้วยคำสั่งแยก",
+    "workPublicId": "Public Work ID",
+    "workPublicIdHelp": "ใช้ตัวระบุสาธารณะจาก URL ของผลงาน ไม่ใช้รหัสนักศึกษา",
+    "workPublicIdInvalid": "Public Work ID ไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง"
+  },
   "Home": {
     "description": "พื้นที่สำหรับตรวจสอบและจัดการผลงานของนักศึกษา",
     "eyebrow": "สำหรับผู้ดูแลระบบ",
@@ -111,6 +175,7 @@
   },
   "Review": {
     "approval": {
+      "createCorrection": "สร้าง Revision แก้ไขจากผลงานที่เผยแพร่",
       "errorHeading": "ยังเผยแพร่ผลงานไม่ได้",
       "errors": {
         "invalid": "ข้อมูลคำสั่งไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
@@ -133,6 +198,7 @@
     "description": "ตรวจ snapshot ที่ส่งเข้ามาตามลำดับล่าสุด และส่งคำขอแก้ไขโดยไม่เปลี่ยนผลงานที่เผยแพร่อยู่",
     "detail": {
       "academicPeriod": "ปีการศึกษา {year} ภาค {semester}",
+      "adminCorrection": "Revision แก้ไขโดยผู้ดูแล",
       "attributions": "การแสดงชื่อ",
       "back": "กลับคิวตรวจ",
       "category": "ประเภท",
@@ -170,6 +236,7 @@
     "navigation": "คิวตรวจผลงาน",
     "next": "หน้าถัดไป",
     "queue": {
+      "adminCorrection": "แก้ไขโดยผู้ดูแล",
       "revision": "Revision {number}",
       "submittedAt": "ส่งเมื่อ {value}",
       "submitter": "ผู้ส่ง {name}",

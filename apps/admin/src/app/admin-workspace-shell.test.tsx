@@ -5,6 +5,7 @@ import { AdminWorkspaceShell } from './admin-workspace-shell';
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async (namespace: string) => (key: string) => {
     if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
+    if (namespace === 'Correction' && key === 'navigation') return 'แก้ไขผลงานที่เผยแพร่';
     if (namespace === 'Review' && key === 'navigation') return 'คิวตรวจผลงาน';
     return 'นำเข้าบัญชีนักศึกษา';
   }),
@@ -42,6 +43,9 @@ describe('AdminWorkspaceShell', () => {
     const reviewLink = screen.getByRole('link', { name: 'คิวตรวจผลงาน' });
     expect(reviewLink.getAttribute('href')).toBe('/reviews');
     expect(reviewLink.getAttribute('aria-current')).toBeNull();
+    const correctionLink = screen.getByRole('link', { name: 'แก้ไขผลงานที่เผยแพร่' });
+    expect(correctionLink.getAttribute('href')).toBe('/corrections');
+    expect(correctionLink.getAttribute('aria-current')).toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
   });
 });

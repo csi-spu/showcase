@@ -43,6 +43,7 @@ function labels(): React.ComponentProps<typeof RevisionSnapshot>['labels'] {
 
 function revision(): AdminReviewRevision {
   return {
+    authorKind: 'student_submission',
     attributions: [
       {
         affiliation: null,

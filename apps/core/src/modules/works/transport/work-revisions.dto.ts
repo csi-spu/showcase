@@ -13,6 +13,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { CHANGE_REQUEST_REASONS, type ChangeRequestReason } from '../domain/review-decision-policy';
+import { CreateWorkDto } from './works.dto';
 
 export class SubmitWorkRevisionDto {
   @IsString()
@@ -88,4 +89,19 @@ export class ApproveAndPublishDto {
 
   @IsUUID('4')
   idempotencyKey!: string;
+}
+
+export class AdminCorrectionDto extends CreateWorkDto {
+  @IsUUID('4')
+  expectedPublishedRevisionId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRevisionVersion!: number;
+
+  @IsString()
+  @MinLength(10)
+  @MaxLength(1_000)
+  reason!: string;
 }

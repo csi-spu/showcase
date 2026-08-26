@@ -48,6 +48,7 @@ class E2eWorkRevisionRepository implements WorkRevisionRepository {
       items: [
         {
           academicPeriod: { semester: '1', year: 2569 },
+          authorKind: 'student_submission',
           category: 'course_work',
           number: 1,
           revisionPublicId: REVISION_PUBLIC_ID,
@@ -321,6 +322,7 @@ function submitBody() {
 
 function revision(): WorkRevisionView {
   return {
+    authorKind: 'student_submission',
     attributions: [],
     content: {
       academicPeriod: { semester: '1', year: 2569 },

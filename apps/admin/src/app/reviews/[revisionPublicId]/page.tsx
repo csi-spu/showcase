@@ -47,6 +47,11 @@ export default async function ReviewDetailPage({
         <p className="text-sm font-semibold tracking-[0.16em] text-primary">
           REVISION {revision.number}
         </p>
+        {revision.authorKind === 'admin_correction' ? (
+          <p className="w-fit rounded-full bg-information-background px-3 py-1 text-sm font-medium text-information">
+            {t('detail.adminCorrection')}
+          </p>
+        ) : null}
         <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
           {revision.content.title}
         </h1>

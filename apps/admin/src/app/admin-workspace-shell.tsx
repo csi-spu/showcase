@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { logoutAction } from './admin-auth.actions';
 import { LogoutForm } from './admin-auth-forms';
 
-type AdminWorkspacePage = 'account-controls' | 'reviews' | 'roster';
+type AdminWorkspacePage = 'account-controls' | 'corrections' | 'reviews' | 'roster';
 
 export async function AdminWorkspaceShell({
   activePage,
@@ -14,8 +14,9 @@ export async function AdminWorkspaceShell({
   activePage: AdminWorkspacePage;
   children: ReactNode;
 }) {
-  const [accountControlsT, reviewT, rosterT] = await Promise.all([
+  const [accountControlsT, correctionT, reviewT, rosterT] = await Promise.all([
     getTranslations('AccountControls'),
+    getTranslations('Correction'),
     getTranslations('Review'),
     getTranslations('Roster'),
   ]);
@@ -33,6 +34,11 @@ export async function AdminWorkspaceShell({
                 href="/reviews"
                 isActive={activePage === 'reviews'}
                 label={reviewT('navigation')}
+              />
+              <NavigationItem
+                href="/corrections"
+                isActive={activePage === 'corrections'}
+                label={correctionT('navigation')}
               />
               <NavigationItem
                 href="/"

@@ -239,6 +239,7 @@ function draft(): WorkDraftView {
 
 function revision(): WorkRevisionView {
   return {
+    authorKind: 'student_submission',
     attributions: [
       {
         affiliation: null,

@@ -16,6 +16,7 @@ describe('AdminReviewsCoreClient', () => {
           items: [
             {
               academicPeriod: { semester: '1', year: 2569 },
+              authorKind: 'student_submission',
               category: 'course_work',
               number: 1,
               revisionPublicId: REVISION_PUBLIC_ID,
@@ -100,10 +101,52 @@ describe('AdminReviewsCoreClient', () => {
       idempotencyKey: '77000000-0000-4000-8000-000000000003',
     });
   });
+
+  it('loads a Published correction base and saves a separate pending Revision', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ ...revision(), status: 'approved', version: 2 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          outcome: 'created',
+          revision: {
+            ...revision(),
+            authorKind: 'admin_correction',
+            publicId: '77000000-0000-4000-8000-000000000009',
+          },
+        }),
+      );
+    const client = new AdminReviewsCoreClient(config, fetchMock);
+    await client.getCorrectionBase('opaque-admin-session', '77000000-0000-4000-8000-000000000002');
+    await client.createCorrection('opaque-admin-session', '77000000-0000-4000-8000-000000000002', {
+      academicPeriod: { semester: '1', year: 2569 },
+      category: 'course_work',
+      description: 'รายละเอียด',
+      expectedPublishedRevisionId: REVISION_PUBLIC_ID,
+      expectedRevisionVersion: 2,
+      idempotencyKey: '77000000-0000-4000-8000-000000000008',
+      links: [],
+      reason: 'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง',
+      summary: 'สรุปใหม่',
+      tags: [],
+      title: 'ชื่อผลงาน',
+      videoLinks: [],
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      'https://core.example.test/v1/internal/admin/works/77000000-0000-4000-8000-000000000002/correction-base',
+      'https://core.example.test/v1/internal/admin/works/77000000-0000-4000-8000-000000000002/corrections',
+    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      reason: 'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง',
+      summary: 'สรุปใหม่',
+    });
+  });
 });
 
 function revision() {
   return {
+    authorKind: 'student_submission',
     attributions: [],
     content: {
       academicPeriod: { semester: '1', year: 2569 },

@@ -17,6 +17,7 @@ const categorySchema = z.enum(['course_work', 'competition_entry', 'academic_art
 const queueItemSchema = z
   .object({
     academicPeriod: academicPeriodSchema,
+    authorKind: z.enum(['student_submission', 'admin_correction']),
     category: categorySchema,
     number: z.number().int().positive(),
     revisionPublicId: z.uuid(),
@@ -55,6 +56,7 @@ const workContentSchema = z
   .strict();
 const revisionSchema = z
   .object({
+    authorKind: z.enum(['student_submission', 'admin_correction']),
     attributions: z.array(
       z
         .object({
@@ -87,7 +89,7 @@ const revisionSchema = z
     ),
     number: z.number().int().positive(),
     publicId: z.uuid(),
-    status: z.literal('pending_review'),
+    status: z.enum(['approved', 'changes_requested', 'pending_review', 'withdrawn']),
     submittedAt: z.iso.datetime(),
     version: z.number().int().positive(),
     withdrawnAt: z.null(),
@@ -118,6 +120,7 @@ const publicationSchema = z
 export type AdminReviewQueue = z.infer<typeof reviewQueueSchema>;
 export type AdminReviewQueueItem = z.infer<typeof queueItemSchema>;
 export type AdminReviewRevision = z.infer<typeof revisionSchema>;
+export type AdminCorrectionBase = AdminReviewRevision & { status: 'approved' };
 export type ChangeRequestReason = z.infer<typeof changeRequestReasonSchema>;
 
 interface AdminReviewsCoreConfig {
@@ -155,6 +158,51 @@ export class AdminReviewsCoreClient {
       method: 'GET',
       path: `/v1/internal/admin/revisions/${revisionPublicId}`,
       responseSchema: revisionSchema,
+      sessionToken,
+    });
+  }
+
+  async getCorrectionBase(
+    sessionToken: string,
+    workPublicId: string,
+  ): Promise<AdminCorrectionBase> {
+    const revision = await this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/works/${workPublicId}/correction-base`,
+      responseSchema: revisionSchema,
+      sessionToken,
+    });
+    if (revision.status !== 'approved') {
+      throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503, undefined);
+    }
+    return { ...revision, status: 'approved' };
+  }
+
+  createCorrection(
+    sessionToken: string,
+    workPublicId: string,
+    input: {
+      academicPeriod: { semester: '1' | '2' | 'summer'; year: number };
+      category: 'academic_article' | 'competition_entry' | 'course_work';
+      description: string;
+      expectedPublishedRevisionId: string;
+      expectedRevisionVersion: number;
+      idempotencyKey: string;
+      links: Array<{ label: string; url: string }>;
+      reason: string;
+      summary: string;
+      tags: string[];
+      title: string;
+      videoLinks: string[];
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/works/${workPublicId}/corrections`,
+      responseSchema: z
+        .object({ outcome: z.enum(['created', 'replayed']), revision: revisionSchema })
+        .strict(),
       sessionToken,
     });
   }

@@ -44,6 +44,8 @@ import { PublicationService } from './application/publication.service';
 import { PUBLICATION_REPOSITORY } from './application/publication.ports';
 import { PostgresPublicationRepository } from './infrastructure/postgres-publication.repository';
 import { PublicWorksController } from './transport/public-works.controller';
+import { AdminCorrectionsService } from './application/admin-corrections.service';
+import { ADMIN_CORRECTIONS_REPOSITORY } from './application/admin-corrections.ports';
 
 @Module({
   controllers: [
@@ -62,9 +64,12 @@ import { PublicWorksController } from './transport/public-works.controller';
     WorkRevisionsService,
     ReviewsService,
     PublicationService,
+    AdminCorrectionsService,
     WorksExceptionFilter,
     { provide: WORKS_REPOSITORY, useClass: PostgresWorksRepository },
-    { provide: WORK_REVISIONS_REPOSITORY, useClass: PostgresWorkRevisionsRepository },
+    PostgresWorkRevisionsRepository,
+    { provide: WORK_REVISIONS_REPOSITORY, useExisting: PostgresWorkRevisionsRepository },
+    { provide: ADMIN_CORRECTIONS_REPOSITORY, useExisting: PostgresWorkRevisionsRepository },
     { provide: REVIEWS_REPOSITORY, useClass: PostgresReviewsRepository },
     { provide: PUBLICATION_REPOSITORY, useClass: PostgresPublicationRepository },
     {

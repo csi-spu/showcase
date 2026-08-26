@@ -18,7 +18,13 @@ import { AdminBffGuard } from '../../auth/transport/admin-bff.guard';
 import { WorkRevisionsService } from '../application/work-revisions.service';
 import { ReviewsService } from '../application/reviews.service';
 import { PublicationService } from '../application/publication.service';
-import { ApproveAndPublishDto, RequestChangesDto, ReviewQueueQueryDto } from './work-revisions.dto';
+import { AdminCorrectionsService } from '../application/admin-corrections.service';
+import {
+  AdminCorrectionDto,
+  ApproveAndPublishDto,
+  RequestChangesDto,
+  ReviewQueueQueryDto,
+} from './work-revisions.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
 
 @Controller('internal/admin')
@@ -30,7 +36,41 @@ export class AdminWorkRevisionsController {
     private readonly revisions: WorkRevisionsService,
     private readonly reviews: ReviewsService,
     private readonly publication: PublicationService,
+    private readonly corrections: AdminCorrectionsService,
   ) {}
+
+  @Get('works/:workPublicId/correction-base')
+  @Header('Cache-Control', 'no-store')
+  async getCorrectionBase(
+    @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
+    const revision = await this.corrections.getBase(workPublicId);
+    return {
+      ...revision,
+      media: await Promise.all(
+        revision.media.map(async (media) => {
+          const preview = await this.reviews.getRevisionMediaPreview(
+            revision.publicId,
+            media.assetId,
+          );
+          return { ...media, preview: { expiresAt: preview.expiresAt, url: preview.url } };
+        }),
+      ),
+    };
+  }
+
+  @Post('works/:workPublicId/corrections')
+  @Header('Cache-Control', 'no-store')
+  async createCorrection(
+    @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
+    @Body() input: AdminCorrectionDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeAdmin(this.requireSessionToken(authorization));
+    return this.corrections.create({ ...input, actorAccountId: actor.accountId, workPublicId });
+  }
 
   @Get('review-queue')
   @Header('Cache-Control', 'no-store')

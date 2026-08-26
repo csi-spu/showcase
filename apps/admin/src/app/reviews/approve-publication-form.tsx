@@ -2,6 +2,7 @@
 
 import { Button } from '@showcase/ui/button';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useActionState, useEffect, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -43,6 +44,12 @@ export function ApprovePublicationForm({
         <AlertTitle>{t('approval.success')}</AlertTitle>
         <AlertDescription>
           {t('approval.successHelp')} <code>/works/{state.publication.workPublicId}</code>
+          <Link
+            className="mt-3 block font-medium underline"
+            href={`/corrections/${state.publication.workPublicId}`}
+          >
+            {t('approval.createCorrection')}
+          </Link>
         </AlertDescription>
       </Alert>
     );

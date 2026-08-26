@@ -49,6 +49,11 @@ export default async function ReviewQueuePage({
                 <p className="text-sm font-medium text-primary">
                   {t('queue.revision', { number: item.number })}
                 </p>
+                {item.authorKind === 'admin_correction' ? (
+                  <p className="mt-1 text-sm font-medium text-information">
+                    {t('queue.adminCorrection')}
+                  </p>
+                ) : null}
                 <h2 className="mt-1 truncate text-lg font-semibold">{item.title}</h2>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   <span>{t('queue.submitter', { name: item.submitterAttributionName })}</span>
