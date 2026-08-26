@@ -142,7 +142,118 @@ describe('AdminReviewsCoreClient', () => {
       summary: 'สรุปใหม่',
     });
   });
+
+  it('uses bounded recovery queue and explicit optimistic recovery commands', async () => {
+    const workPublicId = '77000000-0000-4000-8000-000000000002';
+    const requestPublicId = '77000000-0000-4000-8000-000000000010';
+    const requestItem = removalRequest(requestPublicId, workPublicId);
+    const workState = recoveryState(workPublicId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ items: [requestItem] }))
+      .mockResolvedValueOnce(Response.json(workState))
+      .mockResolvedValueOnce(
+        Response.json({
+          outcome: 'transitioned',
+          work: { ...workState, publicationState: 'unpublished', version: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          outcome: 'resolved',
+          request: { ...requestItem, state: 'declined', version: 2 },
+        }),
+      );
+    const client = new AdminReviewsCoreClient(config, fetchMock);
+
+    await client.listRemovalRequests('opaque-admin-session', 20);
+    await client.getRecoveryState('opaque-admin-session', workPublicId);
+    await client.transitionWork('opaque-admin-session', workPublicId, {
+      expectedVersion: 1,
+      idempotencyKey: '77000000-0000-4000-8000-000000000011',
+      operation: 'unpublish',
+      reason: 'เหตุผลการระงับการเผยแพร่ชั่วคราว',
+    });
+    await client.decideRemovalRequest('opaque-admin-session', requestPublicId, {
+      decision: 'decline',
+      decisionReason: 'ยังไม่มีเหตุผลเพียงพอให้นำออก',
+      expectedVersion: 1,
+      expectedWorkVersion: 1,
+      idempotencyKey: '77000000-0000-4000-8000-000000000012',
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://core.example.test/v1/internal/admin/removal-requests?limit=20',
+      `https://core.example.test/v1/internal/admin/works/${workPublicId}/recovery-state`,
+      `https://core.example.test/v1/internal/admin/works/${workPublicId}/recovery`,
+      `https://core.example.test/v1/internal/admin/removal-requests/${requestPublicId}/decision`,
+    ]);
+  });
+  it('lists and decides External Contributor attribution removal requests', async () => {
+    const request = {
+      attributionName: 'Alex Example',
+      correctionRevisionPublicId: null,
+      createdAt: '2026-08-26T05:00:00.000Z',
+      publicId: '77000000-0000-4000-8000-000000000021',
+      reason: 'ขอถอนชื่อออกจากผลงานนี้',
+      revisionPublicId: REVISION_PUBLIC_ID,
+      state: 'pending',
+      version: 1,
+      workPublicId: '77000000-0000-4000-8000-000000000022',
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ items: [request] }))
+      .mockResolvedValueOnce(
+        Response.json({
+          outcome: 'resolved',
+          request: {
+            ...request,
+            correctionRevisionPublicId: '77000000-0000-4000-8000-000000000023',
+            state: 'accepted',
+            version: 2,
+          },
+        }),
+      );
+    const client = new AdminReviewsCoreClient(config, fetchMock);
+    await client.listAttributionRemovalRequests('opaque-admin-session', 20);
+    await client.decideAttributionRemovalRequest('opaque-admin-session', request.publicId, {
+      decision: 'accept',
+      expectedVersion: 1,
+      idempotencyKey: '77000000-0000-4000-8000-000000000024',
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://core.example.test/v1/internal/admin/attribution-removal-requests?limit=20',
+      `https://core.example.test/v1/internal/admin/attribution-removal-requests/${request.publicId}/decision`,
+    ]);
+  });
 });
+
+function recoveryState(workPublicId: string) {
+  return {
+    activityState: 'active' as const,
+    publicationState: 'published' as const,
+    publicId: workPublicId,
+    publishedRevisionId: '77000000-0000-4000-8000-000000000013',
+    publishedRevisionPublicId: REVISION_PUBLIC_ID,
+    version: 1,
+  };
+}
+
+function removalRequest(publicId: string, workPublicId: string) {
+  return {
+    createdAt: '2026-08-26T05:00:00.000Z',
+    decisionReason: null,
+    publicId,
+    reason: 'ต้องการหยุดเผยแพร่ผลงานชิ้นนี้',
+    revisionPublicId: REVISION_PUBLIC_ID,
+    state: 'pending' as const,
+    title: 'ชื่อผลงาน',
+    version: 1,
+    workVersion: 1,
+    workPublicId,
+  };
+}
 
 function revision() {
   return {

@@ -96,6 +96,31 @@ export async function exchangeExternalInvitationAction(token: string): Promise<n
   redirect('/contributor-invitations/external');
 }
 
+export async function exchangeExternalRecoveryCodeAction(formData: FormData): Promise<never> {
+  const parsed = z.string().min(16).max(256).safeParse(formData.get('recoveryCode'));
+  if (!parsed.success) redirect('/contributor-invitations/external?error=invalid-recovery');
+  try {
+    const result = await client().exchangeExternalRecoveryCode(parsed.data);
+    await setAttributionInvitationSession(result.invitationSessionToken, result.sessionExpiresAt);
+  } catch {
+    redirect('/contributor-invitations/external?error=invalid-recovery');
+  }
+  redirect('/contributor-invitations/external');
+}
+
+export async function createAttributionRemovalRequestAction(formData: FormData): Promise<never> {
+  const parsed = z.string().trim().min(10).max(1_000).safeParse(formData.get('reason'));
+  const session = await readAttributionInvitationSession();
+  if (!parsed.success || session === null)
+    redirect('/contributor-invitations/external?error=invalid');
+  await client().createAttributionRemovalRequest(session, {
+    idempotencyKey: randomUUID(),
+    reason: parsed.data,
+  });
+  revalidatePath('/contributor-invitations/external');
+  redirect('/contributor-invitations/external?requested=1');
+}
+
 export async function revokeInvitationAction(
   publicId: string,
   invitationPublicId: string,

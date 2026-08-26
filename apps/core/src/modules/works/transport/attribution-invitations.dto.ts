@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class CreateAccountAttributionInvitationDto {
@@ -84,6 +85,13 @@ export class ExchangeExternalAttributionTokenDto {
   @IsString()
   @MaxLength(512)
   token!: string;
+}
+
+export class ExchangeExternalRecoveryCodeDto {
+  @IsString()
+  @MinLength(16)
+  @MaxLength(256)
+  recoveryCode!: string;
 }
 
 export class InvitationPageQueryDto {

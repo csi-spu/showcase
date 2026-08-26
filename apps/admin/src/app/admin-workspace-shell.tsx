@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { logoutAction } from './admin-auth.actions';
 import { LogoutForm } from './admin-auth-forms';
 
-type AdminWorkspacePage = 'account-controls' | 'corrections' | 'reviews' | 'roster';
+type AdminWorkspacePage = 'account-controls' | 'corrections' | 'recovery' | 'reviews' | 'roster';
 
 export async function AdminWorkspaceShell({
   activePage,
@@ -14,9 +14,10 @@ export async function AdminWorkspaceShell({
   activePage: AdminWorkspacePage;
   children: ReactNode;
 }) {
-  const [accountControlsT, correctionT, reviewT, rosterT] = await Promise.all([
+  const [accountControlsT, correctionT, recoveryT, reviewT, rosterT] = await Promise.all([
     getTranslations('AccountControls'),
     getTranslations('Correction'),
+    getTranslations('Recovery'),
     getTranslations('Review'),
     getTranslations('Roster'),
   ]);
@@ -30,6 +31,11 @@ export async function AdminWorkspaceShell({
           <p className="text-sm text-muted-foreground">ADMIN WORKSPACE</p>
           <nav aria-label="เมนูผู้ดูแล" className="mt-6">
             <ul className="flex flex-col gap-1 text-sm font-medium">
+              <NavigationItem
+                href="/recovery"
+                isActive={activePage === 'recovery'}
+                label={recoveryT('navigation')}
+              />
               <NavigationItem
                 href="/reviews"
                 isActive={activePage === 'reviews'}

@@ -15,6 +15,7 @@ import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
 type Sql = postgres.Sql | postgres.TransactionSql;
 
 interface LockedPublicationRow {
+  activity_state: 'active' | 'archived';
   base_published_revision_id: string | null;
   id: string;
   publication_state: 'never_published' | 'published' | 'unpublished';
@@ -88,7 +89,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
           select revision.id, revision.public_id as revision_public_id, revision.revision_number,
             revision.status as revision_status, revision.version as revision_version, revision.title,
             revision.base_published_revision_id,
-            work.id as work_id, work.public_id as work_public_id,
+            work.id as work_id, work.public_id as work_public_id, work.activity_state,
             work.publication_state, work.published_revision_id
           from private.work_revisions as revision
           join public.works as work on work.id = revision.work_id
@@ -112,6 +113,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
         if (Number(candidate.revision_version) !== input.expectedRevisionVersion) {
           return { outcome: 'revision_version_conflict' };
         }
+        if (candidate.activity_state !== 'active') return { outcome: 'work_state_conflict' };
         const isFirstPublication =
           Number(candidate.revision_number) === 1 &&
           candidate.publication_state === 'never_published' &&
@@ -119,7 +121,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
           candidate.base_published_revision_id === null;
         const isNewerPublication =
           Number(candidate.revision_number) > 1 &&
-          candidate.publication_state === 'published' &&
+          candidate.publication_state !== 'never_published' &&
           candidate.published_revision_id !== null &&
           candidate.base_published_revision_id === candidate.published_revision_id;
         if (!isFirstPublication && !isNewerPublication) {
@@ -146,13 +148,13 @@ export class PostgresPublicationRepository implements PublicationRepository {
         await transaction`
           update public.works
           set published_revision_id = ${candidate.id}, publication_state = 'published',
-            updated_at = ${input.now}
+            version = version + 1, updated_at = ${input.now}
           where id = ${candidate.work_id}
         `;
         await this.replacePublishedTags(
           transaction,
           candidate.id,
-          candidate.published_revision_id,
+          candidate.publication_state === 'published' ? candidate.published_revision_id : null,
           input.now,
         );
         await this.recordPublicationEvent(transaction, candidate, input.now);

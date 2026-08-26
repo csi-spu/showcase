@@ -13,6 +13,7 @@ import type {
   WorkRevisionActionError,
   WorkRevisionActionState,
 } from './work-revision-action-state';
+import type { WorkRemovalActionError, WorkRemovalActionState } from './work-removal-state';
 
 export async function createWorkAction(
   previousState: WorkActionState,
@@ -291,6 +292,71 @@ export async function rebaseWorkDraftAction(
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
 
+export async function createWorkRemovalRequestAction(
+  publicId: string,
+  expectedWorkVersion: number,
+  previousState: WorkRemovalActionState,
+  formData: FormData,
+): Promise<WorkRemovalActionState> {
+  const parsed = z
+    .object({
+      expectedWorkVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+      reason: z.string().trim().min(10).max(1_000),
+    })
+    .safeParse({
+      expectedWorkVersion,
+      idempotencyKey: formData.get('idempotencyKey'),
+      publicId,
+      reason: formData.get('reason'),
+    });
+  if (!parsed.success) return removalFailed(previousState, 'invalid');
+  try {
+    await client().createRemovalRequest(await sessionToken(), parsed.data.publicId, {
+      expectedWorkVersion: parsed.data.expectedWorkVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+      reason: parsed.data.reason,
+    });
+  } catch (error: unknown) {
+    return removalFailed(previousState, mapRemovalError(error));
+  }
+  revalidatePath(`/works/${parsed.data.publicId}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
+export async function cancelWorkRemovalRequestAction(
+  publicId: string,
+  requestPublicId: string,
+  previousState: WorkRemovalActionState,
+  formData: FormData,
+): Promise<WorkRemovalActionState> {
+  const parsed = z
+    .object({
+      expectedVersion: z.coerce.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+      requestPublicId: z.uuid(),
+    })
+    .safeParse({
+      expectedVersion: formData.get('expectedVersion'),
+      idempotencyKey: formData.get('idempotencyKey'),
+      publicId,
+      requestPublicId,
+    });
+  if (!parsed.success) return removalFailed(previousState, 'invalid');
+  try {
+    await client().cancelRemovalRequest(await sessionToken(), parsed.data.requestPublicId, {
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+  } catch (error: unknown) {
+    return removalFailed(previousState, mapRemovalError(error));
+  }
+  revalidatePath(`/works/${parsed.data.publicId}`);
+  return { error: null, idempotencyKey: randomUUID(), success: true };
+}
+
 function client(): StudentWorksCoreClient {
   return new StudentWorksCoreClient(getStudentServerEnvironment());
 }
@@ -355,5 +421,28 @@ function mapRevisionError(error: unknown): WorkRevisionActionError {
     return 'attribution';
   if (error.code === 'WORK_SUBMISSION_INCOMPLETE') return 'incomplete';
   if (error.code === 'INVALID_REQUEST') return 'invalid';
+  return error.code === 'WORKS_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
+}
+
+function removalFailed(
+  previousState: WorkRemovalActionState,
+  error: WorkRemovalActionError,
+): WorkRemovalActionState {
+  return { ...previousState, error, success: false };
+}
+
+function mapRemovalError(error: unknown): WorkRemovalActionError {
+  if (!(error instanceof StudentWorksCoreError)) return 'network';
+  if (
+    [
+      'REMOVAL_REQUEST_STATE_CONFLICT',
+      'WORK_IDEMPOTENCY_CONFLICT',
+      'WORK_RECOVERY_STATE_CONFLICT',
+      'WORK_RECOVERY_VERSION_CONFLICT',
+    ].includes(error.code)
+  ) {
+    return 'conflict';
+  }
+  if (['INVALID_REQUEST', 'WORK_RECOVERY_REASON_INVALID'].includes(error.code)) return 'invalid';
   return error.code === 'WORKS_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
 }

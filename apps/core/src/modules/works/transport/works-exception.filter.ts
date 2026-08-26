@@ -8,6 +8,8 @@ import { WorkRevisionError } from '../application/work-revisions.service';
 import { ReviewError } from '../application/reviews.service';
 import { PublicationError } from '../application/publication.service';
 import { AdminCorrectionError } from '../application/admin-corrections.service';
+import { WorkRecoveryError } from '../application/work-recovery.service';
+import { AttributionRemovalError } from '../application/attribution-removal.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -24,11 +26,13 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof AuthError ||
       error instanceof AdminCorrectionError ||
       error instanceof AttributionInvitationError ||
+      error instanceof AttributionRemovalError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError ||
       error instanceof PublicationError ||
       error instanceof ReviewError ||
-      error instanceof WorkRevisionError
+      error instanceof WorkRevisionError ||
+      error instanceof WorkRecoveryError
     ) {
       response.status(error.status).json({ error: { code: error.code } });
       return;
