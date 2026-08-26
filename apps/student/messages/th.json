@@ -6,6 +6,7 @@
       "invitations": "คำเชิญผู้ร่วมผลงาน",
       "heading": "เข้าสู่ระบบสำเร็จ",
       "logout": "ออกจากระบบ",
+      "notifications": "การแจ้งเตือน",
       "profile": "จัดการโปรไฟล์สาธารณะ",
       "readOnlyDescription": "คุณยังเข้าสู่ระบบได้ แต่ไม่สามารถส่งหรือแก้ไขผลงานได้ เพราะสิทธิ์ใช้งานสำหรับนักศึกษาสิ้นสุดแล้ว"
     },
@@ -52,6 +53,44 @@
   "Metadata": {
     "description": "พื้นที่สำหรับส่งและจัดการผลงานของนักศึกษา",
     "title": "ระบบนักศึกษา | Student Showcase"
+  },
+  "Notifications": {
+    "back": "กลับหน้าหลัก",
+    "description": "มีการแจ้งเตือนที่ยังไม่ได้อ่าน {count} รายการ",
+    "empty": "ยังไม่มีการแจ้งเตือน",
+    "emptyUnread": "อ่านการแจ้งเตือนทั้งหมดแล้ว",
+    "filters": {
+      "all": "ทั้งหมด",
+      "unread": "ยังไม่ได้อ่าน"
+    },
+    "kicker": "NOTIFICATIONS",
+    "markAllRead": "ทำเครื่องหมายว่าอ่านทั้งหมด",
+    "markRead": "ทำเครื่องหมายว่าอ่านแล้ว",
+    "navigation": "เมนูการแจ้งเตือน",
+    "next": "หน้าถัดไป",
+    "open": "เปิดรายการ",
+    "title": "การแจ้งเตือน",
+    "types": {
+      "admin_correction_created": "ผู้ดูแลสร้าง Revision แก้ไขผลงาน",
+      "attribution_invitation_accepted": "ผู้รับยอมรับคำเชิญร่วมผลงาน",
+      "attribution_invitation_expired": "คำเชิญร่วมผลงานหมดอายุ",
+      "attribution_invitation_received": "คุณได้รับคำเชิญร่วมผลงาน",
+      "attribution_invitation_rejected": "ผู้รับปฏิเสธคำเชิญร่วมผลงาน",
+      "attribution_invitation_revoked": "คำเชิญร่วมผลงานถูกเพิกถอน",
+      "attribution_withdrawn": "ผู้ร่วมผลงานถอนการมีส่วนร่วม",
+      "removal_request_approved": "คำขอนำผลงานออกได้รับการอนุมัติ",
+      "removal_request_declined": "คำขอนำผลงานออกไม่ได้รับการอนุมัติ",
+      "roster_batch_completed": "ประมวลผลชุดนำเข้ารายชื่อแล้ว",
+      "student_access_extended": "ระยะเวลาสิทธิ์นักศึกษาของคุณได้รับการขยาย",
+      "work_archive": "ผลงานถูกเก็บออกจากการใช้งาน",
+      "work_change_requested": "ผู้ดูแลขอให้แก้ไข Revision",
+      "work_published": "ผลงานได้รับการเผยแพร่แล้ว",
+      "work_restore_active": "ผลงานกลับมาอยู่ในสถานะใช้งาน",
+      "work_restore_publication": "ผลงานกลับมาเผยแพร่อีกครั้ง",
+      "work_unpublish": "ผลงานถูกนำออกจากการเผยแพร่"
+    },
+    "unavailable": "รายการปลายทางไม่พร้อมใช้งาน",
+    "unread": "ยังไม่ได้อ่าน"
   },
   "Profile": {
     "bio": "แนะนำตัว",
