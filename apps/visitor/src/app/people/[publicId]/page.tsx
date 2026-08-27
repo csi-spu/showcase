@@ -4,9 +4,11 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { z } from 'zod';
 import { buttonVariants } from '@/components/ui/button';
+import { PublicCatalogCoreClient } from '@/lib/public-catalog-core';
 import { getVisitorCoreUrl, PublicProfileCoreClient } from '@/lib/public-profile-core';
 import { PublicShell } from '../../public-shell';
 import { PublicProfileView } from '../public-profile-view';
+import { PublicProfileWorks } from '../public-profile-works';
 
 export default async function PublicProfilePage({
   params,
@@ -15,9 +17,17 @@ export default async function PublicProfilePage({
 }) {
   const { publicId } = await params;
   if (!z.uuid().safeParse(publicId).success) notFound();
-  const profile = await new PublicProfileCoreClient(getVisitorCoreUrl()).getProfile(publicId);
+  const coreUrl = getVisitorCoreUrl();
+  const [profile, works, t] = await Promise.all([
+    new PublicProfileCoreClient(coreUrl).getProfile(publicId),
+    new PublicCatalogCoreClient(coreUrl).listWorks({
+      limit: '6',
+      profile: publicId,
+      sort: 'recent',
+    }),
+    getTranslations('People'),
+  ]);
   if (profile === null) notFound();
-  const t = await getTranslations('People');
 
   return (
     <PublicShell>
@@ -28,12 +38,24 @@ export default async function PublicProfilePage({
         </Link>
         <PublicProfileView
           labels={{
+            bioFallback: t('bioFallback'),
             entryYear: t('entryYear', { year: profile.entryYear }),
             eyebrow: t('profileEyebrow'),
             links: t('links'),
+            linksFallback: t('linksFallback'),
             photoAlt: t('photoAlt', { name: profile.displayName }),
           }}
           profile={profile}
+        />
+        <PublicProfileWorks
+          labels={{
+            description: t('worksDescription'),
+            empty: t('worksEmpty'),
+            heading: t('worksHeading'),
+            openWork: t('openWork'),
+            posterAlt: (title) => t('workPosterAlt', { title }),
+          }}
+          works={works.items}
         />
       </div>
     </PublicShell>

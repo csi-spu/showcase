@@ -7,8 +7,10 @@ describe('Visitor Public Profile UI', () => {
     const html = renderToStaticMarkup(
       <PublicProfileView
         labels={{
+          bioFallback: 'ยังไม่ได้เพิ่มเรื่องราวแนะนำตัว',
           entryYear: 'ปีที่เข้าศึกษา 2569',
           eyebrow: 'นักศึกษา CSI',
+          linksFallback: 'ยังไม่มีลิงก์ภายนอก',
           links: 'ลิงก์ภายนอก',
           photoAlt: 'รูปโปรไฟล์ของ ณัฐดนัย',
         }}
@@ -30,5 +32,32 @@ describe('Visitor Public Profile UI', () => {
     expect(html).not.toContain('/_next/image');
     expect(html).not.toContain('private-media.example');
     expect(html).not.toMatch(/studentId|account|session/i);
+  });
+
+  it('renders themed fallbacks when optional public profile details are absent', () => {
+    const html = renderToStaticMarkup(
+      <PublicProfileView
+        labels={{
+          bioFallback: 'ยังไม่ได้เพิ่มเรื่องราวแนะนำตัว',
+          entryYear: 'ปีที่เข้าศึกษา 2569',
+          eyebrow: 'นักศึกษา CSI',
+          links: 'ติดตามผลงานเพิ่มเติม',
+          linksFallback: 'ยังไม่มีลิงก์ภายนอก',
+          photoAlt: 'รูปโปรไฟล์ของ ณัฐดนัย',
+        }}
+        profile={{
+          bio: '   ',
+          displayName: 'ณัฐดนัย',
+          entryYear: 2569,
+          links: [],
+          photo: null,
+          publicId: '81000000-0000-4000-8000-000000000001',
+        }}
+      />,
+    );
+
+    expect(html).toContain('ยังไม่ได้เพิ่มเรื่องราวแนะนำตัว');
+    expect(html).toContain('ยังไม่มีลิงก์ภายนอก');
+    expect(html).toContain('data-profile-photo-fallback="true"');
   });
 });

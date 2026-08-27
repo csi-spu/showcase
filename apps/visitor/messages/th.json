@@ -125,6 +125,7 @@
   },
   "People": {
     "back": "กลับไปดูนักศึกษาทั้งหมด",
+    "bioFallback": "ยังไม่ได้เพิ่มเรื่องราวแนะนำตัว",
     "catalogDescription": "ทำความรู้จักคนเบื้องหลังผลงาน และดูว่าแต่ละคนเลือกเผยแพร่อะไรไว้บ้าง",
     "catalogEyebrow": "คนเบื้องหลัง Student Showcase",
     "catalogTitle": "รู้จักนักศึกษาผ่านผลงาน",
@@ -134,10 +135,12 @@
     "errorDescription": "ไม่สามารถโหลดโปรไฟล์ได้ กรุณาลองใหม่อีกครั้ง",
     "errorHeading": "โหลดโปรไฟล์ไม่สำเร็จ",
     "links": "ติดตามผลงานเพิ่มเติม",
+    "linksFallback": "ยังไม่มีลิงก์ภายนอก",
     "more": "ดูนักศึกษาเพิ่มเติม",
     "navigation": "เมนูสาธารณะ",
     "notFoundDescription": "โปรไฟล์นี้ไม่มีอยู่หรือเจ้าของยังไม่ได้ยินยอมให้เผยแพร่",
     "notFoundHeading": "ไม่พบโปรไฟล์",
+    "openWork": "เปิดดูผลงาน",
     "photoAlt": "รูปโปรไฟล์ของ {name}",
     "profileEyebrow": "นักศึกษา CSI",
     "publishedWorks": "ผลงานเผยแพร่ {count} ชิ้น",
@@ -145,7 +148,11 @@
     "retry": "ลองใหม่",
     "search": "ค้นหา",
     "searchLabel": "ค้นหานักศึกษา",
-    "searchPlaceholder": "ชื่อที่ต้องการค้นหา"
+    "searchPlaceholder": "ชื่อที่ต้องการค้นหา",
+    "workPosterAlt": "โปสเตอร์ {title}",
+    "worksDescription": "ผลงานเผยแพร่ล่าสุดที่นักศึกษาคนนี้เป็นผู้ส่งหรือมีส่วนร่วม",
+    "worksEmpty": "ยังไม่มีผลงานเผยแพร่ที่เชื่อมโยงกับโปรไฟล์นี้",
+    "worksHeading": "ผลงานที่มีส่วนร่วม"
   },
   "Tags": {
     "back": "กลับไปดูผลงานทั้งหมด",
@@ -168,19 +175,21 @@
   },
   "Works": {
     "academicPeriod": "ปีการศึกษา {year} ภาค {semester}",
-    "attributions": "ใครอยู่เบื้องหลังผลงาน",
+    "attributions": "ผู้จัดทำผลงาน",
     "back": "กลับไปดูผลงานทั้งหมด",
     "categories": {
       "academic_article": "บทความวิชาการ",
       "competition_entry": "ผลงานประกวด",
       "course_work": "ผลงานรายวิชา"
     },
-    "description": "เรื่องราวของผลงาน",
+    "description": "รายละเอียดผลงาน",
     "errorDescription": "ไม่สามารถโหลดผลงานได้ กรุณาลองใหม่อีกครั้ง",
     "errorHeading": "โหลดผลงานไม่สำเร็จ",
     "gallery": "ภาพเพิ่มเติม",
     "galleryAlt": "ภาพเพิ่มเติม {index} ของ {title}",
     "links": "ลิงก์ที่เกี่ยวข้อง",
+    "missingAttributions": "ยังไม่มีรายละเอียดผู้สร้างผลงาน",
+    "missingPoster": "ยังไม่มีภาพโปสเตอร์",
     "navigation": "เมนูสาธารณะ",
     "notFoundDescription": "ผลงานนี้ไม่มีอยู่หรือยังไม่ได้รับอนุมัติให้เผยแพร่",
     "notFoundHeading": "ไม่พบผลงาน",

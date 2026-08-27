@@ -34,6 +34,10 @@ describe('PublicCatalogCoreClient', () => {
 
     await client.listWorks({ q: 'react' });
     expect(fetchMock.mock.calls[1]?.[1]?.cache).toBe('no-store');
+
+    await client.listWorks({ limit: '6', profile: id(4), sort: 'recent' });
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain(`profile=${id(4)}`);
+    expect(fetchMock.mock.calls[2]?.[1]?.cache).toBe('no-store');
   });
 
   it('validates the consented Public Profile bio in People catalog cards', async () => {

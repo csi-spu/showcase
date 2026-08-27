@@ -14,6 +14,8 @@ describe('Admin-to-Visitor Published Work UI', () => {
           gallery: 'แกลเลอรี',
           galleryAlt: (index) => `ภาพเพิ่มเติม ${index} ของ ระบบแนะนำผลงาน`,
           links: 'ลิงก์',
+          missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
+          missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
           publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
           studyYear: (year) => `ชั้นปีที่ ${year}`,
@@ -35,6 +37,35 @@ describe('Admin-to-Visitor Published Work UI', () => {
       'srcSet="/works/87000000-0000-4000-8000-000000000001/media/87000000-0000-4000-8000-000000000002/480 480w"',
     );
     expect(html).not.toMatch(/studentId|accountId|personId|session/i);
+  });
+
+  it('renders themed fallbacks when poster and attribution data are absent', () => {
+    const work = publicWork();
+    const html = renderToStaticMarkup(
+      <PublicWorkView
+        labels={{
+          academicPeriod: 'ปีการศึกษา 2569 ภาค 1',
+          attributions: 'ผู้สร้างผลงาน',
+          category: 'ผลงานรายวิชา',
+          description: 'รายละเอียด',
+          gallery: 'แกลเลอรี',
+          galleryAlt: (index) => `ภาพเพิ่มเติม ${index}`,
+          links: 'ลิงก์',
+          missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
+          missingPoster: 'ยังไม่มีภาพโปสเตอร์',
+          posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
+          publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
+          studyYear: (year) => `ชั้นปีที่ ${year}`,
+          tagsLabel: 'หัวข้อของผลงาน',
+          videos: 'วิดีโอ',
+        }}
+        work={{ ...work, attributions: [], media: [] }}
+      />,
+    );
+
+    expect(html).toContain('ยังไม่มีภาพโปสเตอร์');
+    expect(html).toContain('ยังไม่มีรายละเอียดผู้สร้างผลงาน');
+    expect(html).toContain('data-poster-fallback="true"');
   });
 });
 

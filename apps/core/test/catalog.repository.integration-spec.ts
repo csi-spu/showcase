@@ -81,6 +81,31 @@ describe('PostgresCatalogRepository integration', () => {
     expect(filtered.entries.map((entry) => entry.item.workPublicId)).toEqual([IDS.workOnePublic]);
   });
 
+  it('filters Published Works by consented Public Profile attribution', async () => {
+    const submitterWorks = await repository.listWorks({
+      after: null,
+      query: normalizeWorkCatalogQuery({ profile: IDS.consentedProfile }),
+    });
+    expect(submitterWorks.entries.map((entry) => entry.item.workPublicId)).toEqual([
+      IDS.workOnePublic,
+      IDS.workTwoPublic,
+    ]);
+
+    const contributorWorks = await repository.listWorks({
+      after: null,
+      query: normalizeWorkCatalogQuery({ profile: IDS.secondConsentedProfile }),
+    });
+    expect(contributorWorks.entries.map((entry) => entry.item.workPublicId)).toEqual([
+      IDS.workTwoPublic,
+    ]);
+
+    const withdrawnProfileWorks = await repository.listWorks({
+      after: null,
+      query: normalizeWorkCatalogQuery({ profile: IDS.hiddenProfile }),
+    });
+    expect(withdrawnProfileWorks.entries).toEqual([]);
+  });
+
   it('returns only consented Public Profiles and exact active Published Work counts', async () => {
     const people = await repository.listPeople({
       after: null,
@@ -245,7 +270,8 @@ describe('PostgresCatalogRepository integration', () => {
         (${IDS.revisionTwo}, ${IDS.revisionTwoPublic}, ${IDS.workTwo}, 1, 'approved', 1,
           'API Catalog', 'ใช้ React', 'รายละเอียด', 'academic_article', 2568, '2', ${NOW}, 2)`;
       await transaction`update public.works set published_revision_id = case
-        when id = ${IDS.workOne} then ${IDS.revisionOne}::uuid else ${IDS.revisionTwo}::uuid end`;
+        when id = ${IDS.workOne} then ${IDS.revisionOne}::uuid else ${IDS.revisionTwo}::uuid end
+        where id in (${IDS.workOne}, ${IDS.workTwo})`;
       await transaction`insert into private.reviews (
         revision_id, actor_account_id, decision, expected_revision_version,
         resulting_revision_version, idempotency_key, request_payload, reviewed_at
@@ -257,7 +283,9 @@ describe('PostgresCatalogRepository integration', () => {
         revision_id, position, kind, person_id, attribution_name, study_year
       ) values
         (${IDS.revisionOne}, 1, 'submitter', ${IDS.consentedPerson}, 'ณัฐดนัย', 3),
-        (${IDS.revisionTwo}, 1, 'submitter', ${IDS.consentedPerson}, 'ณัฐดนัย', 2)`;
+        (${IDS.revisionTwo}, 1, 'submitter', ${IDS.consentedPerson}, 'ณัฐดนัย', 2),
+        (${IDS.revisionTwo}, 2, 'account', ${IDS.secondConsentedPerson}, 'ณัฐกร', 3),
+        (${IDS.revisionTwo}, 3, 'account', ${IDS.hiddenPerson}, 'ณัฐที่ซ่อนอยู่', 3)`;
       await transaction`insert into public.tags (
         id, public_id, normalized_identity, display_label, activated_at, active_work_count
       ) values

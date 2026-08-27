@@ -12,6 +12,8 @@ const INVALID_WORK_QUERIES: Array<[RawWorkCatalogQuery, CatalogQueryError['code'
   [{ category: ['not-a-category'] }, 'CATALOG_CATEGORY_INVALID'],
   [{ tag: Array.from({ length: 6 }, (_, index) => uuid(index)) }, 'CATALOG_TAG_LIMIT'],
   [{ tag: ['not-a-uuid'] }, 'CATALOG_TAG_INVALID'],
+  [{ profile: 'not-a-uuid' }, 'CATALOG_PROFILE_INVALID'],
+  [{ profile: [uuid(1), uuid(2)] }, 'CATALOG_PROFILE_INVALID'],
   [{ semester: '3' }, 'CATALOG_SEMESTER_INVALID'],
   [{ year: '2399' }, 'CATALOG_YEAR_INVALID'],
   [{ year: '2701' }, 'CATALOG_YEAR_INVALID'],
@@ -24,6 +26,7 @@ describe('Public Catalog query policy', () => {
       normalizeWorkCatalogQuery({
         category: ['competition_entry', 'course_work', 'course_work'],
         limit: '48',
+        profile: uuid(4),
         q: '  ＲＥＡＣＴ   ระบบ  ',
         semester: 'summer',
         sort: 'title',
@@ -38,6 +41,7 @@ describe('Public Catalog query policy', () => {
       categories: ['competition_entry', 'course_work'],
       limit: 48,
       query: 'react ระบบ',
+      profilePublicId: uuid(4),
       semester: 'summer',
       sort: 'relevance',
       tagPublicIds: [
@@ -53,6 +57,7 @@ describe('Public Catalog query policy', () => {
       categories: [],
       limit: 24,
       query: null,
+      profilePublicId: null,
       semester: null,
       sort: 'recent',
       tagPublicIds: [],
