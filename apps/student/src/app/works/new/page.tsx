@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
@@ -8,6 +7,7 @@ import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
 import { WorkForm } from '../work-form';
 import { createWorkAction } from '../work.actions';
+import { StudentWorkspaceShell } from '../../student-workspace-shell';
 
 export default async function NewWorkPage() {
   const state = await getStudentAuthPageState();
@@ -29,18 +29,8 @@ export default async function NewWorkPage() {
   ]);
 
   return (
-    <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
-      <header className="border-b border-border px-[clamp(1rem,4vw,3rem)] py-6">
-        <nav aria-label={t('navigation')} className="flex items-center justify-between gap-4">
-          <Link className="font-semibold tracking-[0.12em]" href="/">
-            STUDENT SHOWCASE
-          </Link>
-          <Link className="text-sm font-medium text-primary underline" href="/">
-            {t('back')}
-          </Link>
-        </nav>
-      </header>
-      <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-10 lg:grid-cols-12 lg:py-16">
+    <StudentWorkspaceShell activePage="create-work" canCreateWork>
+      <div className="grid gap-10 lg:grid-cols-12">
         <header className="grid content-start gap-4 lg:col-span-4">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">WORK DRAFT</p>
           <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
@@ -58,7 +48,7 @@ export default async function NewWorkPage() {
           />
         </div>
       </div>
-    </main>
+    </StudentWorkspaceShell>
   );
 }
 

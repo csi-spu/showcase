@@ -1,9 +1,21 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminWorkspaceShell } from './admin-workspace-shell';
 
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async (namespace: string) => (key: string) => {
+    if (namespace === 'Workspace') {
+      const messages: Record<string, string> = {
+        'navigation.closeMenu': 'ปิดเมนู',
+        'navigation.description': 'เลือกหน้าจัดการที่ต้องการเปิด',
+        'navigation.label': 'เมนูผู้ดูแล',
+        'navigation.openMenu': 'เปิดเมนูผู้ดูแล',
+        'navigation.title': 'เมนูผู้ดูแลระบบ',
+        status: 'ระบบจัดการ',
+      };
+      return messages[key] ?? key;
+    }
     if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
     if (namespace === 'Correction' && key === 'navigation') return 'แก้ไขผลงานที่เผยแพร่';
     if (namespace === 'Notifications' && key === 'navigation') return 'การแจ้งเตือน';
@@ -23,6 +35,7 @@ describe('AdminWorkspaceShell', () => {
   afterEach(cleanup);
 
   it('keeps desktop navigation sticky and marks the current standalone page', async () => {
+    const user = userEvent.setup();
     render(
       await AdminWorkspaceShell({
         activePage: 'account-controls',
@@ -34,6 +47,7 @@ describe('AdminWorkspaceShell', () => {
     expect(sidebar.className).toContain('lg:sticky');
     expect(sidebar.className).toContain('lg:top-0');
     expect(sidebar.className).toContain('lg:h-svh');
+    expect(within(sidebar).getByText('ระบบจัดการ')).toBeTruthy();
 
     const accountControlsLink = screen.getByRole('link', { name: 'จัดการสิทธิ์และบัญชี' });
     expect(accountControlsLink.getAttribute('href')).toBe('/account-controls');
@@ -52,5 +66,18 @@ describe('AdminWorkspaceShell', () => {
       '/recovery',
     );
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'เปิดเมนูผู้ดูแล' }));
+    const dialog = await screen.findByRole('dialog', { name: 'เมนูผู้ดูแลระบบ' });
+    expect(
+      within(dialog)
+        .getByRole('link', { name: 'จัดการสิทธิ์และบัญชี' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'เมนูผู้ดูแลระบบ' })).toBeNull();
+    });
   });
 });

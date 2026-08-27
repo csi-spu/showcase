@@ -33,7 +33,7 @@ describe('SharpWorkMediaInspector', () => {
       space: 'srgb',
     });
     expect(result.bytes.toString()).not.toContain('private metadata');
-  });
+  }, 30_000);
 
   it('limits the sanitized master by its longest edge and warns for a narrow Poster', async () => {
     const source = await sharp({

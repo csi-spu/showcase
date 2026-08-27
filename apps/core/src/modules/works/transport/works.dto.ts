@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsString,
+  IsOptional,
   IsUrl,
   IsUUID,
   Max,
@@ -130,4 +131,18 @@ export class AttachWorkMediaDto {
   @IsString()
   @IsIn(['poster', 'gallery'])
   mediaKind!: 'gallery' | 'poster';
+}
+
+export class WorkListQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit = 20;
 }

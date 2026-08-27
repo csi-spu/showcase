@@ -5,6 +5,7 @@ import type {
   WorkAuthoringContext,
   WorkAuthoringState,
   WorkDraftView,
+  WorkListItem,
   WorkMutationResult,
   WorksRepository,
 } from '../application/works.ports';
@@ -43,6 +44,16 @@ interface OwnedWorkStateRow {
   published_revision_id: string | null;
   public_id: string;
   work_id: string;
+}
+
+interface WorkListRow {
+  activity_state: WorkListItem['activityState'];
+  has_draft: boolean;
+  latest_revision_status: WorkListItem['latestRevisionStatus'];
+  publication_state: WorkListItem['publicationState'];
+  public_id: string;
+  title: string;
+  updated_at: Date;
 }
 
 interface OperationRow {
@@ -184,6 +195,54 @@ export class PostgresWorksRepository implements WorksRepository {
       publicationState: work.publication_state,
       publishedRevisionId: work.published_revision_id,
       publicId: work.public_id,
+    };
+  }
+
+  async listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]) {
+    const cursor = input.cursor;
+    const rows = await this.database.sql<WorkListRow[]>`
+      select work.public_id, work.activity_state, work.publication_state, work.updated_at,
+        (draft.work_id is not null) as has_draft,
+        latest_revision.status as latest_revision_status,
+        coalesce(draft.title, latest_revision.title, '') as title
+      from public.works as work
+      join public.accounts as account
+        on account.id = ${input.accountId}
+        and account.person_id = work.submitter_person_id
+      left join private.work_drafts as draft on draft.work_id = work.id
+      left join lateral (
+        select revision.title, revision.status
+        from private.work_revisions as revision
+        where revision.work_id = work.id
+        order by revision.revision_number desc
+        limit 1
+      ) as latest_revision on true
+      where (
+        ${cursor?.updatedAt ?? null}::timestamptz is null
+        or (work.updated_at, work.public_id) < (
+          ${cursor?.updatedAt ?? null}::timestamptz,
+          ${cursor?.publicId ?? null}::uuid
+        )
+      )
+      order by work.updated_at desc, work.public_id desc
+      limit ${input.limit + 1}
+    `;
+    const visible = rows.slice(0, input.limit);
+    const last = visible.at(-1);
+    return {
+      items: visible.map((row) => ({
+        activityState: row.activity_state,
+        hasDraft: row.has_draft,
+        latestRevisionStatus: row.latest_revision_status,
+        publicationState: row.publication_state,
+        publicId: row.public_id,
+        title: row.title,
+        updatedAt: row.updated_at,
+      })),
+      nextCursor:
+        rows.length > input.limit && last !== undefined
+          ? { publicId: last.public_id, updatedAt: last.updated_at }
+          : null,
     };
   }
 

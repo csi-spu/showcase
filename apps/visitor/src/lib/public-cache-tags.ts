@@ -59,8 +59,26 @@ export function isPublicHtmlSharedCacheEligible(url: URL): boolean {
   );
 }
 
-export function publicHtmlEtag(url: URL, version: string): string {
-  const identity = `${url.pathname}${url.search}\0${version}`;
+export function publicHtmlDeploymentVersion(
+  nodeEnv: string | undefined,
+  gitSha: string | undefined,
+): string | null {
+  if (nodeEnv !== 'production') return null;
+
+  const deploymentVersion = gitSha?.trim();
+  return deploymentVersion === undefined ||
+    deploymentVersion.length === 0 ||
+    deploymentVersion === 'development'
+    ? null
+    : deploymentVersion;
+}
+
+export function publicHtmlEtag(
+  url: URL,
+  catalogVersion: string,
+  deploymentVersion: string,
+): string {
+  const identity = `${url.pathname}${url.search}\0${catalogVersion}\0${deploymentVersion}`;
   return `W/"${createHash('sha256').update(identity).digest('base64url')}"`;
 }
 

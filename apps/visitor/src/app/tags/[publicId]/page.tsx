@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { z } from 'zod';
+import { buttonVariants } from '@/components/ui/button';
 import { PublicCatalogCoreClient, type CatalogSearchParams } from '@/lib/public-catalog-core';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
 import { PublicShell } from '../../public-shell';
+import { PublicPageIntro } from '../../public-page';
 import { catalogContinuationUrl } from '../../catalog-url';
 import { CatalogWorkGrid } from '../../works/catalog-work-grid';
 
@@ -29,29 +32,35 @@ export default async function TagPage({ params, searchParams }: Props) {
   if (!z.uuid().safeParse(publicId).success) notFound();
   const client = new PublicCatalogCoreClient(getVisitorCoreUrl());
   const workQuery = { cursor: query.cursor, limit: '24', tag: publicId };
-  const [tag, works] = await Promise.all([client.getTag(publicId), client.listWorks(workQuery)]);
+  const [tag, works, t] = await Promise.all([
+    client.getTag(publicId),
+    client.listWorks(workQuery),
+    getTranslations('Tags'),
+  ]);
   if (tag === null) notFound();
   return (
     <PublicShell>
-      <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-10 lg:py-16">
-        <header className="grid gap-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">TAG</p>
-          <h1 className="text-[clamp(2.5rem,6vw,4.5rem)] leading-[1.15] font-semibold">
-            {tag.displayLabel}
-          </h1>
-          <p className="text-muted-foreground">ผลงานเผยแพร่ {tag.activeWorkCount} ชิ้น</p>
-        </header>
+      <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-8 lg:gap-14 lg:py-12">
+        <PublicPageIntro
+          description={t('count', { count: tag.activeWorkCount })}
+          eyebrow={t('eyebrow')}
+          title={tag.displayLabel}
+        />
         <CatalogWorkGrid
-          labels={{ empty: 'ไม่พบผลงาน', posterAlt: (title) => `โปสเตอร์ ${title}` }}
+          labels={{
+            empty: t('empty'),
+            openWork: t('openWork'),
+            posterAlt: (title) => t('posterAlt', { title }),
+          }}
           works={works.items}
         />
         {works.hasNextPage && works.nextCursor ? (
           <Link
-            className="min-h-11 justify-self-start rounded-control border border-input px-5 py-2 font-medium text-primary"
+            className={buttonVariants({ className: 'min-h-11', variant: 'outline' })}
             href={catalogContinuationUrl(`/tags/${publicId}`, workQuery, works.nextCursor)}
             rel="next"
           >
-            ดูเพิ่มเติม
+            {t('more')}
           </Link>
         ) : null}
       </div>

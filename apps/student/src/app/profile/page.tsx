@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
@@ -14,6 +13,7 @@ import {
   withdrawConsentAction,
 } from './profile.actions';
 import { ConsentPanel, ProfileForm } from './profile-form';
+import { StudentWorkspaceShell } from '../student-workspace-shell';
 
 export default async function ProfilePage() {
   const state = await getStudentAuthPageState();
@@ -48,18 +48,11 @@ export default async function ProfilePage() {
     : undefined;
 
   return (
-    <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
-      <header className="border-b border-border px-[clamp(1rem,4vw,3rem)] py-6">
-        <nav aria-label={t('navigation')} className="flex items-center justify-between gap-4">
-          <Link className="font-semibold tracking-[0.12em]" href="/">
-            STUDENT SHOWCASE
-          </Link>
-          <Link className="text-sm font-medium text-primary underline" href="/">
-            {t('back')}
-          </Link>
-        </nav>
-      </header>
-      <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-10 lg:grid-cols-12 lg:py-16">
+    <StudentWorkspaceShell
+      activePage="profile"
+      canCreateWork={state.session.canUseStudentCapabilities}
+    >
+      <div className="grid gap-10 lg:grid-cols-12">
         <header className="grid content-start gap-4 lg:col-span-4">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">PUBLIC PROFILE</p>
           <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
@@ -92,6 +85,6 @@ export default async function ProfilePage() {
           ) : null}
         </div>
       </div>
-    </main>
+    </StudentWorkspaceShell>
   );
 }

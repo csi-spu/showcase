@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
@@ -6,6 +5,7 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient } from '@/lib/student-works-core';
 import { AccountInvitationResponseForm } from './invitation-forms';
+import { StudentWorkspaceShell } from '../student-workspace-shell';
 
 export default async function ContributorInvitationsPage() {
   const auth = await getStudentAuthPageState();
@@ -17,18 +17,11 @@ export default async function ContributorInvitationsPage() {
     getTranslations('ContributorInvitations'),
   ]);
   return (
-    <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
-      <header className="border-b border-border px-[clamp(1rem,4vw,3rem)] py-6">
-        <nav aria-label={t('navigation')} className="flex items-center justify-between gap-4">
-          <Link className="font-semibold tracking-[0.12em]" href="/">
-            STUDENT SHOWCASE
-          </Link>
-          <Link className="text-sm font-medium text-primary underline" href="/">
-            {t('back')}
-          </Link>
-        </nav>
-      </header>
-      <div className="grid gap-8 px-[clamp(1rem,4vw,3rem)] py-10 lg:grid-cols-12 lg:py-16">
+    <StudentWorkspaceShell
+      activePage="invitations"
+      canCreateWork={auth.session.canUseStudentCapabilities}
+    >
+      <div className="grid gap-8 lg:grid-cols-12">
         <header className="grid content-start gap-3 lg:col-span-4">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">ATTRIBUTION</p>
           <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
@@ -54,6 +47,6 @@ export default async function ContributorInvitationsPage() {
           ))}
         </section>
       </div>
-    </main>
+    </StudentWorkspaceShell>
   );
 }

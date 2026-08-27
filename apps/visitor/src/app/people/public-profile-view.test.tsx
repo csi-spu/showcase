@@ -8,6 +8,7 @@ describe('Visitor Public Profile UI', () => {
       <PublicProfileView
         labels={{
           entryYear: 'ปีที่เข้าศึกษา 2569',
+          eyebrow: 'นักศึกษา CSI',
           links: 'ลิงก์ภายนอก',
           photoAlt: 'รูปโปรไฟล์ของ ณัฐดนัย',
         }}

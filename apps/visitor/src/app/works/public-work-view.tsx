@@ -1,5 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { ArrowUpRightIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import type { PublicWork } from '@/lib/public-work-core';
 
 interface PublicWorkLabels {
@@ -8,10 +10,12 @@ interface PublicWorkLabels {
   category: string;
   description: string;
   gallery: string;
+  galleryAlt(index: number): string;
   links: string;
   posterAlt: string;
   publishedAt: string;
   studyYear(year: number): string;
+  tagsLabel: string;
   videos: string;
 }
 
@@ -20,37 +24,26 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
   const gallery = work.media.filter((media) => media.kind === 'gallery');
 
   return (
-    <article className="grid gap-12 lg:grid-cols-12 lg:gap-16">
-      <header className="grid content-start gap-5 lg:col-span-7 lg:pt-8">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-          PUBLISHED REVISION {work.revisionNumber}
-        </p>
-        <h1 className="text-[clamp(2.5rem,6vw,4.5rem)] leading-[1.15] font-semibold tracking-tight">
+    <article className="grid gap-12 lg:grid-cols-12 lg:gap-x-16 lg:gap-y-20">
+      <header className="grid content-center gap-5 lg:col-span-7 lg:py-10">
+        <p className="text-sm font-semibold tracking-[0.12em] text-primary">{labels.category}</p>
+        <h1 className="text-[clamp(2.6rem,6vw,5rem)] leading-[1.08] font-semibold tracking-[-0.05em] text-balance">
           {work.title}
         </h1>
-        <p className="max-w-2xl text-xl leading-[1.7] text-muted-foreground">{work.summary}</p>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="sr-only">{labels.category}</dt>
-            <dd>{labels.category}</dd>
-          </div>
-          <div>
-            <dt className="sr-only">{labels.academicPeriod}</dt>
-            <dd>{labels.academicPeriod}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="sr-only">{labels.publishedAt}</dt>
-            <dd className="text-muted-foreground">{labels.publishedAt}</dd>
-          </div>
-        </dl>
+        <p className="max-w-2xl text-xl leading-[1.7] text-muted-foreground text-pretty">
+          {work.summary}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{labels.academicPeriod}</Badge>
+          <span className="text-sm text-muted-foreground">{labels.publishedAt}</span>
+        </div>
         {work.tags.length > 0 ? (
-          <ul className="flex flex-wrap gap-2" aria-label="Tags">
+          <ul className="flex flex-wrap gap-2" aria-label={labels.tagsLabel}>
             {work.tags.map((tag) => (
-              <li
-                className="rounded-full bg-primary-soft px-3 py-1 text-sm text-primary"
-                key={tag.publicId}
-              >
-                {tag.displayLabel}
+              <li key={tag.publicId}>
+                <Badge render={<Link href={`/tags/${tag.publicId}`} />} variant="outline">
+                  {tag.displayLabel}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -60,7 +53,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
       {poster ? (
         <MediaImage
           alt={labels.posterAlt}
-          className="lg:col-span-5 lg:row-span-2"
+          className="shadow-[0_2rem_5rem_-3rem_color-mix(in_oklch,var(--primary),transparent_48%)] lg:col-span-5 lg:row-span-2"
           media={poster}
           sizes="(max-width: 1024px) 100vw, 42vw"
           workPublicId={work.workPublicId}
@@ -68,23 +61,25 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
       ) : null}
 
       <section className="grid gap-6 border-t border-border pt-8 lg:col-span-7">
-        <h2 className="text-2xl font-semibold">{labels.description}</h2>
-        <p className="whitespace-pre-wrap text-base leading-[1.7]">{work.description}</p>
+        <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.description}</h2>
+        <p className="max-w-[65ch] whitespace-pre-wrap text-lg leading-[1.85] text-pretty">
+          {work.description}
+        </p>
       </section>
 
       <section className="grid gap-5 border-t border-border pt-8 lg:col-span-7">
-        <h2 className="text-2xl font-semibold">{labels.attributions}</h2>
+        <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.attributions}</h2>
         <ul className="grid gap-4 sm:grid-cols-2">
           {work.attributions.map((attribution, index) => (
             <li
-              className="border-l-2 border-primary pl-4"
+              className="rounded-surface border border-border bg-card p-5 shadow-[0_1rem_2.5rem_-2rem_color-mix(in_oklch,var(--primary),transparent_70%)]"
               key={`${index}:${attribution.attributionName}`}
             >
               {attribution.profilePublicId === null ? (
                 <p className="font-medium">{attribution.attributionName}</p>
               ) : (
                 <Link
-                  className="font-medium text-primary underline"
+                  className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
                   href={`/people/${attribution.profilePublicId}`}
                 >
                   {attribution.attributionName}
@@ -106,12 +101,12 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
 
       {gallery.length > 0 ? (
         <section className="grid gap-5 border-t border-border pt-8 lg:col-span-12">
-          <h2 className="text-2xl font-semibold">{labels.gallery}</h2>
-          <div className="grid gap-6 md:grid-cols-3">
-            {gallery.map((media) => (
+          <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.gallery}</h2>
+          <div className="grid gap-6 md:grid-cols-12">
+            {gallery.map((media, index) => (
               <MediaImage
-                alt=""
-                className=""
+                alt={labels.galleryAlt(index + 1)}
+                className={index === 0 ? 'md:col-span-7' : 'md:col-span-5'}
                 key={media.assetId}
                 media={media}
                 sizes="(max-width: 768px) 100vw, 33vw"
@@ -184,16 +179,20 @@ function LinkList({
 }) {
   return (
     <section className="grid gap-4 border-t border-border pt-8 lg:col-span-6">
-      <h2 className="text-2xl font-semibold">{heading}</h2>
+      <h2 className="text-3xl font-semibold tracking-[-0.03em]">{heading}</h2>
       <ul className="grid gap-3">
         {links.map((link) => (
           <li key={link.url}>
             <a
-              className="flex min-h-11 items-center border-b border-border font-medium text-primary hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+              className="group flex min-h-12 items-center justify-between gap-3 border-b border-border font-medium text-primary transition-colors duration-200 hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
               href={link.url}
               rel="external noopener noreferrer"
             >
               {link.label ?? link.provider}
+              <ArrowUpRightIcon
+                aria-hidden="true"
+                className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none"
+              />
             </a>
           </li>
         ))}

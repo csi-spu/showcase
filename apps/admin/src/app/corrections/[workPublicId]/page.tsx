@@ -40,7 +40,7 @@ export default async function AdminCorrectionPage({
   }
 
   return (
-    <AdminWorkspaceShell activePage="reviews">
+    <AdminWorkspaceShell activePage="corrections">
       <Link className="text-sm font-medium text-primary underline" href="/reviews">
         {t('back')}
       </Link>

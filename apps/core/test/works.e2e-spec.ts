@@ -11,6 +11,7 @@ import {
   WORKS_CLOCK,
   WORKS_REPOSITORY,
   type WorkDraftView,
+  type WorkListPage,
   type WorkMutationResult,
   type WorksRepository,
 } from '../src/modules/works/application/works.ports';
@@ -26,6 +27,20 @@ class E2eWorksRepository implements WorksRepository {
   mutationResult: WorkMutationResult = { outcome: 'updated', work: workDraft() };
   lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
   lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
+  listPage: WorkListPage = {
+    items: [
+      {
+        activityState: 'active',
+        hasDraft: true,
+        latestRevisionStatus: null,
+        publicationState: 'never_published',
+        publicId: PUBLIC_ID,
+        title: 'ระบบจัดการกิจกรรม',
+        updatedAt: new Date('2026-08-25T10:00:00.000Z'),
+      },
+    ],
+    nextCursor: null,
+  };
 
   createWork(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'created', work: workDraft() });
@@ -47,6 +62,10 @@ class E2eWorksRepository implements WorksRepository {
       publishedRevisionId: PUBLIC_ID,
       publicId: PUBLIC_ID,
     });
+  }
+
+  listOwnedWorks(): Promise<WorkListPage> {
+    return Promise.resolve(this.listPage);
   }
 
   rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]): Promise<WorkMutationResult> {
@@ -103,6 +122,10 @@ describe('private Work Draft authoring (e2e)', () => {
       .useValue({ now: () => new Date('2026-08-25T10:00:00.000Z') })
       .overrideProvider(StudentAuthService)
       .useValue({
+        authorizeStudentRead: () => {
+          if (!canAuthor) throw new AuthError('FORBIDDEN', 403);
+          return Promise.resolve({ accountId: ACCOUNT_ID });
+        },
         authorizeStudentMutation: () => {
           if (!canAuthor) throw new AuthError('FORBIDDEN', 403);
           return Promise.resolve({ accountId: ACCOUNT_ID });
@@ -155,6 +178,22 @@ describe('private Work Draft authoring (e2e)', () => {
   });
 
   it('reads only the Submitter-owned private Draft and exposes no Visitor route', async () => {
+    const listResponse = await studentRequest('get', '/v1/internal/student/works?limit=20').expect(
+      200,
+    );
+    expect(listResponse.headers['cache-control']).toBe('private, no-store');
+    expect(listResponse.body).toEqual({
+      items: [
+        expect.objectContaining({
+          publicId: PUBLIC_ID,
+          title: 'ระบบจัดการกิจกรรม',
+          updatedAt: '2026-08-25T10:00:00.000Z',
+        }),
+      ],
+      nextCursor: null,
+    });
+    expect(JSON.stringify(listResponse.body)).not.toMatch(/studentId|accountId|personId|workId/i);
+
     await studentRequest('get', '/v1/internal/student/works/authoring-context')
       .expect(200)
       .expect({ currentAcademicYear: 2569, entryYear: 2566 });
