@@ -30,9 +30,10 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 export default async function WorksPage({ searchParams }: Props) {
   const params = await searchParams;
   const client = new PublicCatalogCoreClient(getVisitorCoreUrl());
-  const [page, tags, t] = await Promise.all([
+  const [page, tags, filterOptions, t] = await Promise.all([
     client.listWorks(params),
     client.listPopularTags(),
+    client.listFilterOptions(),
     getTranslations('Catalog'),
   ]);
   const pagination = catalogPagination('/works', params, page.nextCursor);
@@ -69,6 +70,7 @@ export default async function WorksPage({ searchParams }: Props) {
           }}
           params={params}
           tags={tags}
+          years={filterOptions.workYears}
         />
         <section className="grid gap-8" aria-label={t('worksTitle')}>
           <CatalogWorkGrid

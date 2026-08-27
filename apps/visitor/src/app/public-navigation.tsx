@@ -133,11 +133,11 @@ export function PublicNavigation() {
               'h-auto w-[clamp(6rem,16vw,9.5rem)] origin-left transition-transform duration-300 group-hover:scale-[1.02] motion-reduce:transition-none',
               !scrollState.isAtTop && 'scale-[0.9] group-hover:scale-[0.92]',
             )}
-            height={212}
+            height={363}
             loading="eager"
             sizes="(max-width: 640px) 112px, 192px"
-            src="/brand/sit-school-of-information-technology-color.webp"
-            width={640}
+            src="/brand/csi-computer-science-software-development-innovation.png"
+            width={1280}
           />
         </Link>
 

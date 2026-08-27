@@ -58,6 +58,10 @@ export class CatalogService {
     return this.repository.listPopularTags();
   }
 
+  async listFilterOptions() {
+    return this.repository.listFilterOptions();
+  }
+
   async getCacheVersion() {
     return { version: await this.repository.getCacheVersion() };
   }

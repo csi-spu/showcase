@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { motion, useInView, useReducedMotion, type MotionProps } from 'motion/react';
 import { cn } from '@showcase/ui/cn';
 
@@ -25,6 +25,8 @@ interface TypingState {
   wordIndex: number;
 }
 
+const subscribeToClient = () => () => undefined;
+
 export function TypingAnimation({
   blinkCursor = true,
   children,
@@ -43,6 +45,11 @@ export function TypingAnimation({
   const elementRef = useRef<HTMLSpanElement | null>(null);
   const isInView = useInView(elementRef, { amount: 0.3, once: true });
   const isReducedMotion = useReducedMotion();
+  const isClient = useSyncExternalStore(
+    subscribeToClient,
+    () => true,
+    () => false,
+  );
   const wordsToAnimate = useMemo(
     () => words ?? (children === undefined ? [] : [children]),
     [children, words],
@@ -58,7 +65,7 @@ export function TypingAnimation({
   const isLastWord = safeWordIndex === wordsToAnimate.length - 1;
   const isFinished =
     !loop && isLastWord && !state.isDeleting && state.charIndex >= graphemes.length;
-  const shouldAnimate = (startOnView ? isInView : true) && isReducedMotion === false;
+  const shouldAnimate = isClient && (startOnView ? isInView : true) && isReducedMotion === false;
 
   useEffect(() => {
     if (!shouldAnimate || wordsToAnimate.length === 0 || isFinished) return;
@@ -102,7 +109,9 @@ export function TypingAnimation({
   ]);
 
   const displayedText =
-    isReducedMotion === false ? graphemes.slice(0, state.charIndex).join('') : currentWord;
+    isClient && isReducedMotion === false
+      ? graphemes.slice(0, state.charIndex).join('')
+      : currentWord;
   const cursor = cursorStyle === 'block' ? '▌' : cursorStyle === 'underscore' ? '_' : '|';
 
   return (

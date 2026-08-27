@@ -42,6 +42,11 @@ export interface PublicTagView {
   publicId: string;
 }
 
+export interface CatalogFilterOptions {
+  entryYears: number[];
+  workYears: number[];
+}
+
 export type CatalogSitemapKind = 'people' | 'tags' | 'works';
 
 export interface CatalogSitemapEntry {
@@ -52,6 +57,7 @@ export interface CatalogSitemapEntry {
 export interface CatalogRepository {
   findTag(publicId: string): Promise<PublicTagView | null>;
   getCacheVersion(): Promise<string>;
+  listFilterOptions(): Promise<CatalogFilterOptions>;
   listPeople(input: {
     after: CatalogPosition | null;
     query: PeopleCatalogQuery;

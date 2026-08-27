@@ -11,6 +11,7 @@ import { CatalogService, isCatalogSharedCacheEligible } from './catalog.service'
 const SECRET = 'catalog-cursor-secret-that-is-at-least-thirty-two-bytes';
 
 class FakeCatalogRepository implements CatalogRepository {
+  filterOptions = { entryYears: [] as number[], workYears: [] as number[] };
   workSlice: CatalogSlice<WorkCatalogCard> = { entries: [] };
   peopleSlice: CatalogSlice<PeopleCatalogCard> = { entries: [] };
   popularTags: PublicTagView[] = [];
@@ -23,6 +24,10 @@ class FakeCatalogRepository implements CatalogRepository {
 
   getCacheVersion(): Promise<string> {
     return Promise.resolve('42');
+  }
+
+  listFilterOptions() {
+    return Promise.resolve(this.filterOptions);
   }
 
   listPeople(): Promise<CatalogSlice<PeopleCatalogCard>> {
@@ -138,6 +143,15 @@ describe('CatalogService', () => {
     await expect(service.getTag(tagId(1))).rejects.toMatchObject({
       code: 'PUBLIC_TAG_NOT_FOUND',
       status: 404,
+    });
+  });
+
+  it('returns the available Public Catalog filter years', async () => {
+    repository.filterOptions = { entryYears: [2567, 2566], workYears: [2569, 2568] };
+
+    await expect(service.listFilterOptions()).resolves.toEqual({
+      entryYears: [2567, 2566],
+      workYears: [2569, 2568],
     });
   });
 

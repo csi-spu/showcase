@@ -121,6 +121,16 @@ describe('PostgresCatalogRepository integration', () => {
     expect(JSON.stringify(people)).not.toContain(IDS.hiddenProfile);
   });
 
+  it('lists distinct filter years only from the Public Catalog', async () => {
+    const options = await repository.listFilterOptions();
+
+    expect(options.entryYears).toEqual(expect.arrayContaining([2566, 2565, 2564]));
+    expect(options.entryYears).not.toContain(2499);
+    expect(options.entryYears).toEqual([...options.entryYears].sort((left, right) => right - left));
+    expect(options.workYears).toEqual(expect.arrayContaining([2569, 2568]));
+    expect(options.workYears).toEqual([...options.workYears].sort((left, right) => right - left));
+  });
+
   it('continues People relevance results in name order when ranks tie', async () => {
     const query = normalizePeopleCatalogQuery({ limit: '1', q: 'ณัฐ' });
     const first = await repository.listPeople({ after: null, query });
@@ -234,7 +244,7 @@ describe('PostgresCatalogRepository integration', () => {
         person_id, entry_year, access_ends_academic_year
       ) values
         (${IDS.consentedPerson}, 2566, 2573),
-        (${IDS.hiddenPerson}, 2567, 2574),
+        (${IDS.hiddenPerson}, 2499, 2506),
         (${IDS.secondConsentedPerson}, 2565, 2572),
         (${IDS.thirdConsentedPerson}, 2564, 2571)`;
       await transaction`insert into public.accounts (
