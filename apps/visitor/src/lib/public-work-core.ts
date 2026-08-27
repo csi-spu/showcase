@@ -46,7 +46,6 @@ const publicWorkSchema = z
           })
           .strict(),
       )
-      .min(1)
       .max(4),
     publishedAt: z.iso.datetime(),
     revisionNumber: z.number().int().positive(),

@@ -18,6 +18,15 @@ describe('PublicWorkCoreClient', () => {
     expect(JSON.stringify(work)).not.toMatch(/studentId|accountId|personId|session/i);
   });
 
+  it('accepts a Published Revision without externally stored development media', async () => {
+    const responseBody = { ...publicWork(), media: [] };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(responseBody));
+
+    await expect(
+      new PublicWorkCoreClient('https://core.example.test', fetchMock).getWork(WORK_PUBLIC_ID),
+    ).resolves.toEqual(responseBody);
+  });
+
   it('uses uniform not-found semantics before approval', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
