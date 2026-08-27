@@ -5,6 +5,44 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HeroArtwork } from './hero-artwork';
 
+vi.mock('gsap', () => {
+  const applyAutoAlpha = (
+    targets: Iterable<HTMLElement>,
+    properties: { autoAlpha?: number | ((index: number) => number) },
+  ) => {
+    Array.from(targets).forEach((target, index) => {
+      if (properties.autoAlpha === undefined) return;
+      const opacity =
+        typeof properties.autoAlpha === 'function'
+          ? properties.autoAlpha(index)
+          : properties.autoAlpha;
+      target.style.opacity = String(opacity);
+    });
+  };
+  const timeline = {
+    fromTo: () => timeline,
+    set: (targets: Iterable<HTMLElement>, properties: { autoAlpha?: number }) => {
+      applyAutoAlpha(targets, properties);
+      return timeline;
+    },
+    to: () => timeline,
+  };
+
+  return {
+    gsap: {
+      context: (setup: () => void) => {
+        setup();
+        return { revert: () => undefined };
+      },
+      from: (targets: Iterable<HTMLElement>, properties: { autoAlpha?: number }) =>
+        applyAutoAlpha(targets, properties),
+      quickTo: () => () => undefined,
+      set: applyAutoAlpha,
+      timeline: () => timeline,
+    },
+  };
+});
+
 describe('HeroArtwork hydration', () => {
   let container: HTMLDivElement;
   let root: Root;

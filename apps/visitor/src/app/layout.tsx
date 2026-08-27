@@ -23,7 +23,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [locale, messages] = await Promise.all([getLocale(), getMessages()]);
 
   return (
-    <html className={ibmPlexSansThai.variable} lang={locale}>
+    <html className={ibmPlexSansThai.variable} data-scroll-behavior="smooth" lang={locale}>
       <body className="font-sans antialiased">
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
         <WebVitalsReporter />

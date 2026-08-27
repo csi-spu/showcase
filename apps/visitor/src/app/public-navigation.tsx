@@ -38,6 +38,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { deriveNavigationScrollState, type NavigationScrollState } from './public-navigation-state';
+import { QuickSearchTrigger } from './quick-search';
 
 const WORK_CATEGORIES = [
   {
@@ -118,11 +119,11 @@ export function PublicNavigation() {
     >
       <nav
         aria-label={t('ariaLabel')}
-        className="pointer-events-auto mx-auto flex min-h-16 w-full max-w-[1344px] items-center justify-between gap-4"
+        className="pointer-events-auto mx-auto flex min-h-16 w-full max-w-[1344px] items-center justify-between gap-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
       >
         <Link
           aria-label={t('homeAriaLabel')}
-          className="group flex min-w-0 shrink items-center focus-visible:rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+          className="group flex min-w-0 shrink items-center focus-visible:rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary md:justify-self-start"
           href="/"
         >
           <Image
@@ -142,7 +143,7 @@ export function PublicNavigation() {
 
         <NavigationMenu
           align="end"
-          className="ml-auto hidden shrink-0 md:flex"
+          className="hidden shrink-0 md:flex md:justify-self-center"
           closeDelay={180}
           delay={80}
         >
@@ -194,6 +195,10 @@ export function PublicNavigation() {
             </NavigationMenuItem>
           </NavigationMenuList>
         </NavigationMenu>
+        <QuickSearchTrigger
+          className="ml-auto md:ml-0 md:justify-self-end"
+          placement="navigation"
+        />
         <MobileNavigation pathname={pathname} />
       </nav>
     </motion.header>

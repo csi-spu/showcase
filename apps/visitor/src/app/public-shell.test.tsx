@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import { PublicShell } from './public-shell';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 describe('PublicShell', () => {
   it('provides accessible catalog navigation and a direct path to main content', () => {
@@ -28,6 +33,19 @@ describe('PublicShell', () => {
             openMenu: 'เปิดเมนู',
             people: 'นักศึกษา',
             works: 'ผลงาน',
+          },
+          QuickSearch: {
+            dialogDescription: 'ค้นหาแบบทันทีจาก Public Catalog',
+            dialogTitle: 'ค้นหานักศึกษาหรือผลงาน',
+            error: 'ค้นหาไม่สำเร็จ กรุณาลองอีกครั้ง',
+            loading: 'กำลังค้นหา',
+            navTrigger: 'ค้นหาผลงาน...',
+            noResults: 'ไม่พบนักศึกษาหรือผลงานที่ตรงกับคำค้น',
+            peopleGroup: 'นักศึกษา',
+            placeholder: 'ค้นหาชื่อนักศึกษาหรือชื่อผลงาน',
+            studentEntryYear: 'ปีที่เข้าศึกษา {year}',
+            trigger: 'ค้นหาชื่อนักศึกษาหรือชื่อผลงาน',
+            worksGroup: 'ผลงาน',
           },
           Shell: {
             brandAlt: 'คณะเทคโนโลยีสารสนเทศ มหาวิทยาลัยศรีปทุม',
@@ -62,6 +80,17 @@ describe('PublicShell', () => {
     expect(html).toContain('data-slot="navigation-menu"');
     expect(html).toContain('data-slot="sheet-trigger"');
     expect(html).toContain('aria-label="เปิดเมนู"');
+    expect(html).toContain('aria-label="ค้นหาผลงาน..."');
+    expect(html).toContain('data-quick-search-trigger="navigation"');
+    expect(html).toContain('md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+    expect(html.indexOf('data-slot="navigation-menu"')).toBeLessThan(
+      html.indexOf('data-quick-search-trigger="navigation"'),
+    );
+    expect(html).toContain('border-primary/35');
+    expect(html).toContain('bg-primary/[0.04]');
+    expect(html).toContain('rounded-full');
+    expect(html).toContain('font-normal');
+    expect(html).toContain('hidden md:block');
     expect(html).not.toContain('/#how-it-works');
     expect(html).toContain('csi-computer-science-software-development-innovation-navy.webp');
     expect(html).toContain('sit-school-of-information-technology-color.webp');
