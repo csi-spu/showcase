@@ -48,4 +48,14 @@ export function createQuickSearchHandler(catalog: QuickSearchCatalog) {
   };
 }
 
-export const GET = createQuickSearchHandler(new PublicCatalogCoreClient(getVisitorCoreUrl()));
+export async function GET(request: Request): Promise<Response> {
+  try {
+    const handler = createQuickSearchHandler(new PublicCatalogCoreClient(getVisitorCoreUrl()));
+    return await handler(request);
+  } catch {
+    return Response.json(
+      { error: { code: 'QUICK_SEARCH_UNAVAILABLE' } },
+      { headers: NO_STORE_HEADERS, status: 503 },
+    );
+  }
+}

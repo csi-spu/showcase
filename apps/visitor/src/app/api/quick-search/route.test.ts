@@ -2,6 +2,27 @@ import { describe, expect, it, vi } from 'vitest';
 import { createQuickSearchHandler } from './route';
 
 describe('Visitor quick search route', () => {
+  it('defers production Core configuration until request handling', async () => {
+    vi.resetModules();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CORE_URL', undefined);
+
+    try {
+      const route = await import('./route');
+
+      expect(route.GET).toEqual(expect.any(Function));
+      const response = await route.GET(
+        new Request('http://localhost/api/quick-search?q=portfolio'),
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: { code: 'QUICK_SEARCH_UNAVAILABLE' },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('returns bounded public People and Work matches without leaking catalog details', async () => {
     const listPeople = vi.fn().mockResolvedValue({
       hasNextPage: false,
