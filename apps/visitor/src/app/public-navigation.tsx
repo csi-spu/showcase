@@ -133,10 +133,10 @@ export function PublicNavigation() {
               'h-auto w-[clamp(6rem,16vw,9.5rem)] origin-left transition-transform duration-300 group-hover:scale-[1.02] motion-reduce:transition-none',
               !scrollState.isAtTop && 'scale-[0.9] group-hover:scale-[0.92]',
             )}
-            height={172}
+            height={212}
             loading="eager"
             sizes="(max-width: 640px) 112px, 192px"
-            src="/brand/csi-computer-science-software-development-innovation-navy.webp"
+            src="/brand/sit-school-of-information-technology-color.webp"
             width={640}
           />
         </Link>
@@ -302,6 +302,7 @@ function MobileNavigationLink({
   return (
     <li>
       <SheetClose
+        nativeButton={false}
         render={
           <Link
             aria-current={isActive ? 'page' : undefined}

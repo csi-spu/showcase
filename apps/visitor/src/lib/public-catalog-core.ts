@@ -42,6 +42,7 @@ const workCardSchema = z
   .strict();
 const personCardSchema = z
   .object({
+    bio: z.string().max(500).nullable(),
     displayName: z.string().min(1).max(100),
     entryYear: z.number().int(),
     photo: z

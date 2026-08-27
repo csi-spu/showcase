@@ -16,6 +16,7 @@ describe('Public Catalog People grid', () => {
         labels={labels}
         people={[
           {
+            bio: 'สนใจการออกแบบประสบการณ์ที่ใช้งานง่ายและเข้าถึงได้สำหรับทุกคน',
             displayName: 'กานต์พิชชา',
             entryYear: 2567,
             photo: null,
@@ -28,6 +29,10 @@ describe('Public Catalog People grid', () => {
 
     expect(html).toContain('href="/people/81000000-0000-4000-8000-000000000001"');
     expect(html).toContain('data-person-photo-fallback="true"');
+    expect(html).toContain('data-person-photo-fallback-kind="generic-avatar"');
+    expect(html).toContain('data-person-card-layout="compact"');
+    expect(html).toContain('สนใจการออกแบบประสบการณ์ที่ใช้งานง่ายและเข้าถึงได้สำหรับทุกคน');
+    expect(html).toContain('line-clamp-3');
     expect(html).toContain('ปีที่เข้าศึกษา 2567');
     expect(html).toContain('ผลงานเผยแพร่ 3 ชิ้น');
     expect(html).not.toMatch(/studentId|account|session/i);

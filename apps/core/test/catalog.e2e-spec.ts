@@ -27,6 +27,7 @@ class E2eCatalogRepository implements CatalogRepository {
       entries: [
         {
           item: {
+            bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
             displayName: 'ณัฐดนัย',
             entryYear: 2566,
             photo: null,
@@ -111,7 +112,10 @@ describe('Public Catalog HTTP contract (e2e)', () => {
       .expect((response) => {
         const body = response.body as unknown;
         expect(requiredArrayProperty(body, 'items')).toEqual([
-          expect.objectContaining({ publicId: PROFILE_PUBLIC_ID }),
+          expect.objectContaining({
+            bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
+            publicId: PROFILE_PUBLIC_ID,
+          }),
         ]);
       });
     await request(app.getHttpServer())

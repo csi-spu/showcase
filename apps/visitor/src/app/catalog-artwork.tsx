@@ -1,5 +1,5 @@
 import { cn } from '@showcase/ui/cn';
-import { ImagesIcon, type LucideIcon } from 'lucide-react';
+import { ImagesIcon, UserRoundIcon, type LucideIcon } from 'lucide-react';
 import Image from 'next/image';
 import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
 
@@ -77,18 +77,15 @@ export function PersonPortrait({
   if (person.photo === null) {
     return (
       <div
-        className="absolute inset-0 overflow-hidden bg-primary/[0.055]"
+        className="absolute inset-0 grid place-items-center overflow-hidden bg-muted/70"
         data-person-photo-fallback="true"
+        data-person-photo-fallback-kind="generic-avatar"
       >
         <span className="sr-only">{alt}</span>
-        <div aria-hidden="true" className="absolute inset-0">
-          <span className="absolute -top-20 -right-20 size-64 rounded-full border-[2.5rem] border-primary/10" />
-          <span className="absolute -bottom-16 -left-12 size-52 rounded-full bg-primary/10" />
-          <span className="absolute top-10 left-8 h-2 w-20 rounded-control bg-primary/20" />
-          <span className="absolute top-10 right-8 size-3 rounded-full bg-primary/30" />
-          <span className="absolute top-16 right-8 size-2 rounded-full bg-primary/20" />
-          <span className="absolute inset-x-8 top-1/2 grid aspect-square -translate-y-1/2 place-items-center rounded-[2rem] border border-primary/20 bg-background/75 text-[clamp(4rem,8vw,6.5rem)] leading-none font-semibold text-primary shadow-[0_1.5rem_4rem_-2.5rem_color-mix(in_oklch,var(--primary),transparent_40%)] backdrop-blur-sm">
-            {Array.from(person.displayName.trim()).at(0)}
+        <div aria-hidden="true" className="relative grid aspect-square w-[76%] place-items-center">
+          <span className="absolute size-full rounded-full border border-border/70 bg-background/45" />
+          <span className="relative grid size-[84%] place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-[0_1.5rem_4rem_-2.5rem_color-mix(in_oklch,var(--foreground),transparent_72%)] transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none">
+            <UserRoundIcon className="size-[68%]" strokeWidth={1.15} />
           </span>
         </div>
       </div>

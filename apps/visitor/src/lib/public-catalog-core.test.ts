@@ -36,6 +36,28 @@ describe('PublicCatalogCoreClient', () => {
     expect(fetchMock.mock.calls[1]?.[1]?.cache).toBe('no-store');
   });
 
+  it('validates the consented Public Profile bio in People catalog cards', async () => {
+    const page = {
+      hasNextPage: false,
+      items: [
+        {
+          bio: 'สนใจการออกแบบประสบการณ์ที่ใช้งานง่าย',
+          displayName: 'อริสา ใจดี',
+          entryYear: 2566,
+          photo: null,
+          publicId: id(4),
+          publishedWorkCount: 2,
+        },
+      ],
+      nextCursor: null,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(page));
+
+    await expect(
+      new PublicCatalogCoreClient('https://core.example.test', fetchMock).listPeople({}),
+    ).resolves.toEqual(page);
+  });
+
   it('rejects accidental private or full Revision fields', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
