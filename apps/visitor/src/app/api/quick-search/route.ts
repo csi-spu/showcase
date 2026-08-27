@@ -48,6 +48,4 @@ export function createQuickSearchHandler(catalog: QuickSearchCatalog) {
   };
 }
 
-export const GET = createQuickSearchHandler(
-  new PublicCatalogCoreClient(getVisitorCoreUrl()),
-);
+export const GET = createQuickSearchHandler(new PublicCatalogCoreClient(getVisitorCoreUrl()));

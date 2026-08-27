@@ -36,7 +36,9 @@ describe('Visitor quick search route', () => {
     const handler = createQuickSearchHandler({ listPeople, listWorks });
 
     const response = await handler(
-      new Request('http://localhost/api/quick-search?q=%E0%B8%AD%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%B2'),
+      new Request(
+        'http://localhost/api/quick-search?q=%E0%B8%AD%E0%B8%A3%E0%B8%B4%E0%B8%AA%E0%B8%B2',
+      ),
     );
 
     expect(response.status).toBe(200);

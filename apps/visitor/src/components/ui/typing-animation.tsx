@@ -56,7 +56,8 @@ export function TypingAnimation({
   const currentWord = wordsToAnimate[safeWordIndex] ?? '';
   const graphemes = Array.from(currentWord);
   const isLastWord = safeWordIndex === wordsToAnimate.length - 1;
-  const isFinished = !loop && isLastWord && !state.isDeleting && state.charIndex >= graphemes.length;
+  const isFinished =
+    !loop && isLastWord && !state.isDeleting && state.charIndex >= graphemes.length;
   const shouldAnimate = (startOnView ? isInView : true) && isReducedMotion === false;
 
   useEffect(() => {
