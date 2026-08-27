@@ -30,6 +30,7 @@ interface WorkCatalogRow {
 }
 
 interface PeopleCatalogRow {
+  bio: string | null;
   display_name: string;
   entry_year: number;
   normalized_display_name: string;
@@ -337,7 +338,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
   private peopleCandidates(pattern: string | null, query: PeopleCatalogQuery) {
     return this.database.sql`
       with candidate as (
-        select profile.public_id, profile.display_name, profile.normalized_display_name,
+        select profile.public_id, profile.display_name, profile.normalized_display_name, profile.bio,
           student.entry_year, photo.sanitized_object_key as photo_object_key,
           photo.width as photo_width, photo.height as photo_height,
           (select count(distinct catalog.work_id)::integer
@@ -393,6 +394,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
 
   private mapPerson(row: PeopleCatalogRow): PeopleCatalogCard {
     return {
+      bio: row.bio,
       displayName: row.display_name,
       entryYear: row.entry_year,
       photo:

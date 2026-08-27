@@ -151,6 +151,7 @@ function work(
 
 function person(): PeopleCatalogCard {
   return {
+    bio: 'สนใจระบบเว็บ',
     displayName: 'นักศึกษาตัวอย่าง',
     entryYear: 2567,
     photo: null,

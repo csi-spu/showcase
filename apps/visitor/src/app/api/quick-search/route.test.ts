@@ -28,6 +28,7 @@ describe('Visitor quick search route', () => {
       hasNextPage: false,
       items: [
         {
+          bio: 'สนใจระบบเว็บ',
           displayName: 'อริสา ใจดี',
           entryYear: 2566,
           photo: null,
