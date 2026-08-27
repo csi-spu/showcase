@@ -16,6 +16,7 @@
     "@base-ui/react": "^1.7.0",
     "@showcase/ui": "workspace:*",
     "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
     "gsap": "^3.15.0",
     "lucide-react": "^1.33.0",
     "motion": "^13.1.1",
