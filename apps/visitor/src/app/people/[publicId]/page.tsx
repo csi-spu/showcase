@@ -1,8 +1,11 @@
+import { ArrowLeftIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { z } from 'zod';
+import { buttonVariants } from '@/components/ui/button';
 import { getVisitorCoreUrl, PublicProfileCoreClient } from '@/lib/public-profile-core';
+import { PublicShell } from '../../public-shell';
 import { PublicProfileView } from '../public-profile-view';
 
 export default async function PublicProfilePage({
@@ -17,27 +20,22 @@ export default async function PublicProfilePage({
   const t = await getTranslations('People');
 
   return (
-    <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
-      <header className="border-b border-border px-[clamp(1rem,4vw,3rem)] py-6">
-        <nav aria-label={t('navigation')} className="flex items-center justify-between gap-4">
-          <Link className="font-semibold tracking-[0.12em]" href="/">
-            STUDENT SHOWCASE
-          </Link>
-          <Link className="text-sm font-medium text-primary underline" href="/">
-            {t('back')}
-          </Link>
-        </nav>
-      </header>
-      <div className="px-[clamp(1rem,4vw,3rem)] py-10 lg:py-16">
+    <PublicShell>
+      <div className="grid gap-8 px-[clamp(1rem,4vw,3rem)] py-8 lg:gap-12 lg:py-12">
+        <Link className={buttonVariants({ className: 'w-fit', variant: 'link' })} href="/people">
+          <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
+          {t('back')}
+        </Link>
         <PublicProfileView
           labels={{
             entryYear: t('entryYear', { year: profile.entryYear }),
+            eyebrow: t('profileEyebrow'),
             links: t('links'),
             photoAlt: t('photoAlt', { name: profile.displayName }),
           }}
           profile={profile}
         />
       </div>
-    </main>
+    </PublicShell>
   );
 }

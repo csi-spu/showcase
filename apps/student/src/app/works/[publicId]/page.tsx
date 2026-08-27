@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { z } from 'zod';
@@ -26,6 +25,7 @@ import {
 } from '../work.actions';
 import { ContributorInvitationsPanel } from './contributor-invitations-panel';
 import { WorkRemovalPanel } from '../work-removal-panel';
+import { StudentWorkspaceShell } from '../../student-workspace-shell';
 
 export default async function EditWorkPage({ params }: { params: Promise<{ publicId: string }> }) {
   const { publicId: rawPublicId } = await params;
@@ -114,18 +114,8 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
     revisionState.work.basePublishedRevisionId !== revisionState.work.publishedRevisionId;
 
   return (
-    <main className="mx-auto min-h-svh w-full max-w-[1440px] bg-background">
-      <header className="border-b border-border px-[clamp(1rem,4vw,3rem)] py-6">
-        <nav aria-label={t('navigation')} className="flex items-center justify-between gap-4">
-          <Link className="font-semibold tracking-[0.12em]" href="/">
-            STUDENT SHOWCASE
-          </Link>
-          <Link className="text-sm font-medium text-primary underline" href="/">
-            {t('back')}
-          </Link>
-        </nav>
-      </header>
-      <div className="grid gap-10 px-[clamp(1rem,4vw,3rem)] py-10 lg:grid-cols-12 lg:py-16">
+    <StudentWorkspaceShell activePage="work" canCreateWork>
+      <div className="grid gap-10 lg:grid-cols-12">
         <header className="grid content-start gap-4 lg:col-span-4">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">
             {revisionState.kind === 'archived'
@@ -253,7 +243,7 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
           ) : null}
         </div>
       </div>
-    </main>
+    </StudentWorkspaceShell>
   );
 }
 

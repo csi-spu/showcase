@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { z } from 'zod';
 import { evaluateWorkDraft, type WorkDraftInput } from '../domain/work-draft-policy';
 import {
   WORKS_CLOCK,
   WORKS_REPOSITORY,
   type WorkDraftView,
+  type WorkListCursor,
   type WorkMutationResult,
   type WorksClock,
   type WorksRepository,
@@ -11,6 +13,7 @@ import {
 
 type WorkErrorCode =
   | 'INVALID_WORK_DRAFT'
+  | 'INVALID_WORK_CURSOR'
   | 'WORK_AUTHORING_FORBIDDEN'
   | 'WORK_BASE_REVISION_CONFLICT'
   | 'WORK_DRAFT_EXISTS'
@@ -50,6 +53,8 @@ interface SeedPublishedDraftInput {
 interface RebaseDraftInput extends SeedPublishedDraftInput {
   expectedVersion: number;
 }
+
+const workListCursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
 
 @Injectable()
 export class WorksService {
@@ -91,6 +96,18 @@ export class WorksService {
     return {
       currentAcademicYear: context.currentAcademicYear,
       entryYear: context.entryYear,
+    };
+  }
+
+  async listOwnedWorks(input: { accountId: string; cursor?: string; limit: number }) {
+    const page = await this.repository.listOwnedWorks({
+      accountId: input.accountId,
+      cursor: this.decodeListCursor(input.cursor),
+      limit: input.limit,
+    });
+    return {
+      items: page.items.map((work) => ({ ...work, updatedAt: work.updatedAt.toISOString() })),
+      nextCursor: page.nextCursor === null ? null : this.encodeListCursor(page.nextCursor),
     };
   }
 
@@ -158,5 +175,23 @@ export class WorksService {
     };
     const [code, status] = mapping[result.outcome];
     throw new WorkError(code, status);
+  }
+
+  private encodeListCursor(cursor: WorkListCursor): string {
+    return Buffer.from(JSON.stringify([cursor.updatedAt.toISOString(), cursor.publicId])).toString(
+      'base64url',
+    );
+  }
+
+  private decodeListCursor(cursor: string | undefined): WorkListCursor | null {
+    if (cursor === undefined) return null;
+    try {
+      const [updatedAt, publicId] = workListCursorSchema.parse(
+        JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')),
+      );
+      return { publicId, updatedAt: new Date(updatedAt) };
+    } catch {
+      throw new WorkError('INVALID_WORK_CURSOR', 422);
+    }
   }
 }

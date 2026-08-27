@@ -3,6 +3,7 @@ import {
   isPublicHtmlSharedCacheEligible,
   matchesIfNoneMatch,
   publicCacheTags,
+  publicHtmlDeploymentVersion,
   publicHtmlEtag,
 } from './public-cache-tags';
 
@@ -33,11 +34,26 @@ describe('publicCacheTags', () => {
   });
 
   it('changes validators with the authoritative cache version and matches HTTP lists', () => {
-    const first = publicHtmlEtag(url('/works?sort=recent'), '41');
-    const second = publicHtmlEtag(url('/works?sort=recent'), '42');
+    const first = publicHtmlEtag(url('/works?sort=recent'), '41', 'deploy-a');
+    const second = publicHtmlEtag(url('/works?sort=recent'), '42', 'deploy-a');
     expect(second).not.toBe(first);
     expect(matchesIfNoneMatch(`"other", ${second}`, second)).toBe(true);
     expect(matchesIfNoneMatch(first, second)).toBe(false);
+  });
+
+  it('changes validators when a new frontend deployment serves the same catalog version', () => {
+    const previousDeployment = publicHtmlEtag(url('/'), '41', 'deploy-a');
+    const currentDeployment = publicHtmlEtag(url('/'), '41', 'deploy-b');
+
+    expect(currentDeployment).not.toBe(previousDeployment);
+  });
+
+  it('enables shared HTML validators only for identified production deployments', () => {
+    expect(publicHtmlDeploymentVersion('development', 'local-sha')).toBeNull();
+    expect(publicHtmlDeploymentVersion('production', undefined)).toBeNull();
+    expect(publicHtmlDeploymentVersion('production', '  ')).toBeNull();
+    expect(publicHtmlDeploymentVersion('production', 'development')).toBeNull();
+    expect(publicHtmlDeploymentVersion('production', 'sha-abc123')).toBe('sha-abc123');
   });
 });
 

@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -24,6 +25,7 @@ import {
   RebaseWorkDraftDto,
   SeedPublishedWorkDraftDto,
   UpdateWorkDraftDto,
+  WorkListQueryDto,
 } from './works.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
 
@@ -36,6 +38,20 @@ export class StudentWorksController {
     private readonly works: WorksService,
     private readonly media: WorkMediaService,
   ) {}
+
+  @Get()
+  @Header('Cache-Control', 'private, no-store')
+  async listWorks(
+    @Query() query: WorkListQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
+    return this.works.listOwnedWorks({
+      accountId: actor.accountId,
+      ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+      limit: query.limit,
+    });
+  }
 
   @Post()
   @HttpCode(201)

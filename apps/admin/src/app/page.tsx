@@ -2,6 +2,7 @@ import { Button } from '@showcase/ui/button';
 import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/card';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { getAdminRosterBatch, getAdminRosterConflicts } from '@/lib/admin-roster-page-state';
+import { Separator } from '@/components/ui/separator';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -48,19 +50,23 @@ export default async function Home({ searchParams }: HomeProps) {
   if (state.kind === 'active') {
     return (
       <AdminWorkspaceShell activePage="roster">
-        <header className="mb-8 flex max-w-4xl flex-col gap-3">
-          <p className="text-sm font-medium text-muted-foreground">
-            {rosterT('kicker')} / {rosterT('title')}
-          </p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {rosterT('title')}
-          </h1>
-          <p className="text-base leading-relaxed text-muted-foreground">
-            {rosterT('description')}
-          </p>
+        <header className="mb-10 grid max-w-5xl gap-6 lg:grid-cols-12 lg:items-end">
+          <div className="grid gap-3 lg:col-span-8">
+            <Badge variant="secondary">{rosterT('kicker')}</Badge>
+            <h1 className="text-[clamp(2rem,4vw,3rem)] leading-[1.2] font-semibold tracking-tight text-balance">
+              {rosterT('title')}
+            </h1>
+            <p className="max-w-3xl text-base leading-relaxed text-muted-foreground">
+              {rosterT('description')}
+            </p>
+          </div>
+          <aside className="border-l-2 border-primary pl-4 text-sm text-muted-foreground lg:col-span-3 lg:col-start-10">
+            {rosterT('workflow')}
+          </aside>
         </header>
 
         <div className="flex max-w-5xl flex-col gap-6">
+          <Separator />
           {resolved === '1' ? (
             <Alert className="border-success/30 bg-success-background text-success">
               <CheckCircle2Icon aria-hidden="true" />
@@ -99,7 +105,7 @@ export default async function Home({ searchParams }: HomeProps) {
           ) : null}
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <Card className="xl:col-span-7">
+            <Card className="border-l-4 border-l-primary xl:col-span-7">
               <CardHeader>
                 <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
                 <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
@@ -146,12 +152,9 @@ export default async function Home({ searchParams }: HomeProps) {
 function PreparationStep({ index, text }: { index: string; text: string }) {
   return (
     <li className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-3 text-sm leading-relaxed">
-      <span
-        aria-hidden="true"
-        className="flex size-8 items-center justify-center rounded-full border border-border bg-muted font-semibold"
-      >
+      <Badge aria-hidden="true" variant="secondary">
         {index}
-      </span>
+      </Badge>
       <span className="pt-1.5 text-muted-foreground">{text}</span>
     </li>
   );

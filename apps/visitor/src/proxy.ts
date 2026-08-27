@@ -3,6 +3,7 @@ import {
   isPublicHtmlSharedCacheEligible,
   matchesIfNoneMatch,
   publicCacheTags,
+  publicHtmlDeploymentVersion,
   publicHtmlEtag,
 } from '@/lib/public-cache-tags';
 
@@ -19,7 +20,12 @@ export async function proxy(request: NextRequest) {
       request.nextUrl.pathname !== '/sitemap.xml' &&
       !request.nextUrl.pathname.startsWith('/sitemaps/')
     ) {
-      const isSharedCacheEligible = isPublicHtmlSharedCacheEligible(request.nextUrl);
+      const deploymentVersion = publicHtmlDeploymentVersion(
+        process.env.NODE_ENV,
+        process.env.GIT_SHA,
+      );
+      const isSharedCacheEligible =
+        deploymentVersion !== null && isPublicHtmlSharedCacheEligible(request.nextUrl);
       response.headers.set(
         'Cache-Control',
         isSharedCacheEligible ? PUBLIC_CACHE_CONTROL : PRIVATE_CACHE_CONTROL,
@@ -32,7 +38,7 @@ export async function proxy(request: NextRequest) {
             { headers: { 'Cache-Control': PRIVATE_CACHE_CONTROL }, status: 503 },
           );
         }
-        const etag = publicHtmlEtag(request.nextUrl, version);
+        const etag = publicHtmlEtag(request.nextUrl, version, deploymentVersion);
         if (matchesIfNoneMatch(request.headers.get('if-none-match'), etag)) {
           return new NextResponse(null, {
             headers: {

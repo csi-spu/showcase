@@ -1,17 +1,20 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+import { PublicFeedback } from '../../public-page';
+import { PublicShell } from '../../public-shell';
 
 export default async function PublicWorkNotFound() {
   const t = await getTranslations('Works');
   return (
-    <main className="grid min-h-svh place-items-center px-6 py-16">
-      <div className="grid max-w-lg gap-5 text-center">
-        <h1 className="text-3xl font-semibold">{t('notFoundHeading')}</h1>
-        <p className="text-muted-foreground">{t('notFoundDescription')}</p>
-        <Link className="font-medium text-primary underline" href="/">
-          {t('back')}
-        </Link>
+    <PublicShell>
+      <div className="px-[clamp(1rem,4vw,3rem)] py-8 lg:py-12">
+        <PublicFeedback
+          actionHref="/works"
+          actionLabel={t('back')}
+          code="404"
+          description={t('notFoundDescription')}
+          title={t('notFoundHeading')}
+        />
       </div>
-    </main>
+    </PublicShell>
   );
 }

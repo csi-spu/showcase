@@ -85,6 +85,9 @@ Core owns application data and authentication boundaries. Browser applications m
 - Expand one package or suite at a time when broader validation is justified.
 - Never run the full monorepo test suite or multiple resource-heavy suites in parallel without explicit user confirmation for that run.
 - Prefer unit tests for domain behavior, integration tests at persistence/provider boundaries, and focused E2E tests for critical cross-app paths.
+- Use Playwright for browser end-to-end tests.
+- Run focused Playwright tests by passing affected test files or a `--grep` filter to `pnpm exec playwright test`.
+- Do not run the full Playwright suite without explicit user confirmation.
 - CI commands must be non-mutating. Formatting checks must fail instead of rewriting files.
 
 ## CLI tooling

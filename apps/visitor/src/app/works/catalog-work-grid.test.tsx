@@ -18,6 +18,25 @@ describe('Public Catalog Work grid', () => {
     expect(html).toContain('sizes="(max-width: 767px) 100vw, (max-width: 1199px) 50vw, 33vw"');
     expect(html).not.toMatch(/gallery/i);
   });
+
+  it('keeps a Work discoverable when its poster projection is unavailable', () => {
+    const item = { ...work(3), poster: null };
+    const html = renderToStaticMarkup(
+      <CatalogWorkGrid
+        labels={{
+          empty: 'ไม่พบผลงาน',
+          openWork: 'เปิดดูผลงาน',
+          posterAlt: (title) => `โปสเตอร์ ${title}`,
+        }}
+        works={[item]}
+      />,
+    );
+
+    expect(html).toContain('data-poster-fallback="true"');
+    expect(html).toContain(`href="/works/${item.workPublicId}"`);
+    expect(html).toContain('ผลงาน 3');
+    expect(html).toContain('เปิดดูผลงาน');
+  });
 });
 
 function work(index: number) {

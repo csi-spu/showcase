@@ -1,17 +1,23 @@
 'use client';
 
-import { Button } from '@showcase/ui/button';
 import { useTranslations } from 'next-intl';
+import { PublicFeedback } from '../../public-page';
+import { PublicShell } from '../../public-shell';
 
-export default function PublicProfileError({ reset }: { error: Error; reset: () => void }) {
+export default function PublicProfileError({ retry }: { error: Error; retry: () => void }) {
   const t = useTranslations('People');
   return (
-    <main className="grid min-h-svh place-items-center p-6">
-      <section className="grid max-w-xl gap-4 text-center">
-        <h1 className="text-3xl font-semibold">{t('errorHeading')}</h1>
-        <p className="text-muted-foreground">{t('errorDescription')}</p>
-        <Button onClick={reset}>{t('retry')}</Button>
-      </section>
-    </main>
+    <PublicShell>
+      <div className="px-[clamp(1rem,4vw,3rem)] py-8 lg:py-12">
+        <PublicFeedback
+          actionLabel={t('retry')}
+          code="ERROR"
+          description={t('errorDescription')}
+          onAction={retry}
+          role="alert"
+          title={t('errorHeading')}
+        />
+      </div>
+    </PublicShell>
   );
 }

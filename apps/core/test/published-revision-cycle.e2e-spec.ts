@@ -64,6 +64,10 @@ class LifecycleWorksRepository implements WorksRepository {
     });
   }
 
+  listOwnedWorks(): ReturnType<WorksRepository['listOwnedWorks']> {
+    return Promise.resolve({ items: [], nextCursor: null });
+  }
+
   rebaseDraft(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'updated', work: this.requireDraft() });
   }

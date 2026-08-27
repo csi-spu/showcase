@@ -23,6 +23,26 @@ export interface WorkDraftView {
   version: number;
 }
 
+export interface WorkListCursor {
+  publicId: string;
+  updatedAt: Date;
+}
+
+export interface WorkListItem {
+  activityState: 'active' | 'archived';
+  hasDraft: boolean;
+  latestRevisionStatus: 'approved' | 'changes_requested' | 'pending_review' | 'withdrawn' | null;
+  publicationState: 'never_published' | 'published' | 'unpublished';
+  publicId: string;
+  title: string;
+  updatedAt: Date;
+}
+
+export interface WorkListPage {
+  items: WorkListItem[];
+  nextCursor: WorkListCursor | null;
+}
+
 export type WorkMutationResult =
   | {
       outcome:
@@ -55,6 +75,11 @@ export interface WorksRepository {
   findAuthoringContext(accountId: string): Promise<WorkAuthoringContext | null>;
   findOwnedDraft(accountId: string, publicId: string): Promise<WorkDraftView | null>;
   findOwnedWorkState(accountId: string, publicId: string): Promise<WorkAuthoringState | null>;
+  listOwnedWorks(input: {
+    accountId: string;
+    cursor: WorkListCursor | null;
+    limit: number;
+  }): Promise<WorkListPage>;
   rebaseDraft(input: {
     actorAccountId: string;
     expectedPublishedRevisionId: string;

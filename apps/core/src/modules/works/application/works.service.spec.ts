@@ -1,6 +1,7 @@
 import type {
   WorkAuthoringContext,
   WorkDraftView,
+  WorkListPage,
   WorkMutationResult,
   WorksRepository,
 } from './works.ports';
@@ -25,6 +26,8 @@ class FakeWorksRepository implements WorksRepository {
   lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
   lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
   lastUpdate: Parameters<WorksRepository['updateDraft']>[0] | undefined;
+  listPage: WorkListPage = { items: [], nextCursor: null };
+  lastList: Parameters<WorksRepository['listOwnedWorks']>[0] | undefined;
 
   createWork(input: Parameters<WorksRepository['createWork']>[0]) {
     this.lastCreate = input;
@@ -47,6 +50,11 @@ class FakeWorksRepository implements WorksRepository {
       publishedRevisionId: REVISION_ID,
       publicId: PUBLIC_ID,
     });
+  }
+
+  listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]) {
+    this.lastList = input;
+    return Promise.resolve(this.listPage);
   }
 
   rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]) {
@@ -129,6 +137,45 @@ describe('WorksService', () => {
       currentAcademicYear: 2569,
       entryYear: 2566,
     });
+  });
+
+  it('lists a bounded page of Submitter-owned Works using an opaque keyset cursor', async () => {
+    repository.listPage = {
+      items: [
+        {
+          activityState: 'active',
+          hasDraft: true,
+          latestRevisionStatus: 'changes_requested',
+          publicationState: 'published',
+          publicId: PUBLIC_ID,
+          title: 'ระบบจัดการกิจกรรม',
+          updatedAt: new Date('2026-08-25T09:00:00.000Z'),
+        },
+      ],
+      nextCursor: {
+        publicId: PUBLIC_ID,
+        updatedAt: new Date('2026-08-25T09:00:00.000Z'),
+      },
+    };
+
+    const page = await service.listOwnedWorks({ accountId: ACCOUNT_ID, limit: 20 });
+
+    expect(repository.lastList).toEqual({ accountId: ACCOUNT_ID, cursor: null, limit: 20 });
+    expect(page.items).toEqual([
+      expect.objectContaining({
+        publicId: PUBLIC_ID,
+        title: 'ระบบจัดการกิจกรรม',
+        updatedAt: '2026-08-25T09:00:00.000Z',
+      }),
+    ]);
+    expect(typeof page.nextCursor).toBe('string');
+  });
+
+  it('rejects a malformed owned Work cursor without querying the repository', async () => {
+    await expect(
+      service.listOwnedWorks({ accountId: ACCOUNT_ID, cursor: 'not-a-cursor', limit: 20 }),
+    ).rejects.toMatchObject({ code: 'INVALID_WORK_CURSOR', status: 422 });
+    expect(repository.lastList).toBeUndefined();
   });
 
   it('updates normalized Draft content using the expected version', async () => {

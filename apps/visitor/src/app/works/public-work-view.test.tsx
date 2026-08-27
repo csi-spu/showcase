@@ -12,10 +12,12 @@ describe('Admin-to-Visitor Published Work UI', () => {
           category: 'ผลงานรายวิชา',
           description: 'รายละเอียด',
           gallery: 'แกลเลอรี',
+          galleryAlt: (index) => `ภาพเพิ่มเติม ${index} ของ ระบบแนะนำผลงาน`,
           links: 'ลิงก์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
           publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
           studyYear: (year) => `ชั้นปีที่ ${year}`,
+          tagsLabel: 'หัวข้อของผลงาน',
           videos: 'วิดีโอ',
         }}
         work={publicWork()}
