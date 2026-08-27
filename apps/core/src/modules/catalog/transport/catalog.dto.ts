@@ -12,6 +12,9 @@ export class WorkCatalogQueryDto implements RawWorkCatalogQuery {
   limit?: string | string[];
 
   @Allow()
+  profile?: string | string[];
+
+  @Allow()
   q?: string | string[];
 
   @Allow()

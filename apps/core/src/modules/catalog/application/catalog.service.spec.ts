@@ -83,13 +83,54 @@ describe('CatalogService', () => {
   });
 
   it('uses no-store for high-cardinality shapes and shared cache only for bounded first pages', () => {
-    expect(isCatalogSharedCacheEligible({ cursor: null, query: null, tagCount: 0 })).toBe(true);
-    expect(isCatalogSharedCacheEligible({ cursor: 'cursor', query: null, tagCount: 0 })).toBe(
-      false,
-    );
-    expect(isCatalogSharedCacheEligible({ cursor: null, query: 'react', tagCount: 0 })).toBe(false);
-    expect(isCatalogSharedCacheEligible({ cursor: null, query: null, tagCount: 2 })).toBe(false);
-    expect(isCatalogSharedCacheEligible({ cursor: null, query: null, tagCount: 1 })).toBe(true);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: null,
+        profilePublicId: null,
+        query: null,
+        tagCount: 0,
+      }),
+    ).toBe(true);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: 'cursor',
+        profilePublicId: null,
+        query: null,
+        tagCount: 0,
+      }),
+    ).toBe(false);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: null,
+        profilePublicId: null,
+        query: 'react',
+        tagCount: 0,
+      }),
+    ).toBe(false);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: null,
+        profilePublicId: null,
+        query: null,
+        tagCount: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: null,
+        profilePublicId: null,
+        query: null,
+        tagCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      isCatalogSharedCacheEligible({
+        cursor: null,
+        profilePublicId: '93000000-0000-4000-8000-000000000001',
+        query: null,
+        tagCount: 0,
+      }),
+    ).toBe(false);
   });
 
   it('hides an activated zero-count Tag behind uniform not-found', async () => {

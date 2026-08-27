@@ -17,6 +17,7 @@ type QueryValue = string | string[] | undefined;
 export interface RawWorkCatalogQuery {
   category?: QueryValue;
   limit?: QueryValue;
+  profile?: QueryValue;
   q?: QueryValue;
   semester?: QueryValue;
   sort?: QueryValue;
@@ -34,6 +35,7 @@ export interface RawPeopleCatalogQuery {
 export interface WorkCatalogQuery {
   categories: Array<(typeof WORK_CATEGORIES)[number]>;
   limit: number;
+  profilePublicId: string | null;
   query: string | null;
   semester: (typeof WORK_SEMESTERS)[number] | null;
   sort: (typeof WORK_SORTS)[number] | 'relevance';
@@ -52,6 +54,7 @@ export type CatalogQueryErrorCode =
   | 'CATALOG_CATEGORY_INVALID'
   | 'CATALOG_ENTRY_YEAR_INVALID'
   | 'CATALOG_LIMIT_INVALID'
+  | 'CATALOG_PROFILE_INVALID'
   | 'CATALOG_QUERY_LENGTH'
   | 'CATALOG_QUERY_SHAPE_INVALID'
   | 'CATALOG_SEMESTER_INVALID'
@@ -82,10 +85,15 @@ export function normalizeWorkCatalogQuery(input: RawWorkCatalogQuery): WorkCatal
   }
   const requestedSort = scalar(input.sort, 'CATALOG_SORT_INVALID') ?? 'recent';
   if (!isWorkSort(requestedSort)) fail('CATALOG_SORT_INVALID');
+  const profilePublicId = scalar(input.profile, 'CATALOG_PROFILE_INVALID') ?? null;
+  if (profilePublicId !== null && !UUID_V4_PATTERN.test(profilePublicId)) {
+    fail('CATALOG_PROFILE_INVALID');
+  }
 
   return {
     categories,
     limit: normalizePageSize(input.limit),
+    profilePublicId,
     query,
     semester: semesterValue ?? null,
     sort: query === null ? requestedSort : 'relevance',

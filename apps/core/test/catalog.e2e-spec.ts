@@ -105,6 +105,17 @@ describe('Public Catalog HTTP contract (e2e)', () => {
       .expect({ error: { code: 'INVALID_REQUEST' } });
   });
 
+  it('validates Public Profile filters and never shares their responses', async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/public/works?profile=${PROFILE_PUBLIC_ID}`)
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/v1/public/works?profile=not-a-uuid')
+      .expect(400)
+      .expect({ error: { code: 'CATALOG_PROFILE_INVALID' } });
+  });
+
   it('serves only repository-authorized People and active Tags', async () => {
     await request(app.getHttpServer())
       .get('/v1/public/people')

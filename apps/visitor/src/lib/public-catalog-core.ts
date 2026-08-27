@@ -95,6 +95,7 @@ export class PublicCatalogCoreClient {
       'category',
       'cursor',
       'limit',
+      'profile',
       'q',
       'semester',
       'sort',
@@ -186,7 +187,10 @@ export class PublicCatalogCoreClient {
   ): RequestInit & { next?: { revalidate: number; tags: string[] } } {
     const tags = values(params.tag);
     const isNoStore =
-      values(params.cursor).length > 0 || values(params.q).some(Boolean) || tags.length > 1;
+      values(params.cursor).length > 0 ||
+      values(params.profile).some(Boolean) ||
+      values(params.q).some(Boolean) ||
+      tags.length > 1;
     return {
       ...(isNoStore
         ? { cache: 'no-store' as const }

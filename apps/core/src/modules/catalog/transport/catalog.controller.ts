@@ -38,6 +38,7 @@ export class CatalogController {
       page,
       isCatalogSharedCacheEligible({
         cursor,
+        profilePublicId: normalized.profilePublicId,
         query: normalized.query,
         tagCount: normalized.tagPublicIds.length,
       }),
@@ -61,6 +62,7 @@ export class CatalogController {
       page,
       isCatalogSharedCacheEligible({
         cursor,
+        profilePublicId: null,
         query: normalized.query,
         tagCount: 0,
       }),
@@ -128,6 +130,7 @@ function workQueryWithoutCursor(input: WorkCatalogQueryDto) {
   return {
     category: input.category,
     limit: input.limit,
+    profile: input.profile,
     q: input.q,
     semester: input.semester,
     sort: input.sort,

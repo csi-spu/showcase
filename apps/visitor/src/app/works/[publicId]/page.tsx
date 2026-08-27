@@ -42,6 +42,8 @@ export default async function PublicWorkPage({
             gallery: t('gallery'),
             galleryAlt: (index) => t('galleryAlt', { index, title: work.title }),
             links: t('links'),
+            missingAttributions: t('missingAttributions'),
+            missingPoster: t('missingPoster'),
             posterAlt: t('posterAlt', { title: work.title }),
             publishedAt: t('publishedAt', { value: formatBangkokDate(work.publishedAt) }),
             studyYear: (year) => t('studyYear', { year }),

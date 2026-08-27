@@ -279,6 +279,16 @@ export class PostgresCatalogRepository implements CatalogRepository {
           and (${categories.length} = 0 or catalog.category = any(${categories}::text[]))
           and (${query.year}::integer is null or catalog.academic_year = ${query.year})
           and (${query.semester}::text is null or catalog.semester = ${query.semester})
+          and (${query.profilePublicId}::uuid is null or exists (
+            select 1
+            from public.public_profiles as profile
+            join public.profile_consents as consent
+              on consent.person_id = profile.person_id and consent.withdrawn_at is null
+            join private.work_revision_attributions as attribution
+              on attribution.person_id = profile.person_id
+            where profile.public_id = ${query.profilePublicId}
+              and attribution.revision_id = catalog.revision_id
+          ))
           and (${tagPublicIds.length} = 0 or (
             select count(distinct tag.public_id)::integer
             from private.published_revision_tags as published_tag

@@ -106,8 +106,14 @@ export class CatalogService {
 
 export function isCatalogSharedCacheEligible(input: {
   cursor: string | null;
+  profilePublicId: string | null;
   query: string | null;
   tagCount: number;
 }): boolean {
-  return input.cursor === null && input.query === null && input.tagCount <= 1;
+  return (
+    input.cursor === null &&
+    input.profilePublicId === null &&
+    input.query === null &&
+    input.tagCount <= 1
+  );
 }
