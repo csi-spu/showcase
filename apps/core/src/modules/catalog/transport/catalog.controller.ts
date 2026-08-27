@@ -78,6 +78,15 @@ export class CatalogController {
     ]);
   }
 
+  @Get('filter-options')
+  async listFilterOptions(@Req() request: Request, @Res() response: Response) {
+    return respond(request, response, await this.catalog.listFilterOptions(), true, [
+      'showcase-catalog',
+      'showcase-catalog-works',
+      'showcase-catalog-people',
+    ]);
+  }
+
   @Get('tags/:publicId')
   async getTag(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,

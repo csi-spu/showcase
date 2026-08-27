@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import type {
   CatalogPosition,
+  CatalogFilterOptions,
   CatalogRepository,
   CatalogSitemapEntry,
   CatalogSitemapKind,
@@ -204,6 +205,28 @@ export class PostgresCatalogRepository implements CatalogRepository {
       limit 20
     `;
     return rows.map(mapTag);
+  }
+
+  async listFilterOptions(): Promise<CatalogFilterOptions> {
+    const [workRows, entryRows] = await Promise.all([
+      this.database.sql<Array<{ year: number }>>`
+        select distinct academic_year as year
+        from private.public_work_catalog
+        order by year desc
+      `,
+      this.database.sql<Array<{ year: number }>>`
+        select distinct student.entry_year as year
+        from public.students as student
+        join public.public_profiles as profile on profile.person_id = student.person_id
+        join public.profile_consents as consent
+          on consent.person_id = profile.person_id and consent.withdrawn_at is null
+        order by year desc
+      `,
+    ]);
+    return {
+      entryYears: entryRows.map((row) => row.year),
+      workYears: workRows.map((row) => row.year),
+    };
   }
 
   async findTag(publicId: string): Promise<PublicTagView | null> {

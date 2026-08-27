@@ -3,12 +3,11 @@ import { ChevronDownIcon, SearchIcon, SlidersHorizontalIcon } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Separator } from '@/components/ui/separator';
 import { BlurFade } from '@/components/ui/blur-fade';
 import type { CatalogSearchParams, PublicTag } from '@/lib/public-catalog-core';
+import { CatalogSearchField } from '../catalog-search-field';
 import { hasCatalogVariant } from '../catalog-url';
 
 export interface CatalogWorkFilterLabels {
@@ -37,10 +36,12 @@ export function CatalogWorkFilters({
   labels,
   params,
   tags,
+  years = [],
 }: {
   labels: CatalogWorkFilterLabels;
   params: CatalogSearchParams;
   tags: PublicTag[];
+  years?: number[];
 }) {
   const selectedCategories = values(params.category);
   const selectedTags = values(params.tag);
@@ -59,23 +60,14 @@ export function CatalogWorkFilters({
       >
         <FieldGroup className="gap-4">
           <div className="grid items-end gap-3 md:grid-cols-[minmax(0,1fr)_15rem_auto]">
-            <Field>
-              <FieldLabel htmlFor="work-search">{labels.searchWorks}</FieldLabel>
-              <InputGroup className="h-12 bg-card">
-                <InputGroupAddon>
-                  <SearchIcon aria-hidden="true" />
-                </InputGroupAddon>
-                <InputGroupInput
-                  defaultValue={single(params.q)}
-                  id="work-search"
-                  maxLength={100}
-                  minLength={2}
-                  name="q"
-                  placeholder={labels.searchWorksPlaceholder}
-                  type="search"
-                />
-              </InputGroup>
-            </Field>
+            <CatalogSearchField
+              defaultValue={single(params.q)}
+              id="work-search"
+              key={`works-${single(params.q)}`}
+              label={labels.searchWorks}
+              placeholder={labels.searchWorksPlaceholder}
+              scope="works"
+            />
             <Field>
               <FieldLabel htmlFor="work-sort">{labels.sort}</FieldLabel>
               <NativeSelect
@@ -139,16 +131,14 @@ export function CatalogWorkFilters({
                 </FieldSet>
                 <Field>
                   <FieldLabel htmlFor="academic-year">{labels.academicYear}</FieldLabel>
-                  <Input
-                    className="h-12 bg-card"
-                    defaultValue={single(params.year)}
-                    id="academic-year"
-                    inputMode="numeric"
-                    max={2700}
-                    min={2400}
-                    name="year"
-                    type="number"
-                  />
+                  <NativeSelect defaultValue={single(params.year)} id="academic-year" name="year">
+                    <NativeSelectOption value="">{labels.all}</NativeSelectOption>
+                    {years.map((year) => (
+                      <NativeSelectOption key={year} value={String(year)}>
+                        {year}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="semester">{labels.semester}</FieldLabel>

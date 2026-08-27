@@ -9,6 +9,7 @@ import { WordRotate } from '@/components/ui/word-rotate';
 import { PublicCatalogCoreClient } from '@/lib/public-catalog-core';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
 import { HeroArtwork } from './hero-artwork';
+import { HomepageBrandMarquee } from './homepage-brand-marquee';
 import { HomepageFeaturedCollections } from './homepage-featured-collections';
 import { HomepageQuickSearch } from './homepage-quick-search';
 import { PublicShell } from './public-shell';
@@ -96,6 +97,12 @@ export default async function Home() {
                     {t('viewPeople')}
                   </Link>
                 </div>
+                <HomepageBrandMarquee
+                  csiLogoAlt={t('brandMarquee.csiLogoAlt')}
+                  label={t('brandMarquee.label')}
+                  sitLogoAlt={t('brandMarquee.sitLogoAlt')}
+                  spuLogoAlt={t('brandMarquee.spuLogoAlt')}
+                />
               </div>
             </header>
           </BlurFade>

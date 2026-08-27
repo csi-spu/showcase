@@ -33,7 +33,7 @@ describe('Public Catalog Work filters', () => {
     expect(html).toContain('data-slot="advanced-filters"');
     expect(html).not.toContain('open=""');
     expect(html).toContain('data-slot="input-group"');
-    expect(html.match(/data-slot="native-select"/g)).toHaveLength(2);
+    expect(html.match(/data-slot="native-select"/g)).toHaveLength(3);
   });
 
   it('opens optional filters and reports their active count when selected', () => {
@@ -46,12 +46,14 @@ describe('Public Catalog Work filters', () => {
           tag: tag('UX').publicId,
         }}
         tags={[tag('UX')]}
+        years={[2569, 2568]}
       />,
     );
 
     expect(html).toContain('open=""');
     expect(html).toContain('เลือกอยู่ 4 ตัวกรอง');
     expect(html).toContain('href="/works"');
+    expect(html).toMatch(/<option[^>]+value="2569">2569<\/option>/);
   });
 });
 

@@ -87,6 +87,19 @@ describe('PublicCatalogCoreClient', () => {
       'https://core.example.test/v1/public/sitemap/works/99',
     );
   });
+
+  it('loads cacheable filter years from the public Core contract', async () => {
+    const options = { entryYears: [2569, 2568], workYears: [2569, 2567] };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(options));
+
+    await expect(
+      new PublicCatalogCoreClient('https://core.example.test', fetchMock).listFilterOptions(),
+    ).resolves.toEqual(options);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://core.example.test/v1/public/filter-options',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ next: { revalidate: 60 } });
+  });
 });
 
 function workPage() {

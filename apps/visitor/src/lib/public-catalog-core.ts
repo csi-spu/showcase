@@ -69,6 +69,12 @@ const pageSchema = <T extends z.ZodType>(item: T) =>
 
 const workPageSchema = pageSchema(workCardSchema);
 const peoplePageSchema = pageSchema(personCardSchema);
+const catalogFilterOptionsSchema = z
+  .object({
+    entryYears: z.array(z.number().int().min(2400).max(2700)).max(301),
+    workYears: z.array(z.number().int().min(2400).max(2700)).max(301),
+  })
+  .strict();
 const sitemapEntrySchema = z
   .object({ lastModified: z.iso.datetime().nullable(), publicId: z.uuid() })
   .strict();
@@ -79,6 +85,7 @@ export type PublicTag = z.infer<typeof tagSchema>;
 export type WorkCatalogPage = z.infer<typeof workPageSchema>;
 export type PeopleCatalogPage = z.infer<typeof peoplePageSchema>;
 export type CatalogSitemapEntry = z.infer<typeof sitemapEntrySchema>;
+export type CatalogFilterOptions = z.infer<typeof catalogFilterOptionsSchema>;
 
 export class PublicCatalogCoreClient {
   private readonly coreOrigin: string;
@@ -141,6 +148,20 @@ export class PublicCatalogCoreClient {
       .array(tagSchema)
       .max(20)
       .parse(await response.json());
+  }
+
+  async listFilterOptions(): Promise<CatalogFilterOptions> {
+    const response = await this.fetchImpl(this.url('/v1/public/filter-options', {}, []), {
+      credentials: 'omit',
+      headers: { accept: 'application/json' },
+      next: {
+        revalidate: 60,
+        tags: ['showcase-catalog', 'showcase-catalog-works', 'showcase-catalog-people'],
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new Error('PUBLIC_CATALOG_SERVICE_UNAVAILABLE');
+    return catalogFilterOptionsSchema.parse(await response.json());
   }
 
   async getTag(publicId: string): Promise<PublicTag | null> {

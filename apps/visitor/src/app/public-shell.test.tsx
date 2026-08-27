@@ -92,12 +92,17 @@ describe('PublicShell', () => {
     expect(html).toContain('font-normal');
     expect(html).toContain('hidden md:block');
     expect(html).not.toContain('/#how-it-works');
-    expect(html).not.toContain('csi-computer-science-software-development-innovation-navy.webp');
+    expect(
+      html.match(
+        /src="\/_next\/image\?url=%2Fbrand%2Fcsi-computer-science-software-development-innovation\.png/g,
+      ),
+    ).toHaveLength(1);
     expect(
       html.match(
         /src="\/_next\/image\?url=%2Fbrand%2Fsit-school-of-information-technology-color\.webp/g,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(html).toContain('csi-computer-science-software-development-innovation.png');
     expect(html).toContain('sit-school-of-information-technology-color.webp');
     expect(html).toContain('aria-label="Student Showcase หน้าแรก"');
     expect(html).toContain('alt="คณะเทคโนโลยีสารสนเทศ มหาวิทยาลัยศรีปทุม"');

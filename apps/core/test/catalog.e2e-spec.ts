@@ -22,6 +22,10 @@ class E2eCatalogRepository implements CatalogRepository {
     return Promise.resolve('42');
   }
 
+  listFilterOptions() {
+    return Promise.resolve({ entryYears: [2566], workYears: [2569] });
+  }
+
   listPeople() {
     return Promise.resolve({
       entries: [
@@ -137,6 +141,15 @@ describe('Public Catalog HTTP contract (e2e)', () => {
       .get(`/v1/public/tags/${TAG_PUBLIC_ID}`)
       .expect(200)
       .expect({ activeWorkCount: 1, displayLabel: 'React', publicId: TAG_PUBLIC_ID });
+  });
+
+  it('serves cacheable Public Catalog filter options', async () => {
+    await request(app.getHttpServer())
+      .get('/v1/public/filter-options')
+      .expect('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=60')
+      .expect('Cache-Tag', 'showcase-catalog,showcase-catalog-works,showcase-catalog-people')
+      .expect(200)
+      .expect({ entryYears: [2566], workYears: [2569] });
   });
 
   it('serves bounded sitemap shards and validates their route shape', async () => {
