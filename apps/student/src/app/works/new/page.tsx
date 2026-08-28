@@ -30,23 +30,15 @@ export default async function NewWorkPage() {
 
   return (
     <StudentWorkspaceShell activePage="create-work" canCreateWork>
-      <div className="grid gap-10 lg:grid-cols-12">
-        <header className="grid content-start gap-4 lg:col-span-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">WORK DRAFT</p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {t('createHeading')}
-          </h1>
-          <p className="text-muted-foreground">{t('createDescription')}</p>
-        </header>
-        <div className="lg:col-span-8">
-          <WorkForm
-            action={createWorkAction}
-            context={context}
-            idempotencyKey={idempotencyKey}
-            mode="create"
-            work={null}
-          />
-        </div>
+      <div>
+        <h1 className="sr-only">{t('createHeading')}</h1>
+        <WorkForm
+          action={createWorkAction}
+          context={context}
+          idempotencyKey={idempotencyKey}
+          mode="create"
+          work={null}
+        />
       </div>
     </StudentWorkspaceShell>
   );

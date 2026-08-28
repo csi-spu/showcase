@@ -8,6 +8,32 @@ const IDEMPOTENCY_KEY = '64000000-0000-4000-8000-000000000002';
 describe('StudentWorksCoreClient', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it('lists owned Works with every private lifecycle state and an encoded cursor', async () => {
+    const nextCursor = 'cursor/value+with=symbols';
+    const item = {
+      activityState: 'active' as const,
+      hasDraft: true,
+      latestRevisionStatus: 'changes_requested' as const,
+      publicationState: 'published' as const,
+      publicId: PUBLIC_ID,
+      title: 'ระบบแนะนำผลงาน',
+      updatedAt: '2026-08-25T10:00:00.000Z',
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ items: [item], nextCursor }));
+    const client = createClient(fetchMock);
+
+    await expect(client.listWorks(SESSION, { cursor: nextCursor, limit: 20 })).resolves.toEqual({
+      items: [item],
+      nextCursor,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/student/works?limit=20&cursor=${encodeURIComponent(nextCursor)}`,
+    );
+  });
+
   it('reads safe authoring bounds and one private Work Draft through the BFF', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -273,6 +299,7 @@ describe('StudentWorksCoreClient', () => {
   });
 
   it('submits, reads, withdraws, and receives Change Request feedback through exact contracts', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
     const revision = workRevision();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -308,6 +335,7 @@ describe('StudentWorksCoreClient', () => {
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/change-request`,
     ]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(submitInput);
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
   });
   it('uses recovery-code session endpoints for External Contributor removal', async () => {
     const removal = {
@@ -416,6 +444,7 @@ function work() {
 
 function workRevision() {
   return {
+    authorKind: 'student_submission' as const,
     attributions: [],
     content: work().draft,
     media: [],

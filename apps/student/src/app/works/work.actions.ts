@@ -103,7 +103,8 @@ export async function uploadWorkMediaAction(input: {
   if (!parsed.success) return { error: 'invalid' as const };
   try {
     const token = await sessionToken();
-    return await client().authorizeMediaUpload(token, parsed.data.publicId, parsed.data);
+    const { publicId, ...authorization } = parsed.data;
+    return await client().authorizeMediaUpload(token, publicId, authorization);
   } catch (error: unknown) {
     return { error: mapError(error) };
   }
@@ -188,6 +189,10 @@ export async function submitWorkRevisionAction(
   try {
     await client().submitRevision(await sessionToken(), parsedPublicId.data, parsed.data);
   } catch (error: unknown) {
+    if (error instanceof StudentWorksCoreError && error.code === 'WORK_PENDING_REVISION_EXISTS') {
+      revalidatePath(`/works/${parsedPublicId.data}`);
+      return { error: null, idempotencyKey: randomUUID(), success: true };
+    }
     return revisionFailed(previousState, mapRevisionError(error));
   }
   revalidatePath(`/works/${parsedPublicId.data}`);
@@ -421,7 +426,9 @@ function mapRevisionError(error: unknown): WorkRevisionActionError {
     return 'attribution';
   if (error.code === 'WORK_SUBMISSION_INCOMPLETE') return 'incomplete';
   if (error.code === 'INVALID_REQUEST') return 'invalid';
-  return error.code === 'WORKS_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
+  return ['AUTH_SERVICE_UNAVAILABLE', 'WORKS_SERVICE_UNAVAILABLE'].includes(error.code)
+    ? 'network'
+    : 'unavailable';
 }
 
 function removalFailed(

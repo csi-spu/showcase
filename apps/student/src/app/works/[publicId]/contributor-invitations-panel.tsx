@@ -36,7 +36,7 @@ export function ContributorInvitationsPanel({
       aria-labelledby="contributors-heading"
     >
       <header className="grid gap-2">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">ATTRIBUTION</p>
+        <p className="text-sm font-semibold text-primary">ชื่อผู้ร่วมผลงาน</p>
         <h2 className="text-2xl font-semibold" id="contributors-heading">
           {t('manageHeading')}
         </h2>

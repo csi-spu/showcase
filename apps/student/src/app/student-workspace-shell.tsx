@@ -1,177 +1,199 @@
-import { cn } from '@showcase/ui/cn';
-import {
-  BellIcon,
-  HouseIcon,
-  MailIcon,
-  PlusIcon,
-  UserRoundIcon,
-  type LucideIcon,
-} from 'lucide-react';
+import { UserRoundIcon } from 'lucide-react';
+import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from '@/components/animate-ui/components/radix/sidebar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { BlurFade } from '@/components/ui/blur-fade';
+import { getStudentServerEnvironment } from '@/lib/server-environment';
+import { readStudentSessionToken } from '@/lib/student-auth-session';
+import {
+  StudentProfileCoreClient,
+  StudentProfileCoreError,
+  type PrivatePublicProfile,
+} from '@/lib/student-profile-core';
 import { logoutAction } from './student-auth.actions';
 import { LogoutForm } from './student-auth-forms';
-import { MobileWorkspaceNavigation } from './mobile-workspace-navigation';
+import { StudentBrand } from './student-brand';
+import {
+  StudentSidebarNavigation,
+  type StudentSidebarItem,
+  type StudentWorkspacePage,
+} from './student-sidebar-navigation';
 
-export type StudentWorkspacePage =
-  'create-work' | 'home' | 'invitations' | 'notifications' | 'profile' | 'work';
+export type { StudentWorkspacePage } from './student-sidebar-navigation';
 
-interface NavigationItem {
-  href: string;
-  icon: LucideIcon;
-  label: string;
-  page: StudentWorkspacePage;
-}
+type StudentSidebarProfile = Pick<PrivatePublicProfile, 'displayName' | 'entryYear' | 'photo'>;
 
 export async function StudentWorkspaceShell({
   activePage,
   canCreateWork,
   children,
+  profile,
 }: {
   activePage: StudentWorkspacePage;
   canCreateWork: boolean;
   children: ReactNode;
+  profile?: StudentSidebarProfile | null;
 }) {
-  const t = await getTranslations('Workspace');
-  const items: NavigationItem[] = [
-    { href: '/', icon: HouseIcon, label: t('navigation.home'), page: 'home' },
+  const [t, sidebarProfile] = await Promise.all([
+    getTranslations('Workspace'),
+    profile === undefined ? loadStudentSidebarProfile() : Promise.resolve(profile),
+  ]);
+  const items: StudentSidebarItem[] = [
+    { href: '/', label: t('navigation.home'), page: 'home' },
+    { href: '/works', label: t('navigation.work'), page: 'work' },
     ...(canCreateWork
       ? [
           {
             href: '/works/new',
-            icon: PlusIcon,
             label: t('navigation.createWork'),
             page: 'create-work' as const,
           },
         ]
       : []),
-    { href: '/profile', icon: UserRoundIcon, label: t('navigation.profile'), page: 'profile' },
     {
       href: '/contributor-invitations',
-      icon: MailIcon,
       label: t('navigation.invitations'),
       page: 'invitations',
     },
     {
       href: '/notifications',
-      icon: BellIcon,
       label: t('navigation.notifications'),
       page: 'notifications',
     },
   ];
   const activeItem = items.find((item) => item.page === activePage);
+  const activeLabel = activePage === 'profile' ? t('navigation.profile') : activeItem?.label;
   const statusLabel = canCreateWork ? t('status.active') : t('status.readOnly');
 
   return (
-    <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
-      <aside className="hidden flex-col justify-between border-r border-border bg-sidebar px-5 py-6 text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-svh">
-        <div className="flex flex-col gap-8">
-          <WorkspaceIdentity label={t('workspace')} />
-          <WorkspaceNavigation
-            activePage={activePage}
-            items={items}
-            label={t('navigation.label')}
-          />
-        </div>
-        <div className="flex flex-col gap-4">
-          <Separator />
-          <Badge variant="secondary">{statusLabel}</Badge>
-          <p className="text-sm text-muted-foreground">{t('department')}</p>
-          <LogoutForm action={logoutAction} />
-        </div>
-      </aside>
-
-      <div className="min-w-0">
-        <MobileWorkspaceNavigation
-          closeLabel={t('navigation.closeMenu')}
-          description={t('navigation.menuDescription')}
-          label={t('navigation.openMenu')}
-          title={t('navigation.menuTitle')}
-        >
-          <div className="flex min-h-0 flex-1 flex-col justify-between gap-6 overflow-y-auto p-6">
-            <div className="flex flex-col gap-6">
-              <Badge variant="secondary">{statusLabel}</Badge>
-              <WorkspaceNavigation
-                activePage={activePage}
-                items={items}
-                label={t('navigation.label')}
-              />
-            </div>
-            <div className="flex flex-col gap-4">
-              <Separator />
-              <LogoutForm action={logoutAction} />
-            </div>
-          </div>
-        </MobileWorkspaceNavigation>
-        <header className="hidden min-h-16 items-center justify-between border-b border-border bg-card px-8 lg:flex">
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{t('workspace')}</span>
-            <span aria-hidden="true" className="text-border">
-              /
-            </span>
-            <span className="font-medium">{activeItem?.label}</span>
-          </div>
-          <Badge variant="outline">{statusLabel}</Badge>
-        </header>
-        <section className="p-4 sm:p-8 lg:p-12">{children}</section>
-      </div>
-    </main>
-  );
-}
-
-function WorkspaceIdentity({ label }: { label: string }) {
-  return (
-    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3">
-      <span
-        aria-hidden="true"
-        className="grid size-10 place-items-center rounded-control bg-primary text-sm font-semibold text-primary-foreground"
+    <SidebarProvider className="student-canvas mx-auto max-w-[1600px]">
+      <Sidebar
+        animateOnHover
+        className="border-border/80 bg-sidebar/95 backdrop-blur"
+        collapsible="icon"
+        role="complementary"
       >
-        SS
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold tracking-[0.08em]">SHOWCASE</p>
-        <p className="truncate text-sm text-muted-foreground">{label}</p>
-      </div>
-    </div>
+        <SidebarHeader className="gap-3 p-5 group-data-[collapsible=icon]:p-2">
+          <StudentBrand className="group-data-[collapsible=icon]:hidden" />
+          <div className="hidden size-8 place-items-center rounded-control bg-primary text-xs font-semibold text-primary-foreground group-data-[collapsible=icon]:grid">
+            CSI
+          </div>
+          <p className="text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+            {t('workspace')}
+          </p>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t('navigation.label')}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <StudentSidebarNavigation activePage={activePage} items={items} />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="gap-3 p-4 group-data-[collapsible=icon]:p-2">
+          <Link
+            className="flex min-w-0 items-center gap-3 rounded-control border border-sidebar-border bg-background/70 p-2 transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
+            href="/profile"
+          >
+            <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-soft text-primary group-data-[collapsible=icon]:size-8">
+              {sidebarProfile?.photo ? (
+                <Image
+                  alt={t('profile.photoAlt', { name: sidebarProfile.displayName })}
+                  className="object-cover"
+                  fill
+                  sizes="40px"
+                  src="/profile/photo"
+                  unoptimized
+                />
+              ) : (
+                <UserRoundIcon aria-hidden="true" className="size-5" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+              <span className="block truncate text-sm font-semibold">
+                {sidebarProfile?.displayName ?? t('profile.fallback')}
+              </span>
+              {sidebarProfile ? (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {t('profile.entryYear', { year: sidebarProfile.entryYear })}
+                </span>
+              ) : null}
+            </span>
+          </Link>
+          <div className="flex flex-wrap items-center gap-2 group-data-[collapsible=icon]:hidden">
+            <Badge className="w-fit" variant="secondary">
+              {statusLabel}
+            </Badge>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {t('department')}
+            </span>
+          </div>
+          <div className="group-data-[collapsible=icon]:hidden">
+            <LogoutForm action={logoutAction} />
+          </div>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+
+      <SidebarInset className="min-w-0 bg-transparent">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-4 border-b border-border/80 bg-background px-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <SidebarTrigger
+              aria-label={t('navigation.openMenu')}
+              title={t('navigation.openMenu')}
+            />
+            <StudentBrand className="md:hidden" />
+            <div className="hidden min-w-0 items-center gap-3 text-sm md:flex">
+              <span className="text-muted-foreground">{t('workspace')}</span>
+              <span aria-hidden="true" className="text-border">
+                /
+              </span>
+              <span className="truncate font-medium">{activeLabel}</span>
+            </div>
+          </div>
+          <Badge className="hidden sm:flex" variant="outline">
+            {statusLabel}
+          </Badge>
+        </header>
+        <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">
+          <BlurFade offset={8}>{children}</BlurFade>
+        </section>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
-function WorkspaceNavigation({
-  activePage,
-  items,
-  label,
-}: {
-  activePage: StudentWorkspacePage;
-  items: NavigationItem[];
-  label: string;
-}) {
-  return (
-    <nav aria-label={label}>
-      <ul className="flex flex-col gap-1">
-        {items.map(({ href, icon: Icon, label: itemLabel, page }) => {
-          const isActive = activePage === page;
-          return (
-            <li key={page}>
-              <Link
-                aria-current={isActive ? 'page' : undefined}
-                className={cn(
-                  'relative flex min-h-11 items-center gap-3 rounded-control px-3 text-sm font-medium transition-colors duration-150 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full motion-reduce:transition-none',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground before:bg-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-                href={href}
-              >
-                <Icon aria-hidden="true" className="size-5 shrink-0" />
-                <span>{itemLabel}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
+async function loadStudentSidebarProfile(): Promise<StudentSidebarProfile | null> {
+  const sessionToken = await readStudentSessionToken();
+  if (sessionToken === null) return null;
+
+  try {
+    const response = await new StudentProfileCoreClient(getStudentServerEnvironment()).getProfile(
+      sessionToken,
+    );
+    return response.profile;
+  } catch (error: unknown) {
+    if (
+      error instanceof StudentProfileCoreError &&
+      ['AUTH_SERVICE_UNAVAILABLE', 'SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }

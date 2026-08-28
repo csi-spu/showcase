@@ -12,9 +12,34 @@ describe('Thai Student messages', () => {
   });
 
   it('does not expose implementation or project-planning vocabulary', () => {
-    const userFacingCopy = JSON.stringify(messages);
+    const userFacingCopy = collectStrings(messages).join(' ');
 
-    expect(userFacingCopy).not.toMatch(/STUDENT ACCESS|Harness|Phase 1|JavaScript|เซสชัน/);
-    expect(messages.Home.description).toBe('พื้นที่สำหรับจัดการโปรไฟล์และผลงานของนักศึกษา');
+    expect(userFacingCopy).not.toMatch(
+      /STUDENT ACCESS|Harness|Phase 1|JavaScript|เซสชัน|Revision|Review|snapshot|rebase|Work Draft/,
+    );
+    expect(messages.Home.description).toBe('จัดการโปรไฟล์และผลงานของนักศึกษา');
+  });
+
+  it('uses direct dashboard copy', () => {
+    expect(messages.Dashboard.title).toBe('จัดการผลงานของคุณ');
+    expect(messages.Dashboard.description).toBe('จัดการผลงาน โปรไฟล์ คำเชิญ และการแจ้งเตือน');
+    expect(messages.Auth.active.createWork).toBe('อัปโหลดผลงาน');
+    expect(messages.Workspace.navigation.createWork).toBe('อัปโหลดผลงาน');
+    expect(messages.WorkPage.createHeading).toBe('อัปโหลดผลงาน');
+  });
+
+  it('provides the authenticated Student identity copy used by the sidebar', () => {
+    expect(messages.Workspace.profile.entryYear).toBe('ปีที่เข้าศึกษา {year}');
+    expect(messages.Workspace.profile.fallback).toBe('ยังไม่ได้ตั้งค่าโปรไฟล์');
+    expect(messages.Workspace.profile.photoAlt).toBe('รูปโปรไฟล์ของ {name}');
   });
 });
+
+function collectStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(collectStrings);
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).flatMap(collectStrings);
+  }
+  return [];
+}

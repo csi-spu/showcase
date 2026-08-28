@@ -26,6 +26,7 @@ import {
 import { ContributorInvitationsPanel } from './contributor-invitations-panel';
 import { WorkRemovalPanel } from '../work-removal-panel';
 import { StudentWorkspaceShell } from '../../student-workspace-shell';
+import { WorkspacePage } from '../../workspace-page';
 
 export default async function EditWorkPage({ params }: { params: Promise<{ publicId: string }> }) {
   const { publicId: rawPublicId } = await params;
@@ -115,50 +116,50 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
 
   return (
     <StudentWorkspaceShell activePage="work" canCreateWork>
-      <div className="grid gap-10 lg:grid-cols-12">
-        <header className="grid content-start gap-4 lg:col-span-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-            {revisionState.kind === 'archived'
-              ? 'ARCHIVED WORK'
-              : revisionState.kind === 'draft'
-                ? isDraftStale
-                  ? 'STALE PRIVATE DRAFT'
-                  : 'PRIVATE DRAFT'
-                : revisionState.kind === 'pending'
-                  ? 'PENDING REVIEW'
-                  : 'PUBLISHED REVISION'}
-          </p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {revisionState.kind === 'archived'
-              ? t('archivedHeading')
-              : revisionState.kind === 'draft'
-                ? t('editHeading')
-                : revisionState.kind === 'pending'
-                  ? t('pendingHeading')
-                  : t('publishedHeading')}
-          </h1>
-          <p className="text-muted-foreground">
-            {revisionState.kind === 'archived'
-              ? t('archivedDescription')
-              : revisionState.kind === 'draft'
-                ? isDraftStale
-                  ? t('staleDescription')
-                  : t('editDescription')
-                : revisionState.kind === 'pending'
-                  ? t('pendingDescription')
-                  : t('publishedDescription')}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {revisionState.kind === 'archived'
-              ? t('recoveryVersion', { version: recoveryState.version })
-              : revisionState.kind === 'draft'
-                ? t('version', { version: revisionState.work.version })
-                : revisionState.kind === 'pending'
-                  ? t('revision', { number: revisionState.revision.number })
-                  : null}
-          </p>
-        </header>
-        <div className="lg:col-span-8">
+      <WorkspacePage
+        description={
+          revisionState.kind === 'archived'
+            ? t('archivedDescription')
+            : revisionState.kind === 'draft'
+              ? isDraftStale
+                ? t('staleDescription')
+                : t('editDescription')
+              : revisionState.kind === 'pending'
+                ? t('pendingDescription')
+                : t('publishedDescription')
+        }
+        eyebrow={
+          revisionState.kind === 'archived'
+            ? 'ผลงานที่เก็บถาวร'
+            : revisionState.kind === 'draft'
+              ? isDraftStale
+                ? 'ฉบับร่างที่ต้องอัปเดต'
+                : 'ฉบับร่างส่วนตัว'
+              : revisionState.kind === 'pending'
+                ? 'กำลังรอตรวจ'
+                : 'ฉบับที่เผยแพร่แล้ว'
+        }
+        layout={revisionState.kind === 'draft' ? 'authoring' : 'overview'}
+        meta={
+          revisionState.kind === 'archived'
+            ? t('recoveryVersion', { version: recoveryState.version })
+            : revisionState.kind === 'draft'
+              ? t('version', { version: revisionState.work.version })
+              : revisionState.kind === 'pending'
+                ? t('revision', { number: revisionState.revision.number })
+                : undefined
+        }
+        title={
+          revisionState.kind === 'archived'
+            ? t('archivedHeading')
+            : revisionState.kind === 'draft'
+              ? t('editHeading')
+              : revisionState.kind === 'pending'
+                ? t('pendingHeading')
+                : t('publishedHeading')
+        }
+      >
+        <div className="grid gap-8">
           {revisionState.kind === 'archived' ? (
             <section className="grid gap-3 rounded-surface border border-warning/30 bg-warning-background p-6 sm:p-8">
               <h2 className="text-2xl font-semibold">{t('archivedHeading')}</h2>
@@ -242,7 +243,7 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
             />
           ) : null}
         </div>
-      </div>
+      </WorkspacePage>
     </StudentWorkspaceShell>
   );
 }

@@ -1,0 +1,42 @@
+import { cn } from '@showcase/ui/cn';
+import Image from 'next/image';
+import Link from 'next/link';
+
+export function StudentBrand({
+  className,
+  showSit = false,
+}: {
+  className?: string;
+  showSit?: boolean;
+}) {
+  return (
+    <div className={cn('flex min-w-0 items-center gap-4', className)}>
+      <Link
+        aria-label="หน้าหลัก Student Showcase"
+        className="min-w-0 rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+        href="/"
+      >
+        <Image
+          alt="สาขาวิทยาการคอมพิวเตอร์และนวัตกรรมการพัฒนาซอฟต์แวร์"
+          className="h-auto w-[clamp(7.5rem,18vw,11rem)]"
+          height={363}
+          priority
+          sizes="176px"
+          src="/brand/csi-computer-science-software-development-innovation.png"
+          width={1280}
+        />
+      </Link>
+      {showSit ? (
+        <Image
+          alt="คณะเทคโนโลยีสารสนเทศ"
+          className="hidden h-auto w-24 border-l border-border pl-4 sm:block"
+          height={381}
+          priority
+          sizes="96px"
+          src="/brand/sit-school-of-information-technology-color.webp"
+          width={1280}
+        />
+      ) : null}
+    </div>
+  );
+}

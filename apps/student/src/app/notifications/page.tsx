@@ -1,3 +1,5 @@
+import { Button, buttonVariants } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -14,6 +16,7 @@ import {
 } from './notification.actions';
 import { StudentNotificationList } from './student-notification-list';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
+import { WorkspacePage } from '../workspace-page';
 
 export default async function StudentNotificationsPage({
   searchParams,
@@ -48,43 +51,37 @@ export default async function StudentNotificationsPage({
       activePage="notifications"
       canCreateWork={auth.session.canUseStudentCapabilities}
     >
-      <div className="grid gap-8 lg:grid-cols-12">
-        <header className="grid content-start gap-3 lg:col-span-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {t('title')}
-          </h1>
-          <p className="text-muted-foreground">{t('description', { count: unread.count })}</p>
-        </header>
-        <section aria-label={t('title')} className="grid content-start gap-6 lg:col-span-8">
-          <div className="flex flex-wrap items-center gap-2">
+      <WorkspacePage
+        description={t('description', { count: unread.count })}
+        eyebrow={t('kicker')}
+        title={t('title')}
+      >
+        <section aria-label={t('title')} className="grid content-start gap-6">
+          <div className="flex flex-wrap items-center gap-2 rounded-surface border border-border/80 bg-card p-2">
             <Link
               aria-current={view === 'all' ? 'page' : undefined}
-              className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
+              className={buttonVariants({ variant: view === 'all' ? 'secondary' : 'ghost' })}
               href="/notifications"
             >
               {t('filters.all')}
             </Link>
             <Link
               aria-current={view === 'unread' ? 'page' : undefined}
-              className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
+              className={buttonVariants({ variant: view === 'unread' ? 'secondary' : 'ghost' })}
               href="/notifications?view=unread"
             >
               {t('filters.unread')}
             </Link>
             {unread.count > 0 ? (
               <form action={markAllStudentNotificationsReadAction}>
-                <button
-                  className="min-h-11 rounded-control border border-input px-4 text-sm font-medium"
-                  type="submit"
-                >
+                <Button type="submit" variant="outline">
                   {t('markAllRead')}
-                </button>
+                </Button>
               </form>
             ) : null}
           </div>
           {page.items.length === 0 ? (
-            <p className="rounded-surface border border-border bg-card p-8 text-muted-foreground">
+            <p className="rounded-surface border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
               {view === 'unread' ? t('emptyUnread') : t('empty')}
             </p>
           ) : (
@@ -103,14 +100,14 @@ export default async function StudentNotificationsPage({
           )}
           {page.nextCursor === null ? null : (
             <Link
-              className="inline-flex min-h-11 w-fit items-center rounded-control border border-input px-4 text-sm font-medium"
+              className={cn(buttonVariants({ variant: 'outline' }), 'w-fit')}
               href={`/notifications?view=${view}&cursor=${encodeURIComponent(page.nextCursor)}`}
             >
               {t('next')}
             </Link>
           )}
         </section>
-      </div>
+      </WorkspacePage>
     </StudentWorkspaceShell>
   );
 }

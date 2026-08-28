@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import type { RemovalRequest } from '@/lib/student-works-core';
 import { initialWorkRemovalActionState, type WorkRemovalActionState } from './work-removal-state';
 
@@ -36,7 +37,7 @@ export function WorkRemovalPanel({
   return (
     <section className="mt-8 grid gap-6 rounded-surface border border-warning/30 bg-warning-background p-6 sm:p-8">
       <div className="grid gap-2">
-        <p className="text-sm font-semibold tracking-[0.16em] text-warning">RECOVERABLE CONTROL</p>
+        <p className="text-sm font-semibold text-warning">คำขอที่ยกเลิกได้</p>
         <h2 className="text-2xl font-semibold">{t('heading')}</h2>
         <p className="text-muted-foreground">{t('help')}</p>
       </div>
@@ -46,8 +47,8 @@ export function WorkRemovalPanel({
           <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
           <div className="grid gap-2">
             <Label htmlFor="work-removal-reason">{t('reason')}</Label>
-            <textarea
-              className="min-h-32 rounded-control border border-input bg-background px-3 py-3 leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            <Textarea
+              className="min-h-32 bg-background leading-7"
               id="work-removal-reason"
               maxLength={1_000}
               minLength={10}

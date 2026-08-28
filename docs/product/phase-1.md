@@ -86,6 +86,7 @@ Publish reviewed Student Works and consented Public Profiles through a Thai-firs
 - A Work has at most five unique generic links. Labels are 1–50 characters and URLs are absolute HTTPS URLs of at most 2,048 characters.
 - A Work has at most five optional Tags of 1–50 characters. Core normalizes identity using Unicode NFKC, trimming, collapsed whitespace, and Unicode case folding while retaining a display label. A new Tag remains provisional until an approved Revision publishes it.
 - The random public identifier exists from Work creation but no Draft, pending Revision, Change Request, or private metadata enters public queries. Public slug and catalog URL behavior belong to the Public Catalog specification.
+- The authenticated Student workspace lists the Submitter's Works through a cursor-paginated private query. It shows activity, authoring or Review, and publication state separately; only an eligible Student receives edit or management actions.
 
 ## Contributor and attribution constraints
 

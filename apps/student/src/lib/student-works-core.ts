@@ -51,6 +51,22 @@ const workAuthoringStateSchema = z
     publicId: z.uuid(),
   })
   .strict();
+const workListItemSchema = z
+  .object({
+    activityState: z.enum(['active', 'archived']),
+    hasDraft: z.boolean(),
+    latestRevisionStatus: z
+      .enum(['approved', 'changes_requested', 'pending_review', 'withdrawn'])
+      .nullable(),
+    publicationState: z.enum(['never_published', 'published', 'unpublished']),
+    publicId: z.uuid(),
+    title: z.string().min(1).max(150),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+const workListPageSchema = z
+  .object({ items: z.array(workListItemSchema).max(50), nextCursor: z.string().nullable() })
+  .strict();
 const authoringContextSchema = z
   .object({ currentAcademicYear: z.number().int(), entryYear: z.number().int() })
   .strict();
@@ -93,6 +109,7 @@ const invitationOutcomeSchema = z
   .strict();
 const workRevisionSchema = z
   .object({
+    authorKind: z.enum(['admin_correction', 'student_submission']),
     attributions: z.array(
       z
         .object({
@@ -199,6 +216,8 @@ const attributionRemovalRequestSchema = z
 export type WorkDraft = z.infer<typeof workDraftSchema>;
 export type WorkAuthoringState = z.infer<typeof workAuthoringStateSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
+export type WorkListItem = z.infer<typeof workListItemSchema>;
+export type WorkListPage = z.infer<typeof workListPageSchema>;
 export type WorkMutationInput = {
   academicPeriod: z.infer<typeof academicPeriodSchema>;
   category: z.infer<typeof workCategorySchema>;
@@ -241,6 +260,20 @@ export class StudentWorksCoreClient {
       method: 'GET',
       path: '/v1/internal/student/works/authoring-context',
       responseSchema: authoringContextSchema,
+      sessionToken,
+    });
+  }
+
+  listWorks(
+    sessionToken: string,
+    input: { cursor?: string; limit: number },
+  ): Promise<WorkListPage> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set('cursor', input.cursor);
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/student/works?${query.toString()}`,
+      responseSchema: workListPageSchema,
       sessionToken,
     });
   }
@@ -457,6 +490,7 @@ export class StudentWorksCoreClient {
       path: `/v1/internal/student/works/${publicId}/revisions`,
       responseSchema: workRevisionMutationSchema,
       sessionToken,
+      timeoutMilliseconds: 15_000,
     });
   }
 

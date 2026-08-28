@@ -195,4 +195,29 @@ describe('CoreClient', () => {
       );
     },
   );
+
+  it('allows a request to extend the client timeout for a bounded slow mutation', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_input, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve(Response.json({ state: 'active' })), 10);
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new Error('Request aborted'));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    await expect(
+      client(fetchMock, 1).request({
+        method: 'POST',
+        path: '/v1/internal/example',
+        responseSchema: resultSchema,
+        timeoutMilliseconds: 100,
+      }),
+    ).resolves.toEqual({ state: 'active' });
+  });
 });

@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   BellIcon,
   FilePlus2Icon,
+  FolderKanbanIcon,
   MailIcon,
   ShieldCheckIcon,
   UserRoundIcon,
@@ -11,6 +12,7 @@ import {
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { BlurFade } from '@/components/ui/blur-fade';
 import {
   Card,
   CardContent,
@@ -29,6 +31,7 @@ import {
 } from './student-auth.actions';
 import { ChangePasswordForm, LoginForm, LogoutForm } from './student-auth-forms';
 import { StudentWorkspaceShell } from './student-workspace-shell';
+import { StudentBrand } from './student-brand';
 
 interface HomeProps {
   searchParams: Promise<{ expired?: string }>;
@@ -66,7 +69,7 @@ export default async function Home({ searchParams }: HomeProps) {
         activePage="home"
         canCreateWork={state.session.canUseStudentCapabilities}
       >
-        <header className="grid gap-4 lg:grid-cols-12 lg:items-end">
+        <header className="grid gap-4 border-b border-border/80 pb-8 lg:grid-cols-12 lg:items-end">
           <div className="grid gap-3 lg:col-span-8">
             <Badge variant="secondary">{dashboardT('eyebrow')}</Badge>
             <h1 className="max-w-3xl text-[clamp(2rem,4vw,3rem)] leading-[1.2] font-semibold tracking-tight text-balance">
@@ -78,7 +81,7 @@ export default async function Home({ searchParams }: HomeProps) {
             {description}
           </p>
         </header>
-        <div className="mt-10 grid max-w-5xl gap-6 xl:grid-cols-12">
+        <div className="mt-8 grid max-w-6xl gap-6 xl:grid-cols-12">
           <Card className="xl:col-span-7">
             <CardHeader className="gap-3">
               <FilePlus2Icon aria-hidden="true" className="size-6 text-primary" />
@@ -111,6 +114,8 @@ export default async function Home({ searchParams }: HomeProps) {
               <CardDescription>{dashboardT('quick.description')}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-1">
+              <DashboardLink href="/works" icon={FolderKanbanIcon} label={dashboardT('myWorks')} />
+              <Separator />
               <DashboardLink href="/profile" icon={UserRoundIcon} label={t('active.profile')} />
               <Separator />
               <DashboardLink
@@ -132,61 +137,63 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   return (
-    <main className="mx-auto grid min-h-svh w-full max-w-[1440px] bg-background lg:grid-cols-[14rem_minmax(0,1fr)]">
-      <aside className="flex min-h-28 flex-col justify-between border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-8">
-        <div className="flex flex-col gap-3">
-          <span aria-hidden="true" className="h-1 w-12 bg-primary" />
-          <p className="text-sm font-semibold tracking-[0.18em]">STUDENT SHOWCASE</p>
+    <main className="student-canvas mx-auto grid min-h-svh w-full max-w-[1600px] bg-background lg:grid-cols-[minmax(18rem,0.8fr)_minmax(28rem,1.2fr)]">
+      <aside className="flex min-h-36 flex-col justify-between border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
+        <StudentBrand showSit />
+        <div className="hidden max-w-sm gap-4 lg:grid">
+          <p className="text-[clamp(2rem,4vw,4.5rem)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance">
+            Student Showcase
+          </p>
+          <p className="max-w-[36ch] text-muted-foreground">จัดการโปรไฟล์และผลงานของนักศึกษา CSI</p>
         </div>
-        <p className="hidden max-w-44 text-sm text-muted-foreground lg:block">
-          CS &amp; SOFTWARE DEVELOPMENT
-        </p>
       </aside>
 
       <section className="flex items-center justify-center p-4 sm:p-8 lg:p-12">
-        <Card className="w-full max-w-[45rem]">
-          <CardHeader className="gap-3">
-            <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
-            <CardTitle>
-              <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-                {heading}
-              </h1>
-            </CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </CardHeader>
+        <BlurFade className="w-full max-w-[38rem]" offset={10}>
+          <Card className="w-full shadow-[0_1.5rem_4rem_-2rem_rgba(50,20,45,0.28)]">
+            <CardHeader className="gap-3">
+              <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
+              <CardTitle>
+                <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
+                  {heading}
+                </h1>
+              </CardTitle>
+              <CardDescription>{description}</CardDescription>
+            </CardHeader>
 
-          <CardContent>
-            {state.kind === 'login' ? (
-              <div className="flex flex-col gap-5">
-                {state.isServiceUnavailable ? (
-                  <Alert variant="destructive">
-                    <AlertTitle>{t('errors.unavailable')}</AlertTitle>
-                    <AlertDescription>{t('errors.network')}</AlertDescription>
-                  </Alert>
-                ) : null}
-                <LoginForm action={loginAction} />
-              </div>
-            ) : null}
-            {state.kind === 'password_change_required' ? (
-              <ChangePasswordForm action={changePasswordAction} />
-            ) : null}
-            {state.kind === 'expired' ? (
-              <form action={clearExpiredSessionAction}>
-                <Button className="w-full" size="lg" type="submit">
-                  {t('expired.action')}
-                </Button>
-              </form>
-            ) : null}
-          </CardContent>
+            <CardContent>
+              {state.kind === 'login' ? (
+                <div className="flex flex-col gap-5">
+                  {state.isServiceUnavailable ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>{t('errors.unavailable')}</AlertTitle>
+                      <AlertDescription>{t('errors.network')}</AlertDescription>
+                    </Alert>
+                  ) : null}
+                  <LoginForm action={loginAction} />
+                </div>
+              ) : null}
+              {state.kind === 'password_change_required' ? (
+                <ChangePasswordForm action={changePasswordAction} />
+              ) : null}
+              {state.kind === 'expired' ? (
+                <form action={clearExpiredSessionAction}>
+                  <Button className="w-full" size="lg" type="submit">
+                    {t('expired.action')}
+                  </Button>
+                </form>
+              ) : null}
+            </CardContent>
 
-          <CardFooter>
-            {state.kind === 'password_change_required' ? (
-              <LogoutForm action={logoutAction} />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('login.privacy')}</p>
-            )}
-          </CardFooter>
-        </Card>
+            <CardFooter>
+              {state.kind === 'password_change_required' ? (
+                <LogoutForm action={logoutAction} />
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('login.privacy')}</p>
+              )}
+            </CardFooter>
+          </Card>
+        </BlurFade>
       </section>
     </main>
   );
