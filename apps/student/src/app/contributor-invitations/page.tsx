@@ -4,8 +4,11 @@ import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient } from '@/lib/student-works-core';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AccountInvitationResponseForm } from './invitation-forms';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
+import { WorkspacePage } from '../workspace-page';
 
 export default async function ContributorInvitationsPage() {
   const auth = await getStudentAuthPageState();
@@ -21,32 +24,32 @@ export default async function ContributorInvitationsPage() {
       activePage="invitations"
       canCreateWork={auth.session.canUseStudentCapabilities}
     >
-      <div className="grid gap-8 lg:grid-cols-12">
-        <header className="grid content-start gap-3 lg:col-span-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">ATTRIBUTION</p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {t('inboxHeading')}
-          </h1>
-          <p className="text-muted-foreground">{t('inboxHelp')}</p>
-        </header>
-        <section className="grid gap-5 lg:col-span-8" aria-label={t('inboxHeading')}>
+      <WorkspacePage
+        description={t('inboxHelp')}
+        eyebrow="การยืนยันชื่อผู้ร่วมผลงาน"
+        title={t('inboxHeading')}
+      >
+        <section className="grid gap-5" aria-label={t('inboxHeading')}>
           {page.items.length === 0 ? (
-            <p className="border-t border-border py-5 text-muted-foreground">{t('emptyInbox')}</p>
+            <p className="rounded-surface border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              {t('emptyInbox')}
+            </p>
           ) : null}
           {page.items.map((invitation) => (
-            <article
-              className="grid gap-3 border border-border bg-card p-5 sm:p-6"
-              key={invitation.publicId}
-            >
-              <p className="text-sm font-semibold text-primary">
-                {t(`states.${invitation.state}`)}
-              </p>
-              <h2 className="text-xl font-semibold">{t('accountInvitation')}</h2>
-              <AccountInvitationResponseForm invitation={invitation} />
-            </article>
+            <Card key={invitation.publicId}>
+              <CardHeader>
+                <Badge className="w-fit" variant="secondary">
+                  {t(`states.${invitation.state}`)}
+                </Badge>
+                <CardTitle>{t('accountInvitation')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AccountInvitationResponseForm invitation={invitation} />
+              </CardContent>
+            </Card>
           ))}
         </section>
-      </div>
+      </WorkspacePage>
     </StudentWorkspaceShell>
   );
 }

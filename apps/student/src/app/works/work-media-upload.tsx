@@ -4,7 +4,17 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { validateWorkMediaFile } from '@/lib/student-work-media';
+import { UploadIcon } from 'lucide-react';
+import { buttonVariants } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldDescription } from '@/components/ui/field';
+import {
+  readWorkMediaDimensions,
+  validateWorkMediaDimensions,
+  validateWorkMediaFile,
+} from '@/lib/student-work-media';
 import {
   attachWorkMediaAction,
   finalizeWorkMediaAction,
@@ -17,6 +27,14 @@ const MAX_POLL_ATTEMPTS = 60;
 
 type UploadStatus = 'error' | 'idle' | 'processing' | 'ready' | 'uploading';
 type Preview = { height: number; url: string; width: number };
+type UploadErrorKey =
+  | 'decodeFailed'
+  | 'dimensions'
+  | 'invalid'
+  | 'invalidMedia'
+  | 'posterRatio'
+  | 'processFailed'
+  | 'uploadFailed';
 
 export function WorkMediaUpload({
   expectedVersion,
@@ -29,14 +47,18 @@ export function WorkMediaUpload({
 }) {
   const router = useRouter();
   const t = useTranslations('Work.media');
+  const requirementT = useTranslations('Work.requirement');
   const [status, setStatus] = useState<UploadStatus>('idle');
   const [assetId, setAssetId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [hasPosterWidthWarning, setHasPosterWidthWarning] = useState(false);
-  const [errorKey, setErrorKey] = useState<'invalid' | 'processFailed' | 'uploadFailed' | null>(
-    null,
-  );
+  const [errorKey, setErrorKey] = useState<UploadErrorKey | null>(null);
+  const [selectedDimensions, setSelectedDimensions] = useState<{
+    height: number;
+    width: number;
+  } | null>(null);
 
   useEffect(() => {
     if (assetId === null || status !== 'processing') return;
@@ -48,8 +70,13 @@ export function WorkMediaUpload({
       attempts += 1;
       const result = await getWorkMediaStatusAction({ assetId, publicId });
       if (isCancelled) return;
-      if ('error' in result || result.status === 'rejected' || attempts >= MAX_POLL_ATTEMPTS) {
+      if ('error' in result || attempts >= MAX_POLL_ATTEMPTS) {
         setErrorKey('processFailed');
+        setStatus('error');
+        return;
+      }
+      if (result.status === 'rejected') {
+        setErrorKey(result.rejectionCode === 'invalid_media' ? 'invalidMedia' : 'processFailed');
         setStatus('error');
         return;
       }
@@ -84,9 +111,25 @@ export function WorkMediaUpload({
 
   async function upload(file: File | undefined): Promise<void> {
     if (file === undefined) return;
+    setSelectedFileName(file.name);
     const validation = validateWorkMediaFile(file);
     if (!validation.isValid) {
       setErrorKey('invalid');
+      setStatus('error');
+      return;
+    }
+    let dimensions: { height: number; width: number };
+    try {
+      dimensions = await readWorkMediaDimensions(file);
+    } catch {
+      setErrorKey('decodeFailed');
+      setStatus('error');
+      return;
+    }
+    setSelectedDimensions(dimensions);
+    const dimensionValidation = validateWorkMediaDimensions({ ...dimensions, mediaKind });
+    if (!dimensionValidation.isValid) {
+      setErrorKey(dimensionValidation.reason);
       setStatus('error');
       return;
     }
@@ -128,65 +171,90 @@ export function WorkMediaUpload({
   const headingId = `work-${mediaKind}-upload-heading`;
   const isBusy = status === 'uploading' || status === 'processing';
   return (
-    <section
-      aria-labelledby={headingId}
-      className="rounded-surface border border-border bg-card p-6 sm:p-8"
-    >
-      <h2 className="text-lg font-semibold" id={headingId}>
-        {t(mediaKind === 'poster' ? 'posterHeading' : 'galleryHeading')}
-      </h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {t(mediaKind === 'poster' ? 'posterHelp' : 'galleryHelp')}
-      </p>
-      <label className="mt-4 block" htmlFor={`work-${mediaKind}-upload`}>
-        <span className="sr-only">
-          {t(mediaKind === 'poster' ? 'choosePoster' : 'chooseGallery')}
-        </span>
-        <input
-          accept=".jpeg,.jpg,.png,.webp,image/jpeg,image/png,image/webp"
-          className="block min-h-11 w-full text-sm file:mr-4 file:min-h-11 file:rounded-control file:border file:border-input file:bg-background file:px-4 file:font-medium"
-          disabled={isBusy}
-          id={`work-${mediaKind}-upload`}
-          onChange={(event) => void upload(event.currentTarget.files?.[0])}
-          type="file"
-        />
-      </label>
-      <div aria-live="polite">
-        {status === 'uploading' ? (
-          <div className="mt-3">
-            <p className="text-sm">{t('uploading', { progress })}</p>
-            <progress
-              aria-label={t('progressLabel')}
-              className="mt-2 h-2 w-full accent-primary"
-              max={100}
-              value={progress}
+    <Card aria-labelledby={headingId}>
+      <CardHeader>
+        <CardTitle>
+          <h2 className="flex flex-wrap items-center gap-2 text-lg" id={headingId}>
+            <span>{t(mediaKind === 'poster' ? 'posterHeading' : 'galleryHeading')}</span>
+            <Badge variant={mediaKind === 'poster' ? 'destructive' : 'outline'}>
+              {requirementT(mediaKind === 'poster' ? 'required' : 'optional')}
+            </Badge>
+          </h2>
+        </CardTitle>
+        <CardDescription>
+          {t(mediaKind === 'poster' ? 'posterHelp' : 'galleryHelp')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Field className="-m-1 rounded-control p-1 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background">
+          <input
+            accept=".jpeg,.jpg,.png,.webp,image/jpeg,image/png,image/webp"
+            className="sr-only"
+            disabled={isBusy}
+            id={`work-${mediaKind}-upload`}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              void upload(file);
+            }}
+            type="file"
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              aria-disabled={isBusy}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                isBusy && 'pointer-events-none bg-disabled text-disabled-foreground',
+              )}
+              htmlFor={`work-${mediaKind}-upload`}
+            >
+              <UploadIcon aria-hidden="true" data-icon="inline-start" />
+              {t(mediaKind === 'poster' ? 'choosePoster' : 'chooseGallery')}
+            </label>
+            <FieldDescription className="m-0 break-all">
+              {selectedFileName ?? t('noFileSelected')}
+            </FieldDescription>
+          </div>
+        </Field>
+        <div aria-live="polite">
+          {status === 'uploading' ? (
+            <div className="mt-3">
+              <p className="text-sm">{t('uploading', { progress })}</p>
+              <progress
+                aria-label={t('progressLabel')}
+                className="mt-2 h-2 w-full accent-primary"
+                max={100}
+                value={progress}
+              />
+            </div>
+          ) : null}
+          {status === 'processing' ? <p className="mt-3 text-sm">{t('processing')}</p> : null}
+          {status === 'ready' ? <p className="mt-3 text-sm text-success">{t('ready')}</p> : null}
+          {status === 'ready' && hasPosterWidthWarning ? (
+            <p className="mt-3 text-sm text-warning">{t('posterWidthWarning')}</p>
+          ) : null}
+          {status === 'error' && errorKey !== null ? (
+            <p className="mt-3 text-sm text-destructive">
+              {t(errorKey, selectedDimensions ?? undefined)}
+            </p>
+          ) : null}
+        </div>
+        {preview === null ? null : (
+          <div className="mt-4 overflow-hidden rounded-media border border-border bg-muted">
+            <Image
+              alt={t(mediaKind === 'poster' ? 'posterPreview' : 'galleryPreview')}
+              className="h-auto w-full object-contain"
+              height={preview.height}
+              loader={({ src }) => src}
+              sizes="(max-width: 768px) calc(100vw - 64px), 656px"
+              src={preview.url}
+              unoptimized
+              width={preview.width}
             />
           </div>
-        ) : null}
-        {status === 'processing' ? <p className="mt-3 text-sm">{t('processing')}</p> : null}
-        {status === 'ready' ? <p className="mt-3 text-sm text-success">{t('ready')}</p> : null}
-        {status === 'ready' && hasPosterWidthWarning ? (
-          <p className="mt-3 text-sm text-warning">{t('posterWidthWarning')}</p>
-        ) : null}
-        {status === 'error' && errorKey !== null ? (
-          <p className="mt-3 text-sm text-destructive">{t(errorKey)}</p>
-        ) : null}
-      </div>
-      {preview === null ? null : (
-        <div className="mt-4 overflow-hidden rounded-media border border-border bg-muted">
-          <Image
-            alt={t(mediaKind === 'poster' ? 'posterPreview' : 'galleryPreview')}
-            className="h-auto w-full object-contain"
-            height={preview.height}
-            loader={({ src }) => src}
-            sizes="(max-width: 768px) calc(100vw - 64px), 656px"
-            src={preview.url}
-            unoptimized
-            width={preview.width}
-          />
-        </div>
-      )}
-    </section>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

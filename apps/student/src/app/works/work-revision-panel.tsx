@@ -54,7 +54,7 @@ export function WorkRevisionSubmissionPanel({
   return (
     <section className="mt-8 grid gap-6 rounded-surface border border-border bg-card p-6 sm:p-8">
       <div className="grid gap-2">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">SUBMIT FOR REVIEW</p>
+        <p className="text-sm font-semibold text-primary">ส่งให้ผู้ดูแลตรวจ</p>
         <h2 className="text-2xl font-semibold">{t('submitHeading')}</h2>
         <p className="text-muted-foreground">{t('submitHelp')}</p>
       </div>
@@ -109,14 +109,14 @@ export function WorkRevisionPendingPanel({
     <section className="grid gap-6 rounded-surface border border-border bg-card p-6 sm:p-8">
       <div className="grid gap-2">
         <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-          REVISION {revision.number}
+          ฉบับแก้ไข {revision.number}
         </p>
         <h2 className="text-2xl font-semibold">{t('pendingHeading')}</h2>
         <p className="text-muted-foreground">{t('pendingHelp')}</p>
       </div>
       <Alert>
         <AlertTitle>{t('pendingStatus')}</AlertTitle>
-        <AlertDescription>Revision {revision.number}</AlertDescription>
+        <AlertDescription>ฉบับที่ {revision.number}</AlertDescription>
       </Alert>
       <form action={formAction} className="grid gap-4">
         <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
@@ -148,7 +148,7 @@ export function WorkPublishedRevisionPanel({
     <section className="grid gap-6 rounded-surface border border-information/30 bg-information-background p-6 sm:p-8">
       <div className="grid gap-2">
         <p className="text-sm font-semibold tracking-[0.16em] text-information">
-          PUBLISHED REVISION
+          ฉบับที่เผยแพร่แล้ว
         </p>
         <h2 className="text-2xl font-semibold">
           {t(publicationState === 'published' ? 'published.heading' : 'unpublished.heading')}

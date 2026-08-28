@@ -18,4 +18,53 @@ describe('Student visual contract', () => {
     expect(page).not.toMatch(/<aside className="[^"]*\bbg-primary\b/);
     expect(page).toMatch(/<aside className="[^"]*\bbg-background\b/);
   });
+
+  it('uses the official CSI and SIT brand assets', async () => {
+    const brand = await readFile(resolve(process.cwd(), 'src/app/student-brand.tsx'), 'utf8');
+    const csiAsset = await readFile(
+      resolve(
+        process.cwd(),
+        'public/brand/csi-computer-science-software-development-innovation.png',
+      ),
+    );
+    const sitAsset = await readFile(
+      resolve(process.cwd(), 'public/brand/sit-school-of-information-technology-color.webp'),
+    );
+
+    expect(brand).toContain('csi-computer-science-software-development-innovation.png');
+    expect(brand).toContain('sit-school-of-information-technology-color.webp');
+    expect(csiAsset.byteLength).toBeGreaterThan(0);
+    expect(sitAsset.byteLength).toBeGreaterThan(0);
+  });
+
+  it('gives the create Work flow the full workspace width', async () => {
+    const page = await readFile(resolve(process.cwd(), 'src/app/works/new/page.tsx'), 'utf8');
+    const form = await readFile(resolve(process.cwd(), 'src/app/works/work-form.tsx'), 'utf8');
+
+    expect(page).not.toContain('<WorkspacePage');
+    expect(page).not.toContain("t('createDescription')");
+    expect(form).not.toContain('lg:grid-cols-[15rem_minmax(0,1fr)]');
+    expect(form).toContain('sm:grid-cols-3');
+  });
+
+  it('gives an editable Work Draft the same full-width authoring layout', async () => {
+    const page = await readFile(
+      resolve(process.cwd(), 'src/app/works/[publicId]/page.tsx'),
+      'utf8',
+    );
+    const workspacePage = await readFile(
+      resolve(process.cwd(), 'src/app/workspace-page.tsx'),
+      'utf8',
+    );
+
+    expect(page).toContain("layout={revisionState.kind === 'draft' ? 'authoring' : 'overview'}");
+    expect(workspacePage).toContain("layout = 'overview'");
+    expect(workspacePage).toContain("layout === 'authoring'");
+  });
+
+  it('gives the owned Work list the same full-width workspace convention', async () => {
+    const page = await readFile(resolve(process.cwd(), 'src/app/works/page.tsx'), 'utf8');
+
+    expect(page).toContain('layout="authoring"');
+  });
 });

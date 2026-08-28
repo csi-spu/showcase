@@ -1,4 +1,6 @@
+import { Button, buttonVariants } from '@showcase/ui/button';
 import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 import type { StudentNotification } from '@/lib/student-notifications-core';
 
 export function StudentNotificationList({
@@ -26,11 +28,7 @@ export function StudentNotificationList({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium">{messages[item.type]}</p>
-                {item.readAt === null ? (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-sm font-medium text-primary-foreground">
-                    {labels.unread}
-                  </span>
-                ) : null}
+                {item.readAt === null ? <Badge>{labels.unread}</Badge> : null}
               </div>
               {typeof item.parameters.title === 'string' ? (
                 <p className="mt-1 truncate text-sm text-muted-foreground">
@@ -47,21 +45,15 @@ export function StudentNotificationList({
                   {labels.unavailable}
                 </span>
               ) : (
-                <Link
-                  className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-                  href={targetPath}
-                >
+                <Link className={buttonVariants({ variant: 'outline' })} href={targetPath}>
                   {labels.open}
                 </Link>
               )}
               {item.readAt === null ? (
                 <form action={markReadAction.bind(null, item.publicId)}>
-                  <button
-                    className="min-h-11 rounded-control border border-input px-4 text-sm font-medium"
-                    type="submit"
-                  >
+                  <Button type="submit" variant="ghost">
                     {labels.markRead}
-                  </button>
+                  </Button>
                 </form>
               ) : null}
             </div>

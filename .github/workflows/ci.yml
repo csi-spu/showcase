@@ -39,5 +39,14 @@ jobs:
       - name: Test agent skill validator
         run: pnpm skills:test
 
-      - name: Run affected gates
-        run: pnpm turbo run lint typecheck test:ci build --affected
+      - name: Lint affected packages
+        run: pnpm turbo run lint --affected --concurrency=2
+
+      - name: Typecheck affected packages
+        run: pnpm turbo run typecheck --affected --concurrency=2
+
+      - name: Test affected packages
+        run: pnpm turbo run test:ci --affected --concurrency=2
+
+      - name: Build affected packages
+        run: pnpm turbo run build --affected --concurrency=2

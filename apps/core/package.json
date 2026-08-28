@@ -17,6 +17,7 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings 0",
     "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix",
     "admin:provision": "node dist/modules/auth/commands/provision-admin.js",
+    "media:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/modules/works/commands/process-work-media-development.ts",
     "media:process": "node dist/modules/works/commands/process-work-media.js",
     "cache:process": "node dist/modules/catalog/commands/process-cache-invalidations.js",
     "notifications:process": "node dist/modules/notifications/commands/process-notifications.js",

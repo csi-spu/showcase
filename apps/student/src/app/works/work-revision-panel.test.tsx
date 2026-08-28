@@ -48,7 +48,7 @@ describe('Work Revision panels', () => {
     );
 
     expect(screen.getByText('รอผู้ดูแลตรวจ')).toBeTruthy();
-    expect(screen.getByText('Revision 1')).toBeTruthy();
+    expect(screen.getByText('ฉบับที่ 1')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'ถอนผลงานจากคิวตรวจ' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'ส่งผลงานให้ผู้ดูแลตรวจ' })).toBeNull();
   });
@@ -58,7 +58,7 @@ describe('Work Revision panels', () => {
 
     expect(screen.getByText('ผู้ดูแลขอให้แก้ไขเนื้อหา')).toBeTruthy();
     expect(screen.getByText('กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน')).toBeTruthy();
-    expect(screen.getByText('Revision 1')).toBeTruthy();
+    expect(screen.getByText('ฉบับที่ 1')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -72,8 +72,8 @@ describe('Work Revision panels', () => {
     );
 
     expect(screen.getByText('ผลงานเผยแพร่แล้ว')).toBeTruthy();
-    expect(screen.getByText(/ฉบับที่เผยแพร่ยังคงแสดงต่อสาธารณะ/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'สร้างร่าง Revision ใหม่' })).toBeTruthy();
+    expect(screen.getByText(/ผลงานปัจจุบันจะยังแสดงอยู่/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'สร้างร่างใหม่' })).toBeTruthy();
   });
 
   it('requires explicit rebase for a stale Draft and explains that local content is retained', () => {
@@ -86,9 +86,9 @@ describe('Work Revision panels', () => {
       />,
     );
 
-    expect(screen.getByText('ร่างนี้อ้างอิงฉบับเผยแพร่เก่า')).toBeTruthy();
-    expect(screen.getByText(/เนื้อหาในร่างปัจจุบันจะยังอยู่ครบ/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'รีเบสร่างกับฉบับเผยแพร่ล่าสุด' })).toBeTruthy();
+    expect(screen.getByText('ฉบับที่เผยแพร่มีการเปลี่ยนแปลง')).toBeTruthy();
+    expect(screen.getByText(/ข้อมูลในร่างจะไม่หาย/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'อัปเดตร่าง' })).toBeTruthy();
     expect((document.querySelector('[name="expectedVersion"]') as HTMLInputElement).value).toBe(
       '4',
     );
@@ -118,6 +118,7 @@ function changeRequest(): WorkChangeRequest {
 
 function revision(): WorkRevision {
   return {
+    authorKind: 'student_submission',
     attributions: [],
     content: {
       academicPeriod: { semester: '1', year: 2569 },

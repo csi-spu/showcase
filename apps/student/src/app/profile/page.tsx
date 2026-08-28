@@ -14,6 +14,7 @@ import {
 } from './profile.actions';
 import { ConsentPanel, ProfileForm } from './profile-form';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
+import { WorkspacePage } from '../workspace-page';
 
 export default async function ProfilePage() {
   const state = await getStudentAuthPageState();
@@ -51,21 +52,15 @@ export default async function ProfilePage() {
     <StudentWorkspaceShell
       activePage="profile"
       canCreateWork={state.session.canUseStudentCapabilities}
+      profile={response.profile}
     >
-      <div className="grid gap-10 lg:grid-cols-12">
-        <header className="grid content-start gap-4 lg:col-span-4">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">PUBLIC PROFILE</p>
-          <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-            {t('heading')}
-          </h1>
-          <p className="text-muted-foreground">{t('description')}</p>
-          {response.profile ? (
-            <p className="text-sm text-muted-foreground">
-              {t('entryYear', { year: response.profile.entryYear })}
-            </p>
-          ) : null}
-        </header>
-        <div className="grid gap-10 lg:col-span-8">
+      <WorkspacePage
+        description={t('description')}
+        eyebrow="โปรไฟล์สาธารณะ"
+        meta={response.profile ? t('entryYear', { year: response.profile.entryYear }) : undefined}
+        title={t('heading')}
+      >
+        <div className="grid gap-8">
           <ProfileForm
             canEditProfile={response.canEditProfile}
             createPhotoUpload={createPhotoUploadAction}
@@ -84,7 +79,7 @@ export default async function ProfilePage() {
             />
           ) : null}
         </div>
-      </div>
+      </WorkspacePage>
     </StudentWorkspaceShell>
   );
 }

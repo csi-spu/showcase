@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
 import type { PrivatePublicProfile } from '@/lib/student-profile-core';
 import {
   INITIAL_PROFILE_ACTION_STATE,
@@ -105,7 +106,7 @@ export function ProfileForm({
         </Alert>
       ) : null}
 
-      <div className="grid gap-6 rounded-surface border border-border bg-card p-6 sm:p-8">
+      <div className="grid gap-6 rounded-surface border border-border/80 bg-card p-6 shadow-[0_1rem_2.5rem_-2rem_rgba(50,20,45,0.22)] sm:p-8">
         <Field>
           <FieldLabel htmlFor="display-name">{t('displayName')}</FieldLabel>
           <Input
@@ -123,8 +124,8 @@ export function ProfileForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="bio">{t('bio')}</FieldLabel>
-          <textarea
-            className="min-h-32 w-full resize-y rounded-control border border-input bg-card px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:bg-disabled disabled:text-disabled-foreground md:text-sm"
+          <Textarea
+            className="min-h-32 resize-y"
             disabled={!canEditProfile}
             id="bio"
             maxLength={500}

@@ -82,22 +82,76 @@ describe('WorkMediaUpload', () => {
       publicId: PUBLIC_ID,
     });
     expect(screen.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeTruthy();
-    expect(screen.getByText('รูปภาพผ่านการตรวจสอบและแนบกับร่างแล้ว')).toBeTruthy();
+    expect(screen.getByText('เพิ่มรูปภาพแล้ว')).toBeTruthy();
     expect(screen.getByText(/กว้างต่ำกว่า 1,200 พิกเซล/)).toBeTruthy();
     expect(actions.refresh).toHaveBeenCalledOnce();
   });
 
   it('rejects a MIME and extension mismatch before requesting authorization', async () => {
     renderUpload();
+    const input = screen.getByLabelText('เลือกไฟล์โปสเตอร์');
+    expect(input.className).toContain('sr-only');
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    expect(input.closest('[data-slot="field"]')?.className).toContain(
+      'has-[:focus-visible]:ring-2',
+    );
+    expect(screen.getByText('ยังไม่ได้เลือกไฟล์')).toBeTruthy();
     const file = new File(['image'], 'poster.png', { type: 'image/jpeg' });
-    fireEvent.change(screen.getByLabelText('เลือกไฟล์โปสเตอร์'), { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
 
+    expect(screen.getByText('poster.png')).toBeTruthy();
     expect(await screen.findByText(/นามสกุลต้องตรงกับชนิดไฟล์/)).toBeTruthy();
     expect(actions.authorize).not.toHaveBeenCalled();
   });
+
+  it('rejects a Poster with an invalid portrait ratio before uploading', async () => {
+    renderUpload({ height: 1200, width: 1600 });
+    const file = new File(['image'], 'landscape.png', { type: 'image/png' });
+
+    fireEvent.change(screen.getByLabelText('เลือกไฟล์โปสเตอร์'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByText(/รูปที่เลือกมีขนาด 1600 × 1200 พิกเซล/)).toBeTruthy();
+    expect(actions.authorize).not.toHaveBeenCalled();
+  });
+
+  it('explains an authoritative invalid media rejection', async () => {
+    actions.authorize.mockResolvedValue({
+      assetId: ASSET_ID,
+      expiresAt: '2026-08-25T12:10:00.000Z',
+      headers: { 'content-type': 'image/png' },
+      status: 'pending_upload',
+      uploadUrl: 'https://r2.example.test/presigned',
+    });
+    actions.finalize.mockResolvedValue({ assetId: ASSET_ID, status: 'uploaded' });
+    actions.getStatus.mockResolvedValue({
+      assetId: ASSET_ID,
+      preview: null,
+      rejectionCode: 'invalid_media',
+      status: 'rejected',
+      warnings: [],
+    });
+    vi.stubGlobal('XMLHttpRequest', FakeXmlHttpRequest);
+    renderUpload();
+
+    fireEvent.change(screen.getByLabelText('เลือกไฟล์โปสเตอร์'), {
+      target: { files: [new File(['image'], 'poster.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(FakeXmlHttpRequest.latest).not.toBeNull());
+    FakeXmlHttpRequest.latest?.respond(200);
+
+    expect(await screen.findByText(/ระบบปฏิเสธไฟล์รูปภาพ/)).toBeTruthy();
+    expect(actions.attach).not.toHaveBeenCalled();
+  });
 });
 
-function renderUpload() {
+function renderUpload({ height = 1600, width = 1200 }: { height?: number; width?: number } = {}) {
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn().mockResolvedValue({ close: vi.fn(), height, width } as unknown as ImageBitmap),
+  );
   return render(
     <NextIntlClientProvider locale="th" messages={messages}>
       <WorkMediaUpload expectedVersion={1} mediaKind="poster" publicId={PUBLIC_ID} />

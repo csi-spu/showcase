@@ -37,6 +37,7 @@ interface CoreRequest<T> {
   responseSchema: z.ZodType<T>;
   sessionToken?: string;
   signal?: AbortSignal;
+  timeoutMilliseconds?: number;
 }
 
 interface CoreTextRequest {
@@ -44,6 +45,7 @@ interface CoreTextRequest {
   path: `/${string}`;
   sessionToken?: string;
   signal?: AbortSignal;
+  timeoutMilliseconds?: number;
 }
 
 export class CoreClient {
@@ -87,7 +89,9 @@ export class CoreClient {
       throw new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503);
     }
 
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMilliseconds);
+    const timeoutSignal = AbortSignal.timeout(
+      input.timeoutMilliseconds ?? this.timeoutMilliseconds,
+    );
     const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal;
     const headers = new Headers('headers' in input ? input.headers : undefined);
     headers.set('accept', accept);
