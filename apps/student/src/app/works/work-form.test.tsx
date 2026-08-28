@@ -185,8 +185,10 @@ describe('Student Work Draft form', () => {
 
     await user.click(screen.getByRole('button', { name: 'สร้างร่างและเพิ่มรูป' }));
 
-    await waitFor(() => expect(screen.getByText('ขั้นที่ 2 จาก 3')).toBeTruthy());
-    expect(screen.getByText(/ปีและภาคการศึกษาต้องอยู่ในช่วงสิทธิ์/)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('ขั้นที่ 2 จาก 3')).toBeTruthy();
+      expect(screen.getByText(/ปีและภาคการศึกษาต้องอยู่ในช่วงสิทธิ์/)).toBeTruthy();
+    });
   });
 
   it('submits values from every completed step when creating the private Draft', async () => {
