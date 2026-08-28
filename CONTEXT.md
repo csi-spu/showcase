@@ -33,7 +33,7 @@ An authenticated non-Student Person who may Star or Comment on a Work when those
 _Avoid_: Visitor, guest account
 
 **External Contributor**:
-A Person without an Account who accepts a private invitation to receive public attribution on a Work. An External Contributor is not an External Member and receives no authenticated application capabilities.
+A Person without an Account whom a Submitter credits on a Work by entering their name and contribution role. An External Contributor is not an External Member and receives no authenticated application capabilities.
 _Avoid_: Guest account, External Member
 
 **Alumnus**:
@@ -77,7 +77,7 @@ A Person's explicit, versioned choice to make their Public Profile visible. Impo
 _Avoid_: Account activation, publication approval
 
 **Study Year**:
-A Student's academic level when they contributed to a Work. It is historical attribution, not the Student's current profile state.
+A Student's academic level from `1` through `4` when they contributed to a Work. It is historical attribution, not the Student's current profile state; the eight-year Student Access Period does not add later Study Year values.
 _Avoid_: Current year, grade
 
 **Academic Period**:
@@ -119,19 +119,15 @@ The single Student responsible for preparing and sending a Work's Revisions for 
 _Avoid_: Owner, creator
 
 **Contributor**:
-A Person, with or without an Account, credited for a Work after explicitly accepting its public attribution. A Contributor does not gain revision rights.
+A Person, with or without an Account, whom the Submitter credits on a Work. Adding a Contributor does not require that Person to accept the attribution and does not grant revision rights.
 _Avoid_: Collaborator, editor, member
 
-**Attribution Invitation**:
-A request for a Person to accept or reject being publicly credited as a Contributor to a Work. A Person with an Account responds through their session; an External Contributor responds through a private token exchange without creating an Account.
-_Avoid_: Account link, member link
-
 **Attribution Snapshot**:
-The immutable public Attribution Name, contribution role, optional affiliation, and applicable Study Year captured for the Submitter and accepted Contributors in a Revision. It remains public with an approved Work independently of Public Profile visibility.
+The immutable public Attribution Name, contribution role, optional affiliation, and applicable Study Year captured for the Submitter and Contributors in a Revision. It remains public with an approved Work independently of Public Profile visibility.
 _Avoid_: Public Profile, roster name
 
 **Attribution Removal Request**:
-An External Contributor's request to remove their attribution from a Published Revision. It retains the existing publication until an audited Admin correction is reviewed and published.
+A public, unverified free-text request asking an Admin to remove a Contributor attribution from a Published Revision. It does not prove the requester's identity and retains the existing publication until an Admin approves an audited correction.
 _Avoid_: Profile withdrawal, Work Removal Request
 
 **Review**:

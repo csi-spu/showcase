@@ -1,0 +1,3 @@
+# Publish Roster names for Account-backed Contributors
+
+Selecting an Account-backed Student or Alumnus through exact Student ID lookup assigns that Person's private Student Roster first and last names as a locked Attribution Name that Core snapshots and publishes with the Revision without Public Profile creation, Profile Consent, or Contributor confirmation; Student ID remains private and never enters the snapshot or public response. We rejected requiring a Public Profile Display Name or explicit public-name consent because the chosen Submitter-managed flow must add the Contributor immediately, accepting disclosure of university roster identity without the named Person's consent and immutable retention in historical Revisions.
