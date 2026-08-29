@@ -7,7 +7,8 @@ set local statement_timeout = '30s';
 create temporary table seed_showcase_people (
   person_id uuid primary key,
   profile_public_id uuid not null unique,
-  display_name text not null,
+  first_name_th text not null,
+  last_name_th text not null,
   bio text not null,
   entry_year smallint not null,
   study_year smallint not null
@@ -15,13 +16,13 @@ create temporary table seed_showcase_people (
 
 insert into seed_showcase_people values
   ('d1000000-0000-4000-8000-000000000001', 'd1100000-0000-4000-8000-000000000001',
-    'ณิชา วัฒนากุล', 'สนใจการออกแบบประสบการณ์ผู้ใช้และการพัฒนาเว็บที่ทุกคนเข้าถึงได้', 2566, 4),
+    'ณิชา', 'วัฒนากุล', 'สนใจการออกแบบประสบการณ์ผู้ใช้และการพัฒนาเว็บที่ทุกคนเข้าถึงได้', 2566, 4),
   ('d1000000-0000-4000-8000-000000000002', 'd1100000-0000-4000-8000-000000000002',
-    'ภูริณัฐ ศรีสวัสดิ์', 'พัฒนาระบบ IoT และซอฟต์แวร์ที่เชื่อมข้อมูลจากโลกจริงมาใช้แก้ปัญหา', 2567, 3),
+    'ภูริณัฐ', 'ศรีสวัสดิ์', 'พัฒนาระบบ IoT และซอฟต์แวร์ที่เชื่อมข้อมูลจากโลกจริงมาใช้แก้ปัญหา', 2567, 3),
   ('d1000000-0000-4000-8000-000000000003', 'd1100000-0000-4000-8000-000000000003',
-    'ชนัญชิดา แสงทอง', 'ศึกษาแมชชีนเลิร์นนิง การวิเคราะห์ข้อมูล และการประยุกต์ใช้ภาษาไทย', 2568, 2),
+    'ชนัญชิดา', 'แสงทอง', 'ศึกษาแมชชีนเลิร์นนิง การวิเคราะห์ข้อมูล และการประยุกต์ใช้ภาษาไทย', 2568, 2),
   ('d1000000-0000-4000-8000-000000000004', 'd1100000-0000-4000-8000-000000000004',
-    'กิตติพงศ์ อินทร์แก้ว', 'สนใจซอฟต์แวร์เพื่อชุมชน ระบบแผนที่ และการทำต้นแบบกับผู้ใช้จริง', 2569, 1);
+    'กิตติพงศ์', 'อินทร์แก้ว', 'สนใจซอฟต์แวร์เพื่อชุมชน ระบบแผนที่ และการทำต้นแบบกับผู้ใช้จริง', 2569, 1);
 
 insert into public.people (id, created_at)
 select person_id, '2026-08-26T08:00:00.000Z'::timestamptz from seed_showcase_people
@@ -32,6 +33,13 @@ on conflict (id) do nothing;
 
 insert into public.students (person_id, entry_year, access_ends_academic_year, created_at)
 select person_id, entry_year, entry_year + 7, '2026-08-26T08:00:00.000Z'::timestamptz
+from seed_showcase_people
+on conflict (person_id) do nothing;
+
+insert into private.person_names (person_id, first_name_th, last_name_th, created_at, updated_at)
+select person_id, first_name_th, last_name_th,
+  '2026-08-26T08:00:00.000Z'::timestamptz,
+  '2026-08-26T08:00:00.000Z'::timestamptz
 from seed_showcase_people
 on conflict (person_id) do nothing;
 
@@ -50,9 +58,9 @@ values ('d1200000-0000-4000-8000-000000000001', 'admin', '2026-08-26T08:00:00.00
 on conflict (account_id, role) do nothing;
 
 insert into public.public_profiles (
-  person_id, public_id, display_name, bio, version, created_at, updated_at
+  person_id, public_id, bio, version, created_at, updated_at
 )
-select person_id, profile_public_id, display_name, bio, 2,
+select person_id, profile_public_id, bio, 2,
   '2026-08-26T08:00:00.000Z'::timestamptz,
   '2026-08-26T08:00:00.000Z'::timestamptz
 from seed_showcase_people

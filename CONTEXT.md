@@ -44,6 +44,10 @@ _Avoid_: Expired student, deleted student
 The university-provided list that establishes who is eligible to activate a Student Account.
 _Avoid_: User import, account list
 
+**Roster Name**:
+The authoritative Thai first and last names recorded for a Student or Alumnus Person when the first accepted Student Roster row creates that identity. Student and Alumnus surfaces expose the fields read-only. Only an Admin may change them through an explicit audited correction; a correction affects later profile reads, search, and Attribution Snapshots but never rewrites an existing Revision.
+_Avoid_: Display Name, profile name, nickname
+
 **Roster Batch**:
 A Student Roster file whose rows may span multiple Entry Years and are processed asynchronously in bounded, retry-safe chunks. Each row derives its Entry Year from its Student ID. Importing the same rows again leaves existing records unchanged and reports the outcome.
 _Avoid_: Account batch, CSV upload
@@ -69,7 +73,7 @@ The Admin-controlled Buddhist academic year used to evaluate Student Access Peri
 _Avoid_: Current year, server year
 
 **Public Profile**:
-A Student-approved public representation containing their Display Name, optional photo, bio and external links, Entry Year, and Published Works. It has a stable random public identifier, remains private until Profile Consent is granted, and never exposes Student ID or Account data.
+A Student-approved public representation containing their read-only Roster Name, optional photo, bio and external links, Entry Year, and Published Works. It has a stable random public identifier, remains private until Profile Consent is granted, and never exposes Student ID or Account data.
 _Avoid_: Student record, account profile
 
 **Profile Consent**:
