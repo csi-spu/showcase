@@ -4,7 +4,8 @@ Use this runbook to remove the legacy Public Profile name columns after every ap
 
 ## Preconditions
 
-1. Apply `20260829093000_roster_name_identity_cutover.sql` as an additive migration.
+1. Apply `20260829093000_roster_name_identity_cutover.sql` and the idempotent legacy-seed repair
+   `20260829093100_backfill_showcase_roster_names.sql` as additive migrations.
 2. Deploy compatible Core, Student, Visitor, and Admin builds.
 3. Confirm Student and Alumnus profile forms render first name and last name read-only.
 4. Confirm Admin Roster Name correction is versioned, idempotent, reason-required, and audited.

@@ -33,6 +33,46 @@ describe('Roster Name identity migration integration', () => {
     expect(grants).toEqual([{ count: 0 }]);
   });
 
+  it('retains authoritative Roster Names for every deterministic showcase profile', async () => {
+    const profiles = await database.sql<
+      { first_name_th: string; last_name_th: string; public_id: string }[]
+    >`
+      select profile.public_id, name.first_name_th, name.last_name_th
+      from public.public_profiles as profile
+      join private.person_names as name on name.person_id = profile.person_id
+      where profile.public_id in (
+        'd1100000-0000-4000-8000-000000000001',
+        'd1100000-0000-4000-8000-000000000002',
+        'd1100000-0000-4000-8000-000000000003',
+        'd1100000-0000-4000-8000-000000000004'
+      )
+      order by profile.public_id
+    `;
+
+    expect(profiles).toEqual([
+      {
+        first_name_th: 'ณิชา',
+        last_name_th: 'วัฒนากุล',
+        public_id: 'd1100000-0000-4000-8000-000000000001',
+      },
+      {
+        first_name_th: 'ภูริณัฐ',
+        last_name_th: 'ศรีสวัสดิ์',
+        public_id: 'd1100000-0000-4000-8000-000000000002',
+      },
+      {
+        first_name_th: 'ชนัญชิดา',
+        last_name_th: 'แสงทอง',
+        public_id: 'd1100000-0000-4000-8000-000000000003',
+      },
+      {
+        first_name_th: 'กิตติพงศ์',
+        last_name_th: 'อินทร์แก้ว',
+        public_id: 'd1100000-0000-4000-8000-000000000004',
+      },
+    ]);
+  });
+
   it('derives legacy profile columns during compatibility and removes them atomically at cutover', async () => {
     const legacyColumns = await database.sql<{ count: number }[]>`
       select count(*)::integer as count
