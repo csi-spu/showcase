@@ -1,16 +1,25 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 
 const mocks = vi.hoisted(() => ({
+  onReplace: undefined as (() => void) | undefined,
   saveDraft: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
   suggest: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: mocks.replace }),
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+    replace: (...args: unknown[]) => {
+      mocks.replace(...args);
+      mocks.onReplace?.();
+    },
+  }),
 }));
 vi.mock('./work.actions', () => ({
   saveWorkDraftAction: mocks.saveDraft,
@@ -25,7 +34,9 @@ import { WorkForm } from './work-form';
 
 describe('five-step Work authoring', () => {
   beforeEach(() => {
+    mocks.onReplace = undefined;
     mocks.saveDraft.mockResolvedValue(savedWorkResult());
+    window.history.replaceState(null, '', '/works/new');
   });
 
   afterEach(() => {
@@ -92,9 +103,29 @@ describe('five-step Work authoring', () => {
         publicId: null,
       }),
     );
-    expect(mocks.replace).toHaveBeenCalledWith('/works/64000000-0000-4000-8000-000000000001', {
-      scroll: false,
-    });
+    expect(window.location.pathname).toBe('/works/64000000-0000-4000-8000-000000000001');
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('keeps the next step mounted after the first Draft save resolves', async () => {
+    let resolveSave!: (value: ReturnType<typeof savedWorkResult>) => void;
+    mocks.saveDraft.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+    renderRemountingRoute();
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    const savingButton = await screen.findByRole('button', { name: 'กำลังบันทึก…' });
+    expect((savingButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByLabelText('ชื่อผลงาน')).toBeTruthy();
+    expect(screen.queryByText('media-upload')).toBeNull();
+    await act(async () => resolveSave(savedWorkResult()));
+
+    expect(screen.getAllByText('media-upload')).toHaveLength(2);
   });
 
   it('stays on the current step when saving on Next fails', async () => {
@@ -274,6 +305,31 @@ function renderForm(initialWork: Parameters<typeof WorkForm>[0]['initialWork'] =
         context={{ currentAcademicYear: 2569, entryYear: 2566 }}
         initialWork={initialWork}
       />
+    </NextIntlClientProvider>,
+  );
+}
+
+function renderRemountingRoute() {
+  function RouteHarness() {
+    const [route, setRoute] = useState<'new' | 'saved'>('new');
+    useEffect(() => {
+      mocks.onReplace = () => setRoute('saved');
+      return () => {
+        mocks.onReplace = undefined;
+      };
+    }, []);
+    return (
+      <WorkForm
+        context={{ currentAcademicYear: 2569, entryYear: 2566 }}
+        initialWork={route === 'new' ? null : savedWorkResult().work}
+        key={route}
+      />
+    );
+  }
+
+  return render(
+    <NextIntlClientProvider locale="th" messages={messages}>
+      <RouteHarness />
     </NextIntlClientProvider>,
   );
 }

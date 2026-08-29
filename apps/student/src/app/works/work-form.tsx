@@ -128,7 +128,7 @@ export function WorkForm({
       setContributors(result.work.contributors);
       if (attempt.publicId === null) {
         setWorkPublicId(result.publicId);
-        router.replace(`/works/${result.publicId}`, { scroll: false });
+        window.history.replaceState(null, '', `/works/${result.publicId}`);
       }
       const isCurrent = valuesRef.current === attempt.snapshot;
       setSaveState(isCurrent ? 'saved' : 'unsynced');
