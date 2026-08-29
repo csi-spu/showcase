@@ -44,7 +44,7 @@ describe('Student visual contract', () => {
     expect(page).not.toContain('<WorkspacePage');
     expect(page).not.toContain("t('createDescription')");
     expect(form).not.toContain('lg:grid-cols-[15rem_minmax(0,1fr)]');
-    expect(form).toContain('sm:grid-cols-3');
+    expect(form).toContain('sm:grid-cols-5');
   });
 
   it('gives an editable Work Draft the same full-width authoring layout', async () => {
@@ -57,7 +57,7 @@ describe('Student visual contract', () => {
       'utf8',
     );
 
-    expect(page).toContain("layout={revisionState.kind === 'draft' ? 'authoring' : 'overview'}");
+    expect(page).toContain("layout={state.kind === 'draft' ? 'authoring' : 'overview'}");
     expect(workspacePage).toContain("layout = 'overview'");
     expect(workspacePage).toContain("layout === 'authoring'");
   });
