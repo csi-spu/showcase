@@ -306,6 +306,18 @@ describe('five-step Work authoring', () => {
     expect(within(classification).getByLabelText('ภาคการศึกษา')).toBeTruthy();
   });
 
+  it('uses a compact asymmetric layout for Poster and Gallery controls', async () => {
+    renderForm(savedWorkResult().work);
+    await advanceSteps(1);
+
+    const mediaLayout = document.querySelector('[data-slot="work-media-layout"]');
+    expect(mediaLayout).not.toBeNull();
+    expect((mediaLayout as HTMLElement).className).toContain(
+      'lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,1.2fr)]',
+    );
+    expect((mediaLayout as HTMLElement).className).toContain('lg:items-start');
+  });
+
   it('reuses the final submission idempotency key after an unavailable result', async () => {
     mocks.submit.mockResolvedValueOnce({ error: 'unavailable' }).mockResolvedValueOnce({
       outcome: 'submitted',

@@ -82,10 +82,48 @@ describe('WorkMediaUpload', () => {
       mediaKind: 'poster',
       publicId: PUBLIC_ID,
     });
-    expect(screen.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeTruthy();
+    const preview = screen.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล');
+    expect(preview.className).toContain('max-h-80');
+    expect(preview.parentElement?.className).toContain('max-w-64');
     expect(screen.getByText('เพิ่มรูปภาพแล้ว')).toBeTruthy();
     expect(screen.getByText(/กว้างต่ำกว่า 1,200 พิกเซล/)).toBeTruthy();
     expect(actions.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a processed Gallery preview compact', async () => {
+    actions.authorize.mockResolvedValue({
+      assetId: ASSET_ID,
+      expiresAt: '2026-08-25T12:10:00.000Z',
+      headers: { 'content-type': 'image/png' },
+      status: 'pending_upload',
+      uploadUrl: 'https://r2.example.test/presigned',
+    });
+    actions.finalize.mockResolvedValue({ assetId: ASSET_ID, status: 'uploaded' });
+    actions.getStatus.mockResolvedValue({
+      assetId: ASSET_ID,
+      preview: {
+        expiresAt: '2026-08-25T12:10:00.000Z',
+        height: 900,
+        url: 'https://r2.example.test/preview',
+        width: 1600,
+      },
+      rejectionCode: null,
+      status: 'ready',
+      warnings: [],
+    });
+    actions.attach.mockResolvedValue({ outcome: 'attached', version: 2 });
+    vi.stubGlobal('XMLHttpRequest', FakeXmlHttpRequest);
+    renderUpload({ height: 900, mediaKind: 'gallery', width: 1600 });
+
+    fireEvent.change(screen.getByLabelText('เลือกไฟล์ภาพแกลเลอรี'), {
+      target: { files: [new File(['image'], 'gallery.png', { type: 'image/png' })] },
+    });
+    await waitFor(() => expect(FakeXmlHttpRequest.latest).not.toBeNull());
+    FakeXmlHttpRequest.latest?.respond(200);
+
+    const preview = await screen.findByAltText('ตัวอย่างภาพแกลเลอรีที่ผ่านการประมวลผล');
+    expect(preview.className).toContain('max-h-64');
+    expect(preview.parentElement?.className).toContain('max-w-md');
   });
 
   it('rejects a MIME and extension mismatch before requesting authorization', async () => {
@@ -148,7 +186,15 @@ describe('WorkMediaUpload', () => {
   });
 });
 
-function renderUpload({ height = 1600, width = 1200 }: { height?: number; width?: number } = {}) {
+function renderUpload({
+  height = 1600,
+  mediaKind = 'poster',
+  width = 1200,
+}: {
+  height?: number;
+  mediaKind?: 'gallery' | 'poster';
+  width?: number;
+} = {}) {
   vi.stubGlobal(
     'createImageBitmap',
     vi.fn().mockResolvedValue({ close: vi.fn(), height, width } as unknown as ImageBitmap),
@@ -157,7 +203,7 @@ function renderUpload({ height = 1600, width = 1200 }: { height?: number; width?
     <NextIntlClientProvider locale="th" messages={messages}>
       <WorkMediaUpload
         expectedVersion={1}
-        mediaKind="poster"
+        mediaKind={mediaKind}
         onVersion={vi.fn()}
         publicId={PUBLIC_ID}
       />

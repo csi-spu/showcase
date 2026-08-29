@@ -474,18 +474,23 @@ function MediaStep({
   return (
     <>
       <h2 className="text-2xl font-semibold">{t('wizard.step2')}</h2>
-      <WorkMediaUpload
-        expectedVersion={version}
-        mediaKind="poster"
-        onVersion={onVersion}
-        publicId={publicId}
-      />
-      <WorkMediaUpload
-        expectedVersion={version}
-        mediaKind="gallery"
-        onVersion={onVersion}
-        publicId={publicId}
-      />
+      <div
+        className="grid gap-5 lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,1.2fr)] lg:items-start"
+        data-slot="work-media-layout"
+      >
+        <WorkMediaUpload
+          expectedVersion={version}
+          mediaKind="poster"
+          onVersion={onVersion}
+          publicId={publicId}
+        />
+        <WorkMediaUpload
+          expectedVersion={version}
+          mediaKind="gallery"
+          onVersion={onVersion}
+          publicId={publicId}
+        />
+      </div>
     </>
   );
 }

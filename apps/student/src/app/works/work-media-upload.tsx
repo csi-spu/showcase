@@ -243,13 +243,21 @@ export function WorkMediaUpload({
           ) : null}
         </div>
         {preview === null ? null : (
-          <div className="mt-4 overflow-hidden rounded-media border border-border bg-muted">
+          <div
+            className={cn(
+              'mx-auto mt-4 flex w-full items-center justify-center overflow-hidden rounded-media border border-border bg-muted p-3',
+              mediaKind === 'poster' ? 'max-w-64' : 'max-w-md',
+            )}
+          >
             <Image
               alt={t(mediaKind === 'poster' ? 'posterPreview' : 'galleryPreview')}
-              className="h-auto w-full object-contain"
+              className={cn(
+                'h-auto w-auto max-w-full object-contain',
+                mediaKind === 'poster' ? 'max-h-80' : 'max-h-64',
+              )}
               height={preview.height}
               loader={({ src }) => src}
-              sizes="(max-width: 768px) calc(100vw - 64px), 656px"
+              sizes={mediaKind === 'poster' ? '256px' : '(max-width: 1024px) 100vw, 448px'}
               src={preview.url}
               unoptimized
               width={preview.width}
