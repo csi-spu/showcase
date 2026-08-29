@@ -36,26 +36,29 @@ describe('StudentWorksCoreClient', () => {
     );
   });
 
-  it('uses Student ID only in the private lookup request and accepts a response that cannot echo it', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({
+  it('searches Contributor Candidates by name or Student ID without accepting private IDs', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json([
+        {
           candidateReference: '64000000-0000-4000-8000-000000000002',
           firstName: 'สมชาย',
           lastName: 'ใจดี',
-        }),
-      );
+        },
+      ]),
+    );
     await expect(
-      client(fetchMock).lookupContributor(SESSION, PUBLIC_ID, '12345678'),
-    ).resolves.toEqual({
-      candidateReference: '64000000-0000-4000-8000-000000000002',
-      firstName: 'สมชาย',
-      lastName: 'ใจดี',
-    });
+      client(fetchMock).searchContributorCandidates(SESSION, PUBLIC_ID, '12345678'),
+    ).resolves.toEqual([
+      {
+        candidateReference: '64000000-0000-4000-8000-000000000002',
+        firstName: 'สมชาย',
+        lastName: 'ใจดี',
+      },
+    ]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      studentId: '12345678',
+      query: '12345678',
     });
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/contributor-candidates/search');
   });
 
   it('requests an owner-authorized processed media variant', async () => {

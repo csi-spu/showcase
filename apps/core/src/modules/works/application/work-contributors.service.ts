@@ -2,8 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AUTH_IDENTITY_PROTECTOR, type IdentityProtector } from '../../auth/application/auth.ports';
 import {
   normalizeContributionRole,
+  normalizeContributorSearchQuery,
   normalizeExternalContributor,
-  validateExactStudentId,
 } from '../domain/work-contributor-policy';
 import {
   WORK_CONTRIBUTORS_CLOCK,
@@ -47,29 +47,32 @@ export class WorkContributorsService {
     @Inject(AUTH_IDENTITY_PROTECTOR) private readonly identityProtector: IdentityProtector,
   ) {}
 
-  async lookup(input: {
+  async search(input: {
     actorAccountId: string;
+    query: string;
     sourceAddress: string;
-    studentId: string;
     workPublicId: string;
   }) {
-    if (!validateExactStudentId(input.studentId)) {
+    const query = normalizeContributorSearchQuery(input.query);
+    if (query === null) {
       throw new WorkContributorError('INVALID_CONTRIBUTOR', 422);
     }
-    const result = await this.repository.lookupCandidate({
+    const result = await this.repository.searchCandidates({
       actorAccountId: input.actorAccountId,
+      nameQuery: query.kind === 'name' ? query.nameQuery : null,
       now: this.clock.now(),
       sourceKeyHash: this.identityProtector.hashSourceAddress(input.sourceAddress),
-      studentIdHash: this.identityProtector.hashStudentId(input.studentId),
+      studentIdHash:
+        query.kind === 'student_id' ? this.identityProtector.hashStudentId(query.studentId) : null,
       workPublicId: input.workPublicId,
     });
     this.logger.log({
       actorAccountId: input.actorAccountId,
-      operation: 'work_contributor_lookup',
+      operation: 'work_contributor_search',
       outcome: result.outcome,
       workPublicId: input.workPublicId,
     });
-    if (result.outcome === 'match') return result.candidate;
+    if (result.outcome === 'matches') return result.candidates;
     if (result.outcome === 'rate_limited') {
       throw new WorkContributorError('CONTRIBUTOR_LOOKUP_RATE_LIMITED', 429);
     }
@@ -79,7 +82,7 @@ export class WorkContributorsService {
     if (result.outcome === 'not_found') {
       throw new WorkContributorError('CONTRIBUTOR_NOT_FOUND', 404);
     }
-    return null;
+    return [];
   }
 
   async addAccount(input: {
@@ -105,11 +108,10 @@ export class WorkContributorsService {
 
   async addExternal(input: {
     actorAccountId: string;
+    attributionName: string;
     contributionRole: string;
     expectedVersion: number;
-    firstName: string;
     idempotencyKey: string;
-    lastName: string;
     workPublicId: string;
   }) {
     const normalized = normalizeExternalContributor(input);

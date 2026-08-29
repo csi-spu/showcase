@@ -3,6 +3,7 @@ const dependencies = vi.hoisted(() => ({
   createWork: vi.fn(),
   readToken: vi.fn(),
   revalidate: vi.fn(),
+  searchContributorCandidates: vi.fn(),
   suggestTags: vi.fn(),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: dependencies.revalidate }));
@@ -17,6 +18,7 @@ vi.mock('@/lib/student-auth-session', () => ({ readStudentSessionToken: dependen
 vi.mock('@/lib/student-works-core', () => ({
   StudentWorksCoreClient: class {
     createWork = dependencies.createWork;
+    searchContributorCandidates = dependencies.searchContributorCandidates;
     suggestTags = dependencies.suggestTags;
   },
   StudentWorksCoreError: class extends Error {
@@ -24,7 +26,11 @@ vi.mock('@/lib/student-works-core', () => ({
     status = 500;
   },
 }));
-import { autosaveWorkAction, suggestWorkTagsAction } from './work.actions';
+import {
+  autosaveWorkAction,
+  searchContributorCandidatesAction,
+  suggestWorkTagsAction,
+} from './work.actions';
 
 describe('autosaveWorkAction', () => {
   beforeEach(() => {
@@ -62,6 +68,44 @@ describe('autosaveWorkAction', () => {
       }),
     ).resolves.toEqual({ error: 'invalid', outcome: 'error' });
     expect(dependencies.createWork).not.toHaveBeenCalled();
+  });
+});
+
+describe('searchContributorCandidatesAction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.readToken.mockResolvedValue('session');
+    dependencies.searchContributorCandidates.mockResolvedValue([
+      {
+        candidateReference: '64000000-0000-4000-8000-000000000004',
+        firstName: 'สมชาย',
+        lastName: 'ใจดี',
+      },
+    ]);
+  });
+
+  it('forwards one bounded name-or-ID query and returns minimal suggestions', async () => {
+    await expect(
+      searchContributorCandidatesAction({
+        publicId: '64000000-0000-4000-8000-000000000001',
+        query: 'สมชาย',
+      }),
+    ).resolves.toMatchObject({ candidates: [{ firstName: 'สมชาย', lastName: 'ใจดี' }] });
+    expect(dependencies.searchContributorCandidates).toHaveBeenCalledWith(
+      'session',
+      '64000000-0000-4000-8000-000000000001',
+      'สมชาย',
+    );
+  });
+
+  it('rejects a one-character query before Core', async () => {
+    await expect(
+      searchContributorCandidatesAction({
+        publicId: '64000000-0000-4000-8000-000000000001',
+        query: 'ก',
+      }),
+    ).resolves.toEqual({ error: 'invalid' });
+    expect(dependencies.searchContributorCandidates).not.toHaveBeenCalled();
   });
 });
 

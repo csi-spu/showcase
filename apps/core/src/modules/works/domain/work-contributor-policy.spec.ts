@@ -1,5 +1,6 @@
 import {
   normalizeContributionRole,
+  normalizeContributorSearchQuery,
   normalizeExternalContributor,
   validateExactStudentId,
 } from './work-contributor-policy';
@@ -19,16 +20,29 @@ describe('Work Contributor policy', () => {
     expect(normalizeContributionRole('ก'.repeat(101))).toBeNull();
   });
 
-  it('locks an external Attribution Name without linking by name', () => {
+  it('normalizes a name or exact Student ID Contributor Candidate search', () => {
+    expect(normalizeContributorSearchQuery('  สมชาย   ใจดี  ')).toEqual({
+      kind: 'name',
+      nameQuery: 'สมชาย ใจดี',
+    });
+    expect(normalizeContributorSearchQuery('69000001')).toEqual({
+      kind: 'student_id',
+      studentId: '69000001',
+    });
+    expect(normalizeContributorSearchQuery('6')).toBeNull();
+    expect(normalizeContributorSearchQuery('6900000')).toBeNull();
+    expect(normalizeContributorSearchQuery('ก'.repeat(101))).toBeNull();
+  });
+
+  it('locks one external Attribution Name without linking by name', () => {
     expect(
       normalizeExternalContributor({
+        attributionName: ' สมชาย   ใจดี ',
         contributionRole: ' เขียนโปรแกรม ',
-        firstName: ' สมชาย ',
-        lastName: ' ใจดี ',
       }),
     ).toEqual({ attributionName: 'สมชาย ใจดี', contributionRole: 'เขียนโปรแกรม' });
     expect(
-      normalizeExternalContributor({ contributionRole: 'บทบาท', firstName: '', lastName: 'ใจดี' }),
+      normalizeExternalContributor({ attributionName: ' ', contributionRole: 'บทบาท' }),
     ).toBeNull();
   });
 });

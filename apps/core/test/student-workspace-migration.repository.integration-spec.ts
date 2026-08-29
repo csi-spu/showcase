@@ -166,6 +166,34 @@ describe('issue #56 Phase A migration integration', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 
+  it('uses partial indexes for bounded Contributor name search', async () => {
+    const plan = await database.sql.begin(async (sql) => {
+      await sql`set local enable_seqscan = off`;
+      const fuzzy = await sql<Array<{ 'QUERY PLAN': unknown }>>`
+        explain (format json)
+        select person_id
+        from private.person_names
+        where first_name_th is not null and last_name_th is not null
+          and (
+            lower(first_name_th || ' ' || last_name_th) like '%สมชาย%' escape '\\'
+            or lower(first_name_th || ' ' || last_name_th) operator(extensions.%) 'สมชาย'
+          )
+        limit 8
+      `;
+      const prefix = await sql<Array<{ 'QUERY PLAN': unknown }>>`
+        explain (format json)
+        select person_id
+        from private.person_names
+        where first_name_th is not null and last_name_th is not null
+          and lower(first_name_th) like 'สม%' escape '\\'
+        limit 8
+      `;
+      return { fuzzy, prefix };
+    });
+    expect(JSON.stringify(plan)).toContain('person_names_contributor_search_trgm_idx');
+    expect(JSON.stringify(plan)).toContain('person_names_contributor_first_name_prefix_idx');
+  });
+
   it('refuses cutover while a legacy source row has no durable backfill outcome', async () => {
     await expect(
       database.sql`select * from private.execute_issue_56_contributor_cutover()`,
@@ -174,8 +202,9 @@ describe('issue #56 Phase A migration integration', () => {
 
   it('keeps direct Contributor runtime disabled before the atomic cutover', async () => {
     await expect(
-      contributors.lookupCandidate({
+      contributors.searchCandidates({
         actorAccountId: ACCEPTED_ACCOUNT_ID,
+        nameQuery: null,
         now: NOW,
         sourceKeyHash: '1'.repeat(64),
         studentIdHash: '2'.repeat(64),

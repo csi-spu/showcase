@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type {
@@ -14,14 +14,8 @@ import type {
   WorkDraft,
   WorkDraftPatch,
 } from '@/lib/student-works-core';
-import {
-  addAccountContributorAction,
-  addExternalContributorAction,
-  autosaveWorkAction,
-  lookupContributorAction,
-  removeContributorAction,
-  submitLatestWorkAction,
-} from './work.actions';
+import { autosaveWorkAction, submitLatestWorkAction } from './work.actions';
+import { WorkContributorEditor } from './work-contributor-editor';
 import { WorkMediaUpload } from './work-media-upload';
 import { WorkTagInput } from './work-tag-input';
 
@@ -542,192 +536,15 @@ function AttributionStep({
       {publicId === null || version === null ? (
         <p>{t('attribution.saveFirst')}</p>
       ) : (
-        <ContributorEditor
+        <WorkContributorEditor
           contributors={contributors}
           onContributors={onContributors}
           onVersion={onVersion}
           publicId={publicId}
-          t={t}
           version={version}
         />
       )}
     </>
-  );
-}
-
-function ContributorEditor({
-  contributors,
-  onContributors,
-  onVersion,
-  publicId,
-  t,
-  version,
-}: {
-  contributors: WorkContributor[];
-  onContributors: (items: WorkContributor[]) => void;
-  onVersion: (version: number) => void;
-  publicId: string;
-  t: Translation;
-  version: number;
-}) {
-  const [studentId, setStudentId] = useState('');
-  const [candidate, setCandidate] = useState<{
-    candidateReference: string;
-    firstName: string;
-    lastName: string;
-  } | null>(null);
-  const [accountRole, setAccountRole] = useState('');
-  const [external, setExternal] = useState({ firstName: '', lastName: '', role: '' });
-  const [message, setMessage] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const apply = (result: Awaited<ReturnType<typeof addAccountContributorAction>>) => {
-    if ('error' in result) {
-      setMessage(t(`attribution.errors.${result.error}`));
-      return;
-    }
-    onContributors(result.contributors as WorkContributor[]);
-    onVersion(result.version);
-    setMessage(null);
-  };
-  return (
-    <div className="grid gap-5">
-      <h3 className="text-lg font-semibold">{t('attribution.contributors')}</h3>
-      <ul className="grid gap-2">
-        {contributors.map((item) => (
-          <li
-            className="flex items-center justify-between rounded-control border p-3"
-            key={item.publicId}
-          >
-            <span>
-              {item.attributionName} · {item.contributionRole}
-            </span>
-            <Button
-              disabled={pending}
-              onClick={() =>
-                start(async () =>
-                  apply(
-                    await removeContributorAction({
-                      contributorPublicId: item.publicId,
-                      expectedVersion: version,
-                      idempotencyKey: crypto.randomUUID(),
-                      publicId,
-                    }),
-                  ),
-                )
-              }
-              type="button"
-              variant="outline"
-            >
-              {t('attribution.remove')}
-            </Button>
-          </li>
-        ))}
-      </ul>
-      {message === null ? null : <FieldError>{message}</FieldError>}
-      <div className="grid gap-3 rounded-control border p-4">
-        <TextField
-          label={t('attribution.studentId')}
-          maxLength={8}
-          onChange={setStudentId}
-          value={studentId}
-        />
-        <Button
-          disabled={pending || !/^[0-9]{8}$/u.test(studentId)}
-          onClick={() =>
-            start(async () => {
-              const result = await lookupContributorAction({ publicId, studentId });
-              setStudentId('');
-              if ('error' in result || result.candidate === null) {
-                setCandidate(null);
-                setMessage(t('attribution.noCandidate'));
-                return;
-              }
-              setCandidate(result.candidate);
-              setMessage(null);
-            })
-          }
-          type="button"
-          variant="outline"
-        >
-          {t('attribution.lookup')}
-        </Button>
-        {candidate === null ? null : (
-          <>
-            <p>
-              {candidate.firstName} {candidate.lastName}
-            </p>
-            <TextField
-              label={t('attribution.role')}
-              maxLength={100}
-              onChange={setAccountRole}
-              value={accountRole}
-            />
-            <Button
-              disabled={pending || accountRole.trim() === ''}
-              onClick={() =>
-                start(async () => {
-                  apply(
-                    await addAccountContributorAction({
-                      candidateReference: candidate.candidateReference,
-                      contributionRole: accountRole,
-                      expectedVersion: version,
-                      idempotencyKey: crypto.randomUUID(),
-                      publicId,
-                    }),
-                  );
-                  setCandidate(null);
-                  setAccountRole('');
-                })
-              }
-              type="button"
-            >
-              {t('attribution.add')}
-            </Button>
-          </>
-        )}
-      </div>
-      <div className="grid gap-3 rounded-control border p-4">
-        <TextField
-          label={t('attribution.firstName')}
-          maxLength={100}
-          onChange={(firstName) => setExternal((current) => ({ ...current, firstName }))}
-          value={external.firstName}
-        />
-        <TextField
-          label={t('attribution.lastName')}
-          maxLength={100}
-          onChange={(lastName) => setExternal((current) => ({ ...current, lastName }))}
-          value={external.lastName}
-        />
-        <TextField
-          label={t('attribution.role')}
-          maxLength={100}
-          onChange={(role) => setExternal((current) => ({ ...current, role }))}
-          value={external.role}
-        />
-        <Button
-          disabled={pending || Object.values(external).some((value) => value.trim() === '')}
-          onClick={() =>
-            start(async () => {
-              apply(
-                await addExternalContributorAction({
-                  contributionRole: external.role,
-                  expectedVersion: version,
-                  firstName: external.firstName,
-                  idempotencyKey: crypto.randomUUID(),
-                  lastName: external.lastName,
-                  publicId,
-                }),
-              );
-              setExternal({ firstName: '', lastName: '', role: '' });
-            })
-          }
-          type="button"
-        >
-          {t('attribution.addExternal')}
-        </Button>
-      </div>
-    </div>
   );
 }
 

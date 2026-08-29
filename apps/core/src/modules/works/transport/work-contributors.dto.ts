@@ -1,9 +1,10 @@
-import { IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-export class ContributorLookupDto {
+export class ContributorSearchDto {
   @IsString()
-  @Matches(/^[0-9]{8}$/u)
-  studentId!: string;
+  @MinLength(2)
+  @MaxLength(100)
+  query!: string;
 }
 
 export class ContributorMutationDto {
@@ -28,11 +29,7 @@ export class AddAccountContributorDto extends ContributorMutationDto {
 export class AddExternalContributorDto extends ContributorMutationDto {
   @IsString()
   @MaxLength(100)
-  firstName!: string;
-
-  @IsString()
-  @MaxLength(100)
-  lastName!: string;
+  attributionName!: string;
 }
 
 export class RemoveContributorDto {

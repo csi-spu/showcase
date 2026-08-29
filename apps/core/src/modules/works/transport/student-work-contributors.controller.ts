@@ -18,7 +18,7 @@ import { WorkContributorsService } from '../application/work-contributors.servic
 import {
   AddAccountContributorDto,
   AddExternalContributorDto,
-  ContributorLookupDto,
+  ContributorSearchDto,
   RemoveContributorDto,
 } from './work-contributors.dto';
 import { WorksExceptionFilter } from './works-exception.filter';
@@ -32,19 +32,19 @@ export class StudentWorkContributorsController {
     private readonly contributors: WorkContributorsService,
   ) {}
 
-  @Post('contributor-candidates/lookup')
+  @Post('contributor-candidates/search')
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')
-  async lookup(
+  async search(
     @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
-    @Body() input: ContributorLookupDto,
+    @Body() input: ContributorSearchDto,
     @Headers('authorization') authorization: string | undefined,
   ) {
     const actor = await this.auth.authorizeStudentMutation(this.sessionToken(authorization));
-    return this.contributors.lookup({
+    return this.contributors.search({
       actorAccountId: actor.accountId,
+      query: input.query,
       sourceAddress: `student-account:${actor.accountId}`,
-      studentId: input.studentId,
       workPublicId,
     });
   }

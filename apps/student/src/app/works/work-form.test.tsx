@@ -5,7 +5,6 @@ import messages from '../../../messages/th.json';
 
 const mocks = vi.hoisted(() => ({
   autosave: vi.fn(),
-  lookup: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
   suggest: vi.fn(),
@@ -14,13 +13,12 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: mocks.replace }),
 }));
 vi.mock('./work.actions', () => ({
-  addAccountContributorAction: vi.fn(),
-  addExternalContributorAction: vi.fn(),
   autosaveWorkAction: mocks.autosave,
-  lookupContributorAction: mocks.lookup,
-  removeContributorAction: vi.fn(),
   submitLatestWorkAction: mocks.submit,
   suggestWorkTagsAction: mocks.suggest,
+}));
+vi.mock('./work-contributor-editor', () => ({
+  WorkContributorEditor: () => <div>contributor-editor</div>,
 }));
 vi.mock('./work-media-upload', () => ({ WorkMediaUpload: () => <div>media-upload</div> }));
 import { WorkForm } from './work-form';
@@ -140,19 +138,10 @@ describe('five-step Work authoring', () => {
     });
   });
 
-  it('keeps the Student ID only in lookup input and clears it immediately after lookup', async () => {
-    mocks.lookup.mockResolvedValue({ candidate: null });
+  it('keeps Contributor assignment inside the attribution step', () => {
     renderForm(savedWorkResult().work);
     fireEvent.click(screen.getByRole('button', { name: /3 การแสดงชื่อ/ }));
-    const input = screen.getByLabelText('รหัสนักศึกษา 8 หลัก') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '12345678' } });
-    fireEvent.click(screen.getByRole('button', { name: 'ค้นหาแบบตรงกัน' }));
-
-    await waitFor(() => expect(input.value).toBe(''));
-    expect(mocks.lookup).toHaveBeenCalledWith({
-      publicId: '64000000-0000-4000-8000-000000000001',
-      studentId: '12345678',
-    });
+    expect(screen.getByText('contributor-editor')).toBeTruthy();
   });
 
   it('maps invalid optional discovery data back to step four and reviews every field group', () => {

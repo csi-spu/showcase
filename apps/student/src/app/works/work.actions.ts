@@ -9,6 +9,7 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import {
   StudentWorksCoreClient,
   StudentWorksCoreError,
+  type WorkContributor,
   type WorkDraft,
   type WorkDraftPatch,
 } from '@/lib/student-works-core';
@@ -111,9 +112,9 @@ export async function autosaveWorkAction(input: unknown): Promise<AutosaveAction
   }
 }
 
-export async function lookupContributorAction(input: unknown) {
+export async function searchContributorCandidatesAction(input: unknown) {
   const parsed = z
-    .object({ publicId: z.uuid(), studentId: z.string().regex(/^[0-9]{8}$/u) })
+    .object({ publicId: z.uuid(), query: z.string().trim().min(2).max(100) })
     .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
@@ -121,10 +122,10 @@ export async function lookupContributorAction(input: unknown) {
   if (token === null) return { error: 'unauthenticated' as const };
   try {
     return {
-      candidate: await client().lookupContributor(
+      candidates: await client().searchContributorCandidates(
         token,
         parsed.data.publicId,
-        parsed.data.studentId,
+        parsed.data.query,
       ),
     };
   } catch (error: unknown) {
@@ -171,11 +172,10 @@ export async function addAccountContributorAction(input: unknown) {
 export async function addExternalContributorAction(input: unknown) {
   const parsed = z
     .object({
+      attributionName: z.string().trim().min(1).max(100),
       contributionRole: z.string().trim().min(1).max(100),
       expectedVersion: z.number().int().positive(),
-      firstName: z.string().trim().min(1).max(100),
       idempotencyKey: z.uuid(),
-      lastName: z.string().trim().min(1).max(100),
       publicId: z.uuid(),
     })
     .strict()
@@ -543,7 +543,7 @@ function mapContributorError(error: unknown) {
 
 async function contributorMutation<T extends { publicId: string }>(
   input: T,
-  mutation: (token: string) => Promise<{ contributors: unknown; version: number }>,
+  mutation: (token: string) => Promise<{ contributors: WorkContributor[]; version: number }>,
 ) {
   const token = await optionalSessionToken();
   if (token === null) return { error: 'unauthenticated' as const };

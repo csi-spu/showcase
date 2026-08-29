@@ -50,14 +50,15 @@ export interface WorkContributorsRepository {
     now: Date;
     workPublicId: string;
   }): Promise<ContributorMutationResult>;
-  lookupCandidate(input: {
+  searchCandidates(input: {
     actorAccountId: string;
+    nameQuery: string | null;
     now: Date;
     sourceKeyHash: string;
-    studentIdHash: string;
+    studentIdHash: string | null;
     workPublicId: string;
   }): Promise<
-    | { candidate: ContributorCandidateView; outcome: 'match' }
+    | { candidates: ContributorCandidateView[]; outcome: 'matches' }
     | { outcome: 'cutover_unavailable' | 'no_match' | 'not_found' | 'rate_limited' }
   >;
   remove(input: {

@@ -13,5 +13,6 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0007](0007-assign-contributors-without-attribution-invitations.md)  | Assign Contributors without Attribution Invitations     |
 | [0008](0008-accept-unverified-attribution-removal-requests.md)       | Accept unverified Attribution Removal Requests          |
 | [0009](0009-publish-roster-names-for-account-contributors.md)        | Publish Roster names for Account-backed Contributors    |
+| [0010](0010-search-roster-names-for-contributor-candidates.md)       | Search Roster names for Contributor Candidates          |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

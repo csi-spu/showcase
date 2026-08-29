@@ -12,7 +12,7 @@ describe('WorkContributorsService', () => {
   const repository: jest.Mocked<WorkContributorsRepository> = {
     addAccount: jest.fn(),
     addExternal: jest.fn(),
-    lookupCandidate: jest.fn(),
+    searchCandidates: jest.fn(),
     remove: jest.fn(),
   };
   const identity: IdentityProtector = {
@@ -27,57 +27,65 @@ describe('WorkContributorsService', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('looks up one minimal candidate without returning or persisting Student ID', async () => {
-    repository.lookupCandidate.mockResolvedValue({
-      candidate: { candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' },
-      outcome: 'match',
+  it('searches bounded minimal candidates by name without returning private identifiers', async () => {
+    repository.searchCandidates.mockResolvedValue({
+      candidates: [{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }],
+      outcome: 'matches',
     });
     await expect(
-      service.lookup({
+      service.search({
         actorAccountId: ACCOUNT_ID,
+        query: '  สมชาย  ',
         sourceAddress: 'safe-source',
-        studentId: '69000001',
         workPublicId: WORK_ID,
       }),
-    ).resolves.toEqual({ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' });
-    expect(repository.lookupCandidate.mock.calls[0]?.[0]).toEqual({
+    ).resolves.toEqual([{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }]);
+    expect(repository.searchCandidates.mock.calls[0]?.[0]).toEqual({
       actorAccountId: ACCOUNT_ID,
+      nameQuery: 'สมชาย',
       now: NOW,
       sourceKeyHash: 'source:safe-source',
-      studentIdHash: 'student:69000001',
+      studentIdHash: null,
       workPublicId: WORK_ID,
     });
-    expect(
-      JSON.stringify(
-        await service.lookup({
-          actorAccountId: ACCOUNT_ID,
-          sourceAddress: 'safe-source',
-          studentId: '69000001',
-          workPublicId: WORK_ID,
-        }),
-      ),
-    ).not.toContain('69000001');
   });
 
-  it('rejects non-exact lookup before hashing or repository access', async () => {
+  it('hashes an exact Student ID but never returns it', async () => {
+    repository.searchCandidates.mockResolvedValue({
+      candidates: [{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }],
+      outcome: 'matches',
+    });
+    const result = await service.search({
+      actorAccountId: ACCOUNT_ID,
+      query: '69000001',
+      sourceAddress: 'safe-source',
+      workPublicId: WORK_ID,
+    });
+    expect(repository.searchCandidates.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ nameQuery: null, studentIdHash: 'student:69000001' }),
+    );
+    expect(JSON.stringify(result)).not.toContain('69000001');
+  });
+
+  it('rejects an invalid search before hashing or repository access', async () => {
     await expect(
-      service.lookup({
+      service.search({
         actorAccountId: ACCOUNT_ID,
+        query: '6',
         sourceAddress: 'safe-source',
-        studentId: '6900000',
         workPublicId: WORK_ID,
       }),
     ).rejects.toMatchObject({ code: 'INVALID_CONTRIBUTOR', status: 422 });
-    expect(repository.lookupCandidate.mock.calls).toHaveLength(0);
+    expect(repository.searchCandidates.mock.calls).toHaveLength(0);
   });
 
   it('keeps direct Contributor lookup unavailable until the controlled cutover', async () => {
-    repository.lookupCandidate.mockResolvedValue({ outcome: 'cutover_unavailable' });
+    repository.searchCandidates.mockResolvedValue({ outcome: 'cutover_unavailable' });
     await expect(
-      service.lookup({
+      service.search({
         actorAccountId: ACCOUNT_ID,
+        query: 'สมชาย',
         sourceAddress: `student-account:${ACCOUNT_ID}`,
-        studentId: '69000001',
         workPublicId: WORK_ID,
       }),
     ).rejects.toMatchObject({ code: 'CONTRIBUTOR_CUTOVER_UNAVAILABLE', status: 503 });
@@ -102,11 +110,10 @@ describe('WorkContributorsService', () => {
     );
     await service.addExternal({
       actorAccountId: ACCOUNT_ID,
+      attributionName: ' มานี   ดีใจ ',
       contributionRole: ' พัฒนา ',
       expectedVersion: 2,
-      firstName: ' มานี ',
       idempotencyKey: KEY,
-      lastName: ' ดีใจ ',
       workPublicId: WORK_ID,
     });
     expect(repository.addExternal.mock.calls[0]?.[0]).toEqual(

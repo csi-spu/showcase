@@ -8,9 +8,11 @@ import type {
 } from '../application/work-contributors.ports';
 import type { WorkDraftContributorView } from '../application/works.ports';
 
-const LOOKUP_LIMIT = 10;
+const LOOKUP_LIMIT = 60;
 const LOOKUP_WINDOW_MILLISECONDS = 15 * 60 * 1_000;
 const CANDIDATE_LIFETIME_MILLISECONDS = 5 * 60 * 1_000;
+const CANDIDATE_RESULT_LIMIT = 8;
+const EXPIRED_CANDIDATE_CLEANUP_LIMIT = 100;
 const CONTRIBUTOR_LIMIT = 20;
 
 type Sql = postgres.Sql | postgres.TransactionSql;
@@ -29,19 +31,73 @@ interface OperationRow {
   work_id: string;
 }
 
+interface CandidateRow {
+  first_name: string;
+  last_name: string;
+  person_id: string;
+}
+
 @Injectable()
 export class PostgresWorkContributorsRepository implements WorkContributorsRepository {
   constructor(private readonly database: DatabaseClient) {}
 
-  async lookupCandidate(
-    input: Parameters<WorkContributorsRepository['lookupCandidate']>[0],
-  ): ReturnType<WorkContributorsRepository['lookupCandidate']> {
+  async searchCandidates(
+    input: Parameters<WorkContributorsRepository['searchCandidates']>[0],
+  ): ReturnType<WorkContributorsRepository['searchCandidates']> {
     return this.database.sql.begin(async (sql) => {
       if (!(await this.isCutoverComplete(sql))) return { outcome: 'cutover_unavailable' };
       if (!(await this.consumeLookupAttempt(sql, input))) return { outcome: 'rate_limited' };
-      const draft = await this.lockOwnedDraft(sql, input.actorAccountId, input.workPublicId);
+      const draft = await this.findOwnedDraft(sql, input.actorAccountId, input.workPublicId);
       if (draft === null) return { outcome: 'not_found' };
-      const rows = await sql<Array<{ first_name: string; last_name: string; person_id: string }>>`
+      let candidates: CandidateRow[];
+      if (input.studentIdHash === null) {
+        if (input.nameQuery === null) {
+          throw new Error('WORK_CONTRIBUTOR_SEARCH_QUERY_INVARIANT');
+        }
+        candidates = await this.searchCandidatesByName(sql, draft.work_id, input.nameQuery);
+      } else {
+        candidates = await this.searchCandidateByStudentId(sql, draft.work_id, input.studentIdHash);
+      }
+      if (candidates.length === 0) return { outcome: 'no_match' };
+      await this.deleteExpiredCandidates(sql, input.now);
+      const expiresAt = new Date(input.now.getTime() + CANDIDATE_LIFETIME_MILLISECONDS);
+      const references = (await sql`
+        insert into private.work_contributor_candidates (
+          work_id, person_id, expires_at, created_at
+        ) ${sql(
+          candidates.map((candidate) => ({
+            created_at: input.now,
+            expires_at: expiresAt,
+            person_id: candidate.person_id,
+            work_id: draft.work_id,
+          })),
+          'work_id',
+          'person_id',
+          'expires_at',
+          'created_at',
+        )}
+        returning person_id, reference
+      `) as Array<{ person_id: string; reference: string }>;
+      const referenceByPerson = new Map(
+        references.map((reference) => [reference.person_id, reference.reference]),
+      );
+      return {
+        candidates: candidates.map((candidate) => ({
+          candidateReference: this.required(referenceByPerson.get(candidate.person_id)),
+          firstName: candidate.first_name,
+          lastName: candidate.last_name,
+        })),
+        outcome: 'matches',
+      };
+    });
+  }
+
+  private searchCandidateByStudentId(
+    sql: postgres.TransactionSql,
+    workId: string,
+    studentIdHash: string,
+  ): Promise<CandidateRow[]> {
+    return sql<CandidateRow[]>`
         select name.first_name_th as first_name, name.last_name_th as last_name,
           account.person_id
         from private.student_auth_identities as identity
@@ -49,38 +105,118 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
         join public.account_roles as role
           on role.account_id = account.id and role.role = 'student'
         join private.person_names as name on name.person_id = account.person_id
-        where identity.student_id_hash = ${input.studentIdHash}
+        where identity.student_id_hash = ${studentIdHash}
           and account.status = 'active'
+          and name.first_name_th is not null and name.last_name_th is not null
           and account.person_id <> (
-            select submitter_person_id from public.works where id = ${draft.work_id}
+            select submitter_person_id from public.works where id = ${workId}
           )
           and not exists (
             select 1 from private.work_draft_contributors as contributor
-            where contributor.work_id = ${draft.work_id}
+            where contributor.work_id = ${workId}
               and contributor.person_id = account.person_id
               and contributor.kind = 'account' and contributor.removed_at is null
           )
         limit 1
       `;
-      const candidate = rows[0];
-      if (candidate === undefined) return { outcome: 'no_match' };
-      const references = await sql<Array<{ reference: string }>>`
-        insert into private.work_contributor_candidates (
-          work_id, person_id, expires_at, created_at
-        ) values (
-          ${draft.work_id}, ${candidate.person_id},
-          ${new Date(input.now.getTime() + CANDIDATE_LIFETIME_MILLISECONDS)}, ${input.now}
-        ) returning reference
-      `;
-      return {
-        candidate: {
-          candidateReference: this.required(references[0]).reference,
-          firstName: candidate.first_name,
-          lastName: candidate.last_name,
-        },
-        outcome: 'match',
-      };
-    });
+  }
+
+  private searchCandidatesByName(
+    sql: postgres.TransactionSql,
+    workId: string,
+    nameQuery: string,
+  ): Promise<CandidateRow[]> {
+    if (Array.from(nameQuery).length < 3) {
+      return this.searchCandidatesByShortNamePrefix(sql, workId, nameQuery);
+    }
+    const prefix = `${this.escapeLike(nameQuery)}%`;
+    const contains = `%${this.escapeLike(nameQuery)}%`;
+    return sql<CandidateRow[]>`
+      select name.first_name_th as first_name, name.last_name_th as last_name,
+        account.person_id
+      from private.person_names as name
+      join public.accounts as account on account.person_id = name.person_id
+      join public.account_roles as role
+        on role.account_id = account.id and role.role = 'student'
+      where account.status = 'active'
+        and name.first_name_th is not null and name.last_name_th is not null
+        and (
+          lower(name.first_name_th || ' ' || name.last_name_th)
+            like ${contains} escape '\\'
+          or lower(name.first_name_th || ' ' || name.last_name_th)
+            operator(extensions.%) ${nameQuery}
+        )
+        and account.person_id <> (
+          select submitter_person_id from public.works where id = ${workId}
+        )
+        and not exists (
+          select 1 from private.work_draft_contributors as contributor
+          where contributor.work_id = ${workId}
+            and contributor.person_id = account.person_id
+            and contributor.kind = 'account' and contributor.removed_at is null
+        )
+      order by
+        case
+          when lower(name.first_name_th || ' ' || name.last_name_th) = ${nameQuery} then 0
+          when lower(name.first_name_th || ' ' || name.last_name_th)
+            like ${prefix} escape '\\' then 1
+          when lower(name.first_name_th || ' ' || name.last_name_th)
+            like ${contains} escape '\\' then 2
+          else 3
+        end,
+        extensions.similarity(
+          lower(name.first_name_th || ' ' || name.last_name_th), ${nameQuery}
+        ) desc,
+        lower(name.first_name_th), lower(name.last_name_th), account.person_id
+      limit ${CANDIDATE_RESULT_LIMIT}
+    `;
+  }
+
+  private searchCandidatesByShortNamePrefix(
+    sql: postgres.TransactionSql,
+    workId: string,
+    nameQuery: string,
+  ): Promise<CandidateRow[]> {
+    const prefix = `${this.escapeLike(nameQuery)}%`;
+    return sql<CandidateRow[]>`
+      select name.first_name_th as first_name, name.last_name_th as last_name,
+        account.person_id
+      from private.person_names as name
+      join public.accounts as account on account.person_id = name.person_id
+      join public.account_roles as role
+        on role.account_id = account.id and role.role = 'student'
+      where account.status = 'active'
+        and name.first_name_th is not null and name.last_name_th is not null
+        and (
+          lower(name.first_name_th) like ${prefix} escape '\\'
+          or lower(name.last_name_th) like ${prefix} escape '\\'
+        )
+        and account.person_id <> (
+          select submitter_person_id from public.works where id = ${workId}
+        )
+        and not exists (
+          select 1 from private.work_draft_contributors as contributor
+          where contributor.work_id = ${workId}
+            and contributor.person_id = account.person_id
+            and contributor.kind = 'account' and contributor.removed_at is null
+        )
+      order by
+        case when lower(name.first_name_th) like ${prefix} escape '\\' then 0 else 1 end,
+        lower(name.first_name_th), lower(name.last_name_th), account.person_id
+      limit ${CANDIDATE_RESULT_LIMIT}
+    `;
+  }
+
+  private async deleteExpiredCandidates(sql: postgres.TransactionSql, now: Date): Promise<void> {
+    await sql`
+      delete from private.work_contributor_candidates
+      where reference in (
+        select reference from private.work_contributor_candidates
+        where expires_at <= ${now}
+        order by expires_at, reference
+        limit ${EXPIRED_CANDIDATE_CLEANUP_LIMIT}
+      )
+    `;
   }
 
   addAccount(
@@ -296,6 +432,24 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
     return rows[0] ?? null;
   }
 
+  private async findOwnedDraft(
+    sql: postgres.TransactionSql,
+    actorAccountId: string,
+    workPublicId: string,
+  ): Promise<LockedDraftRow | null> {
+    const rows = await sql<LockedDraftRow[]>`
+      select work.id as work_id, draft.version
+      from public.works as work
+      join public.accounts as account on account.person_id = work.submitter_person_id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      where account.id = ${actorAccountId} and work.public_id = ${workPublicId}
+        and work.activity_state = 'active'
+      limit 1
+    `;
+    return rows[0] ?? null;
+  }
+
   private async listContributors(sql: Sql, workId: string): Promise<WorkDraftContributorView[]> {
     return sql<WorkDraftContributorView[]>`
       select public_id as "publicId", kind, attribution_name as "attributionName",
@@ -383,6 +537,10 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
 
   private fingerprint(value: Record<string, string | number>): string {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  }
+
+  private escapeLike(value: string): string {
+    return value.replace(/[\\%_]/gu, '\\$&');
   }
 
   private required<T>(value: T | undefined): T {

@@ -122,6 +122,10 @@ _Avoid_: Owner, creator
 A Person, with or without an Account, whom the Submitter credits on a Work. Adding a Contributor does not require that Person to accept the attribution and does not grant revision rights.
 _Avoid_: Collaborator, editor, member
 
+**Contributor Candidate**:
+An existing Student or Alumnus Person returned through a bounded, authenticated Student Roster search while a Submitter edits an owned Work Draft. A candidate exposes only the locked Roster first and last names plus a short-lived opaque reference; it never exposes Student ID, Account ID, or Person ID.
+_Avoid_: Public Profile result, roster row
+
 **Attribution Snapshot**:
 The immutable public Attribution Name, contribution role, optional affiliation, and applicable Study Year captured for the Submitter and Contributors in a Revision. It remains public with an approved Work independently of Public Profile visibility.
 _Avoid_: Public Profile, roster name

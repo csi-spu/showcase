@@ -1,3 +1,5 @@
 # Reveal minimal identity for exact Contributor lookup
 
 Core allows an authenticated Submitter to enter one complete eight-digit Student ID and receive the minimum roster identity needed to confirm the single matching Person before creating an Attribution Invitation; the Student surface receives an opaque Person reference, never receives or echoes the matched Student ID, and Core rate-limits and audits lookup attempts. We rejected the previous generic-response-only flow because the chosen Student authoring experience requires an immediate selectable suggestion, accepting increased roster-enumeration and privacy risk while prohibiting prefix, fuzzy, bulk, and unauthenticated lookup.
+
+Superseded by ADR 0010 for direct Contributor assignment.

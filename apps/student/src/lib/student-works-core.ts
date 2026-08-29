@@ -176,9 +176,12 @@ const contributorMutationSchema = z
   })
   .strict();
 const contributorCandidateSchema = z
-  .object({ candidateReference: z.uuid(), firstName: z.string(), lastName: z.string() })
-  .strict()
-  .nullable();
+  .object({
+    candidateReference: z.uuid(),
+    firstName: z.string().min(1).max(100),
+    lastName: z.string().min(1).max(100),
+  })
+  .strict();
 const tagSuggestionSchema = z
   .object({
     activeWorkCount: z.number().int().positive(),
@@ -300,6 +303,7 @@ export type WorkListItem = z.infer<typeof workListItemSchema>;
 export type WorkListPage = z.infer<typeof workListPageSchema>;
 export type WorkspaceSummary = z.infer<typeof workspaceSummarySchema>;
 export type WorkContributor = z.infer<typeof contributorSchema>;
+export type ContributorCandidate = z.infer<typeof contributorCandidateSchema>;
 export type WorkRevision = z.infer<typeof workRevisionSchema>;
 export type WorkChangeRequest = z.infer<typeof changeRequestSchema>;
 export type WorkRecovery = z.infer<typeof workRecoverySchema>;
@@ -441,13 +445,13 @@ export class StudentWorksCoreClient {
     );
   }
 
-  lookupContributor(sessionToken: string, publicId: string, studentId: string) {
+  searchContributorCandidates(sessionToken: string, publicId: string, query: string) {
     return this.request(
       'POST',
-      `/v1/internal/student/works/${publicId}/contributor-candidates/lookup`,
-      contributorCandidateSchema,
+      `/v1/internal/student/works/${publicId}/contributor-candidates/search`,
+      z.array(contributorCandidateSchema).max(8),
       sessionToken,
-      { studentId },
+      { query },
     );
   }
 
@@ -483,11 +487,10 @@ export class StudentWorksCoreClient {
     sessionToken: string,
     publicId: string,
     input: {
+      attributionName: string;
       contributionRole: string;
       expectedVersion: number;
-      firstName: string;
       idempotencyKey: string;
-      lastName: string;
     },
   ) {
     return this.request(

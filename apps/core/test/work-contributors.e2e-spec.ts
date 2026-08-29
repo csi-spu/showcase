@@ -21,11 +21,13 @@ describe('direct Work Contributors (e2e)', () => {
   const contributors = {
     addAccount: jest.fn().mockResolvedValue(mutation('account')),
     addExternal: jest.fn().mockResolvedValue(mutation('external')),
-    lookup: jest.fn().mockResolvedValue({
-      candidateReference: CANDIDATE_REFERENCE,
-      firstName: 'สมชาย',
-      lastName: 'ใจดี',
-    }),
+    search: jest.fn().mockResolvedValue([
+      {
+        candidateReference: CANDIDATE_REFERENCE,
+        firstName: 'สมชาย',
+        lastName: 'ใจดี',
+      },
+    ]),
     remove: jest.fn().mockResolvedValue({
       contributors: [],
       outcome: 'removed',
@@ -54,41 +56,43 @@ describe('direct Work Contributors (e2e)', () => {
 
   afterEach(async () => app.close());
 
-  it('requires an eligible Student mutation session and exactly eight digits', async () => {
+  it('requires an eligible Student mutation session and a bounded search query', async () => {
     await request(app.getHttpServer())
-      .post(`/v1/internal/student/works/${WORK_PUBLIC_ID}/contributor-candidates/lookup`)
+      .post(`/v1/internal/student/works/${WORK_PUBLIC_ID}/contributor-candidates/search`)
       .set('Authorization', 'Bearer opaque-session')
-      .send({ studentId: '12345678' })
+      .send({ query: 'สมชาย' })
       .expect(403);
     canMutate = false;
-    await studentRequest('post', 'contributor-candidates/lookup')
-      .send({ studentId: '12345678' })
+    await studentRequest('post', 'contributor-candidates/search')
+      .send({ query: 'สมชาย' })
       .expect(403)
       .expect({ error: { code: 'FORBIDDEN' } });
     canMutate = true;
-    await studentRequest('post', 'contributor-candidates/lookup')
-      .send({ studentId: '1234567' })
+    await studentRequest('post', 'contributor-candidates/search')
+      .send({ query: 'ก' })
       .expect(400)
       .expect({ error: { code: 'INVALID_REQUEST' } });
-    expect(contributors.lookup).not.toHaveBeenCalled();
+    expect(contributors.search).not.toHaveBeenCalled();
   });
 
-  it('returns one minimal candidate and never echoes Student ID', async () => {
-    const response = await studentRequest('post', 'contributor-candidates/lookup')
-      .send({ studentId: '12345678' })
+  it('returns bounded minimal suggestions and never echoes Student ID', async () => {
+    const response = await studentRequest('post', 'contributor-candidates/search')
+      .send({ query: '12345678' })
       .expect(200);
     expect(response.headers['cache-control']).toBe('private, no-store');
-    expect(response.body).toEqual({
-      candidateReference: CANDIDATE_REFERENCE,
-      firstName: 'สมชาย',
-      lastName: 'ใจดี',
-    });
+    expect(response.body).toEqual([
+      {
+        candidateReference: CANDIDATE_REFERENCE,
+        firstName: 'สมชาย',
+        lastName: 'ใจดี',
+      },
+    ]);
     expect(JSON.stringify(response.body)).not.toMatch(/studentId|accountId|personId|12345678/i);
-    expect(contributors.lookup).toHaveBeenCalledWith(
+    expect(contributors.search).toHaveBeenCalledWith(
       expect.objectContaining({
         actorAccountId: ACCOUNT_ID,
+        query: '12345678',
         sourceAddress: `student-account:${ACCOUNT_ID}`,
-        studentId: '12345678',
         workPublicId: WORK_PUBLIC_ID,
       }),
     );
@@ -106,11 +110,10 @@ describe('direct Work Contributors (e2e)', () => {
       .expect(mutation('account'));
     await studentRequest('post', 'contributors/external')
       .send({
+        attributionName: 'Alex Example',
         contributionRole: 'ออกแบบ',
         expectedVersion: 2,
-        firstName: 'Alex',
         idempotencyKey: IDEMPOTENCY_KEY,
-        lastName: 'Example',
       })
       .expect(201)
       .expect(mutation('external'));
