@@ -287,6 +287,15 @@ describe('PostgresRosterRepository integration', () => {
     });
 
     const conflictId = page.conflicts[0]!.conflictId;
+    const profiles = await database.sql<{ public_id: string }[]>`
+      insert into public.public_profiles (person_id, bio, version)
+      values (${existing!.personId}, null, 1)
+      returning public_id
+    `;
+    await database.sql`
+      insert into public.profile_consents (person_id, consent_text_version, granted_at)
+      values (${existing!.personId}, 'phase-1-v1', ${NOW})
+    `;
     const resolution = {
       actorAccountId: adminAccountId,
       conflictId,
@@ -316,12 +325,32 @@ describe('PostgresRosterRepository integration', () => {
       lastNameTh: 'มั่นคง',
       personId: existing!.personId,
     });
+    const accountVersions = await database.sql<{ control_version: number }[]>`
+      select control_version
+      from public.accounts
+      where person_id = ${existing!.personId}
+    `;
+    expect(accountVersions).toEqual([{ control_version: 2 }]);
     const audits = await database.sql<{ count: number }[]>`
       select count(*)::integer as count
       from private.roster_conflict_resolution_audit_events
       where conflict_id = ${conflictId}
     `;
     expect(audits).toEqual([{ count: 1 }]);
+    const profileOutbox = await database.sql<
+      { event_type: string; payload: { publicId: string } }[]
+    >`
+      select event_type, payload
+      from private.outbox_events
+      where aggregate_type = 'public_profile'
+        and aggregate_id = ${resolution.idempotencyKey}
+    `;
+    expect(profileOutbox).toEqual([
+      {
+        event_type: 'public_profile_cache_invalidated',
+        payload: { publicId: profiles[0]!.public_id },
+      },
+    ]);
 
     const keepBatch = await repository.createBatch({
       ...batchInput(),
@@ -454,6 +483,14 @@ describe('PostgresRosterRepository integration', () => {
     await database.sql.begin(async (transaction) => {
       await transaction`delete from private.outbox_events where aggregate_type = 'roster_batch'`;
       await transaction`
+        delete from private.outbox_events
+        where aggregate_type = 'public_profile'
+          and aggregate_id in (
+            '30000000-0000-4000-8000-000000000001',
+            '30000000-0000-4000-8000-000000000002'
+          )
+      `;
+      await transaction`
         delete from private.roster_conflict_resolution_audit_events
         where batch_id in (
           select roster_batch.id from private.roster_batches as roster_batch
@@ -494,6 +531,18 @@ describe('PostgresRosterRepository integration', () => {
         delete from private.student_auth_identities
         where account_id in (
           select id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+        )
+      `;
+      await transaction`
+        delete from public.profile_consents
+        where person_id in (
+          select person_id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+        )
+      `;
+      await transaction`
+        delete from public.public_profiles
+        where person_id in (
+          select person_id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
         )
       `;
       await transaction`

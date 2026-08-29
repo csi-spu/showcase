@@ -18,6 +18,12 @@ const rosterBatchSchema = z
 
 export type AdminRosterBatch = z.infer<typeof rosterBatchSchema>;
 
+export interface CreateAdminRosterStudentInput {
+  firstNameTh: string;
+  lastNameTh: string;
+  studentId: string;
+}
+
 const rosterConflictSchema = z
   .object({
     batchId: z.uuid(),
@@ -74,6 +80,19 @@ export class AdminRosterCoreClient {
       method: 'POST',
       path: '/v1/internal/admin/roster-batches',
       rawBody: content,
+      responseSchema: rosterBatchSchema,
+      sessionToken,
+    });
+  }
+
+  createStudent(
+    sessionToken: string,
+    input: CreateAdminRosterStudentInput,
+  ): Promise<AdminRosterBatch> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: '/v1/internal/admin/roster-students',
       responseSchema: rosterBatchSchema,
       sessionToken,
     });

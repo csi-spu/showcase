@@ -1,8 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { z } from 'zod';
-import { evaluateWorkDraft, type WorkDraftInput } from '../domain/work-draft-policy';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  evaluateWorkDraft,
+  normalizeWorkDraftPatch,
+  type NormalizedWorkDraftPatch,
+  type WorkDraftInput,
+  type WorkDraftPatchInput,
+} from '../domain/work-draft-policy';
+import {
+  WorkWorkspaceCursorCodec,
+  WorkWorkspaceCursorError,
+} from '../domain/work-workspace-cursor';
 import {
   WORKS_CLOCK,
+  WORKS_CURSOR_CODEC,
   WORKS_REPOSITORY,
   type WorkDraftView,
   type WorkListCursor,
@@ -21,6 +31,8 @@ type WorkErrorCode =
   | 'WORK_NOT_FOUND'
   | 'WORK_NOT_PUBLISHED'
   | 'WORK_PENDING_REVISION_EXISTS'
+  | 'WORK_SAVED_DRAFT_CONFIRMATION_REQUIRED'
+  | 'WORK_SAVED_DRAFT_STATE_CONFLICT'
   | 'WORK_VERSION_CONFLICT';
 
 export class WorkError extends Error {
@@ -33,13 +45,20 @@ export class WorkError extends Error {
   }
 }
 
-interface CreateWorkInput extends WorkDraftInput {
+interface CreateWorkInput extends WorkDraftPatchInput {
   actorAccountId: string;
   idempotencyKey: string;
 }
 
-interface UpdateWorkDraftInput extends CreateWorkInput {
+interface PatchWorkDraftInput extends CreateWorkInput {
   expectedVersion: number;
+  publicId: string;
+}
+
+interface UpdateWorkDraftInput extends WorkDraftInput {
+  actorAccountId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
   publicId: string;
 }
 
@@ -54,26 +73,77 @@ interface RebaseDraftInput extends SeedPublishedDraftInput {
   expectedVersion: number;
 }
 
-const workListCursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
+interface ListOwnedWorksInput {
+  accountId: string;
+  cursor?: string;
+  view: 'current' | 'saved';
+}
 
 @Injectable()
 export class WorksService {
+  private readonly logger = new Logger(WorksService.name);
+
   constructor(
     @Inject(WORKS_REPOSITORY) private readonly repository: WorksRepository,
     @Inject(WORKS_CLOCK) private readonly clock: WorksClock,
+    @Inject(WORKS_CURSOR_CODEC) private readonly cursorCodec: WorkWorkspaceCursorCodec,
   ) {}
 
   async createWork(input: CreateWorkInput): Promise<WorkMutationResult> {
     const context = await this.requireAuthoringContext(input.actorAccountId);
-    const draft = this.requireValidDraft(input, context);
-    return this.requireSuccessfulMutation(
+    const patch = this.requireValidPatch(input, context);
+    if (!this.hasMeaningfulChange(patch)) {
+      throw new WorkError('INVALID_WORK_DRAFT', 422);
+    }
+    const result = this.requireSuccessfulMutation(
       await this.repository.createWork({
         actorAccountId: input.actorAccountId,
-        draft,
         idempotencyKey: input.idempotencyKey,
         now: this.clock.now(),
+        patch,
         submitterPersonId: context.personId,
       }),
+    );
+    this.logger.log({
+      actorAccountId: input.actorAccountId,
+      operation: 'work_autosave_created',
+      outcome: result.outcome,
+      workPublicId: result.work.publicId,
+    });
+    return result;
+  }
+
+  async archiveSavedDraft(input: {
+    actorAccountId: string;
+    confirmation: boolean;
+    expectedVersion: number;
+    idempotencyKey: string;
+    publicId: string;
+  }) {
+    if (!input.confirmation) {
+      throw new WorkError('WORK_SAVED_DRAFT_CONFIRMATION_REQUIRED', 422);
+    }
+    await this.requireAuthoringContext(input.actorAccountId);
+    return this.requireSavedDraftSuccess(
+      await this.repository.archiveSavedDraft({
+        actorAccountId: input.actorAccountId,
+        expectedVersion: input.expectedVersion,
+        idempotencyKey: input.idempotencyKey,
+        now: this.clock.now(),
+        publicId: input.publicId,
+      }),
+    );
+  }
+
+  async restoreSavedDraft(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    publicId: string;
+  }) {
+    await this.requireAuthoringContext(input.actorAccountId);
+    return this.requireSavedDraftSuccess(
+      await this.repository.restoreSavedDraft({ ...input, now: this.clock.now() }),
     );
   }
 
@@ -99,16 +169,55 @@ export class WorksService {
     };
   }
 
-  async listOwnedWorks(input: { accountId: string; cursor?: string; limit: number }) {
+  async getWorkspaceSummary(accountId: string) {
+    const summary = await this.repository.getWorkspaceSummary(accountId);
+    if (summary === null) throw new WorkError('WORK_NOT_FOUND', 404);
+    return summary;
+  }
+
+  async listOwnedWorks(input: ListOwnedWorksInput) {
+    const state = {
+      accountId: input.accountId,
+      pageSize: 12,
+      sort: 'updated_desc' as const,
+      view: input.view,
+    };
     const page = await this.repository.listOwnedWorks({
       accountId: input.accountId,
-      cursor: this.decodeListCursor(input.cursor),
-      limit: input.limit,
+      cursor: this.decodeListCursor(state, input.cursor),
+      limit: 12,
+      view: input.view,
     });
     return {
+      hasNextPage: page.hasNextPage,
+      hasPreviousPage: page.hasPreviousPage,
       items: page.items.map((work) => ({ ...work, updatedAt: work.updatedAt.toISOString() })),
-      nextCursor: page.nextCursor === null ? null : this.encodeListCursor(page.nextCursor),
+      nextCursor: page.nextCursor === null ? null : this.encodeListCursor(state, page.nextCursor),
+      previousCursor:
+        page.previousCursor === null ? null : this.encodeListCursor(state, page.previousCursor),
     };
+  }
+
+  async patchDraft(input: PatchWorkDraftInput): Promise<WorkMutationResult> {
+    const context = await this.requireAuthoringContext(input.actorAccountId);
+    const patch = this.requireValidPatch(input, context);
+    const result = this.requireSuccessfulMutation(
+      await this.repository.patchDraft({
+        actorAccountId: input.actorAccountId,
+        expectedVersion: input.expectedVersion,
+        idempotencyKey: input.idempotencyKey,
+        now: this.clock.now(),
+        patch,
+        publicId: input.publicId,
+      }),
+    );
+    this.logger.log({
+      actorAccountId: input.actorAccountId,
+      operation: 'work_autosave_updated',
+      outcome: result.outcome,
+      workPublicId: input.publicId,
+    });
+    return result;
   }
 
   async updateDraft(input: UpdateWorkDraftInput): Promise<WorkMutationResult> {
@@ -159,7 +268,9 @@ export class WorksService {
     return evaluation.draft;
   }
 
-  private requireSuccessfulMutation(result: WorkMutationResult): WorkMutationResult {
+  private requireSuccessfulMutation(
+    result: WorkMutationResult,
+  ): Extract<WorkMutationResult, { work: WorkDraftView }> {
     if ('work' in result) return result;
     const mapping: Record<
       Exclude<WorkMutationResult, { work: WorkDraftView }>['outcome'],
@@ -177,20 +288,65 @@ export class WorksService {
     throw new WorkError(code, status);
   }
 
-  private encodeListCursor(cursor: WorkListCursor): string {
-    return Buffer.from(JSON.stringify([cursor.updatedAt.toISOString(), cursor.publicId])).toString(
-      'base64url',
+  private requireSavedDraftSuccess(
+    result: Awaited<ReturnType<WorksRepository['archiveSavedDraft']>>,
+  ) {
+    if ('work' in result) return result;
+    const mapping = {
+      idempotency_conflict: ['WORK_IDEMPOTENCY_CONFLICT', 409],
+      not_found: ['WORK_NOT_FOUND', 404],
+      state_conflict: ['WORK_SAVED_DRAFT_STATE_CONFLICT', 409],
+      version_conflict: ['WORK_VERSION_CONFLICT', 409],
+    } as const;
+    const [code, status] = mapping[result.outcome];
+    throw new WorkError(code, status);
+  }
+
+  private requireValidPatch(
+    input: WorkDraftPatchInput,
+    context: { currentAcademicYear: number; entryYear: number },
+  ) {
+    const evaluation = normalizeWorkDraftPatch(input, context);
+    if (!evaluation.isValid) throw new WorkError('INVALID_WORK_DRAFT', 422);
+    return evaluation.patch;
+  }
+
+  private hasMeaningfulChange(patch: NormalizedWorkDraftPatch): boolean {
+    return (
+      (patch.title !== undefined && patch.title !== null) ||
+      (patch.summary !== undefined && patch.summary !== null) ||
+      (patch.description !== undefined && patch.description !== null) ||
+      (patch.category !== undefined && patch.category !== null) ||
+      (patch.submitterStudyYear !== undefined && patch.submitterStudyYear !== null) ||
+      (patch.academicPeriod !== undefined &&
+        (patch.academicPeriod.semester !== null || patch.academicPeriod.year !== null)) ||
+      (patch.links?.length ?? 0) > 0 ||
+      (patch.tags?.length ?? 0) > 0 ||
+      (patch.videoLinks?.length ?? 0) > 0
     );
   }
 
-  private decodeListCursor(cursor: string | undefined): WorkListCursor | null {
+  private encodeListCursor(
+    state: Parameters<WorkWorkspaceCursorCodec['encode']>[0],
+    cursor: WorkListCursor,
+  ): string {
+    return this.cursorCodec.encode(state, {
+      direction: cursor.direction,
+      publicId: cursor.publicId,
+      updatedAt: cursor.updatedAt.toISOString(),
+    });
+  }
+
+  private decodeListCursor(
+    state: Parameters<WorkWorkspaceCursorCodec['decode']>[0],
+    cursor: string | undefined,
+  ): WorkListCursor | null {
     if (cursor === undefined) return null;
     try {
-      const [updatedAt, publicId] = workListCursorSchema.parse(
-        JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')),
-      );
-      return { publicId, updatedAt: new Date(updatedAt) };
-    } catch {
+      const decoded = this.cursorCodec.decode(state, cursor);
+      return { ...decoded, updatedAt: new Date(decoded.updatedAt) };
+    } catch (error: unknown) {
+      if (!(error instanceof WorkWorkspaceCursorError)) throw error;
       throw new WorkError('INVALID_WORK_CURSOR', 422);
     }
   }

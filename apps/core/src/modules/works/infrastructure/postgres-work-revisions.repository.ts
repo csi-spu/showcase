@@ -18,24 +18,25 @@ import type {
 import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
 import {
   evaluateWorkRevisionCandidate,
-  type RevisionInvitation,
+  type WorkRevisionContributor,
 } from '../domain/work-revision-policy';
 
 type Sql = postgres.Sql | postgres.TransactionSql;
 type Operation = 'revision_submitted' | 'revision_withdrawn';
 
 interface LockedDraftRow {
-  academic_year: number;
+  academic_year: number | null;
   base_published_revision_id: string | null;
-  category: NormalizedWorkDraft['category'];
+  category: NormalizedWorkDraft['category'] | null;
   current_academic_year: number;
-  description: string;
+  description: string | null;
   entry_year: number;
   published_revision_id: string | null;
-  semester: NormalizedWorkDraft['academicPeriod']['semester'];
+  semester: NormalizedWorkDraft['academicPeriod']['semester'] | null;
+  submitter_attribution_name: string | null;
   submitter_person_id: string;
-  summary: string;
-  title: string;
+  summary: string | null;
+  title: string | null;
   version: string;
   work_id: string;
 }
@@ -95,6 +96,28 @@ export class PostgresWorkRevisionsRepository
   implements WorkRevisionRepository, AdminCorrectionsRepository
 {
   constructor(private readonly database: DatabaseClient) {}
+
+  async findSubmissionContext(
+    actorAccountId: string,
+    workPublicId: string,
+  ): Promise<{ currentAcademicYear: number; entryYear: number } | null> {
+    const rows = await this.database.sql<
+      Array<{ current_academic_year: number; entry_year: number }>
+    >`
+      select settings.current_academic_year, student.entry_year
+      from public.works as work
+      join public.accounts as account on account.person_id = work.submitter_person_id
+      join public.students as student on student.person_id = work.submitter_person_id
+      join public.academic_settings as settings on settings.singleton = true
+      where account.id = ${actorAccountId} and work.public_id = ${workPublicId}
+        and work.activity_state = 'active' and settings.current_academic_year is not null
+      limit 1
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : { currentAcademicYear: row.current_academic_year, entryYear: row.entry_year };
+  }
 
   async findCorrectionContext(workPublicId: string): Promise<AdminCorrectionContext | null> {
     const rows = await this.database.sql<
@@ -325,9 +348,25 @@ export class PostgresWorkRevisionsRepository
         `;
         if (this.required(pending[0]).exists) return { outcome: 'pending_revision_exists' };
 
-        const candidate = await this.loadCandidate(transaction, draft, input.submitterAttribution);
+        if (draft.submitter_attribution_name === null) {
+          return { outcome: 'invalid_submitter_attribution' };
+        }
+        const candidate = await this.loadCandidate(transaction, draft, input.draft, {
+          attributionName: draft.submitter_attribution_name,
+          studyYear: input.studyYear,
+        });
         const completeness = evaluateWorkRevisionCandidate(candidate);
         if (!completeness.isComplete) return { outcome: completeness.reason };
+
+        const resultingDraftVersion = input.expectedDraftVersion + 1;
+        await this.saveLatestDraft(
+          transaction,
+          draft.work_id,
+          input.draft,
+          input.studyYear,
+          resultingDraftVersion,
+          input.now,
+        );
 
         const numberRows = await transaction<Array<{ next_number: string }>>`
           select (coalesce(max(revision_number), 0) + 1)::bigint as next_number
@@ -340,14 +379,17 @@ export class PostgresWorkRevisionsRepository
             title, summary, description, category, academic_year, semester, submitted_at
           ) values (
             ${draft.work_id}, ${revisionNumber}, 'pending_review',
-            ${draft.base_published_revision_id}, ${Number(draft.version)}, ${draft.title},
-            ${draft.summary}, ${draft.description}, ${draft.category}, ${draft.academic_year},
-            ${draft.semester}, ${input.now}
+            ${draft.base_published_revision_id}, ${resultingDraftVersion}, ${input.draft.title},
+            ${input.draft.summary}, ${input.draft.description}, ${input.draft.category},
+            ${input.draft.academicPeriod.year}, ${input.draft.academicPeriod.semester}, ${input.now}
           ) returning id, public_id
         `;
         const revision = this.required(inserted[0]);
         await this.copySnapshot(transaction, revision.id, draft.work_id, candidate);
-        await transaction`delete from private.work_drafts where work_id = ${draft.work_id}`;
+        await transaction`
+          update public.works set version = version + 1, updated_at = ${input.now}
+          where id = ${draft.work_id}
+        `;
         await this.recordOperation(transaction, {
           actorAccountId: input.actorAccountId,
           idempotencyKey: input.idempotencyKey,
@@ -431,7 +473,15 @@ export class PostgresWorkRevisionsRepository
           set status = 'withdrawn', withdrawn_at = ${input.now}, version = version + 1
           where id = ${revision.id}
         `;
-        await this.seedDraftFromRevision(transaction, work.work_id, revision.id, input.now);
+        const draftState = await transaction<Array<{ exists: boolean }>>`
+          select exists(
+            select 1 from private.work_drafts
+            where work_id = ${work.work_id} and lifecycle_state = 'active'
+          ) as exists
+        `;
+        if (!this.required(draftState[0]).exists) {
+          await this.seedDraftFromRevision(transaction, work.work_id, revision.id, input.now);
+        }
         await transaction`update public.works set updated_at = ${input.now} where id = ${work.work_id}`;
         await this.recordOperation(transaction, {
           actorAccountId: input.actorAccountId,
@@ -563,13 +613,18 @@ export class PostgresWorkRevisionsRepository
       select work.id as work_id, work.submitter_person_id, draft.base_published_revision_id,
         work.published_revision_id,
         draft.title, draft.summary, draft.description, draft.category, draft.academic_year,
-        draft.semester, draft.version, student.entry_year, settings.current_academic_year
+        draft.semester, draft.version, student.entry_year, settings.current_academic_year,
+        concat_ws(' ', submitter_name.first_name_th, submitter_name.last_name_th)
+          as submitter_attribution_name
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
       join public.students as student on student.person_id = account.person_id
       join public.account_roles as role on role.account_id = account.id and role.role = 'student'
       join public.academic_settings as settings on settings.singleton = true
-      join private.work_drafts as draft on draft.work_id = work.id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      join private.person_names as submitter_name
+        on submitter_name.person_id = work.submitter_person_id
       where account.id = ${actorAccountId} and work.public_id = ${workPublicId}
         and account.status = 'active' and account.credential_state = 'set'
         and work.activity_state = 'active'
@@ -603,23 +658,12 @@ export class PostgresWorkRevisionsRepository
   private async loadCandidate(
     sql: postgres.TransactionSql,
     draft: LockedDraftRow,
+    latestDraft: NormalizedWorkDraft,
     submitterAttribution: Parameters<
-      WorkRevisionRepository['submitRevision']
+      typeof evaluateWorkRevisionCandidate
     >[0]['submitterAttribution'],
   ) {
-    const [links, tags, videos, media, invitations] = await Promise.all([
-      sql<NormalizedWorkDraft['links']>`
-        select label, url from private.work_draft_links where work_id = ${draft.work_id}
-        order by position
-      `,
-      sql<NormalizedWorkDraft['tags']>`
-        select display_label as "displayLabel", normalized_identity as "normalizedIdentity"
-        from private.work_draft_tags where work_id = ${draft.work_id} order by position
-      `,
-      sql<NormalizedWorkDraft['videoLinks']>`
-        select provider, provider_video_id as "providerVideoId", url
-        from private.work_draft_video_links where work_id = ${draft.work_id} order by position
-      `,
+    const [media, contributors] = await Promise.all([
       sql<
         Array<{
           assetId: string;
@@ -635,53 +679,28 @@ export class PostgresWorkRevisionsRepository
       `,
       sql<
         Array<{
-          affiliation: string | null;
-          attributionName: string | null;
+          attributionName: string;
           contributionRole: string | null;
           kind: 'account' | 'external';
-          personId: string | null;
-          state: RevisionInvitation['state'];
-          studyYear: number | null;
+          personId: string;
         }>
       >`
-        select kind, state, accepted_person_id as "personId", attribution_name as "attributionName",
-          study_year as "studyYear", contribution_role as "contributionRole", affiliation
-        from private.attribution_invitations
-        where work_id = ${draft.work_id} and state in ('pending', 'accepted')
-        order by created_at, id
+        select kind, person_id as "personId", attribution_name as "attributionName",
+          contribution_role as "contributionRole"
+        from private.work_draft_contributors
+        where work_id = ${draft.work_id} and removed_at is null
+        order by position
       `,
     ]);
-    const mappedInvitations: RevisionInvitation[] = invitations.map((invitation) => {
-      if (invitation.state !== 'accepted') return { state: invitation.state };
-      if (invitation.personId === null || invitation.attributionName === null) {
-        throw new Error('ACCEPTED_ATTRIBUTION_INCOMPLETE');
-      }
-      return {
-        affiliation: invitation.affiliation,
-        attributionName: invitation.attributionName,
-        contributionRole: invitation.contributionRole,
-        kind: invitation.kind,
-        personId: invitation.personId,
-        state: 'accepted',
-        studyYear: invitation.studyYear,
-      };
-    });
     return {
       academicRange: {
         currentAcademicYear: draft.current_academic_year,
         entryYear: draft.entry_year,
       },
       draft: {
-        academicPeriod: { semester: draft.semester, year: draft.academic_year },
-        category: draft.category,
-        description: draft.description,
-        links,
-        summary: draft.summary,
-        tags,
-        title: draft.title,
-        videoLinks: videos,
+        ...latestDraft,
       },
-      invitations: mappedInvitations,
+      contributors: contributors satisfies WorkRevisionContributor[],
       media,
       submitterAttribution,
     };
@@ -712,24 +731,59 @@ export class PostgresWorkRevisionsRepository
         values (${revisionId}, ${media.kind}, ${media.position}, ${media.assetId})`;
     }
     await sql`insert into private.work_revision_attributions (
-      revision_id, position, kind, person_id, attribution_name, study_year
+      revision_id, position, kind, person_id, attribution_name, study_year,
+      attribution_model_version
     ) values (
       ${revisionId}, 1, 'submitter',
       (select submitter_person_id from public.works where id = ${workId}),
-      ${candidate.submitterAttribution.attributionName}, ${candidate.submitterAttribution.studyYear}
+      ${candidate.submitterAttribution.attributionName}, ${candidate.submitterAttribution.studyYear}, 2
     )`;
     let position = 2;
-    for (const invitation of candidate.invitations) {
-      if (invitation.state !== 'accepted') continue;
+    for (const contributor of candidate.contributors) {
       await sql`insert into private.work_revision_attributions (
-        revision_id, position, kind, person_id, attribution_name, study_year,
-        contribution_role, affiliation
+        revision_id, position, kind, person_id, attribution_name,
+        contribution_role, attribution_model_version
       ) values (
-        ${revisionId}, ${position}, ${invitation.kind}, ${invitation.personId},
-        ${invitation.attributionName}, ${invitation.studyYear}, ${invitation.contributionRole},
-        ${invitation.affiliation}
+        ${revisionId}, ${position}, ${contributor.kind}, ${contributor.personId},
+        ${contributor.attributionName}, ${contributor.contributionRole}, 2
       )`;
       position += 1;
+    }
+  }
+
+  private async saveLatestDraft(
+    sql: postgres.TransactionSql,
+    workId: string,
+    draft: NormalizedWorkDraft,
+    studyYear: number,
+    version: number,
+    now: Date,
+  ): Promise<void> {
+    await sql`
+      update private.work_drafts set title = ${draft.title}, summary = ${draft.summary},
+        description = ${draft.description}, category = ${draft.category},
+        academic_year = ${draft.academicPeriod.year}, semester = ${draft.academicPeriod.semester},
+        submitter_study_year = ${studyYear}, version = ${version}, updated_at = ${now}
+      where work_id = ${workId}
+    `;
+    await sql`delete from private.work_draft_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_tags where work_id = ${workId}`;
+    await sql`delete from private.work_draft_video_links where work_id = ${workId}`;
+    for (const [index, link] of draft.links.entries()) {
+      await sql`insert into private.work_draft_links (work_id, position, label, url)
+        values (${workId}, ${index + 1}, ${link.label}, ${link.url})`;
+    }
+    for (const [index, tag] of draft.tags.entries()) {
+      await sql`insert into private.work_draft_tags (
+        work_id, position, display_label, normalized_identity
+      ) values (${workId}, ${index + 1}, ${tag.displayLabel}, ${tag.normalizedIdentity})`;
+    }
+    for (const [index, video] of draft.videoLinks.entries()) {
+      await sql`insert into private.work_draft_video_links (
+        work_id, position, provider, provider_video_id, url
+      ) values (
+        ${workId}, ${index + 1}, ${video.provider}, ${video.providerVideoId}, ${video.url}
+      )`;
     }
   }
 
@@ -761,9 +815,9 @@ export class PostgresWorkRevisionsRepository
       from private.work_revision_media where revision_id = ${baseRevisionId}`;
     await sql`insert into private.work_revision_attributions (
       revision_id, position, kind, person_id, attribution_name, study_year,
-      contribution_role, affiliation
+      contribution_role, affiliation, attribution_model_version
     ) select ${revisionId}, position, kind, person_id, attribution_name, study_year,
-      contribution_role, affiliation
+      contribution_role, affiliation, attribution_model_version
       from private.work_revision_attributions where revision_id = ${baseRevisionId}`;
   }
 
@@ -774,14 +828,35 @@ export class PostgresWorkRevisionsRepository
     now: Date,
   ): Promise<void> {
     await sql`
-      insert into private.work_drafts (
+      insert into private.work_drafts as existing (
         work_id, base_published_revision_id, title, summary, description, category,
-        academic_year, semester, version, created_at, updated_at
+        academic_year, semester, submitter_study_year, lifecycle_state,
+        version, created_at, updated_at
       ) select
         ${workId}, revision.base_published_revision_id, revision.title, revision.summary,
         revision.description, revision.category, revision.academic_year, revision.semester,
-        1, ${now}, ${now}
-      from private.work_revisions as revision where revision.id = ${revisionId}
+        case when submitter.study_year between 1 and 4 then submitter.study_year else null end,
+        'active', 1, ${now}, ${now}
+      from private.work_revisions as revision
+      join private.work_revision_attributions as submitter
+        on submitter.revision_id = revision.id and submitter.kind = 'submitter'
+      where revision.id = ${revisionId}
+      on conflict (work_id) do update set
+        base_published_revision_id = excluded.base_published_revision_id,
+        title = excluded.title, summary = excluded.summary,
+        description = excluded.description, category = excluded.category,
+        academic_year = excluded.academic_year, semester = excluded.semester,
+        submitter_study_year = excluded.submitter_study_year,
+        lifecycle_state = 'active', version = existing.version + 1,
+        updated_at = excluded.updated_at
+    `;
+    await sql`delete from private.work_draft_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_tags where work_id = ${workId}`;
+    await sql`delete from private.work_draft_video_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_media where work_id = ${workId}`;
+    await sql`
+      update private.work_draft_contributors set removed_at = ${now}, updated_at = ${now}
+      where work_id = ${workId} and removed_at is null
     `;
     await sql`insert into private.work_draft_links (work_id, position, label, url)
       select ${workId}, position, label, url from private.work_revision_links where revision_id = ${revisionId}`;
@@ -795,6 +870,14 @@ export class PostgresWorkRevisionsRepository
     await sql`insert into private.work_draft_media (work_id, media_kind, position, asset_id, created_at)
       select ${workId}, media_kind, position, asset_id, ${now}
       from private.work_revision_media where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_contributors (
+      work_id, kind, person_id, attribution_name, contribution_role,
+      position, created_at, updated_at
+    ) select ${workId}, kind, person_id, attribution_name, contribution_role,
+      position - 1, ${now}, ${now}
+      from private.work_revision_attributions
+      where revision_id = ${revisionId} and kind in ('account', 'external')
+      order by position`;
   }
 
   private findRevisionById(sql: Sql, revisionId: string): Promise<WorkRevisionView | null> {
@@ -1027,10 +1110,27 @@ export class PostgresWorkRevisionsRepository
     return {
       expectedBasePublishedRevisionId: input.expectedBasePublishedRevisionId,
       expectedDraftVersion: input.expectedDraftVersion,
-      submitterAttribution: {
-        attributionName: input.submitterAttribution.attributionName,
-        studyYear: input.submitterAttribution.studyYear,
+      draft: {
+        academicPeriod: {
+          semester: input.draft.academicPeriod.semester,
+          year: input.draft.academicPeriod.year,
+        },
+        category: input.draft.category,
+        description: input.draft.description,
+        links: input.draft.links.map((link) => ({ label: link.label, url: link.url })),
+        summary: input.draft.summary,
+        tags: input.draft.tags.map((tag) => ({
+          displayLabel: tag.displayLabel,
+          normalizedIdentity: tag.normalizedIdentity,
+        })),
+        title: input.draft.title,
+        videoLinks: input.draft.videoLinks.map((link) => ({
+          provider: link.provider,
+          providerVideoId: link.providerVideoId,
+          url: link.url,
+        })),
       },
+      studyYear: input.studyYear,
       workPublicId: input.workPublicId,
     };
   }

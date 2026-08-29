@@ -32,8 +32,9 @@ class E2eCatalogRepository implements CatalogRepository {
         {
           item: {
             bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
-            displayName: 'ณัฐดนัย',
             entryYear: 2566,
+            firstName: 'ณัฐดนัย',
+            lastName: 'สุขใจ',
             photo: null,
             publicId: PROFILE_PUBLIC_ID,
             publishedWorkCount: 1,
@@ -58,6 +59,12 @@ class E2eCatalogRepository implements CatalogRepository {
     return Promise.resolve({
       entries: [workEntry(1), workEntry(2)],
     });
+  }
+
+  suggestTags() {
+    return Promise.resolve([
+      { activeWorkCount: 1, displayLabel: 'React', publicId: TAG_PUBLIC_ID },
+    ]);
   }
 }
 
@@ -150,6 +157,22 @@ describe('Public Catalog HTTP contract (e2e)', () => {
       .expect('Cache-Tag', 'showcase-catalog,showcase-catalog-works,showcase-catalog-people')
       .expect(200)
       .expect({ entryYears: [2566], workYears: [2569] });
+  });
+
+  it('serves bounded Published Tag suggestions without shared caching', async () => {
+    await request(app.getHttpServer())
+      .get('/v1/public/tags/suggestions?q=reac')
+      .expect('Cache-Control', 'private, no-store')
+      .expect(200)
+      .expect([{ activeWorkCount: 1, displayLabel: 'React', publicId: TAG_PUBLIC_ID }]);
+    await request(app.getHttpServer())
+      .get('/v1/public/tags/suggestions?q=r')
+      .expect(400)
+      .expect({ error: { code: 'CATALOG_TAG_SUGGESTION_QUERY_INVALID' } });
+    await request(app.getHttpServer())
+      .get('/v1/public/tags/suggestions?q=reac&unknown=value')
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
   });
 
   it('serves bounded sitemap shards and validates their route shape', async () => {

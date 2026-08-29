@@ -25,8 +25,9 @@ describe('public profile photo route', () => {
   it('serves only bounded sanitized WebP after rechecking consent', async () => {
     vi.spyOn(PublicProfileCoreClient.prototype, 'getProfile').mockResolvedValue({
       bio: null,
-      displayName: 'ณัฐดนัย',
       entryYear: 2569,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
       links: [],
       photo: {
         height: 512,

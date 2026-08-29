@@ -8,7 +8,7 @@ import { StudentAuthService } from '../src/modules/auth/application/student-auth
 import {
   PROFILES_CLOCK,
   PROFILES_REPOSITORY,
-  type PrivatePublicProfile,
+  type PrivateProfileState,
   type ProfilesRepository,
   type PublicProfileView,
 } from '../src/modules/profiles/application/profiles.ports';
@@ -19,10 +19,10 @@ const PUBLIC_ID = '51000000-0000-4000-8000-000000000002';
 const IDEMPOTENCY_KEY = '51000000-0000-4000-8000-000000000003';
 
 class E2eProfilesRepository implements ProfilesRepository {
-  profile: PrivatePublicProfile | null = null;
+  profile: PrivateProfileState | null = null;
   publicProfile: PublicProfileView | null = null;
 
-  findPrivateProfile(): Promise<PrivatePublicProfile | null> {
+  findPrivateProfile(): Promise<PrivateProfileState | null> {
     return Promise.resolve(this.profile);
   }
 
@@ -86,13 +86,12 @@ describe('Public Profile and Profile Consent (e2e)', () => {
       .set('Authorization', 'Bearer opaque-session')
       .set('x-student-bff-secret', STUDENT_BFF_SECRET)
       .expect(200)
-      .expect({ canEditProfile: true, profile: null });
+      .expect({ canEditProfile: true, person: null, profile: null });
   });
 
   it('rejects unknown fields and denies content editing to an Alumnus', async () => {
     const validBody = {
       bio: null,
-      displayName: 'ณัฐดนัย สุขใจ',
       expectedVersion: 0,
       idempotencyKey: IDEMPOTENCY_KEY,
       links: [],
@@ -118,7 +117,6 @@ describe('Public Profile and Profile Consent (e2e)', () => {
 
   it('requires explicit nullable profile fields at the transport boundary', async () => {
     const incompleteBody = {
-      displayName: 'ณัฐดนัย สุขใจ',
       expectedVersion: 0,
       idempotencyKey: IDEMPOTENCY_KEY,
       links: [],
@@ -136,15 +134,18 @@ describe('Public Profile and Profile Consent (e2e)', () => {
   it('allows an Alumnus to grant and withdraw explicit versioned consent', async () => {
     canEditProfile = false;
     repository.profile = {
-      bio: null,
-      consent: null,
-      displayName: 'ณัฐดนัย สุขใจ',
       entryYear: 2569,
-      links: [],
-      photo: null,
-      photoId: null,
-      publicId: PUBLIC_ID,
-      version: 1,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
+      profile: {
+        bio: null,
+        consent: null,
+        links: [],
+        photo: null,
+        photoId: null,
+        publicId: PUBLIC_ID,
+        version: 1,
+      },
     };
     await request(app.getHttpServer())
       .post('/v1/internal/student/profile/consent')
@@ -195,8 +196,9 @@ describe('Public Profile and Profile Consent (e2e)', () => {
 
     repository.publicProfile = {
       bio: null,
-      displayName: 'ณัฐดนัย สุขใจ',
       entryYear: 2569,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
       links: [],
       photo: null,
       publicId: PUBLIC_ID,

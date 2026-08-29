@@ -105,11 +105,14 @@ describe('GET /profile/photo', () => {
 function mockProfilePhoto() {
   return vi.spyOn(StudentProfileCoreClient.prototype, 'getProfile').mockResolvedValue({
     canEditProfile: true,
+    person: {
+      entryYear: 2569,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
+    },
     profile: {
       bio: null,
       consent: null,
-      displayName: 'ณัฐดนัย',
-      entryYear: 2569,
       links: [],
       photo: {
         height: 512,

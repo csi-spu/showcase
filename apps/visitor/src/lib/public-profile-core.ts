@@ -4,8 +4,9 @@ import { z } from 'zod';
 const publicProfileSchema = z
   .object({
     bio: z.string().nullable(),
-    displayName: z.string().min(1).max(100),
     entryYear: z.number().int(),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
     links: z.array(z.object({ label: z.string(), url: z.url() }).strict()).max(5),
     photo: z
       .object({
@@ -51,4 +52,15 @@ export function getVisitorCoreUrl(): string {
     (process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:4100');
   if (value === undefined) throw new Error('CORE_URL_NOT_CONFIGURED');
   return new URL(value).origin;
+}
+
+export function getVisitorBffSecret(): string {
+  const value =
+    process.env.VISITOR_BFF_SECRET ??
+    (process.env.NODE_ENV === 'production'
+      ? undefined
+      : 'local-development-only-visitor-bff-secret');
+  if (value === undefined || value.length < 32)
+    throw new Error('VISITOR_BFF_SECRET_NOT_CONFIGURED');
+  return value;
 }

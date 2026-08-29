@@ -194,14 +194,35 @@ export class PostgresReviewsRepository implements ReviewRepository {
     now: Date,
   ): Promise<void> {
     await sql`
-      insert into private.work_drafts (
+      insert into private.work_drafts as existing (
         work_id, base_published_revision_id, title, summary, description, category,
-        academic_year, semester, version, created_at, updated_at
+        academic_year, semester, submitter_study_year, lifecycle_state,
+        version, created_at, updated_at
       ) select
         ${workId}, revision.base_published_revision_id, revision.title, revision.summary,
         revision.description, revision.category, revision.academic_year, revision.semester,
-        1, ${now}, ${now}
-      from private.work_revisions as revision where revision.id = ${revisionId}
+        case when submitter.study_year between 1 and 4 then submitter.study_year else null end,
+        'active', 1, ${now}, ${now}
+      from private.work_revisions as revision
+      join private.work_revision_attributions as submitter
+        on submitter.revision_id = revision.id and submitter.kind = 'submitter'
+      where revision.id = ${revisionId}
+      on conflict (work_id) do update set
+        base_published_revision_id = excluded.base_published_revision_id,
+        title = excluded.title, summary = excluded.summary,
+        description = excluded.description, category = excluded.category,
+        academic_year = excluded.academic_year, semester = excluded.semester,
+        submitter_study_year = excluded.submitter_study_year,
+        lifecycle_state = 'active', version = existing.version + 1,
+        updated_at = excluded.updated_at
+    `;
+    await sql`delete from private.work_draft_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_tags where work_id = ${workId}`;
+    await sql`delete from private.work_draft_video_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_media where work_id = ${workId}`;
+    await sql`
+      update private.work_draft_contributors set removed_at = ${now}, updated_at = ${now}
+      where work_id = ${workId} and removed_at is null
     `;
     await sql`insert into private.work_draft_links (work_id, position, label, url)
       select ${workId}, position, label, url
@@ -216,6 +237,14 @@ export class PostgresReviewsRepository implements ReviewRepository {
     await sql`insert into private.work_draft_media (work_id, media_kind, position, asset_id, created_at)
       select ${workId}, media_kind, position, asset_id, ${now}
       from private.work_revision_media where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_contributors (
+      work_id, kind, person_id, attribution_name, contribution_role,
+      position, created_at, updated_at
+    ) select ${workId}, kind, person_id, attribution_name, contribution_role,
+      position - 1, ${now}, ${now}
+      from private.work_revision_attributions
+      where revision_id = ${revisionId} and kind in ('account', 'external')
+      order by position`;
   }
 
   private async resolveReplay(

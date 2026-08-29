@@ -35,6 +35,10 @@ class E2eWorkRevisionRepository implements WorkRevisionRepository {
   result: WorkRevisionResult = { outcome: 'created', revision: revision() };
   pending: WorkRevisionView | null = null;
 
+  findSubmissionContext() {
+    return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566 });
+  }
+
   findPendingRevision(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.pending);
   }
@@ -163,7 +167,7 @@ describe('Work Revision submission and Review queue (e2e)', () => {
     )
       .send(submitBody())
       .expect(201);
-    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.body).toMatchObject({
       outcome: 'created',
       revision: { status: 'pending_review' },
@@ -312,11 +316,18 @@ function changeRequest(): ChangeRequestView {
 
 function submitBody() {
   return {
-    attributionName: 'ชื่อผู้ส่ง',
+    academicPeriod: { semester: '1', year: 2569 },
+    category: 'course_work',
+    description: 'รายละเอียด',
     expectedBasePublishedRevisionId: null,
     expectedDraftVersion: 3,
     idempotencyKey: IDEMPOTENCY_KEY,
+    links: [],
+    summary: 'สรุป',
     studyYear: 2,
+    tags: [],
+    title: 'ชื่อผลงาน',
+    videoLinks: [],
   };
 }
 

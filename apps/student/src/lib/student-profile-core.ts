@@ -13,8 +13,6 @@ const privateProfileSchema = z
       .object({ consentTextVersion: z.string(), grantedAt: z.iso.datetime() })
       .strict()
       .nullable(),
-    displayName: z.string(),
-    entryYear: z.number().int(),
     links: z.array(profileLinkSchema).max(5),
     photo: profilePhotoSchema.nullable(),
     photoId: z.uuid().nullable(),
@@ -22,8 +20,19 @@ const privateProfileSchema = z
     version: z.number().int().positive(),
   })
   .strict();
+const privatePersonSchema = z
+  .object({
+    entryYear: z.number().int(),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
+  })
+  .strict();
 const privateProfileResponseSchema = z
-  .object({ canEditProfile: z.boolean(), profile: privateProfileSchema.nullable() })
+  .object({
+    canEditProfile: z.boolean(),
+    person: privatePersonSchema.nullable(),
+    profile: privateProfileSchema.nullable(),
+  })
   .strict();
 const mutationResultSchema = z
   .object({ outcome: z.enum(['replayed', 'unchanged', 'updated']) })
@@ -39,10 +48,10 @@ const photoUploadSchema = z
 const finalizedPhotoSchema = z.object({ photoId: z.uuid(), status: z.literal('ready') }).strict();
 
 export type PrivatePublicProfile = z.infer<typeof privateProfileSchema>;
+export type PrivatePerson = z.infer<typeof privatePersonSchema>;
 export type PrivateProfileResponse = z.infer<typeof privateProfileResponseSchema>;
 export type ProfileUpdateInput = {
   bio: string | null;
-  displayName: string;
   expectedVersion: number;
   idempotencyKey: string;
   links: { label: string; url: string }[];

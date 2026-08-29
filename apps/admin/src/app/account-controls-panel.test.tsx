@@ -131,4 +131,42 @@ describe('Admin Account controls panel', () => {
     expect(await screen.findByText('one-time-random-password')).toBeTruthy();
     expect(screen.getByText('รหัสผ่านชั่วคราวจะแสดงครั้งนี้ครั้งเดียว')).toBeTruthy();
   });
+
+  it('submits an explicit audited Roster Name correction', async () => {
+    const studentAction = vi
+      .fn<StudentAccountAction>()
+      .mockResolvedValueOnce({
+        error: null,
+        idempotencyKey: '30000000-0000-4000-8000-000000000003',
+        student: STUDENT,
+        temporaryPassword: null,
+      })
+      .mockResolvedValueOnce({
+        error: null,
+        idempotencyKey: '30000000-0000-4000-8000-000000000004',
+        student: { ...STUDENT, firstNameTh: 'สมหญิง', lastNameTh: 'มั่นใจ', version: 3 },
+        temporaryPassword: null,
+      });
+    renderPanel(vi.fn<AcademicYearAction>(), studentAction);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('รหัสนักศึกษา'), '69000001');
+    await user.click(screen.getByRole('button', { name: 'ค้นหาบัญชี' }));
+    await user.clear(await screen.findByLabelText('ชื่อจริง'));
+    await user.type(screen.getByLabelText('ชื่อจริง'), 'สมหญิง');
+    await user.clear(screen.getByLabelText('นามสกุล'));
+    await user.type(screen.getByLabelText('นามสกุล'), 'มั่นใจ');
+    await user.type(screen.getByLabelText('เหตุผลการแก้ไขชื่อ'), 'แก้ไขตามหลักฐานทะเบียน');
+    await user.click(screen.getByRole('button', { name: 'บันทึกการแก้ไขชื่อ' }));
+
+    await waitFor(() => expect(studentAction).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('สมหญิง มั่นใจ')).toBeTruthy();
+    expect(Object.fromEntries(studentAction.mock.calls[1]?.[1]?.entries() ?? [])).toMatchObject({
+      expectedVersion: '2',
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นใจ',
+      operation: 'correctName',
+      reason: 'แก้ไขตามหลักฐานทะเบียน',
+      studentAccountId: STUDENT.accountId,
+    });
+  });
 });

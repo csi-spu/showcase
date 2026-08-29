@@ -2,14 +2,17 @@
 
 import {
   BellIcon,
+  FilePlus2Icon,
   FolderKanbanIcon,
   HouseIcon,
-  MailIcon,
-  PlusIcon,
+  UserRoundPenIcon,
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -17,56 +20,67 @@ import {
 } from '@/components/animate-ui/components/radix/sidebar';
 
 export type StudentWorkspacePage =
-  'create-work' | 'home' | 'invitations' | 'notifications' | 'profile' | 'work';
+  'add-work' | 'dashboard' | 'edit-profile' | 'notifications' | 'works';
 
 export interface StudentSidebarItem {
   href: string;
   label: string;
-  page: Exclude<StudentWorkspacePage, 'profile'>;
+  page: StudentWorkspacePage;
 }
 
-const PAGE_ICONS: Record<StudentSidebarItem['page'], LucideIcon> = {
-  'create-work': PlusIcon,
-  home: HouseIcon,
-  invitations: MailIcon,
+export interface StudentSidebarGroup {
+  items: StudentSidebarItem[];
+  label: string;
+}
+
+const PAGE_ICONS: Record<StudentWorkspacePage, LucideIcon> = {
+  'add-work': FilePlus2Icon,
+  dashboard: HouseIcon,
+  'edit-profile': UserRoundPenIcon,
   notifications: BellIcon,
-  work: FolderKanbanIcon,
+  works: FolderKanbanIcon,
 };
 
 export function StudentSidebarNavigation({
   activePage,
-  items,
+  groups,
 }: {
   activePage: StudentWorkspacePage;
-  items: StudentSidebarItem[];
+  groups: StudentSidebarGroup[];
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
 
   return (
     <nav aria-label="เมนูนักศึกษา">
-      <SidebarMenu>
-        {items.map(({ href, label, page }) => {
-          const Icon = PAGE_ICONS[page];
-          const isActive = activePage === page;
-
-          return (
-            <SidebarMenuItem key={page}>
-              <SidebarMenuButton asChild isActive={isActive} size="lg" tooltip={label}>
-                <Link
-                  aria-current={isActive ? 'page' : undefined}
-                  href={href}
-                  onClick={() => {
-                    if (isMobile) setOpenMobile(false);
-                  }}
-                >
-                  <Icon aria-hidden="true" />
-                  <span>{label}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          );
-        })}
-      </SidebarMenu>
+      {groups.map((group) => (
+        <SidebarGroup key={group.label}>
+          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map(({ href, label, page }) => {
+                const Icon = PAGE_ICONS[page];
+                const isActive = activePage === page;
+                return (
+                  <SidebarMenuItem key={page}>
+                    <SidebarMenuButton asChild isActive={isActive} size="lg" tooltip={label}>
+                      <Link
+                        aria-current={isActive ? 'page' : undefined}
+                        href={href}
+                        onClick={() => {
+                          if (isMobile) setOpenMobile(false);
+                        }}
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
     </nav>
   );
 }

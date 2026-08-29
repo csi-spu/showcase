@@ -21,8 +21,6 @@ export interface ProfilePhotoView {
 export interface PrivatePublicProfile {
   bio: string | null;
   consent: ProfileConsentView | null;
-  displayName: string;
-  entryYear: number;
   links: PublicProfileDraftInput['links'];
   photo: ProfilePhotoView | null;
   photoId: string | null;
@@ -30,10 +28,18 @@ export interface PrivatePublicProfile {
   version: number;
 }
 
+export interface PrivateProfileState {
+  entryYear: number;
+  firstName: string;
+  lastName: string;
+  profile: PrivatePublicProfile | null;
+}
+
 export interface PublicProfileView {
   bio: string | null;
-  displayName: string;
   entryYear: number;
+  firstName: string;
+  lastName: string;
   links: PublicProfileDraftInput['links'];
   photo: ProfilePhotoView | null;
   publicId: string;
@@ -44,7 +50,7 @@ export type ProfileMutationResult =
   | { outcome: 'replayed' | 'unchanged' | 'updated' };
 
 export interface ProfilesRepository {
-  findPrivateProfile(accountId: string): Promise<PrivatePublicProfile | null>;
+  findPrivateProfile(accountId: string): Promise<PrivateProfileState | null>;
   findPublicProfile(publicId: string): Promise<PublicProfileView | null>;
   grantConsent(input: {
     actorAccountId: string;

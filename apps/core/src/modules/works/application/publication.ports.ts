@@ -11,7 +11,9 @@ export interface PublicationView {
 
 export interface PublicWorkAttributionView {
   affiliation: string | null;
+  attributionPublicId: string;
   attributionName: string;
+  canRequestRemoval: boolean;
   contributionRole: string | null;
   profilePublicId: string | null;
   studyYear: number | null;
@@ -62,6 +64,10 @@ export interface PublicationRepository {
     now: Date;
     revisionPublicId: string;
   }): Promise<PublicationResult>;
-  findPublicMediaUrl(workPublicId: string, assetId: string, width: number): Promise<string | null>;
+  findPublicMediaObjectKey(
+    workPublicId: string,
+    assetId: string,
+    width: number,
+  ): Promise<string | null>;
   findPublicWork(workPublicId: string): Promise<PublicWorkView | null>;
 }

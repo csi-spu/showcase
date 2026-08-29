@@ -49,6 +49,7 @@ const NOTIFICATION_EVENT_TYPES = [
   'work_restore_publication',
   'work_revision_changes_requested',
   'work_revision_published',
+  'work_attribution_removed',
   'work_unpublish',
 ] as const;
 
@@ -306,17 +307,7 @@ export class PostgresNotificationsRepository implements NotificationRepository {
           where batch.id = (notification.target ->> 'batchId')::uuid
             and batch.uploader_account_id = ${accountId}
         ) then 'admin_roster' end
-        when 'attribution_invitation' then case when exists (
-          select 1
-          from private.attribution_invitations as invitation
-          join public.works as work on work.id = invitation.work_id
-          join public.accounts as actor_account on actor_account.id = ${accountId}
-          where invitation.public_id = (notification.target ->> 'invitationPublicId')::uuid
-            and (
-              invitation.invitee_person_id = actor_account.person_id
-              or work.submitter_person_id = actor_account.person_id
-            )
-        ) then 'student_invitations' end
+        when 'attribution_invitation' then null
         when 'work' then (
           select case
             when work.submitter_person_id = actor_account.person_id then 'student_work'

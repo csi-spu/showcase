@@ -1,0 +1,3 @@
+# Accept unverified Attribution Removal Requests
+
+Visitor accepts a rate-limited unauthenticated free-text Attribution Removal Request against a Published Revision and sends it to a private bounded Admin queue without token, Account, session, contact field, or requester identity verification; the request never changes public content until an authorized Admin approves an audited correction. We rejected verified invitation or recovery sessions because Attribution Invitations were removed and the chosen flow requires no requester verification, accepting impersonation, spam, and additional Admin investigation cost while prohibiting automatic removal or requester-controlled publication changes.

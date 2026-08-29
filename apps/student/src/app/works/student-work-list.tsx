@@ -1,102 +1,172 @@
-import { buttonVariants } from '@showcase/ui/button';
+'use client';
+
+import { Button, buttonVariants } from '@showcase/ui/button';
+import Image from 'next/image';
 import Link from 'next/link';
+import { useTransition } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkListItem } from '@/lib/student-works-core';
-
-type WorkflowState =
-  'archived' | 'changes_requested' | 'draft' | 'pending_review' | 'published' | 'unpublished';
-
-interface WorkListLabels {
-  actions: {
-    editDraft: string;
-    editRequested: string;
-    manage: string;
-    view: string;
-  };
-  publication: Record<WorkListItem['publicationState'], string>;
-  status: Record<WorkflowState, string>;
-  updatedAt: string;
-}
+import { archiveSavedDraftAction, restoreSavedDraftAction } from './work.actions';
 
 export function StudentWorkList({
   canEdit,
   items,
   labels,
+  visitorUrl = '',
 }: {
   canEdit: boolean;
   items: WorkListItem[];
-  labels: WorkListLabels;
+  labels: Record<string, string>;
+  visitorUrl?: string;
 }) {
   return (
-    <ul className="grid gap-4">
-      {items.map((work) => {
-        const workflowState = getWorkflowState(work);
-        const action = getAction(workflowState);
-        return (
-          <li aria-label={work.title} key={work.publicId}>
-            <Card className="transition-colors hover:border-primary/35">
-              <CardHeader className="gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                <div className="grid min-w-0 gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={workflowBadgeVariant(workflowState)}>
-                      {labels.status[workflowState]}
-                    </Badge>
-                    <Badge variant="outline">{labels.publication[work.publicationState]}</Badge>
-                  </div>
-                  <CardTitle>
-                    <h2 className="text-xl font-semibold text-balance">{work.title}</h2>
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <time className="text-sm text-muted-foreground" dateTime={work.updatedAt}>
-                  {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
-                </time>
-              </CardContent>
-              {canEdit ? (
-                <CardFooter className="justify-end">
-                  <Link
-                    className={buttonVariants({ variant: 'outline' })}
-                    href={`/works/${work.publicId}`}
-                  >
-                    {labels.actions[action]}
-                  </Link>
-                </CardFooter>
-              ) : null}
-            </Card>
-          </li>
-        );
-      })}
+    <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+      {items.map((work) => (
+        <li aria-label={work.title ?? labels.placeholder} key={work.publicId}>
+          <Card className="h-full overflow-hidden">
+            {work.poster === null ? (
+              <div className="aspect-[3/4] bg-muted" aria-label={labels.posterFallback} />
+            ) : (
+              <Image
+                alt=""
+                className="aspect-[3/4] w-full object-cover"
+                height={work.poster.height}
+                loading="lazy"
+                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
+                unoptimized
+                width={work.poster.width}
+              />
+            )}
+            <CardHeader>
+              <div className="flex flex-wrap gap-2">
+                <Badge>{labels[`source.${work.displayedSource}`]}</Badge>
+                <Badge variant="outline">{labels[`activity.${work.activityState}`]}</Badge>
+                <Badge variant="outline">{labels[`publication.${work.publicationState}`]}</Badge>
+                <Badge variant="secondary">
+                  {
+                    labels[
+                      `review.${work.latestRevisionStatus ?? (work.hasDraft ? 'draft' : 'none')}`
+                    ]
+                  }
+                </Badge>
+              </div>
+              <CardTitle>
+                <h2>{work.title ?? labels.placeholder}</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <p className="line-clamp-3 text-sm text-muted-foreground">
+                {work.summary ?? labels.placeholder}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
+              </p>
+            </CardContent>
+            <CardFooter className="flex flex-wrap gap-2">
+              {primaryAction(work, canEdit, labels, visitorUrl)}
+              {canEdit ? <SecondaryActions labels={labels} work={work} /> : null}
+            </CardFooter>
+          </Card>
+        </li>
+      ))}
     </ul>
   );
 }
 
-function getWorkflowState(work: WorkListItem): WorkflowState {
-  if (work.activityState === 'archived') return 'archived';
-  if (work.latestRevisionStatus === 'pending_review') return 'pending_review';
-  if (work.latestRevisionStatus === 'changes_requested') return 'changes_requested';
-  if (work.hasDraft) return 'draft';
-  return work.publicationState === 'published' ? 'published' : 'unpublished';
+function primaryAction(
+  work: WorkListItem,
+  canEdit: boolean,
+  labels: Record<string, string>,
+  visitorUrl: string,
+) {
+  if (
+    work.primaryAction === null ||
+    (!canEdit && work.primaryAction !== 'view_details' && work.primaryAction !== 'view_public_work')
+  )
+    return null;
+  const href =
+    work.primaryAction === 'view_public_work'
+      ? `${visitorUrl}/works/${work.publicId}`
+      : `/works/${work.publicId}`;
+  return (
+    <Link className={buttonVariants()} href={href}>
+      {labels[`actions.${work.primaryAction}`]}
+    </Link>
+  );
 }
 
-function getAction(state: WorkflowState): 'editDraft' | 'editRequested' | 'manage' | 'view' {
-  if (state === 'changes_requested') return 'editRequested';
-  if (state === 'draft') return 'editDraft';
-  if (state === 'published' || state === 'unpublished') return 'manage';
-  return 'view';
+function SecondaryActions({
+  labels,
+  work,
+}: {
+  labels: Record<string, string>;
+  work: WorkListItem;
+}) {
+  const [pending, start] = useTransition();
+  if (work.secondaryActions.length === 0 && work.primaryAction !== 'return_to_editing') return null;
+  return (
+    <details>
+      <summary className={buttonVariants({ variant: 'outline' })}>{labels.more}</summary>
+      <div className="mt-2 grid gap-2 rounded-control border bg-card p-2">
+        {work.primaryAction === 'return_to_editing' ? (
+          <Button
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                await restoreSavedDraftAction({
+                  expectedVersion: work.version,
+                  idempotencyKey: crypto.randomUUID(),
+                  publicId: work.publicId,
+                });
+                window.location.reload();
+              })
+            }
+            type="button"
+            variant="outline"
+          >
+            {labels['actions.return_to_editing']}
+          </Button>
+        ) : null}
+        {work.secondaryActions.map((action) =>
+          action === 'archive_saved_draft' ? (
+            <Button
+              disabled={pending}
+              key={action}
+              onClick={() => {
+                if (window.confirm(labels.archiveConfirm))
+                  start(async () => {
+                    await archiveSavedDraftAction({
+                      confirmation: true,
+                      expectedVersion: work.version,
+                      idempotencyKey: crypto.randomUUID(),
+                      publicId: work.publicId,
+                    });
+                    window.location.reload();
+                  });
+              }}
+              type="button"
+              variant="outline"
+            >
+              {labels[`actions.${action}`]}
+            </Button>
+          ) : (
+            <Link
+              className={buttonVariants({ variant: 'outline' })}
+              href={`/works/${work.publicId}`}
+              key={action}
+            >
+              {labels[`actions.${action}`]}
+            </Link>
+          ),
+        )}
+      </div>
+    </details>
+  );
 }
 
-function workflowBadgeVariant(
-  state: WorkflowState,
-): 'default' | 'destructive' | 'outline' | 'secondary' {
-  if (state === 'changes_requested') return 'destructive';
-  if (state === 'archived') return 'outline';
-  if (state === 'pending_review') return 'secondary';
-  return 'default';
-}
-
-function formatBangkokDate(value: string): string {
+function formatBangkokDate(value: string) {
   return new Intl.DateTimeFormat('th-TH', {
     dateStyle: 'medium',
     timeStyle: 'short',

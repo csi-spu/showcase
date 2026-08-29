@@ -2,13 +2,45 @@
 
 import { redirect } from 'next/navigation';
 import { isExpired } from './admin-auth-action-policy';
+import type { RosterStudentActionState } from './roster-student-state';
 import type { RosterUploadActionState, RosterUploadErrorMessage } from './roster-upload-state';
 import type { RosterConflictActionState } from './roster-conflict-state';
 import { AdminRosterCoreClient, AdminRosterCoreError } from '@/lib/admin-roster-core';
 import { clearAdminSessionToken, readAdminSessionToken } from '@/lib/admin-auth-session';
 import { getAdminServerEnvironment } from '@/lib/server-environment';
 import { validateRosterUpload } from '@/lib/roster-upload-validation';
+import { validateRosterStudent } from '@/lib/roster-student-validation';
 import { validateRosterConflictResolution } from '@/lib/roster-conflict-validation';
+
+export async function createRosterStudentAction(
+  _state: RosterStudentActionState,
+  formData: FormData,
+): Promise<RosterStudentActionState> {
+  const input = validateRosterStudent(formData);
+  if (input === null) return { error: 'invalid' };
+  const sessionToken = await readAdminSessionToken();
+  if (sessionToken === null) redirect('/?expired=1');
+
+  let batch;
+  try {
+    batch = await coreClient().createStudent(sessionToken, input);
+  } catch (error: unknown) {
+    if (isExpired(error)) {
+      await clearAdminSessionToken();
+      redirect('/?expired=1');
+    }
+    if (
+      error instanceof AdminRosterCoreError &&
+      ['INVALID_FIRST_NAME', 'INVALID_LAST_NAME', 'INVALID_REQUEST', 'INVALID_STUDENT_ID'].includes(
+        error.code,
+      )
+    ) {
+      return { error: 'invalid' };
+    }
+    return { error: 'unavailable' };
+  }
+  redirect(`/?batchId=${batch.batchId}`);
+}
 
 export async function uploadRosterAction(
   _state: RosterUploadActionState,

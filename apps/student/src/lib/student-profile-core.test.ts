@@ -11,11 +11,14 @@ describe('StudentProfileCoreClient', () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
         canEditProfile: true,
+        person: {
+          entryYear: 2569,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
+        },
         profile: {
           bio: null,
           consent: null,
-          displayName: 'ณัฐดนัย',
-          entryYear: 2569,
           links: [],
           photo: null,
           photoId: null,
@@ -43,7 +46,6 @@ describe('StudentProfileCoreClient', () => {
     const client = createClient(fetchMock);
     await client.updateProfile(SESSION, {
       bio: null,
-      displayName: 'ณัฐดนัย',
       expectedVersion: 1,
       idempotencyKey: '71000000-0000-4000-8000-000000000002',
       links: [],
@@ -53,7 +55,6 @@ describe('StudentProfileCoreClient', () => {
     const body = String(fetchMock.mock.calls[0]?.[1]?.body);
     expect(JSON.parse(body)).toEqual({
       bio: null,
-      displayName: 'ณัฐดนัย',
       expectedVersion: 1,
       idempotencyKey: '71000000-0000-4000-8000-000000000002',
       links: [],

@@ -1,4 +1,3 @@
-const DISPLAY_NAME_MAX_LENGTH = 100;
 const BIO_MAX_LENGTH = 500;
 const LINK_LABEL_MAX_LENGTH = 50;
 const LINK_URL_MAX_LENGTH = 2_048;
@@ -11,7 +10,6 @@ export interface PublicProfileLinkInput {
 
 export interface PublicProfileDraftInput {
   bio: string | null;
-  displayName: string;
   links: PublicProfileLinkInput[];
   photoId: string | null;
 }
@@ -20,15 +18,9 @@ export type PublicProfileEvaluation =
   { isValid: false } | { isValid: true; profile: PublicProfileDraftInput };
 
 export function evaluatePublicProfile(input: PublicProfileDraftInput): PublicProfileEvaluation {
-  const displayName = input.displayName.trim();
   const bio = input.bio?.trim() || null;
 
-  if (
-    displayName.length === 0 ||
-    displayName.length > DISPLAY_NAME_MAX_LENGTH ||
-    (bio !== null && bio.length > BIO_MAX_LENGTH) ||
-    input.links.length > LINK_LIMIT
-  ) {
+  if ((bio !== null && bio.length > BIO_MAX_LENGTH) || input.links.length > LINK_LIMIT) {
     return { isValid: false };
   }
 
@@ -64,6 +56,6 @@ export function evaluatePublicProfile(input: PublicProfileDraftInput): PublicPro
 
   return {
     isValid: true,
-    profile: { bio, displayName, links, photoId: input.photoId },
+    profile: { bio, links, photoId: input.photoId },
   };
 }

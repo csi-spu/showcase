@@ -12,7 +12,9 @@ const publicWorkSchema = z
         z
           .object({
             affiliation: z.string().nullable(),
+            attributionPublicId: z.uuid(),
             attributionName: z.string().min(1).max(100),
+            canRequestRemoval: z.boolean(),
             contributionRole: z.string().nullable(),
             profilePublicId: z.uuid().nullable(),
             studyYear: z.number().int().min(1).max(8).nullable(),
@@ -70,6 +72,7 @@ const publicWorkSchema = z
   .strict();
 
 const publicMediaSchema = z.object({ url: z.url() }).strict();
+const removalReceiptSchema = z.object({ received: z.literal(true) }).strict();
 
 export type PublicWork = z.infer<typeof publicWorkSchema>;
 
@@ -112,5 +115,39 @@ export class PublicWorkCoreClient {
     if (response.status === 404) return null;
     if (!response.ok) throw new Error('PUBLIC_WORK_MEDIA_SERVICE_UNAVAILABLE');
     return publicMediaSchema.parse(await response.json()).url;
+  }
+
+  async requestAttributionRemoval(
+    workPublicId: string,
+    attributionPublicId: string,
+    input: { idempotencyKey: string; reason: string },
+    source?: { bffSecret: string; sourceKey: string },
+  ): Promise<{ received: true }> {
+    const path = `/v1/public/works/${encodeURIComponent(workPublicId)}/attributions/${encodeURIComponent(attributionPublicId)}/removal-requests`;
+    const response = await this.fetchImpl(new URL(path, this.coreOrigin).toString(), {
+      body: JSON.stringify(input),
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        ...(source === undefined
+          ? {}
+          : {
+              'x-visitor-bff-secret': source.bffSecret,
+              'x-visitor-source-key': source.sourceKey,
+            }),
+      },
+      method: 'POST',
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new PublicAttributionRemovalError(response.status);
+    return removalReceiptSchema.parse(await response.json());
+  }
+}
+
+export class PublicAttributionRemovalError extends Error {
+  constructor(readonly status: number) {
+    super('PUBLIC_ATTRIBUTION_REMOVAL_FAILED');
   }
 }

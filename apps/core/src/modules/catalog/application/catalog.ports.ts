@@ -29,8 +29,9 @@ export interface WorkCatalogCard {
 
 export interface PeopleCatalogCard {
   bio: string | null;
-  displayName: string;
   entryYear: number;
+  firstName: string;
+  lastName: string;
   photo: { height: number; url: string; width: number } | null;
   publicId: string;
   publishedWorkCount: number;
@@ -64,6 +65,7 @@ export interface CatalogRepository {
   }): Promise<CatalogSlice<PeopleCatalogCard>>;
   listPopularTags(): Promise<PublicTagView[]>;
   listSitemapEntries(kind: CatalogSitemapKind, bucket: number): Promise<CatalogSitemapEntry[]>;
+  suggestTags(query: string): Promise<PublicTagView[]>;
   listWorks(input: {
     after: CatalogPosition | null;
     query: WorkCatalogQuery;

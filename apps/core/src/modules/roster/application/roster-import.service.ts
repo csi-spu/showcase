@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import { AUTH_CLOCK, AUTH_IDENTITY_PROTECTOR } from '../../auth/application/auth.ports';
-import { MAX_ROSTER_FILE_BYTES, RosterCsvError, parseRosterCsv } from '../domain/roster-csv';
+import {
+  MAX_ROSTER_FILE_BYTES,
+  RosterCsvError,
+  parseRosterCsv,
+  prepareRosterStudent,
+  type RosterRow,
+} from '../domain/roster-csv';
 import { createRosterErrorCsv } from '../domain/roster-error-csv';
 import {
   RosterConflictResolutionError,
@@ -64,14 +70,25 @@ export class RosterImportService {
       now: this.clock.now(),
       rows: rows.map((row) => {
         if ('errorCode' in row) return row;
-        const studentIdHash = this.identityProtector.hashStudentId(row.studentId);
-        return {
-          ...row,
-          providerUserId: providerUserIdFromStudentIdHash(studentIdHash),
-          studentIdHash,
-          syntheticIdentity: this.identityProtector.toSyntheticIdentity(row.studentId),
-        };
+        return this.protectRowIdentity(row);
       }),
+      uploaderAccountId: input.actorAccountId,
+    });
+  }
+
+  async createStudent(input: {
+    actorAccountId: string;
+    firstNameTh: string;
+    lastNameTh: string;
+    studentId: string;
+  }): Promise<RosterBatch> {
+    const row = prepareRosterStudent(input);
+    if ('errorCode' in row) {
+      throw new RosterImportError(row.errorCode, 422);
+    }
+    return this.repository.createBatch({
+      now: this.clock.now(),
+      rows: [this.protectRowIdentity(row)],
       uploaderAccountId: input.actorAccountId,
     });
   }
@@ -143,6 +160,16 @@ export class RosterImportService {
       case 'idempotency_conflict':
         throw new RosterImportError('ROSTER_CONFLICT_IDEMPOTENCY_CONFLICT', 409);
     }
+  }
+
+  private protectRowIdentity(row: RosterRow) {
+    const studentIdHash = this.identityProtector.hashStudentId(row.studentId);
+    return {
+      ...row,
+      providerUserId: providerUserIdFromStudentIdHash(studentIdHash),
+      studentIdHash,
+      syntheticIdentity: this.identityProtector.toSyntheticIdentity(row.studentId),
+    };
   }
 }
 

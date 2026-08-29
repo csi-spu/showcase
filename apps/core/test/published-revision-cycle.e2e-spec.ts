@@ -42,6 +42,10 @@ const NOW = new Date('2026-08-26T04:00:00.000Z');
 class LifecycleWorksRepository implements WorksRepository {
   draft: WorkDraftView | null = null;
 
+  archiveSavedDraft(): ReturnType<WorksRepository['archiveSavedDraft']> {
+    return Promise.resolve({ outcome: 'state_conflict' });
+  }
+
   createWork(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'draft_exists' });
   }
@@ -65,11 +69,37 @@ class LifecycleWorksRepository implements WorksRepository {
   }
 
   listOwnedWorks(): ReturnType<WorksRepository['listOwnedWorks']> {
-    return Promise.resolve({ items: [], nextCursor: null });
+    return Promise.resolve({
+      hasNextPage: false,
+      hasPreviousPage: false,
+      items: [],
+      nextCursor: null,
+      previousCursor: null,
+    });
+  }
+
+  getWorkspaceSummary(): ReturnType<WorksRepository['getWorkspaceSummary']> {
+    return Promise.resolve({
+      canMutate: true,
+      changeRequestCount: 0,
+      draftCount: this.draft === null ? 0 : 1,
+      latestActionableDraftPublicId: this.draft?.publicId ?? null,
+      pendingReviewCount: 0,
+      publishedCount: 1,
+      unreadNotificationCount: 0,
+    });
+  }
+
+  patchDraft(): Promise<WorkMutationResult> {
+    return Promise.resolve({ outcome: 'updated', work: this.requireDraft() });
   }
 
   rebaseDraft(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'updated', work: this.requireDraft() });
+  }
+
+  restoreSavedDraft(): ReturnType<WorksRepository['restoreSavedDraft']> {
+    return Promise.resolve({ outcome: 'state_conflict' });
   }
 
   seedDraft(): Promise<WorkMutationResult> {
@@ -89,6 +119,10 @@ class LifecycleWorksRepository implements WorksRepository {
 
 class LifecycleRevisionRepository implements WorkRevisionRepository {
   pending: WorkRevisionView | null = null;
+
+  findSubmissionContext() {
+    return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566 });
+  }
 
   findPendingRevision(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.pending);
@@ -128,7 +162,7 @@ class LifecyclePublicationRepository implements PublicationRepository {
     });
   }
 
-  findPublicMediaUrl(): Promise<string | null> {
+  findPublicMediaObjectKey(): Promise<string | null> {
     return Promise.resolve(null);
   }
 
@@ -180,7 +214,7 @@ describe('Student-to-Admin-to-Visitor newer Revision lifecycle (e2e)', () => {
       .expect(201);
     await studentRequest('post', `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions`)
       .send({
-        attributionName: 'ชื่อผู้ส่งฉบับใหม่',
+        ...content('ฉบับเผยแพร่ใหม่'),
         expectedBasePublishedRevisionId: FIRST_REVISION_ID,
         expectedDraftVersion: 1,
         idempotencyKey: SUBMIT_KEY,
@@ -233,10 +267,15 @@ function draft(): WorkDraftView {
   return {
     activityState: 'active',
     basePublishedRevisionId: FIRST_REVISION_ID,
-    draft: content('ร่างฉบับใหม่'),
+    contributors: [],
+    draft: { ...content('ร่างฉบับใหม่'), submitterStudyYear: 4 },
+    isComplete: true,
+    media: [],
     publicationState: 'published',
     publishedRevisionId: FIRST_REVISION_ID,
     publicId: WORK_PUBLIC_ID,
+    savedAt: NOW,
+    submitterAttributionName: 'ชื่อผู้ส่งฉบับใหม่',
     version: 1,
   };
 }
@@ -271,7 +310,9 @@ function publicWork(number: 1 | 2): PublicWorkView {
     attributions: [
       {
         affiliation: null,
+        attributionPublicId: SECOND_REVISION_PUBLIC_ID,
         attributionName: number === 1 ? 'ชื่อผู้ส่งเดิม' : 'ชื่อผู้ส่งฉบับใหม่',
+        canRequestRemoval: false,
         contributionRole: null,
         profilePublicId: null,
         studyYear: number === 1 ? 2 : 3,

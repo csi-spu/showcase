@@ -22,9 +22,9 @@ describe('Thai Student messages', () => {
 
   it('uses direct dashboard copy', () => {
     expect(messages.Dashboard.title).toBe('จัดการผลงานของคุณ');
-    expect(messages.Dashboard.description).toBe('จัดการผลงาน โปรไฟล์ คำเชิญ และการแจ้งเตือน');
+    expect(messages.Dashboard.description).toBe('ติดตามสถานะผลงานและไปยังงานที่ต้องทำต่อ');
     expect(messages.Auth.active.createWork).toBe('อัปโหลดผลงาน');
-    expect(messages.Workspace.navigation.createWork).toBe('อัปโหลดผลงาน');
+    expect(messages.Workspace.navigation.addWork).toBe('เพิ่มผลงาน');
     expect(messages.WorkPage.createHeading).toBe('อัปโหลดผลงาน');
   });
 
@@ -32,6 +32,11 @@ describe('Thai Student messages', () => {
     expect(messages.Workspace.profile.entryYear).toBe('ปีที่เข้าศึกษา {year}');
     expect(messages.Workspace.profile.fallback).toBe('ยังไม่ได้ตั้งค่าโปรไฟล์');
     expect(messages.Workspace.profile.photoAlt).toBe('รูปโปรไฟล์ของ {name}');
+  });
+
+  it('provides both Work Management view labels', () => {
+    expect(messages.MyWorks.views.current).toBe('ผลงานปัจจุบัน');
+    expect(messages.MyWorks.views.saved).toBe('ฉบับร่างที่บันทึกไว้');
   });
 });
 

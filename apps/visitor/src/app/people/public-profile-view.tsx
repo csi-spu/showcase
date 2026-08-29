@@ -22,6 +22,7 @@ export function PublicProfileView({
   profile: PublicProfile;
 }) {
   const bio = profile.bio?.trim();
+  const rosterName = `${profile.firstName} ${profile.lastName}`;
 
   return (
     <article className="grid gap-8 lg:gap-12">
@@ -39,7 +40,7 @@ export function PublicProfileView({
               {labels.eyebrow}
             </Badge>
             <h1 className="text-[clamp(2.6rem,6vw,5rem)] leading-[1.08] font-semibold tracking-[-0.05em] text-balance">
-              {profile.displayName}
+              {rosterName}
             </h1>
             <Badge className="w-fit" variant="secondary">
               {labels.entryYear}

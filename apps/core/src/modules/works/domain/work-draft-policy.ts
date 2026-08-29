@@ -9,6 +9,7 @@ const LINK_URL_MAX_LENGTH = 2_048;
 const TAG_LIMIT = 5;
 const TAG_MAX_LENGTH = 50;
 const VIDEO_LINK_LIMIT = 3;
+const ACADEMIC_YEAR_MINIMUM = 2400;
 
 export const WORK_CATEGORIES = ['course_work', 'competition_entry', 'academic_article'] as const;
 export const WORK_SEMESTERS = ['1', '2', 'summer'] as const;
@@ -27,6 +28,18 @@ export interface WorkDraftInput {
   videoLinks?: string[];
 }
 
+export interface WorkDraftPatchInput {
+  academicPeriod?: { semester: WorkSemester | '' | null; year: number | null } | null;
+  category?: WorkCategory | '' | null;
+  description?: string | null;
+  links?: WorkDraftInput['links'];
+  summary?: string | null;
+  submitterStudyYear?: number | null;
+  tags?: string[];
+  title?: string | null;
+  videoLinks?: string[];
+}
+
 export interface NormalizedWorkDraft extends Omit<WorkDraftInput, 'tags' | 'videoLinks'> {
   tags: Array<{ displayLabel: string; normalizedIdentity: string }>;
   videoLinks: NormalizedVideoLink[];
@@ -38,8 +51,101 @@ export interface NormalizedVideoLink {
   url: string;
 }
 
+export interface NormalizedWorkDraftPatch {
+  academicPeriod?: { semester: WorkSemester | null; year: number | null };
+  category?: WorkCategory | null;
+  description?: string | null;
+  links?: NormalizedWorkDraft['links'];
+  summary?: string | null;
+  submitterStudyYear?: number | null;
+  tags?: NormalizedWorkDraft['tags'];
+  title?: string | null;
+  videoLinks?: NormalizedVideoLink[];
+}
+
 export type WorkDraftEvaluation =
   { isValid: false } | { draft: NormalizedWorkDraft; isValid: true };
+
+export type WorkDraftPatchEvaluation =
+  { isValid: false } | { isValid: true; patch: NormalizedWorkDraftPatch };
+
+export function normalizeWorkDraftPatch(
+  input: WorkDraftPatchInput,
+  academicRange: { currentAcademicYear: number; entryYear: number },
+): WorkDraftPatchEvaluation {
+  const patch: NormalizedWorkDraftPatch = {};
+
+  if (input.title !== undefined) {
+    const title = normalizeOptionalText(input.title, TITLE_MAX_LENGTH);
+    if (title === undefined) return { isValid: false };
+    patch.title = title;
+  }
+  if (input.summary !== undefined) {
+    const summary = normalizeOptionalText(input.summary, SUMMARY_MAX_LENGTH);
+    if (summary === undefined) return { isValid: false };
+    patch.summary = summary;
+  }
+  if (input.submitterStudyYear !== undefined) {
+    if (input.submitterStudyYear === null) patch.submitterStudyYear = null;
+    else if (
+      Number.isInteger(input.submitterStudyYear) &&
+      input.submitterStudyYear >= 1 &&
+      input.submitterStudyYear <= 4
+    ) {
+      patch.submitterStudyYear = input.submitterStudyYear;
+    } else return { isValid: false };
+  }
+  if (input.description !== undefined) {
+    const description = normalizeOptionalText(input.description, DESCRIPTION_MAX_LENGTH);
+    if (description === undefined) return { isValid: false };
+    patch.description = description;
+  }
+  if (input.category !== undefined) {
+    if (input.category === null || input.category === '') patch.category = null;
+    else if (WORK_CATEGORIES.includes(input.category)) patch.category = input.category;
+    else return { isValid: false };
+  }
+  if (input.academicPeriod !== undefined) {
+    if (input.academicPeriod === null) {
+      patch.academicPeriod = { semester: null, year: null };
+    } else {
+      const { semester, year } = input.academicPeriod;
+      if (
+        (semester !== null && semester !== '' && !WORK_SEMESTERS.includes(semester)) ||
+        (year !== null &&
+          (!Number.isInteger(year) ||
+            year < ACADEMIC_YEAR_MINIMUM ||
+            year > academicRange.currentAcademicYear))
+      ) {
+        return { isValid: false };
+      }
+      patch.academicPeriod = {
+        semester: semester === '' ? null : semester,
+        year,
+      };
+    }
+  }
+  if (input.links !== undefined) {
+    if (input.links.length > LINK_LIMIT) return { isValid: false };
+    const links = normalizeLinks(input.links);
+    if (links === null) return { isValid: false };
+    patch.links = links;
+  }
+  if (input.tags !== undefined) {
+    if (input.tags.length > TAG_LIMIT) return { isValid: false };
+    const tags = normalizeTags(input.tags);
+    if (tags === null) return { isValid: false };
+    patch.tags = tags;
+  }
+  if (input.videoLinks !== undefined) {
+    if (input.videoLinks.length > VIDEO_LINK_LIMIT) return { isValid: false };
+    const videoLinks = normalizeVideoLinks(input.videoLinks);
+    if (videoLinks === null) return { isValid: false };
+    patch.videoLinks = videoLinks;
+  }
+
+  return { isValid: true, patch };
+}
 
 export function evaluateWorkDraft(
   input: WorkDraftInput,
@@ -54,7 +160,7 @@ export function evaluateWorkDraft(
     !hasLengthBetween(description, 1, DESCRIPTION_MAX_LENGTH) ||
     !WORK_CATEGORIES.includes(input.category) ||
     !WORK_SEMESTERS.includes(input.academicPeriod.semester) ||
-    input.academicPeriod.year < academicRange.entryYear ||
+    input.academicPeriod.year < ACADEMIC_YEAR_MINIMUM ||
     input.academicPeriod.year > academicRange.currentAcademicYear ||
     input.links.length > LINK_LIMIT ||
     input.tags.length > TAG_LIMIT ||
@@ -161,6 +267,10 @@ function normalizeLinks(input: WorkDraftInput['links']): NormalizedWorkDraft['li
     ) {
       return null;
     }
+    const host = url.hostname.toLowerCase();
+    if (label === 'GitHub' && host !== 'github.com' && !host.endsWith('.github.com')) {
+      return null;
+    }
     urls.add(url.href);
     links.push({ label, url: url.href });
   }
@@ -172,7 +282,7 @@ function normalizeTags(input: string[]): NormalizedWorkDraft['tags'] | null {
   const identities = new Set<string>();
   for (const tag of input) {
     const displayLabel = tag.normalize('NFKC').trim().replace(/\s+/gu, ' ');
-    if (!hasLengthBetween(displayLabel, 1, TAG_MAX_LENGTH)) {
+    if (!hasLengthBetween(displayLabel, 1, TAG_MAX_LENGTH) || displayLabel.includes(',')) {
       return null;
     }
     const normalizedIdentity = caseFold(displayLabel);
@@ -187,4 +297,11 @@ function normalizeTags(input: string[]): NormalizedWorkDraft['tags'] | null {
 
 function hasLengthBetween(value: string, minimum: number, maximum: number): boolean {
   return value.length >= minimum && value.length <= maximum;
+}
+
+function normalizeOptionalText(value: string | null, maximum: number): string | null | undefined {
+  if (value === null) return null;
+  const normalized = value.trim();
+  if (normalized.length === 0) return null;
+  return normalized.length <= maximum ? normalized : undefined;
 }

@@ -46,3 +46,8 @@ export class PeopleCatalogQueryDto implements RawPeopleCatalogQuery {
   @Allow()
   sort?: string | string[];
 }
+
+export class TagSuggestionQueryDto {
+  @Allow()
+  q?: string | string[];
+}

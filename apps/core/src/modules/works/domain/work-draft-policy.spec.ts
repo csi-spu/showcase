@@ -1,8 +1,65 @@
-import { evaluateWorkDraft, type WorkCategory, type WorkDraftInput } from './work-draft-policy';
+import {
+  evaluateWorkDraft,
+  normalizeWorkDraftPatch,
+  type WorkCategory,
+  type WorkDraftInput,
+} from './work-draft-policy';
 
 const CATEGORIES: WorkCategory[] = ['course_work', 'competition_entry', 'academic_article'];
 
 describe('Work Draft policy', () => {
+  it('normalizes only supplied partial Draft fields and clears empty authoring input', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        {
+          summary: '   ',
+          title: '  ระบบแนะนำผลงาน  ',
+        },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({
+      isValid: true,
+      patch: {
+        summary: null,
+        title: 'ระบบแนะนำผลงาน',
+      },
+    });
+  });
+
+  it('accepts a historical Academic Period before the Submitter Entry Year', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        { academicPeriod: { semester: '1', year: 2565 } },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({
+      isValid: true,
+      patch: { academicPeriod: { semester: '1', year: 2565 } },
+    });
+
+    expect(
+      evaluateWorkDraft(validDraft({ academicPeriod: { semester: '1', year: 2565 } }), {
+        currentAcademicYear: 2569,
+        entryYear: 2566,
+      }),
+    ).toMatchObject({ isValid: true });
+  });
+
+  it('normalizes Submitter Study Year 1–4 in a partial Draft patch', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        { submitterStudyYear: 3 },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: true, patch: { submitterStudyYear: 3 } });
+    expect(
+      normalizeWorkDraftPatch(
+        { submitterStudyYear: 5 },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: false });
+  });
+
   it.each(CATEGORIES)('uses the same bounded field contract for %s', (category) => {
     expect(
       evaluateWorkDraft(
@@ -122,6 +179,7 @@ describe('Work Draft policy', () => {
       }),
     ],
     ['blank Tag', validDraft({ tags: [' '] })],
+    ['Tag containing a comma', validDraft({ tags: ['React,Vue'] })],
     ['oversized Tag', validDraft({ tags: ['ก'.repeat(51)] })],
   ])('rejects %s', (_scenario, draft) => {
     expect(evaluateWorkDraft(draft, { currentAcademicYear: 2569, entryYear: 2566 })).toEqual({
@@ -157,7 +215,28 @@ describe('Work Draft policy', () => {
     ).toEqual({ isValid: false });
   });
 
-  it.each([2565, 2570])('rejects Academic Period year %s outside the Submitter range', (year) => {
+  it('accepts the locked GitHub link only for github.com or its subdomains', () => {
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://github.com/csi-spu/showcase' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({ isValid: true });
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://docs.github.com/repositories' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({ isValid: true });
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://github.com.example.test/repo' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: false });
+  });
+
+  it.each([2399, 2570])('rejects Academic Period year %s outside the supported range', (year) => {
     expect(
       evaluateWorkDraft(validDraft({ academicPeriod: { semester: 'summer', year } }), {
         currentAcademicYear: 2569,

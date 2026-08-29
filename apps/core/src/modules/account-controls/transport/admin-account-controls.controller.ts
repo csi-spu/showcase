@@ -21,6 +21,7 @@ import {
 } from '../application/account-controls.service';
 import type { AcademicYearSettings } from '../application/account-controls.ports';
 import {
+  CorrectStudentNameDto,
   ExtendStudentAccessDto,
   ResetStudentPasswordDto,
   StudentAccountLookupDto,
@@ -94,6 +95,21 @@ export class AdminAccountControlsController {
   }> {
     const actor = await this.authorize(authorization);
     return this.controls.resetStudentPassword({
+      actorAccountId: actor.accountId,
+      studentAccountId,
+      ...body,
+    });
+  }
+
+  @Put('students/:accountId/name')
+  @Header('Cache-Control', 'no-store')
+  async correctStudentName(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) studentAccountId: string,
+    @Body() body: CorrectStudentNameDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<StudentAccountControlsResult> {
+    const actor = await this.authorize(authorization);
+    return this.controls.correctStudentName({
       actorAccountId: actor.accountId,
       studentAccountId,
       ...body,

@@ -41,23 +41,21 @@ export default async function ProfilePage() {
     Promise.resolve(randomUUID()),
     Promise.resolve(randomUUID()),
   ]);
-  const publicProfileUrl = response.profile
-    ? new URL(
-        `/people/${response.profile.publicId}`,
-        getStudentServerEnvironment().visitorUrl,
-      ).toString()
-    : undefined;
 
   return (
     <StudentWorkspaceShell
-      activePage="profile"
+      activePage="edit-profile"
       canCreateWork={state.session.canUseStudentCapabilities}
-      profile={response.profile}
+      profile={
+        response.person === null
+          ? null
+          : { ...response.person, photo: response.profile?.photo ?? null }
+      }
     >
       <WorkspacePage
         description={t('description')}
         eyebrow="โปรไฟล์สาธารณะ"
-        meta={response.profile ? t('entryYear', { year: response.profile.entryYear }) : undefined}
+        meta={response.person ? t('entryYear', { year: response.person.entryYear }) : undefined}
         title={t('heading')}
       >
         <div className="grid gap-8">
@@ -66,18 +64,24 @@ export default async function ProfilePage() {
             createPhotoUpload={createPhotoUploadAction}
             finalizePhotoUpload={finalizePhotoUploadAction}
             idempotencyKey={updateIdempotencyKey}
+            person={response.person}
             profile={response.profile}
             updateAction={updateProfileAction}
           />
-          {response.profile ? (
-            <ConsentPanel
-              grantAction={grantConsentAction}
-              idempotencyKey={consentIdempotencyKey}
-              profile={response.profile}
-              publicProfileUrl={publicProfileUrl}
-              withdrawAction={withdrawConsentAction}
-            />
-          ) : null}
+          <ConsentPanel
+            grantAction={grantConsentAction}
+            idempotencyKey={consentIdempotencyKey}
+            profile={response.profile}
+            publicProfileUrl={
+              response.profile === null
+                ? undefined
+                : new URL(
+                    `/people/${response.profile.publicId}`,
+                    getStudentServerEnvironment().visitorUrl,
+                  ).toString()
+            }
+            withdrawAction={withdrawConsentAction}
+          />
         </div>
       </WorkspacePage>
     </StudentWorkspaceShell>

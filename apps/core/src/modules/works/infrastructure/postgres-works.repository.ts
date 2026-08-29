@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import type {
@@ -7,28 +8,36 @@ import type {
   WorkDraftView,
   WorkListItem,
   WorkMutationResult,
+  StudentWorkspaceSummary,
   WorksRepository,
 } from '../application/works.ports';
-import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
+import type { NormalizedWorkDraft, NormalizedWorkDraftPatch } from '../domain/work-draft-policy';
+import { evaluateSubmitterSavedDraftTransition } from '../domain/work-recovery-policy';
 
 type WorkOperation =
   'published_work_draft_seeded' | 'work_created' | 'work_draft_rebased' | 'work_draft_updated';
 
 interface WorkRow {
-  academic_year: number;
+  academic_year: number | null;
   activity_state: 'active';
   base_published_revision_id: string | null;
-  category: NormalizedWorkDraft['category'];
-  description: string;
+  category: NormalizedWorkDraft['category'] | null;
+  contributors: WorkDraftView['contributors'];
+  description: string | null;
   draft_links: NormalizedWorkDraft['links'];
   draft_tags: NormalizedWorkDraft['tags'];
   draft_video_links: NonNullable<NormalizedWorkDraft['videoLinks']>;
+  has_ready_poster: boolean;
+  media: WorkDraftView['media'];
   publication_state: WorkDraftView['publicationState'];
   published_revision_id: string | null;
   public_id: string;
-  semester: NormalizedWorkDraft['academicPeriod']['semester'];
-  summary: string;
-  title: string;
+  saved_at: Date;
+  semester: NormalizedWorkDraft['academicPeriod']['semester'] | null;
+  submitter_attribution_name: string | null;
+  submitter_study_year: number | null;
+  summary: string | null;
+  title: string | null;
   version: string;
   work_id: string;
 }
@@ -48,12 +57,21 @@ interface OwnedWorkStateRow {
 
 interface WorkListRow {
   activity_state: WorkListItem['activityState'];
+  archive_source: 'admin' | 'submitter' | null;
+  academic_year: number | null;
+  category: WorkListItem['category'];
+  displayed_source: WorkListItem['displayedSource'];
   has_draft: boolean;
+  is_draft_complete: boolean;
   latest_revision_status: WorkListItem['latestRevisionStatus'];
+  poster: WorkListItem['poster'];
   publication_state: WorkListItem['publicationState'];
   public_id: string;
-  title: string;
+  semester: NormalizedWorkDraft['academicPeriod']['semester'] | null;
+  summary: string | null;
+  title: string | null;
   updated_at: Date;
+  version: string;
 }
 
 interface OperationRow {
@@ -67,6 +85,18 @@ type ReplayResolution =
 @Injectable()
 export class PostgresWorksRepository implements WorksRepository {
   constructor(private readonly database: DatabaseClient) {}
+
+  archiveSavedDraft(
+    input: Parameters<WorksRepository['archiveSavedDraft']>[0],
+  ): ReturnType<WorksRepository['archiveSavedDraft']> {
+    return this.savedDraftMutation(input, 'archive_saved_draft');
+  }
+
+  restoreSavedDraft(
+    input: Parameters<WorksRepository['restoreSavedDraft']>[0],
+  ): ReturnType<WorksRepository['restoreSavedDraft']> {
+    return this.savedDraftMutation(input, 'restore_saved_draft');
+  }
 
   async findAuthoringContext(accountId: string): Promise<WorkAuthoringContext | null> {
     const rows = await this.database.sql<
@@ -100,14 +130,11 @@ export class PostgresWorksRepository implements WorksRepository {
         };
   }
 
-  async createWork(input: {
-    actorAccountId: string;
-    draft: NormalizedWorkDraft;
-    idempotencyKey: string;
-    now: Date;
-    submitterPersonId: string;
-  }): Promise<WorkMutationResult> {
-    const requestPayload = this.createRequestPayload(input.draft);
+  async createWork(
+    input: Parameters<WorksRepository['createWork']>[0],
+  ): Promise<WorkMutationResult> {
+    const patch: NormalizedWorkDraftPatch = input.patch ?? input.draft;
+    const requestPayload = this.createRequestPayload(patch);
     try {
       return await this.database.sql.begin(async (transaction) => {
         const replay = await this.resolveReplay(
@@ -142,7 +169,7 @@ export class PostgresWorksRepository implements WorksRepository {
         const work = inserted[0];
         if (work === undefined) return { outcome: 'not_found' };
 
-        await this.insertDraft(transaction, work.work_id, input.draft, input.now, 1);
+        await this.insertDraft(transaction, work.work_id, patch, input.now, 1);
         await this.recordOperation(transaction, {
           actorAccountId: input.actorAccountId,
           idempotencyKey: input.idempotencyKey,
@@ -200,49 +227,237 @@ export class PostgresWorksRepository implements WorksRepository {
 
   async listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]) {
     const cursor = input.cursor;
+    const isPrevious = cursor?.direction === 'previous';
     const rows = await this.database.sql<WorkListRow[]>`
-      select work.public_id, work.activity_state, work.publication_state, work.updated_at,
+      select work.public_id, work.activity_state, work.archive_source, work.publication_state, work.updated_at,
+        work.version,
         (draft.work_id is not null) as has_draft,
         latest_revision.status as latest_revision_status,
-        coalesce(draft.title, latest_revision.title, '') as title
+        case
+          when draft.work_id is not null then 'draft'
+          when pending_revision.id is not null then 'pending_revision'
+          when published_revision.id is not null then 'published_revision'
+          else 'placeholder'
+        end as displayed_source,
+        coalesce(draft.title, pending_revision.title, published_revision.title) as title,
+        coalesce(draft.summary, pending_revision.summary, published_revision.summary) as summary,
+        coalesce(draft.category, pending_revision.category, published_revision.category) as category,
+        coalesce(draft.academic_year, pending_revision.academic_year, published_revision.academic_year)
+          as academic_year,
+        coalesce(draft.semester, pending_revision.semester, published_revision.semester) as semester,
+        private_poster.poster,
+        case when draft.work_id is null then false else (
+          draft.title is not null and draft.summary is not null and draft.description is not null
+          and draft.category is not null and draft.academic_year is not null
+          and draft.semester is not null and draft.submitter_study_year is not null
+          and exists (
+            select 1 from public.public_profiles as profile
+            where profile.person_id = work.submitter_person_id
+          )
+          and exists (
+            select 1 from private.work_draft_media as poster_reference
+            join private.work_media_assets as poster on poster.id = poster_reference.asset_id
+            where poster_reference.work_id = work.id
+              and poster_reference.media_kind = 'poster' and poster.status = 'ready'
+          )
+          and not exists (
+            select 1 from private.work_draft_contributors as contributor
+            where contributor.work_id = work.id and contributor.removed_at is null
+              and contributor.contribution_role is null
+          )
+        ) end as is_draft_complete
       from public.works as work
       join public.accounts as account
         on account.id = ${input.accountId}
         and account.person_id = work.submitter_person_id
-      left join private.work_drafts as draft on draft.work_id = work.id
+      left join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      left join private.work_revisions as pending_revision
+        on pending_revision.work_id = work.id and pending_revision.status = 'pending_review'
+      left join private.work_revisions as published_revision
+        on published_revision.id = work.published_revision_id
       left join lateral (
-        select revision.title, revision.status
+        select jsonb_build_object(
+          'assetId', asset.id,
+          'width', asset.width,
+          'height', asset.height,
+          'variants', coalesce((
+            select jsonb_agg(
+              jsonb_build_object('width', variant.width, 'height', variant.height)
+              order by variant.width
+            )
+            from private.work_media_variants as variant
+            where variant.asset_id = asset.id
+          ), '[]'::jsonb)
+        ) as poster
+        from (
+          select reference.asset_id, 1 as priority
+          from private.work_draft_media as reference
+          where draft.work_id is not null and reference.work_id = work.id
+            and reference.media_kind = 'poster'
+          union all
+          select reference.asset_id, 2 as priority
+          from private.work_revision_media as reference
+          where draft.work_id is null and pending_revision.id is not null
+            and reference.revision_id = pending_revision.id and reference.media_kind = 'poster'
+          union all
+          select reference.asset_id, 3 as priority
+          from private.work_revision_media as reference
+          where draft.work_id is null and pending_revision.id is null
+            and published_revision.id is not null
+            and reference.revision_id = published_revision.id and reference.media_kind = 'poster'
+        ) as source
+        join private.work_media_assets as asset on asset.id = source.asset_id and asset.status = 'ready'
+        order by source.priority
+        limit 1
+      ) as private_poster on true
+      left join lateral (
+        select revision.status
         from private.work_revisions as revision
         where revision.work_id = work.id
         order by revision.revision_number desc
         limit 1
       ) as latest_revision on true
       where (
-        ${cursor?.updatedAt ?? null}::timestamptz is null
-        or (work.updated_at, work.public_id) < (
-          ${cursor?.updatedAt ?? null}::timestamptz,
-          ${cursor?.publicId ?? null}::uuid
-        )
+        (${input.view} = 'current' and (
+          work.activity_state = 'active'
+          or (work.activity_state = 'archived' and work.archive_source = 'admin')
+        ))
+        or (${input.view} = 'saved' and work.activity_state = 'archived'
+          and work.archive_source = 'submitter'
+          and work.publication_state = 'never_published')
       )
-      order by work.updated_at desc, work.public_id desc
+      and (
+        ${cursor?.updatedAt ?? null}::timestamptz is null
+        or (${isPrevious} and (work.updated_at, work.public_id) > (
+          ${cursor?.updatedAt ?? null}::timestamptz, ${cursor?.publicId ?? null}::uuid
+        ))
+        or (not ${isPrevious} and (work.updated_at, work.public_id) < (
+          ${cursor?.updatedAt ?? null}::timestamptz, ${cursor?.publicId ?? null}::uuid
+        ))
+      )
+      order by
+        case when ${isPrevious} then work.updated_at end asc,
+        case when ${isPrevious} then work.public_id end asc,
+        case when not ${isPrevious} then work.updated_at end desc,
+        case when not ${isPrevious} then work.public_id end desc
       limit ${input.limit + 1}
     `;
     const visible = rows.slice(0, input.limit);
+    if (isPrevious) visible.reverse();
+    const first = visible[0];
     const last = visible.at(-1);
     return {
       items: visible.map((row) => ({
         activityState: row.activity_state,
+        academicPeriod:
+          row.academic_year === null || row.semester === null
+            ? null
+            : { semester: row.semester, year: row.academic_year },
+        category: row.category,
+        displayedSource: row.displayed_source,
         hasDraft: row.has_draft,
+        isDraftComplete: row.is_draft_complete,
         latestRevisionStatus: row.latest_revision_status,
+        poster: row.poster,
+        primaryAction: this.primaryAction(row),
         publicationState: row.publication_state,
         publicId: row.public_id,
+        secondaryActions: this.secondaryActions(row),
+        summary: row.summary,
         title: row.title,
         updatedAt: row.updated_at,
+        version: Number(row.version),
       })),
+      hasNextPage: isPrevious ? cursor !== null : rows.length > input.limit,
+      hasPreviousPage: isPrevious ? rows.length > input.limit : cursor !== null,
       nextCursor:
-        rows.length > input.limit && last !== undefined
-          ? { publicId: last.public_id, updatedAt: last.updated_at }
+        (isPrevious ? cursor !== null : rows.length > input.limit) && last !== undefined
+          ? { direction: 'next' as const, publicId: last.public_id, updatedAt: last.updated_at }
           : null,
+      previousCursor:
+        (isPrevious ? rows.length > input.limit : cursor !== null) && first !== undefined
+          ? {
+              direction: 'previous' as const,
+              publicId: first.public_id,
+              updatedAt: first.updated_at,
+            }
+          : null,
+    };
+  }
+
+  async getWorkspaceSummary(accountId: string): Promise<StudentWorkspaceSummary | null> {
+    const rows = await this.database.sql<
+      Array<StudentWorkspaceSummary & { account_exists: boolean }>
+    >`
+      select
+        true as account_exists,
+        (account.status = 'active' and account.credential_state = 'set'
+          and student_role.account_id is not null
+          and settings.current_academic_year between student.entry_year
+            and student.access_ends_academic_year) as "canMutate",
+        count(*) filter (
+          where work.activity_state = 'active' and draft.work_id is not null
+        )::integer as "draftCount",
+        count(*) filter (
+          where work.activity_state = 'active' and draft.work_id is not null
+            and latest_revision.status = 'changes_requested'
+        )::integer as "changeRequestCount",
+        count(*) filter (
+          where work.activity_state = 'active' and pending_revision.id is not null
+        )::integer as "pendingReviewCount",
+        count(*) filter (
+          where work.activity_state = 'active' and work.publication_state = 'published'
+        )::integer as "publishedCount",
+        (
+          select count(*)::integer from private.notifications as notification
+          where notification.recipient_person_id = account.person_id
+            and notification.audience = 'student' and notification.read_at is null
+            and notification.created_at >= now() - interval '180 days'
+        ) as "unreadNotificationCount",
+        (
+          select recent_work.public_id from public.works as recent_work
+          join private.work_drafts as recent_draft
+            on recent_draft.work_id = recent_work.id and recent_draft.lifecycle_state = 'active'
+          where recent_work.submitter_person_id = account.person_id
+            and recent_work.activity_state = 'active'
+            and not exists (
+              select 1 from private.work_revisions as pending
+              where pending.work_id = recent_work.id and pending.status = 'pending_review'
+            )
+          order by recent_work.updated_at desc, recent_work.public_id desc limit 1
+        ) as "latestActionableDraftPublicId"
+      from public.accounts as account
+      join public.students as student on student.person_id = account.person_id
+      left join public.account_roles as student_role
+        on student_role.account_id = account.id and student_role.role = 'student'
+      left join public.academic_settings as settings on settings.singleton = true
+      left join public.works as work on work.submitter_person_id = account.person_id
+      left join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      left join private.work_revisions as pending_revision
+        on pending_revision.work_id = work.id and pending_revision.status = 'pending_review'
+      left join lateral (
+        select revision.status from private.work_revisions as revision
+        where revision.work_id = work.id
+          and revision.status in ('approved', 'changes_requested')
+        order by revision.revision_number desc limit 1
+      ) as latest_revision on true
+      where account.id = ${accountId}
+      group by account.id, account.person_id, student.entry_year,
+        student.access_ends_academic_year, student_role.account_id,
+        settings.current_academic_year
+    `;
+    const row = rows[0];
+    if (row === undefined) return null;
+    return {
+      canMutate: row.canMutate,
+      changeRequestCount: row.changeRequestCount,
+      draftCount: row.draftCount,
+      latestActionableDraftPublicId: row.latestActionableDraftPublicId,
+      pendingReviewCount: row.pendingReviewCount,
+      publishedCount: row.publishedCount,
+      unreadNotificationCount: row.unreadNotificationCount,
     };
   }
 
@@ -295,7 +510,10 @@ export class PostgresWorksRepository implements WorksRepository {
         }
         const state = await transaction<Array<{ has_draft: boolean; has_pending: boolean }>>`
           select
-            exists(select 1 from private.work_drafts where work_id = ${work.work_id}) as has_draft,
+            exists(
+              select 1 from private.work_drafts
+              where work_id = ${work.work_id} and lifecycle_state = 'active'
+            ) as has_draft,
             exists(
               select 1 from private.work_revisions
               where work_id = ${work.work_id} and status = 'pending_review'
@@ -305,14 +523,15 @@ export class PostgresWorksRepository implements WorksRepository {
         if (current.has_draft) return { outcome: 'draft_exists' };
         if (current.has_pending) return { outcome: 'pending_revision_exists' };
 
-        await this.seedDraftFromRevision(
+        const resultingVersion = await this.seedDraftFromRevision(
           transaction,
           work.work_id,
           work.published_revision_id,
           input.now,
         );
         await transaction`
-          update public.works set updated_at = ${input.now} where id = ${work.work_id}
+          update public.works set version = version + 1, updated_at = ${input.now}
+          where id = ${work.work_id}
         `;
         await this.recordOperation(transaction, {
           actorAccountId: input.actorAccountId,
@@ -320,7 +539,7 @@ export class PostgresWorksRepository implements WorksRepository {
           now: input.now,
           operation: 'published_work_draft_seeded',
           requestPayload,
-          resultingVersion: 1,
+          resultingVersion,
           workId: work.work_id,
         });
         const seeded = await this.findOwnedDraftByWorkId(
@@ -366,7 +585,8 @@ export class PostgresWorksRepository implements WorksRepository {
             draft.version as draft_version
           from public.works as work
           join public.accounts as account on account.person_id = work.submitter_person_id
-          join private.work_drafts as draft on draft.work_id = work.id
+          join private.work_drafts as draft
+            on draft.work_id = work.id and draft.lifecycle_state = 'active'
           where account.id = ${input.actorAccountId} and work.public_id = ${input.publicId}
             and work.activity_state = 'active'
           for update of work, draft
@@ -462,7 +682,8 @@ export class PostgresWorksRepository implements WorksRepository {
           from public.works as work
           join public.accounts as account
             on account.person_id = work.submitter_person_id
-          join private.work_drafts as draft on draft.work_id = work.id
+          join private.work_drafts as draft
+            on draft.work_id = work.id and draft.lifecycle_state = 'active'
           where account.id = ${input.actorAccountId}
             and work.public_id = ${input.publicId}
             and work.activity_state = 'active'
@@ -521,10 +742,115 @@ export class PostgresWorksRepository implements WorksRepository {
     }
   }
 
+  async patchDraft(
+    input: Parameters<WorksRepository['patchDraft']>[0],
+  ): Promise<WorkMutationResult> {
+    const requestPayload = this.patchRequestPayload(
+      input.patch,
+      input.expectedVersion,
+      input.publicId,
+    );
+    try {
+      return await this.database.sql.begin(async (transaction) => {
+        const replay = await this.resolveReplay(
+          transaction,
+          input.actorAccountId,
+          input.idempotencyKey,
+          'work_draft_updated',
+          requestPayload,
+        );
+        const replayResult = await this.toReplayResult(transaction, input.actorAccountId, replay);
+        if (replayResult !== null) return replayResult;
+
+        const owned = await transaction<Array<OwnedWorkRow & { has_pending: boolean }>>`
+          select work.id as work_id, draft.version,
+            exists (
+              select 1 from private.work_revisions as revision
+              where revision.work_id = work.id and revision.status = 'pending_review'
+            ) as has_pending
+          from public.works as work
+          join public.accounts as account on account.person_id = work.submitter_person_id
+          join private.work_drafts as draft
+            on draft.work_id = work.id and draft.lifecycle_state = 'active'
+          where account.id = ${input.actorAccountId}
+            and work.public_id = ${input.publicId}
+            and work.activity_state = 'active'
+          for update of work, draft
+        `;
+        const current = owned[0];
+        if (current === undefined) return { outcome: 'not_found' };
+        if (current.has_pending) return { outcome: 'pending_revision_exists' };
+        if (Number(current.version) !== input.expectedVersion) {
+          return { outcome: 'version_conflict' };
+        }
+
+        const patch = input.patch;
+        const hasAcademicPeriod = patch.academicPeriod !== undefined;
+        const resultingVersion = input.expectedVersion + 1;
+        await transaction`
+          update private.work_drafts
+          set title = case when ${patch.title !== undefined} then ${patch.title ?? null} else title end,
+            summary = case when ${patch.summary !== undefined} then ${patch.summary ?? null} else summary end,
+            description = case when ${patch.description !== undefined}
+              then ${patch.description ?? null} else description end,
+            category = case when ${patch.category !== undefined}
+              then ${patch.category ?? null} else category end,
+            academic_year = case when ${hasAcademicPeriod}
+              then ${patch.academicPeriod?.year ?? null} else academic_year end,
+            semester = case when ${hasAcademicPeriod}
+              then ${patch.academicPeriod?.semester ?? null} else semester end,
+            submitter_study_year = case when ${patch.submitterStudyYear !== undefined}
+              then ${patch.submitterStudyYear ?? null} else submitter_study_year end,
+            version = ${resultingVersion}, updated_at = ${input.now}
+          where work_id = ${current.work_id}
+        `;
+        if (patch.links !== undefined) {
+          await transaction`delete from private.work_draft_links where work_id = ${current.work_id}`;
+          await this.insertLinks(transaction, current.work_id, patch.links);
+        }
+        if (patch.tags !== undefined) {
+          await transaction`delete from private.work_draft_tags where work_id = ${current.work_id}`;
+          await this.insertTags(transaction, current.work_id, patch.tags);
+        }
+        if (patch.videoLinks !== undefined) {
+          await transaction`delete from private.work_draft_video_links where work_id = ${current.work_id}`;
+          await this.insertVideoLinks(transaction, current.work_id, patch.videoLinks);
+        }
+        await transaction`
+          update public.works set version = version + 1, updated_at = ${input.now}
+          where id = ${current.work_id}
+        `;
+        await this.recordOperation(transaction, {
+          actorAccountId: input.actorAccountId,
+          idempotencyKey: input.idempotencyKey,
+          now: input.now,
+          operation: 'work_draft_updated',
+          requestPayload,
+          resultingVersion,
+          workId: current.work_id,
+        });
+        const updated = await this.findOwnedDraftByWorkId(
+          transaction,
+          input.actorAccountId,
+          current.work_id,
+        );
+        if (updated === null) throw new Error('WORK_UPDATE_READ_FAILED');
+        return { outcome: 'updated', work: updated };
+      });
+    } catch (error: unknown) {
+      return this.resolveConcurrentReplay(error, {
+        actorAccountId: input.actorAccountId,
+        idempotencyKey: input.idempotencyKey,
+        operation: 'work_draft_updated',
+        requestPayload,
+      });
+    }
+  }
+
   private async insertDraft(
     transaction: postgres.TransactionSql,
     workId: string,
-    draft: NormalizedWorkDraft,
+    patch: NormalizedWorkDraftPatch,
     now: Date,
     version: number,
   ): Promise<void> {
@@ -544,18 +870,26 @@ export class PostgresWorksRepository implements WorksRepository {
       ) values (
         ${workId},
         null,
-        ${draft.title},
-        ${draft.summary},
-        ${draft.description},
-        ${draft.category},
-        ${draft.academicPeriod.year},
-        ${draft.academicPeriod.semester},
+        ${patch.title ?? null},
+        ${patch.summary ?? null},
+        ${patch.description ?? null},
+        ${patch.category ?? null},
+        ${patch.academicPeriod?.year ?? null},
+        ${patch.academicPeriod?.semester ?? null},
         ${version},
         ${now},
         ${now}
       )
     `;
-    await this.insertLinksAndTags(transaction, workId, draft);
+    if (patch.submitterStudyYear !== undefined) {
+      await transaction`
+        update private.work_drafts set submitter_study_year = ${patch.submitterStudyYear ?? null}
+        where work_id = ${workId}
+      `;
+    }
+    await this.insertLinks(transaction, workId, patch.links ?? []);
+    await this.insertTags(transaction, workId, patch.tags ?? []);
+    await this.insertVideoLinks(transaction, workId, patch.videoLinks ?? []);
   }
 
   private async insertLinksAndTags(
@@ -563,13 +897,30 @@ export class PostgresWorksRepository implements WorksRepository {
     workId: string,
     draft: NormalizedWorkDraft,
   ): Promise<void> {
-    for (const [index, link] of draft.links.entries()) {
+    await this.insertLinks(transaction, workId, draft.links);
+    await this.insertTags(transaction, workId, draft.tags);
+    await this.insertVideoLinks(transaction, workId, draft.videoLinks ?? []);
+  }
+
+  private async insertLinks(
+    transaction: postgres.TransactionSql,
+    workId: string,
+    links: NormalizedWorkDraft['links'],
+  ): Promise<void> {
+    for (const [index, link] of links.entries()) {
       await transaction`
         insert into private.work_draft_links (work_id, position, label, url)
         values (${workId}, ${index + 1}, ${link.label}, ${link.url})
       `;
     }
-    for (const [index, tag] of draft.tags.entries()) {
+  }
+
+  private async insertTags(
+    transaction: postgres.TransactionSql,
+    workId: string,
+    tags: NormalizedWorkDraft['tags'],
+  ): Promise<void> {
+    for (const [index, tag] of tags.entries()) {
       await transaction`
         insert into private.work_draft_tags (
           work_id, position, display_label, normalized_identity
@@ -578,7 +929,14 @@ export class PostgresWorksRepository implements WorksRepository {
         )
       `;
     }
-    for (const [index, videoLink] of (draft.videoLinks ?? []).entries()) {
+  }
+
+  private async insertVideoLinks(
+    transaction: postgres.TransactionSql,
+    workId: string,
+    videoLinks: NormalizedWorkDraft['videoLinks'],
+  ): Promise<void> {
+    for (const [index, videoLink] of videoLinks.entries()) {
       await transaction`
         insert into private.work_draft_video_links (work_id, position, provider, provider_video_id, url)
         values (
@@ -618,6 +976,40 @@ export class PostgresWorksRepository implements WorksRepository {
         draft.academic_year,
         draft.semester,
         draft.version,
+        draft.updated_at as saved_at,
+        draft.submitter_study_year,
+        concat_ws(' ', submitter_name.first_name_th, submitter_name.last_name_th)
+          as submitter_attribution_name,
+        exists (
+          select 1 from private.work_draft_media as poster_reference
+          join private.work_media_assets as poster on poster.id = poster_reference.asset_id
+          where poster_reference.work_id = work.id
+            and poster_reference.media_kind = 'poster' and poster.status = 'ready'
+        ) as has_ready_poster,
+        coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'publicId', contributor.public_id,
+            'kind', contributor.kind,
+            'attributionName', contributor.attribution_name,
+            'contributionRole', contributor.contribution_role
+          ) order by contributor.position)
+          from private.work_draft_contributors as contributor
+          where contributor.work_id = work.id and contributor.removed_at is null
+        ), '[]'::jsonb) as contributors,
+        coalesce((
+          select jsonb_agg(jsonb_build_object(
+            'assetId', media.asset_id,
+            'kind', media.media_kind,
+            'position', media.position,
+            'status', asset.status,
+            'rejectionCode', asset.rejection_code,
+            'width', asset.width,
+            'height', asset.height
+          ) order by media.media_kind desc, media.position)
+          from private.work_draft_media as media
+          join private.work_media_assets as asset on asset.id = media.asset_id
+          where media.work_id = work.id
+        ), '[]'::jsonb) as media,
         coalesce((
           select jsonb_agg(
             jsonb_build_object('label', link.label, 'url', link.url)
@@ -649,7 +1041,10 @@ export class PostgresWorksRepository implements WorksRepository {
         ), '[]'::jsonb) as draft_video_links
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
-      join private.work_drafts as draft on draft.work_id = work.id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      join private.person_names as submitter_name
+        on submitter_name.person_id = work.submitter_person_id
       where account.id = ${accountId}
         and ${identifierFragment} = ${value}
         and work.activity_state = 'active'
@@ -663,19 +1058,35 @@ export class PostgresWorksRepository implements WorksRepository {
     return {
       activityState: row.activity_state,
       basePublishedRevisionId: row.base_published_revision_id,
+      contributors: row.contributors,
       draft: {
         academicPeriod: { semester: row.semester, year: row.academic_year },
         category: row.category,
         description: row.description,
         links: row.draft_links,
+        submitterStudyYear: row.submitter_study_year,
         summary: row.summary,
         tags: row.draft_tags,
         title: row.title,
         videoLinks: row.draft_video_links,
       },
+      isComplete:
+        row.title !== null &&
+        row.summary !== null &&
+        row.description !== null &&
+        row.category !== null &&
+        row.academic_year !== null &&
+        row.semester !== null &&
+        row.submitter_study_year !== null &&
+        row.submitter_attribution_name !== null &&
+        row.has_ready_poster &&
+        row.contributors.every((contributor) => contributor.contributionRole !== null),
+      media: row.media,
       publicationState: row.publication_state,
       publishedRevisionId: row.published_revision_id,
       publicId: row.public_id,
+      savedAt: row.saved_at,
+      submitterAttributionName: row.submitter_attribution_name,
       version: Number(row.version),
     };
   }
@@ -685,17 +1096,45 @@ export class PostgresWorksRepository implements WorksRepository {
     workId: string,
     revisionId: string,
     now: Date,
-  ): Promise<void> {
-    await sql`
-      insert into private.work_drafts (
+  ): Promise<number> {
+    const drafts = await sql<Array<{ version: string }>>`
+      insert into private.work_drafts as existing (
         work_id, base_published_revision_id, title, summary, description, category,
-        academic_year, semester, version, created_at, updated_at
+        academic_year, semester, submitter_study_year, lifecycle_state,
+        version, created_at, updated_at
       ) select
         ${workId}, revision.id, revision.title, revision.summary, revision.description,
-        revision.category, revision.academic_year, revision.semester, 1, ${now}, ${now}
+        revision.category, revision.academic_year, revision.semester,
+        case when submitter.study_year between 1 and 4 then submitter.study_year else null end,
+        'active', 1, ${now}, ${now}
       from private.work_revisions as revision
+      join private.work_revision_attributions as submitter
+        on submitter.revision_id = revision.id and submitter.kind = 'submitter'
       where revision.id = ${revisionId} and revision.work_id = ${workId}
         and revision.status = 'approved'
+      on conflict (work_id) do update set
+        base_published_revision_id = excluded.base_published_revision_id,
+        title = excluded.title,
+        summary = excluded.summary,
+        description = excluded.description,
+        category = excluded.category,
+        academic_year = excluded.academic_year,
+        semester = excluded.semester,
+        submitter_study_year = excluded.submitter_study_year,
+        lifecycle_state = 'active',
+        version = existing.version + 1,
+        updated_at = excluded.updated_at
+      returning version
+    `;
+    const resultingVersion = Number(this.required(drafts[0]).version);
+    await sql`delete from private.work_draft_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_tags where work_id = ${workId}`;
+    await sql`delete from private.work_draft_video_links where work_id = ${workId}`;
+    await sql`delete from private.work_draft_media where work_id = ${workId}`;
+    await sql`
+      update private.work_draft_contributors
+      set removed_at = ${now}, updated_at = ${now}
+      where work_id = ${workId} and removed_at is null
     `;
     await sql`insert into private.work_draft_links (work_id, position, label, url)
       select ${workId}, position, label, url
@@ -711,6 +1150,17 @@ export class PostgresWorksRepository implements WorksRepository {
       work_id, media_kind, position, asset_id, created_at
     ) select ${workId}, media_kind, position, asset_id, ${now}
       from private.work_revision_media where revision_id = ${revisionId}`;
+    await sql`insert into private.work_draft_contributors (
+      work_id, kind, person_id, attribution_name, contribution_role,
+      position, created_at, updated_at
+    ) select
+      ${workId}, attribution.kind, attribution.person_id, attribution.attribution_name,
+      attribution.contribution_role, attribution.position - 1, ${now}, ${now}
+      from private.work_revision_attributions as attribution
+      where attribution.revision_id = ${revisionId}
+        and attribution.kind in ('account', 'external')
+      order by attribution.position`;
+    return resultingVersion;
   }
 
   private async resolveReplay(
@@ -815,8 +1265,31 @@ export class PostgresWorksRepository implements WorksRepository {
     `;
   }
 
-  private createRequestPayload(draft: NormalizedWorkDraft): postgres.JSONValue {
-    return { draft: this.draftPayload(draft) };
+  private primaryAction(row: WorkListRow): WorkListItem['primaryAction'] {
+    if (row.activity_state === 'archived') {
+      return row.archive_source === 'submitter' ? 'return_to_editing' : 'view_details';
+    }
+    if (row.latest_revision_status === 'pending_review') return 'view_details';
+    if (row.has_draft) return 'continue_editing';
+    if (row.publication_state === 'unpublished') return 'continue_editing';
+    if (row.publication_state === 'published') return 'view_public_work';
+    return null;
+  }
+
+  private secondaryActions(row: WorkListRow): WorkListItem['secondaryActions'] {
+    if (row.activity_state === 'archived') return [];
+    if (row.latest_revision_status === 'pending_review') return ['withdraw_submission'];
+    if (row.publication_state === 'published' && !row.has_draft) {
+      return ['create_new_revision'];
+    }
+    if (row.publication_state === 'never_published' && row.has_draft) {
+      return ['archive_saved_draft'];
+    }
+    return [];
+  }
+
+  private createRequestPayload(patch: NormalizedWorkDraftPatch): postgres.JSONValue {
+    return { patch: this.patchPayload(patch) };
   }
 
   private updateRequestPayload(
@@ -850,8 +1323,154 @@ export class PostgresWorksRepository implements WorksRepository {
     };
   }
 
+  private patchRequestPayload(
+    patch: NormalizedWorkDraftPatch,
+    expectedVersion: number,
+    publicId: string,
+  ): postgres.JSONValue {
+    return { expectedVersion, patch: this.patchPayload(patch), publicId };
+  }
+
+  private patchPayload(patch: NormalizedWorkDraftPatch): postgres.JSONValue {
+    const payload: Record<string, postgres.JSONValue | undefined> = {};
+    if (patch.academicPeriod !== undefined) payload.academicPeriod = patch.academicPeriod;
+    if (patch.category !== undefined) payload.category = patch.category;
+    if (patch.description !== undefined) payload.description = patch.description;
+    if (patch.links !== undefined) payload.links = patch.links;
+    if (patch.submitterStudyYear !== undefined) {
+      payload.submitterStudyYear = patch.submitterStudyYear;
+    }
+    if (patch.summary !== undefined) payload.summary = patch.summary;
+    if (patch.tags !== undefined) payload.tags = patch.tags;
+    if (patch.title !== undefined) payload.title = patch.title;
+    if (patch.videoLinks !== undefined) {
+      payload.videoLinks = patch.videoLinks.map((link) => ({
+        provider: link.provider,
+        providerVideoId: link.providerVideoId,
+        url: link.url,
+      }));
+    }
+    return payload;
+  }
+
   private required<T>(value: T | undefined): T {
     if (value === undefined) throw new Error('WORK_PERSISTENCE_INVARIANT');
     return value;
+  }
+
+  private async savedDraftMutation(
+    input: Parameters<WorksRepository['archiveSavedDraft']>[0],
+    operation: 'archive_saved_draft' | 'restore_saved_draft',
+  ): ReturnType<WorksRepository['archiveSavedDraft']> {
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify([operation, input.publicId, input.expectedVersion]))
+      .digest('hex');
+    return this.database.sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      const replayRows = await sql<
+        Array<{
+          operation: string;
+          request_fingerprint: string;
+          resulting_work_version: string;
+          work_id: string;
+        }>
+      >`
+        select operation, request_fingerprint, resulting_work_version, work_id
+        from private.work_saved_draft_operations
+        where idempotency_key = ${input.idempotencyKey}
+          and actor_account_id = ${input.actorAccountId}
+        limit 1
+      `;
+      const replay = replayRows[0];
+      if (replay !== undefined) {
+        if (replay.operation !== operation || replay.request_fingerprint !== fingerprint) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayWork = await sql<
+          Array<{
+            activity_state: 'active' | 'archived';
+            publication_state: 'never_published';
+            public_id: string;
+          }>
+        >`
+          select activity_state, publication_state, public_id from public.works
+          where id = ${replay.work_id}
+        `;
+        const work = replayWork[0];
+        return work === undefined
+          ? { outcome: 'not_found' }
+          : {
+              outcome: 'replayed',
+              work: {
+                activityState: work.activity_state,
+                publicationState: work.publication_state,
+                publicId: work.public_id,
+                version: Number(replay.resulting_work_version),
+              },
+            };
+      }
+      const rows = await sql<
+        Array<{
+          activity_state: 'active' | 'archived';
+          archive_source: 'admin' | 'submitter' | null;
+          has_draft: boolean;
+          has_pending: boolean;
+          id: string;
+          publication_state: 'never_published' | 'published' | 'unpublished';
+          public_id: string;
+          version: string;
+        }>
+      >`
+        select work.id, work.public_id, work.activity_state, work.archive_source,
+          work.publication_state, work.version,
+          exists(
+            select 1 from private.work_drafts
+            where work_id = work.id and lifecycle_state = 'active'
+          ) as has_draft,
+          exists(select 1 from private.work_revisions where work_id = work.id
+            and status = 'pending_review') as has_pending
+        from public.works as work
+        join public.accounts as account on account.person_id = work.submitter_person_id
+        where account.id = ${input.actorAccountId} and work.public_id = ${input.publicId}
+        for update of work
+      `;
+      const work = rows[0];
+      if (work === undefined) return { outcome: 'not_found' };
+      if (Number(work.version) !== input.expectedVersion) return { outcome: 'version_conflict' };
+      const transition = evaluateSubmitterSavedDraftTransition({
+        activityState: work.activity_state,
+        archiveSource: work.archive_source,
+        hasDraft: work.has_draft,
+        hasPendingRevision: work.has_pending,
+        operation,
+        publicationState: work.publication_state,
+      });
+      if (!transition.isAllowed) return { outcome: 'state_conflict' };
+      const resultingVersion = input.expectedVersion + 1;
+      await sql`
+        update public.works set activity_state = ${transition.activityState},
+          archive_source = ${operation === 'archive_saved_draft' ? 'submitter' : null},
+          version = ${resultingVersion}, updated_at = ${input.now}
+        where id = ${work.id}
+      `;
+      await sql`
+        insert into private.work_saved_draft_operations (
+          idempotency_key, actor_account_id, work_id, operation, request_fingerprint,
+          resulting_work_version, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${work.id}, ${operation},
+          ${fingerprint}, ${resultingVersion}, ${input.now}
+        )
+      `;
+      return {
+        outcome: operation === 'archive_saved_draft' ? 'archived' : 'restored',
+        work: {
+          activityState: transition.activityState,
+          publicationState: 'never_published',
+          publicId: work.public_id,
+          version: resultingVersion,
+        },
+      };
+    });
   }
 }

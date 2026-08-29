@@ -39,6 +39,32 @@ export interface InvalidRosterRow {
 
 export type RosterRowResult = InvalidRosterRow | RosterRow;
 
+export interface PrepareRosterStudentInput {
+  firstNameTh: string;
+  lastNameTh: string;
+  studentId: string;
+}
+
+export function prepareRosterStudent(
+  input: PrepareRosterStudentInput,
+  rowNumber = 2,
+): RosterRowResult {
+  if (!/^\d{8}$/.test(input.studentId)) {
+    return { errorCode: 'INVALID_STUDENT_ID', rowNumber, studentId: input.studentId };
+  }
+  const entryYear = 2500 + Number(input.studentId.slice(0, 2));
+
+  const firstNameTh = normalizeName(input.firstNameTh);
+  if (firstNameTh.length === 0) {
+    return { errorCode: 'INVALID_FIRST_NAME', rowNumber, studentId: input.studentId };
+  }
+  const lastNameTh = normalizeName(input.lastNameTh);
+  if (lastNameTh.length === 0) {
+    return { errorCode: 'INVALID_LAST_NAME', rowNumber, studentId: input.studentId };
+  }
+  return { entryYear, firstNameTh, lastNameTh, rowNumber, studentId: input.studentId };
+}
+
 export function parseRosterCsv(content: Uint8Array): RosterRowResult[] {
   let source: string;
   try {
@@ -98,20 +124,10 @@ function parseRow(record: string[], rowNumber: number): RosterRowResult {
     throw new RosterCsvError('INVALID_ROSTER_CSV');
   }
   const [studentId = '', rawFirstName = '', rawLastName = ''] = record;
-  if (!/^\d{8}$/.test(studentId)) {
-    return { errorCode: 'INVALID_STUDENT_ID', rowNumber, studentId };
-  }
-  const entryYear = 2500 + Number(studentId.slice(0, 2));
-
-  const firstNameTh = normalizeName(rawFirstName);
-  if (firstNameTh.length === 0) {
-    return { errorCode: 'INVALID_FIRST_NAME', rowNumber, studentId };
-  }
-  const lastNameTh = normalizeName(rawLastName);
-  if (lastNameTh.length === 0) {
-    return { errorCode: 'INVALID_LAST_NAME', rowNumber, studentId };
-  }
-  return { entryYear, firstNameTh, lastNameTh, rowNumber, studentId };
+  return prepareRosterStudent(
+    { firstNameTh: rawFirstName, lastNameTh: rawLastName, studentId },
+    rowNumber,
+  );
 }
 
 function normalizeName(value: string): string {

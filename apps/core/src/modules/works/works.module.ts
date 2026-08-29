@@ -2,7 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { AuthModule } from '../auth/auth.module';
-import { WORKS_CLOCK, WORKS_REPOSITORY, type WorksClock } from './application/works.ports';
+import {
+  WORKS_CLOCK,
+  WORKS_CURSOR_CODEC,
+  WORKS_REPOSITORY,
+  type WorksClock,
+} from './application/works.ports';
 import { WorksService } from './application/works.service';
 import {
   WORK_MEDIA_CLOCK,
@@ -21,16 +26,6 @@ import { UnavailableWorkMediaStorage } from './infrastructure/unavailable-work-m
 import { PostgresWorksRepository } from './infrastructure/postgres-works.repository';
 import { StudentWorksController } from './transport/student-works.controller';
 import { WorksExceptionFilter } from './transport/works-exception.filter';
-import {
-  ATTRIBUTION_INVITATIONS_CLOCK,
-  ATTRIBUTION_INVITATIONS_REPOSITORY,
-  ATTRIBUTION_SECRET_PROTECTOR,
-  type AttributionInvitationsClock,
-} from './application/attribution-invitations.ports';
-import { AttributionInvitationsService } from './application/attribution-invitations.service';
-import { NodeAttributionSecretProtector } from './infrastructure/node-attribution-secret-protector';
-import { PostgresAttributionInvitationsRepository } from './infrastructure/postgres-attribution-invitations.repository';
-import { StudentAttributionInvitationsController } from './transport/student-attribution-invitations.controller';
 import { WorkRevisionsService } from './application/work-revisions.service';
 import { WORK_REVISIONS_REPOSITORY } from './application/work-revisions.ports';
 import { PostgresWorkRevisionsRepository } from './infrastructure/postgres-work-revisions.repository';
@@ -54,22 +49,30 @@ import { StudentWorkRecoveryController } from './transport/student-work-recovery
 import { AttributionRemovalService } from './application/attribution-removal.service';
 import { ATTRIBUTION_REMOVAL_REPOSITORY } from './application/attribution-removal.ports';
 import { PostgresAttributionRemovalRepository } from './infrastructure/postgres-attribution-removal.repository';
+import { WorkWorkspaceCursorCodec } from './domain/work-workspace-cursor';
+import {
+  WORK_CONTRIBUTORS_CLOCK,
+  WORK_CONTRIBUTORS_REPOSITORY,
+  type WorkContributorsClock,
+} from './application/work-contributors.ports';
+import { WorkContributorsService } from './application/work-contributors.service';
+import { PostgresWorkContributorsRepository } from './infrastructure/postgres-work-contributors.repository';
+import { StudentWorkContributorsController } from './transport/student-work-contributors.controller';
 
 @Module({
   controllers: [
     AdminWorkRecoveryController,
     AdminWorkRevisionsController,
     PublicWorksController,
-    StudentAttributionInvitationsController,
     StudentReviewsController,
     StudentWorkRevisionsController,
     StudentWorkRecoveryController,
+    StudentWorkContributorsController,
     StudentWorksController,
   ],
   imports: [AuthModule],
   providers: [
     WorksService,
-    AttributionInvitationsService,
     WorkMediaService,
     WorkRevisionsService,
     ReviewsService,
@@ -77,8 +80,15 @@ import { PostgresAttributionRemovalRepository } from './infrastructure/postgres-
     AdminCorrectionsService,
     WorkRecoveryService,
     AttributionRemovalService,
+    WorkContributorsService,
     WorksExceptionFilter,
     { provide: WORKS_REPOSITORY, useClass: PostgresWorksRepository },
+    {
+      inject: [ConfigService],
+      provide: WORKS_CURSOR_CODEC,
+      useFactory: (config: ConfigService) =>
+        new WorkWorkspaceCursorCodec(config.getOrThrow<string>('CATALOG_CURSOR_SECRET')),
+    },
     PostgresWorkRevisionsRepository,
     { provide: WORK_REVISIONS_REPOSITORY, useExisting: PostgresWorkRevisionsRepository },
     { provide: ADMIN_CORRECTIONS_REPOSITORY, useExisting: PostgresWorkRevisionsRepository },
@@ -86,16 +96,7 @@ import { PostgresAttributionRemovalRepository } from './infrastructure/postgres-
     { provide: PUBLICATION_REPOSITORY, useClass: PostgresPublicationRepository },
     { provide: WORK_RECOVERY_REPOSITORY, useClass: PostgresWorkRecoveryRepository },
     { provide: ATTRIBUTION_REMOVAL_REPOSITORY, useClass: PostgresAttributionRemovalRepository },
-    {
-      provide: ATTRIBUTION_INVITATIONS_REPOSITORY,
-      useClass: PostgresAttributionInvitationsRepository,
-    },
-    {
-      inject: [ConfigService],
-      provide: ATTRIBUTION_SECRET_PROTECTOR,
-      useFactory: (config: ConfigService) =>
-        new NodeAttributionSecretProtector(config.getOrThrow<string>('AUTH_IDENTITY_SECRET')),
-    },
+    { provide: WORK_CONTRIBUTORS_REPOSITORY, useClass: PostgresWorkContributorsRepository },
     { provide: WORK_MEDIA_REPOSITORY, useClass: PostgresWorkMediaRepository },
     { provide: WORK_MEDIA_INSPECTOR, useClass: SharpWorkMediaInspector },
     {
@@ -130,8 +131,8 @@ import { PostgresAttributionRemovalRepository } from './infrastructure/postgres-
       useValue: { now: () => new Date() } satisfies WorksClock,
     },
     {
-      provide: ATTRIBUTION_INVITATIONS_CLOCK,
-      useValue: { now: () => new Date() } satisfies AttributionInvitationsClock,
+      provide: WORK_CONTRIBUTORS_CLOCK,
+      useValue: { now: () => new Date() } satisfies WorkContributorsClock,
     },
   ],
 })

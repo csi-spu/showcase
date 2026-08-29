@@ -29,9 +29,18 @@ const studentPasswordResetSchema = z.object({
   operation: z.literal('reset'),
 });
 
+const studentNameCorrectionSchema = z.object({
+  ...studentMutationBase,
+  firstNameTh: z.string().trim().min(1).max(100),
+  lastNameTh: z.string().trim().min(1).max(100),
+  operation: z.literal('correctName'),
+  reason: z.string().trim().min(1).max(2_000),
+});
+
 const studentAccountOperationSchema = z.discriminatedUnion('operation', [
   studentLookupSchema,
   studentExtensionSchema,
+  studentNameCorrectionSchema,
   studentPasswordResetSchema,
 ]);
 
@@ -48,7 +57,9 @@ export function validateStudentAccountOperation(formData: FormData) {
   const result = studentAccountOperationSchema.safeParse({
     accessEndsAcademicYear: formData.get('accessEndsAcademicYear'),
     expectedVersion: formData.get('expectedVersion'),
+    firstNameTh: formData.get('firstNameTh'),
     idempotencyKey: formData.get('idempotencyKey'),
+    lastNameTh: formData.get('lastNameTh'),
     operation: formData.get('operation'),
     reason: formData.get('reason'),
     studentAccountId: formData.get('studentAccountId'),

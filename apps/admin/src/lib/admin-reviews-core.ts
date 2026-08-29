@@ -143,14 +143,18 @@ const removalRequestSchema = z
 const attributionRemovalRequestSchema = z
   .object({
     attributionName: z.string(),
+    attributionPublicId: z.uuid(),
     correctionRevisionPublicId: z.uuid().nullable(),
     createdAt: z.iso.datetime(),
+    currentPublishedRevisionPublicId: z.uuid().nullable(),
+    currentPublishedRevisionVersion: z.number().int().positive().nullable(),
     publicId: z.uuid(),
     reason: z.string().min(10).max(1_000),
     revisionPublicId: z.uuid(),
     state: z.enum(['accepted', 'declined', 'pending']),
     version: z.number().int().positive(),
     workPublicId: z.uuid(),
+    workTitle: z.string(),
   })
   .strict();
 
@@ -299,31 +303,59 @@ export class AdminReviewsCoreClient {
     });
   }
 
-  listAttributionRemovalRequests(sessionToken: string, limit: number) {
+  listAttributionRemovalRequests(sessionToken: string, input: { cursor?: string; limit: number }) {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set('cursor', input.cursor);
     return this.client.request({
       method: 'GET',
-      path: `/v1/internal/admin/attribution-removal-requests?limit=${limit}`,
+      path: `/v1/internal/admin/attribution-removal-requests?${query.toString()}`,
       responseSchema: z
-        .object({ items: z.array(attributionRemovalRequestSchema).max(50) })
+        .object({
+          items: z.array(attributionRemovalRequestSchema).max(50),
+          nextCursor: z.string().nullable(),
+        })
         .strict(),
       sessionToken,
     });
   }
 
-  decideAttributionRemovalRequest(
+  declineAttributionRemovalRequest(
     sessionToken: string,
     requestPublicId: string,
     input: {
-      decision: 'accept' | 'decline';
-      decisionReason?: string;
-      expectedVersion: number;
+      decisionReason: string;
+      expectedRequestVersion: number;
       idempotencyKey: string;
     },
   ) {
     return this.client.request({
       body: input,
       method: 'POST',
-      path: `/v1/internal/admin/attribution-removal-requests/${requestPublicId}/decision`,
+      path: `/v1/internal/admin/attribution-removal-requests/${requestPublicId}/decline`,
+      responseSchema: z
+        .object({
+          outcome: z.enum(['replayed', 'resolved']),
+          request: attributionRemovalRequestSchema,
+        })
+        .strict(),
+      sessionToken,
+    });
+  }
+
+  approveAndPublishAttributionRemoval(
+    sessionToken: string,
+    requestPublicId: string,
+    input: {
+      expectedPublishedRevisionPublicId: string;
+      expectedPublishedRevisionVersion: number;
+      expectedRequestVersion: number;
+      idempotencyKey: string;
+    },
+  ) {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/attribution-removal-requests/${requestPublicId}/approve-and-publish-removal`,
       responseSchema: z
         .object({
           outcome: z.enum(['replayed', 'resolved']),

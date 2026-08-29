@@ -199,6 +199,28 @@ describe('RosterImportService and RosterWorker', () => {
     toSyntheticIdentity: (value) => `${value.padEnd(64, '0')}@auth.invalid`,
   };
 
+  it('creates a one-row Batch with Entry Year derived inside Core', async () => {
+    const repository = new MemoryRosterRepository();
+    const service = new RosterImportService(repository, clock, identityProtector);
+
+    const pending = await service.createStudent({
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      firstNameTh: ' สมชาย ',
+      lastNameTh: ' ใจดี ',
+      studentId: '69000001',
+    });
+
+    expect(pending).toMatchObject({ entryYears: [2569], status: 'pending', totalRowCount: 1 });
+    expect(repository.rows).toEqual([
+      expect.objectContaining({
+        entryYear: 2569,
+        firstNameTh: 'สมชาย',
+        lastNameTh: 'ใจดี',
+        rowNumber: 2,
+      }),
+    ]);
+  });
+
   it('persists a valid Batch before bounded asynchronous provisioning completes it', async () => {
     const repository = new MemoryRosterRepository();
     const ensureIdentity = jest.fn().mockResolvedValue(undefined);

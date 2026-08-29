@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { configureApplication } from '../src/configure-application';
 import { AdminAuthService } from '../src/modules/auth/application/admin-auth.service';
 import { StudentAuthService } from '../src/modules/auth/application/student-auth.service';
+import { NodeIdentityProtector } from '../src/modules/auth/infrastructure/node-auth-crypto';
 import {
   WORK_RECOVERY_REPOSITORY,
   type RemovalRequestView,
@@ -81,25 +82,27 @@ class FakeRecoveryRepository implements WorkRecoveryRepository {
 }
 
 class FakeAttributionRemovalRepository implements AttributionRemovalRepository {
-  lastDecision: Parameters<AttributionRemovalRepository['decide']>[0] | undefined;
-  create() {
-    return Promise.resolve({
-      outcome: 'created' as const,
-      request: attributionRemovalRequest('pending'),
-    });
+  lastApprove: Parameters<AttributionRemovalRepository['approveAndPublish']>[0] | undefined;
+  lastCreate: Parameters<AttributionRemovalRepository['createPublic']>[0] | undefined;
+  createPublic(input: Parameters<AttributionRemovalRepository['createPublic']>[0]) {
+    this.lastCreate = input;
+    return Promise.resolve({ outcome: 'created' as const });
   }
-  decide(input: Parameters<AttributionRemovalRepository['decide']>[0]) {
-    this.lastDecision = input;
+  approveAndPublish(input: Parameters<AttributionRemovalRepository['approveAndPublish']>[0]) {
+    this.lastApprove = input;
     return Promise.resolve({
       outcome: 'resolved' as const,
-      request: attributionRemovalRequest(input.decision === 'accept' ? 'accepted' : 'declined'),
+      request: attributionRemovalRequest('accepted'),
     });
   }
-  findCurrent() {
-    return Promise.resolve(attributionRemovalRequest('pending'));
+  decline() {
+    return Promise.resolve({
+      outcome: 'resolved' as const,
+      request: attributionRemovalRequest('declined'),
+    });
   }
   listPending() {
-    return Promise.resolve([attributionRemovalRequest('pending')]);
+    return Promise.resolve({ items: [attributionRemovalRequest('pending')], nextCursor: null });
   }
 }
 
@@ -213,27 +216,46 @@ describe('Work recovery endpoints (e2e)', () => {
     });
   });
 
-  it('accepts attribution removal into the Admin correction workflow', async () => {
-    await studentRequest(
-      'post',
-      '/v1/internal/student/external-contributor-recovery/removal-requests',
-    )
+  it('accepts a public attribution target and atomically approves publication', async () => {
+    await request(app.getHttpServer())
+      .post(`/v1/public/works/${WORK_PUBLIC_ID}/attributions/${REVISION_ID}/removal-requests`)
       .send({ idempotencyKey: IDEMPOTENCY_KEY, reason: 'ขอถอนชื่อออกจากผลงานนี้' })
-      .expect(201)
-      .expect((response) => expect(response.body).toMatchObject({ request: { state: 'pending' } }));
+      .expect(202)
+      .expect({ received: true });
     await adminRequest('get', '/v1/internal/admin/attribution-removal-requests?limit=20')
       .expect(200)
-      .expect({ items: [attributionRemovalRequest('pending')] });
+      .expect({ items: [attributionRemovalRequest('pending')], nextCursor: null });
     await adminRequest(
       'post',
-      `/v1/internal/admin/attribution-removal-requests/${REQUEST_PUBLIC_ID}/decision`,
+      `/v1/internal/admin/attribution-removal-requests/${REQUEST_PUBLIC_ID}/approve-and-publish-removal`,
     )
-      .send({ decision: 'accept', expectedVersion: 1, idempotencyKey: IDEMPOTENCY_KEY })
+      .send({
+        expectedPublishedRevisionPublicId: REVISION_PUBLIC_ID,
+        expectedPublishedRevisionVersion: 1,
+        expectedRequestVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      })
       .expect(200);
-    expect(attributionRepository.lastDecision).toMatchObject({
+    expect(attributionRepository.lastApprove).toMatchObject({
       actorAccountId: ADMIN_ACCOUNT_ID,
-      decision: 'accept',
+      expectedRequestVersion: 1,
     });
+  });
+
+  it('accepts only an authenticated opaque Visitor source key for rate limiting', async () => {
+    await request(app.getHttpServer())
+      .post(`/v1/public/works/${WORK_PUBLIC_ID}/attributions/${REVISION_ID}/removal-requests`)
+      .set('x-visitor-bff-secret', 'local-development-only-visitor-bff-secret')
+      .set('x-visitor-source-key', 'a'.repeat(64))
+      .send({ idempotencyKey: IDEMPOTENCY_KEY, reason: 'ขอถอนชื่อออกจากผลงานนี้' })
+      .expect(202);
+
+    expect(attributionRepository.lastCreate?.sourceKeyHash).toBe(
+      new NodeIdentityProtector('local-development-only-identity-secret').hashSourceAddress(
+        `visitor-bff:${'a'.repeat(64)}`,
+      ),
+    );
+    expect(attributionRepository.lastCreate?.sourceKeyHash).not.toContain('203.0.113');
   });
 
   function studentRequest(method: 'get' | 'post', path: string) {
@@ -291,14 +313,18 @@ function attributionRemovalRequest(
 ): AttributionRemovalRequestView {
   return {
     attributionName: 'Alex Example',
+    attributionPublicId: REVISION_ID,
     correctionRevisionPublicId: state === 'accepted' ? id(8) : null,
     createdAt: '2026-08-26T05:00:00.000Z',
+    currentPublishedRevisionPublicId: state === 'accepted' ? id(8) : REVISION_PUBLIC_ID,
+    currentPublishedRevisionVersion: 2,
     publicId: REQUEST_PUBLIC_ID,
     reason: 'ขอถอนชื่อออกจากผลงานนี้',
     revisionPublicId: REVISION_PUBLIC_ID,
     state,
     version: state === 'pending' ? 1 : 2,
     workPublicId: WORK_PUBLIC_ID,
+    workTitle: 'ชื่อผลงาน',
   };
 }
 

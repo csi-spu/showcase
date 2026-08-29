@@ -2,15 +2,14 @@
 
 import { Button } from '@showcase/ui/button';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import type { PrivatePublicProfile } from '@/lib/student-profile-core';
+import type { PrivatePerson, PrivatePublicProfile } from '@/lib/student-profile-core';
 import {
   INITIAL_PROFILE_ACTION_STATE,
   type ProfileActionError,
@@ -33,7 +32,6 @@ type FinalizePhotoUpload = (
 ) => Promise<{ data: { photoId: string; status: 'ready' } } | { error: ProfileActionError }>;
 interface ProfileDraftState {
   bio: string;
-  displayName: string;
   links: Array<{ label: string; url: string }>;
 }
 
@@ -42,6 +40,7 @@ export function ProfileForm({
   createPhotoUpload,
   finalizePhotoUpload,
   idempotencyKey,
+  person,
   profile,
   updateAction,
 }: {
@@ -49,6 +48,7 @@ export function ProfileForm({
   createPhotoUpload: CreatePhotoUpload;
   finalizePhotoUpload: FinalizePhotoUpload;
   idempotencyKey: string;
+  person: PrivatePerson | null;
   profile: PrivatePublicProfile | null;
   updateAction: ProfileAction;
 }) {
@@ -107,21 +107,17 @@ export function ProfileForm({
       ) : null}
 
       <div className="grid gap-6 rounded-surface border border-border/80 bg-card p-6 shadow-[0_1rem_2.5rem_-2rem_rgba(50,20,45,0.22)] sm:p-8">
-        <Field>
-          <FieldLabel htmlFor="display-name">{t('displayName')}</FieldLabel>
-          <Input
-            disabled={!canEditProfile}
-            id="display-name"
-            maxLength={100}
-            name="displayName"
-            onChange={(event) => {
-              const displayName = event.currentTarget.value;
-              setDraft((current) => ({ ...current, displayName }));
-            }}
-            required
-            value={draft.displayName}
-          />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="first-name">{t('firstName')}</FieldLabel>
+            <Input id="first-name" readOnly value={person?.firstName ?? ''} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="last-name">{t('lastName')}</FieldLabel>
+            <Input id="last-name" readOnly value={person?.lastName ?? ''} />
+          </Field>
+        </div>
+        <FieldDescription>{t('nameHelp')}</FieldDescription>
         <Field>
           <FieldLabel htmlFor="bio">{t('bio')}</FieldLabel>
           <Textarea
@@ -238,7 +234,6 @@ export function ProfileForm({
 function createDraft(profile: PrivatePublicProfile | null): ProfileDraftState {
   return {
     bio: profile?.bio ?? '',
-    displayName: profile?.displayName ?? '',
     links: Array.from({ length: 5 }, (_, index) => ({
       label: profile?.links[index]?.label ?? '',
       url: profile?.links[index]?.url ?? '',
@@ -255,38 +250,70 @@ export function ConsentPanel({
 }: {
   grantAction: ProfileAction;
   idempotencyKey: string;
-  profile: PrivatePublicProfile;
+  profile: PrivatePublicProfile | null;
   publicProfileUrl?: string | undefined;
   withdrawAction: ProfileAction;
 }) {
   const t = useTranslations('Profile');
-  const action = profile.consent === null ? grantAction : withdrawAction;
+  const isGranted = profile !== null && profile.consent !== null;
+  const action = isGranted ? withdrawAction : grantAction;
   const [state, formAction] = useActionState(action, INITIAL_PROFILE_ACTION_STATE);
+
   return (
-    <section className="grid max-w-[45rem] gap-5 rounded-surface border border-border bg-card p-6 sm:p-8">
-      <div className="grid gap-2">
-        <p className="text-sm font-medium text-primary">{t('consent.kicker')}</p>
-        <h2 className="text-2xl font-semibold">{t('consent.heading')}</h2>
-        <p className="text-muted-foreground">
-          {profile.consent === null ? t('consent.private') : t('consent.public')}
+    <section className="grid max-w-[45rem] gap-2 rounded-surface border border-border bg-muted/30 px-4 py-3">
+      <form action={formAction} className="grid gap-2">
+        <input name="expectedVersion" type="hidden" value={profile?.version ?? 0} />
+        <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
+        <ConsentCheckbox
+          checked={isGranted}
+          disabled={profile === null}
+          label={t('consent.grant')}
+          pendingLabel={t('saving')}
+        />
+        <p className="pl-7 text-xs text-muted-foreground">
+          {profile === null
+            ? t('consent.profileRequired')
+            : isGranted
+              ? t('consent.public')
+              : t('consent.private')}
         </p>
-      </div>
-      {profile.consent !== null && publicProfileUrl ? (
-        <a className="font-medium text-primary underline" href={publicProfileUrl}>
+        <ActionFeedback error={state.error} success={state.success} />
+      </form>
+      {isGranted && publicProfileUrl ? (
+        <a className="pl-7 text-sm font-medium text-primary underline" href={publicProfileUrl}>
           {t('consent.viewPublic')}
         </a>
       ) : null}
-      <form action={formAction} className="grid gap-3">
-        <input name="expectedVersion" type="hidden" value={profile.version} />
-        <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
-        <ActionFeedback error={state.error} success={state.success} />
-        <SubmitButton
-          label={profile.consent === null ? t('consent.grant') : t('consent.withdraw')}
-          pendingLabel={t('saving')}
-          variant={profile.consent === null ? 'default' : 'destructive'}
-        />
-      </form>
     </section>
+  );
+}
+
+function ConsentCheckbox({
+  checked,
+  disabled,
+  label,
+  pendingLabel,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  pendingLabel: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium">
+      <input
+        checked={checked}
+        className="size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled || pending}
+        onChange={(event) => {
+          event.currentTarget.form?.requestSubmit();
+        }}
+        type="checkbox"
+      />
+      <span>{label}</span>
+      {pending ? <Spinner aria-label={pendingLabel} className="size-4" /> : null}
+    </label>
   );
 }
 

@@ -3,6 +3,7 @@ import { CatalogCursorCodec, CatalogCursorError } from '../domain/catalog-cursor
 import {
   CatalogQueryError,
   normalizePeopleCatalogQuery,
+  normalizeTagSuggestionQuery,
   normalizeWorkCatalogQuery,
   type RawPeopleCatalogQuery,
   type RawWorkCatalogQuery,
@@ -60,6 +61,14 @@ export class CatalogService {
 
   async listFilterOptions() {
     return this.repository.listFilterOptions();
+  }
+
+  async suggestTags(rawQuery: string | string[] | undefined) {
+    try {
+      return await this.repository.suggestTags(normalizeTagSuggestionQuery(rawQuery));
+    } catch (error: unknown) {
+      this.rethrowValidation(error);
+    }
   }
 
   async getCacheVersion() {

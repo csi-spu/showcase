@@ -368,7 +368,7 @@ function PeopleCollectionSection({
                       href={`/people/${person.publicId}`}
                     >
                       <PersonPortrait
-                        alt={labels.personPhotoAlt(person.displayName)}
+                        alt={labels.personPhotoAlt(`${person.firstName} ${person.lastName}`)}
                         person={person}
                         sizes="(max-width: 639px) 100vw, (max-width: 1279px) 50vw, 25vw"
                       />
@@ -385,7 +385,7 @@ function PeopleCollectionSection({
                           className="transition-colors duration-150 group-hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
                           href={`/people/${person.publicId}`}
                         >
-                          {person.displayName}
+                          {`${person.firstName} ${person.lastName}`}
                         </Link>
                       </h3>
                       <p className="text-sm font-medium text-muted-foreground tabular-nums">

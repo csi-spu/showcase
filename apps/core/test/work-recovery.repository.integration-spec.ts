@@ -35,10 +35,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
   const repository = new PostgresWorkRecoveryRepository(database);
   const attributionRemoval = new PostgresAttributionRemovalRepository(database);
-  const publication = new PostgresPublicationRepository(
-    database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.test' }),
-  );
+  const publication = new PostgresPublicationRepository(database);
 
   beforeEach(async () => {
     await cleanup();
@@ -96,28 +93,39 @@ describe('PostgresWorkRecoveryRepository integration', () => {
     await expect(publication.findPublicWork(WORK_PUBLIC_ID)).resolves.not.toBeNull();
   });
 
-  it('turns accepted External Contributor removal into an immutable pending correction', async () => {
-    const created = await attributionRemoval.create({
+  it('publishes an immutable correction for a current External Contributor target', async () => {
+    const targets = await database.sql<Array<{ attribution_public_id: string }>>`
+      select attribution_public_id from private.work_revision_attributions
+      where revision_id = ${REVISION_ID} and person_id = ${EXTERNAL_PERSON_ID}
+    `;
+    const attributionPublicId = targets[0]?.attribution_public_id;
+    if (attributionPublicId === undefined) throw new Error('ATTRIBUTION_TARGET_MISSING');
+    const created = await attributionRemoval.createPublic({
+      attributionPublicId,
       idempotencyKey: id(40),
-      invitationSessionHash: EXTERNAL_SESSION_HASH,
       now: NOW,
       reason: 'ขอถอนชื่อผู้ร่วมผลงานออกจากหน้าสาธารณะ',
+      sourceKeyHash: 'b'.repeat(64),
+      targetKeyHash: 'c'.repeat(64),
+      workPublicId: WORK_PUBLIC_ID,
     });
-    expect(created).toMatchObject({
-      outcome: 'created',
-      request: { attributionName: 'External Person', state: 'pending' },
-    });
-    if (!('request' in created)) throw new Error('ATTRIBUTION_REMOVAL_NOT_CREATED');
+    expect(created).toEqual({ outcome: 'created' });
+    const requests = await database.sql<Array<{ public_id: string }>>`
+      select public_id from private.attribution_removal_requests
+      where attribution_public_id = ${attributionPublicId}
+    `;
+    const requestPublicId = requests[0]?.public_id;
+    if (requestPublicId === undefined) throw new Error('ATTRIBUTION_REMOVAL_NOT_CREATED');
     await expect(publication.findPublicWork(WORK_PUBLIC_ID)).resolves.not.toBeNull();
 
-    const accepted = await attributionRemoval.decide({
+    const accepted = await attributionRemoval.approveAndPublish({
       actorAccountId: ADMIN_ACCOUNT_ID,
-      decision: 'accept',
-      decisionReason: null,
-      expectedVersion: 1,
+      expectedPublishedRevisionPublicId: REVISION_PUBLIC_ID,
+      expectedPublishedRevisionVersion: 2,
+      expectedRequestVersion: 1,
       idempotencyKey: id(41),
       now: new Date(NOW.getTime() + 1_000),
-      requestPublicId: created.request.publicId,
+      requestPublicId,
     });
     expect(accepted).toMatchObject({ outcome: 'resolved', request: { state: 'accepted' } });
     const rows = await database.sql<
@@ -131,7 +139,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
           where revision.work_id = ${WORK_ID} and revision.author_kind = 'admin_correction'
             and attribution.person_id = ${EXTERNAL_PERSON_ID}) as correction_count,
         (select count(*)::integer from private.work_revisions
-          where work_id = ${WORK_ID} and status = 'pending_review'
+          where work_id = ${WORK_ID} and status = 'approved'
             and author_kind = 'admin_correction') as pending_count
     `;
     expect(rows[0]).toEqual({ correction_count: 0, original_count: 1, pending_count: 1 });
@@ -168,6 +176,42 @@ describe('PostgresWorkRecoveryRepository integration', () => {
       select active_work_count::integer from public.tags where id = ${TAG_ID}
     `;
     expect(tag[0]?.active_work_count).toBe(1);
+  });
+
+  it('does not charge a published attribution target for invalid public probes', async () => {
+    const targets = await database.sql<Array<{ attribution_public_id: string }>>`
+      select attribution_public_id from private.work_revision_attributions
+      where revision_id = ${REVISION_ID} and person_id = ${EXTERNAL_PERSON_ID}
+    `;
+    const attributionPublicId = targets[0]?.attribution_public_id;
+    if (attributionPublicId === undefined) throw new Error('ATTRIBUTION_TARGET_MISSING');
+    const targetKeyHash = 'd'.repeat(64);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(
+        attributionRemoval.createPublic({
+          attributionPublicId: id(70 + attempt),
+          idempotencyKey: id(80 + attempt),
+          now: new Date(NOW.getTime() + attempt),
+          reason: 'คำขอเป้าหมายที่ไม่ถูกต้องสำหรับทดสอบโควตา',
+          sourceKeyHash: attempt.toString(16).padStart(64, '0'),
+          targetKeyHash,
+          workPublicId: WORK_PUBLIC_ID,
+        }),
+      ).resolves.toEqual({ outcome: 'not_found' });
+    }
+
+    await expect(
+      attributionRemoval.createPublic({
+        attributionPublicId,
+        idempotencyKey: id(90),
+        now: new Date(NOW.getTime() + 10),
+        reason: 'คำขอจริงต้องไม่ถูกปิดกั้นจากการยิงเป้าหมายที่ไม่ถูกต้อง',
+        sourceKeyHash: 'e'.repeat(64),
+        targetKeyHash,
+        workPublicId: WORK_PUBLIC_ID,
+      }),
+    ).resolves.toEqual({ outcome: 'created' });
   });
 
   it('approves a Removal Request atomically while retaining pointer, history, and audit', async () => {
@@ -450,6 +494,14 @@ describe('PostgresWorkRecoveryRepository integration', () => {
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
       await transaction`set local session_replication_role = replica`;
+      await transaction`
+        delete from private.attribution_removal_rate_limits
+        where key_hash in (
+          ${'b'.repeat(64)}, ${'c'.repeat(64)}, ${'d'.repeat(64)}, ${'e'.repeat(64)},
+          ${'0'.repeat(64)}, ${'0'.repeat(63) + '1'}, ${'0'.repeat(63) + '2'},
+          ${'0'.repeat(63) + '3'}, ${'0'.repeat(63) + '4'}
+        )
+      `;
       await transaction`delete from private.attribution_removal_operations where request_id in (
         select id from private.attribution_removal_requests where work_id = ${WORK_ID}
       )`;

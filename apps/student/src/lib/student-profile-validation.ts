@@ -6,10 +6,6 @@ const baseSchema = z.object({
     .string()
     .max(500)
     .transform((value) => value.trim() || null),
-  displayName: z
-    .string()
-    .transform((value) => value.trim())
-    .pipe(z.string().min(1).max(100)),
   expectedVersion: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   idempotencyKey: z.uuid(),
   photoId: z
@@ -21,7 +17,6 @@ const baseSchema = z.object({
 export function validateProfileForm(formData: FormData): ProfileUpdateInput | 'invalid' {
   const base = baseSchema.safeParse({
     bio: stringValue(formData, 'bio'),
-    displayName: stringValue(formData, 'displayName'),
     expectedVersion: stringValue(formData, 'expectedVersion'),
     idempotencyKey: stringValue(formData, 'idempotencyKey'),
     photoId: stringValue(formData, 'photoId'),

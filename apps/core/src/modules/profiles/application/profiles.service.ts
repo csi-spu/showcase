@@ -85,13 +85,12 @@ export class ProfilesService {
     input: ConsentMutationInput & { consentTextVersion: string },
   ): Promise<ProfileMutationResult> {
     const profile = await this.repository.findPrivateProfile(input.actorAccountId);
-    if (profile === null) {
+    if (profile?.profile === null || profile === null) {
       throw new ProfileError('PROFILE_INCOMPLETE', 422);
     }
     const evaluation = evaluatePublicProfile({
-      bio: profile.bio,
-      displayName: profile.displayName,
-      links: profile.links,
+      bio: profile.profile.bio,
+      links: profile.profile.links,
       photoId: null,
     });
     if (!evaluation.isValid) {

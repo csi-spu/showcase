@@ -17,8 +17,9 @@ describe('Public Catalog People grid', () => {
         people={[
           {
             bio: 'สนใจการออกแบบประสบการณ์ที่ใช้งานง่ายและเข้าถึงได้สำหรับทุกคน',
-            displayName: 'กานต์พิชชา',
             entryYear: 2567,
+            firstName: 'กานต์พิชชา',
+            lastName: 'ใจดี',
             photo: null,
             publicId: '81000000-0000-4000-8000-000000000001',
             publishedWorkCount: 3,

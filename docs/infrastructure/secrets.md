@@ -55,6 +55,7 @@ Current required keys:
 - `SUPABASE_SECRET_KEY`, used only by Core's authorized Admin provisioning command
 - `SUPABASE_URL`
 - `VISITOR_CACHE_SECRET`, an environment-specific high-entropy secret shared only with the Visitor cache-revalidation endpoint
+- `VISITOR_BFF_SECRET`, an environment-specific high-entropy secret used by Visitor to authenticate opaque source keys for public mutation rate limits
 - `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
 
 R2 credentials must allow only object read, write, and delete operations in the configured private bucket. Presigned URLs use the S3 API origin, never the public media origin. Bucket CORS allows `PUT` only from the exact Student origin and permits the `Content-Type` header. The Supabase secret key is restricted to the Admin provisioning adapter; normal Admin and Student authentication use the publishable key.
@@ -63,7 +64,7 @@ Admin receives `CORE_URL` and the matching `ADMIN_BFF_SECRET` at container runti
 
 Student receives `CORE_URL` and the matching `STUDENT_BFF_SECRET` at container runtime. The secret must differ between staging and production and rotate on both Core and Student as one change. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
 
-Visitor receives `CORE_URL` and the matching `VISITOR_CACHE_SECRET` at container runtime. Rotate `VISITOR_CACHE_SECRET` on Core and Visitor together. The cache worker sends it only to the same-environment HTTPS Visitor origin; it never enters browser code or logs.
+Visitor receives `CORE_URL` and matching `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET` values at container runtime. Rotate either shared secret on Core and Visitor together. Visitor sends `VISITOR_BFF_SECRET` only to the same-environment HTTPS Core origin; neither secret enters browser code or logs. `VISITOR_BFF_SECRET` authenticates only an HMAC source key, never a raw address.
 
 Provision an Admin from an authorized Core container after migrations are current:
 

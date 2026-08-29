@@ -15,6 +15,7 @@ const SECOND_REVISION_PUBLIC_ID = '8a000000-0000-4000-8000-000000000009';
 const SEED_KEY = '8a000000-0000-4000-8000-000000000010';
 const UPDATE_KEY = '8a000000-0000-4000-8000-000000000011';
 const REBASE_KEY = '8a000000-0000-4000-8000-000000000012';
+const REACTIVATE_KEY = '8a000000-0000-4000-8000-000000000014';
 const NOW = new Date('2026-08-26T03:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -130,11 +131,12 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
     await expect(
       revisions.submitRevision({
         actorAccountId: ACCOUNT_ID,
+        draft: draft('เนื้อหาในร่างที่ต้องเก็บไว้'),
         expectedBasePublishedRevisionId: FIRST_REVISION_ID,
         expectedDraftVersion: 2,
         idempotencyKey: '8a000000-0000-4000-8000-000000000013',
         now: new Date(NOW.getTime() + 2_000),
-        submitterAttribution: { attributionName: 'ชื่อผู้ส่ง', studyYear: 2 },
+        studyYear: 2,
         workPublicId: WORK_PUBLIC_ID,
       }),
     ).resolves.toEqual({ outcome: 'base_revision_conflict' });
@@ -167,6 +169,37 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
     ]);
   });
 
+  it('retains a consumed Draft and safely reactivates it from the current Published Revision', async () => {
+    await database.sql`
+      update private.work_drafts set lifecycle_state = 'retained' where work_id = ${WORK_ID}
+    `;
+    await expect(repository.findOwnedWorkState(ACCOUNT_ID, WORK_PUBLIC_ID)).resolves.toMatchObject({
+      draft: null,
+      publishedRevisionId: SECOND_REVISION_ID,
+    });
+
+    const result = await repository.seedDraft({
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: SECOND_REVISION_ID,
+      idempotencyKey: REACTIVATE_KEY,
+      now: new Date(NOW.getTime() + 3_000),
+      publicId: WORK_PUBLIC_ID,
+    });
+
+    expect(result).toMatchObject({
+      outcome: 'created',
+      work: {
+        basePublishedRevisionId: SECOND_REVISION_ID,
+        draft: { submitterStudyYear: 2, title: 'ฉบับเผยแพร่จากอีก transition' },
+        version: 4,
+      },
+    });
+    const retained = await database.sql<Array<{ count: number }>>`
+      select count(*)::integer as count from private.work_drafts where work_id = ${WORK_ID}
+    `;
+    expect(retained).toEqual([{ count: 1 }]);
+  });
+
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
       await transaction`set local session_replication_role = replica`;
@@ -187,6 +220,11 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
       `;
       await transaction`
         delete from private.work_revision_links where revision_id in (
+          ${FIRST_REVISION_ID}, ${SECOND_REVISION_ID}
+        )
+      `;
+      await transaction`
+        delete from private.work_revision_attributions where revision_id in (
           ${FIRST_REVISION_ID}, ${SECOND_REVISION_ID}
         )
       `;
@@ -228,6 +266,12 @@ async function insertApprovedRevision(
     insert into private.work_revision_tags (
       revision_id, position, display_label, normalized_identity
     ) values (${id}, 1, 'React', 'react')
+  `;
+  await transaction`
+    insert into private.work_revision_attributions (
+      revision_id, position, kind, person_id, attribution_name, study_year,
+      attribution_model_version
+    ) values (${id}, 1, 'submitter', ${PERSON_ID}, 'ผู้ส่ง', 2, 2)
   `;
 }
 

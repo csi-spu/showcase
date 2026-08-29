@@ -5,8 +5,6 @@ import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import type { WorkChangeRequest, WorkRevision } from '@/lib/student-works-core';
 import {
   initialWorkRevisionActionState,
@@ -32,62 +30,6 @@ export function WorkChangeRequestPanel({ review }: { review: WorkChangeRequest }
         </p>
       </AlertDescription>
     </Alert>
-  );
-}
-
-export function WorkRevisionSubmissionPanel({
-  action,
-  basePublishedRevisionId,
-  draftVersion,
-  idempotencyKey,
-}: {
-  action: RevisionAction;
-  basePublishedRevisionId: string | null;
-  draftVersion: number;
-  idempotencyKey: string;
-}) {
-  const t = useTranslations('WorkRevision');
-  const [state, formAction] = useActionState(
-    action,
-    initialWorkRevisionActionState(idempotencyKey),
-  );
-  return (
-    <section className="mt-8 grid gap-6 rounded-surface border border-border bg-card p-6 sm:p-8">
-      <div className="grid gap-2">
-        <p className="text-sm font-semibold text-primary">ส่งให้ผู้ดูแลตรวจ</p>
-        <h2 className="text-2xl font-semibold">{t('submitHeading')}</h2>
-        <p className="text-muted-foreground">{t('submitHelp')}</p>
-      </div>
-      <form action={formAction} className="grid gap-6">
-        <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-        <input name="expectedDraftVersion" type="hidden" value={draftVersion} />
-        <input
-          name="expectedBasePublishedRevisionId"
-          type="hidden"
-          value={basePublishedRevisionId ?? ''}
-        />
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="revision-attribution-name">{t('attributionName')}</FieldLabel>
-            <Input id="revision-attribution-name" maxLength={100} name="attributionName" required />
-            <FieldDescription>{t('attributionHelp')}</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="revision-study-year">{t('studyYear')}</FieldLabel>
-            <Input
-              id="revision-study-year"
-              max={8}
-              min={1}
-              name="studyYear"
-              required
-              type="number"
-            />
-          </Field>
-        </FieldGroup>
-        <RevisionFeedback state={state} />
-        <SubmitButton label={t('submit')} pendingLabel={t('submitting')} />
-      </form>
-    </section>
   );
 }
 

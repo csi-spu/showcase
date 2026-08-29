@@ -15,6 +15,7 @@ class FakeCatalogRepository implements CatalogRepository {
   workSlice: CatalogSlice<WorkCatalogCard> = { entries: [] };
   peopleSlice: CatalogSlice<PeopleCatalogCard> = { entries: [] };
   popularTags: PublicTagView[] = [];
+  suggestedTags: PublicTagView[] = [];
   tag: PublicTagView | null = null;
   lastWorkInput: Parameters<CatalogRepository['listWorks']>[0] | undefined;
 
@@ -41,6 +42,13 @@ class FakeCatalogRepository implements CatalogRepository {
   listSitemapEntries() {
     return Promise.resolve([]);
   }
+
+  suggestTags(query: string): Promise<PublicTagView[]> {
+    this.lastTagSuggestionQuery = query;
+    return Promise.resolve(this.suggestedTags);
+  }
+
+  lastTagSuggestionQuery: string | undefined;
 
   listWorks(input: Parameters<CatalogRepository['listWorks']>[0]) {
     this.lastWorkInput = input;
@@ -153,6 +161,15 @@ describe('CatalogService', () => {
       entryYears: [2567, 2566],
       workYears: [2569, 2568],
     });
+  });
+
+  it('returns bounded normalized Published Tag suggestions', async () => {
+    repository.suggestedTags = [
+      { activeWorkCount: 3, displayLabel: 'React Native', publicId: tagId(1) },
+    ];
+
+    await expect(service.suggestTags('  ＲＥＡＣＴ  ')).resolves.toEqual(repository.suggestedTags);
+    expect(repository.lastTagSuggestionQuery).toBe('react');
   });
 
   it('rejects an invalid sitemap bucket before persistence', async () => {

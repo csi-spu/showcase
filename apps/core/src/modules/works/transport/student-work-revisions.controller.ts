@@ -29,7 +29,7 @@ export class StudentWorkRevisionsController {
 
   @Post()
   @HttpCode(201)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async submit(
     @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
     @Body() input: SubmitWorkRevisionDto,
@@ -40,7 +40,7 @@ export class StudentWorkRevisionsController {
   }
 
   @Get('pending')
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async getPending(
     @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
     @Headers('authorization') authorization: string | undefined,
@@ -51,7 +51,7 @@ export class StudentWorkRevisionsController {
 
   @Post(':revisionPublicId/withdraw')
   @HttpCode(200)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async withdraw(
     @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
     @Param('revisionPublicId', new ParseUUIDPipe({ version: '4' })) revisionPublicId: string,

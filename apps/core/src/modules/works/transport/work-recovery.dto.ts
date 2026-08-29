@@ -74,6 +74,11 @@ export class DecideRemovalRequestDto extends CancelRemovalRequestDto {
 
 export class RemovalRequestQueueQueryDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cursor?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -91,13 +96,35 @@ export class CreateAttributionRemovalRequestDto {
   reason!: string;
 }
 
-export class DecideAttributionRemovalRequestDto extends CancelRemovalRequestDto {
-  @IsIn(['accept', 'decline'])
-  decision!: 'accept' | 'decline';
-
-  @ValidateIf((input: DecideAttributionRemovalRequestDto) => input.decision === 'decline')
+export class DeclineAttributionRemovalRequestDto {
   @IsString()
   @MinLength(10)
   @MaxLength(1_000)
-  decisionReason?: string;
+  decisionReason!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRequestVersion!: number;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+}
+
+export class ApproveAttributionRemovalRequestDto {
+  @IsUUID('4')
+  expectedPublishedRevisionPublicId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedPublishedRevisionVersion!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRequestVersion!: number;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
 }

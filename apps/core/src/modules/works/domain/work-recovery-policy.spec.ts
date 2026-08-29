@@ -1,5 +1,6 @@
 import {
   evaluateWorkRecoveryTransition,
+  evaluateSubmitterSavedDraftTransition,
   normalizeRecoveryReason,
   type WorkRecoveryState,
 } from './work-recovery-policy';
@@ -95,6 +96,49 @@ describe('Work recovery policy', () => {
   it.each(['', 'สั้น', 'x'.repeat(1001)])('rejects invalid recovery reason %p', (reason) => {
     expect(normalizeRecoveryReason(reason)).toBeNull();
   });
+
+  it('archives and restores only a Submitter-saved never-published Draft', () => {
+    expect(
+      evaluateSubmitterSavedDraftTransition({
+        activityState: 'active',
+        archiveSource: null,
+        hasDraft: true,
+        hasPendingRevision: false,
+        operation: 'archive_saved_draft',
+        publicationState: 'never_published',
+      }),
+    ).toEqual({ activityState: 'archived', isAllowed: true });
+    expect(
+      evaluateSubmitterSavedDraftTransition({
+        activityState: 'archived',
+        archiveSource: 'submitter',
+        hasDraft: true,
+        hasPendingRevision: false,
+        operation: 'restore_saved_draft',
+        publicationState: 'never_published',
+      }),
+    ).toEqual({ activityState: 'active', isAllowed: true });
+  });
+
+  it.each([
+    ['published', null, false],
+    ['never_published', null, true],
+    ['never_published', 'admin', false],
+  ] as const)(
+    'rejects ineligible saved Draft state %s/%s/%s',
+    (publicationState, archiveSource, hasPendingRevision) => {
+      expect(
+        evaluateSubmitterSavedDraftTransition({
+          activityState: archiveSource === null ? 'active' : 'archived',
+          archiveSource,
+          hasDraft: true,
+          hasPendingRevision,
+          operation: archiveSource === null ? 'archive_saved_draft' : 'restore_saved_draft',
+          publicationState,
+        }),
+      ).toEqual({ isAllowed: false });
+    },
+  );
 });
 
 function publishedState(): WorkRecoveryState {

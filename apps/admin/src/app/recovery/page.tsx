@@ -17,7 +17,7 @@ import {
 export default async function RecoveryQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ workPublicId?: string }>;
+  searchParams: Promise<{ attributionCursor?: string; workPublicId?: string }>;
 }) {
   const query = await searchParams;
   if (query.workPublicId !== undefined) {
@@ -31,7 +31,10 @@ export default async function RecoveryQueuePage({
   const core = new AdminReviewsCoreClient(getAdminServerEnvironment());
   const [queue, attributionQueue] = await Promise.all([
     core.listRemovalRequests(token, 20),
-    core.listAttributionRemovalRequests(token, 20),
+    core.listAttributionRemovalRequests(token, {
+      ...(query.attributionCursor === undefined ? {} : { cursor: query.attributionCursor }),
+      limit: 20,
+    }),
   ]);
 
   return (
@@ -88,9 +91,9 @@ export default async function RecoveryQueuePage({
         )}
       </section>
       <section className="mt-12 grid gap-5">
-        <h2 className="text-2xl font-semibold">คำขอถอนชื่อผู้ร่วมผลงานภายนอก</h2>
+        <h2 className="text-2xl font-semibold">{t('attribution.heading')}</h2>
         {attributionQueue.items.length === 0 ? (
-          <p className="text-muted-foreground">ไม่มีคำขอที่รอดำเนินการ</p>
+          <p className="text-muted-foreground">{t('attribution.empty')}</p>
         ) : (
           attributionQueue.items.map((request) => (
             <AttributionRemovalDecisionForm
@@ -100,6 +103,14 @@ export default async function RecoveryQueuePage({
               request={request}
             />
           ))
+        )}
+        {attributionQueue.nextCursor === null ? null : (
+          <Link
+            className="w-fit font-medium text-primary underline"
+            href={`/recovery?attributionCursor=${encodeURIComponent(attributionQueue.nextCursor)}`}
+          >
+            {t('attribution.next')}
+          </Link>
         )}
       </section>
     </AdminWorkspaceShell>

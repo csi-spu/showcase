@@ -39,10 +39,12 @@ type UploadErrorKey =
 export function WorkMediaUpload({
   expectedVersion,
   mediaKind,
+  onVersion,
   publicId,
 }: {
   expectedVersion: number;
   mediaKind: 'gallery' | 'poster';
+  onVersion: (version: number) => void;
   publicId: string;
 }) {
   const router = useRouter();
@@ -86,18 +88,6 @@ export function WorkMediaUpload({
       }
       setPreview(result.preview);
       setHasPosterWidthWarning(result.warnings.includes('poster_width_below_recommended'));
-      const attached = await attachWorkMediaAction({
-        assetId,
-        expectedVersion,
-        mediaKind,
-        publicId,
-      });
-      if (isCancelled) return;
-      if ('error' in attached) {
-        setErrorKey('processFailed');
-        setStatus('error');
-        return;
-      }
       setStatus('ready');
       router.refresh();
     };
@@ -107,7 +97,7 @@ export function WorkMediaUpload({
       isCancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [assetId, expectedVersion, mediaKind, publicId, router, status]);
+  }, [assetId, publicId, router, status]);
 
   async function upload(file: File | undefined): Promise<void> {
     if (file === undefined) return;
@@ -151,6 +141,19 @@ export function WorkMediaUpload({
       setStatus('error');
       return;
     }
+    const attached = await attachWorkMediaAction({
+      assetId: authorization.assetId,
+      expectedVersion,
+      idempotencyKey: crypto.randomUUID(),
+      mediaKind,
+      publicId,
+    });
+    if ('error' in attached) {
+      setErrorKey('processFailed');
+      setStatus('error');
+      return;
+    }
+    onVersion(attached.version);
     try {
       await putFileWithProgress(authorization.uploadUrl, authorization.headers, file, setProgress);
     } catch {

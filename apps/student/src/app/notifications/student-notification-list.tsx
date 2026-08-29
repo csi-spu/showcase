@@ -66,7 +66,7 @@ export function StudentNotificationList({
 
 function studentTargetPath(notification: StudentNotification, visitorUrl: string): string | null {
   if (notification.targetDestination === 'student_home') return '/';
-  if (notification.targetDestination === 'student_invitations') return '/contributor-invitations';
+  if (notification.targetDestination === 'student_invitations') return null;
   if (notification.targetDestination === 'student_work' && notification.target.kind === 'work') {
     return `/works/${notification.target.workPublicId}`;
   }

@@ -43,7 +43,7 @@ export default async function PublicProfilePage({
             eyebrow: t('profileEyebrow'),
             links: t('links'),
             linksFallback: t('linksFallback'),
-            photoAlt: t('photoAlt', { name: profile.displayName }),
+            photoAlt: t('photoAlt', { name: `${profile.firstName} ${profile.lastName}` }),
           }}
           profile={profile}
         />

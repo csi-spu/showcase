@@ -8,6 +8,10 @@ import { StudentAuthService } from '../src/modules/auth/application/student-auth
 import { AuthError } from '../src/modules/auth/application/auth.error';
 import { WorkMediaService } from '../src/modules/works/application/work-media.service';
 import {
+  PublicationError,
+  PublicationService,
+} from '../src/modules/works/application/publication.service';
+import {
   WORKS_CLOCK,
   WORKS_REPOSITORY,
   type WorkDraftView,
@@ -31,16 +35,32 @@ class E2eWorksRepository implements WorksRepository {
     items: [
       {
         activityState: 'active',
+        academicPeriod: { semester: '1', year: 2569 },
+        category: 'course_work',
+        displayedSource: 'draft',
         hasDraft: true,
+        isDraftComplete: true,
         latestRevisionStatus: null,
+        poster: null,
+        primaryAction: 'continue_editing',
         publicationState: 'never_published',
         publicId: PUBLIC_ID,
+        secondaryActions: ['archive_saved_draft'],
+        summary: 'สรุปผลงาน',
         title: 'ระบบจัดการกิจกรรม',
         updatedAt: new Date('2026-08-25T10:00:00.000Z'),
+        version: 1,
       },
     ],
+    hasNextPage: false,
+    hasPreviousPage: false,
     nextCursor: null,
+    previousCursor: null,
   };
+
+  archiveSavedDraft(): ReturnType<WorksRepository['archiveSavedDraft']> {
+    return Promise.resolve({ outcome: 'state_conflict' });
+  }
 
   createWork(): Promise<WorkMutationResult> {
     return Promise.resolve({ outcome: 'created', work: workDraft() });
@@ -68,9 +88,29 @@ class E2eWorksRepository implements WorksRepository {
     return Promise.resolve(this.listPage);
   }
 
+  getWorkspaceSummary(): ReturnType<WorksRepository['getWorkspaceSummary']> {
+    return Promise.resolve({
+      canMutate: true,
+      changeRequestCount: 0,
+      draftCount: 1,
+      latestActionableDraftPublicId: PUBLIC_ID,
+      pendingReviewCount: 0,
+      publishedCount: 0,
+      unreadNotificationCount: 0,
+    });
+  }
+
+  patchDraft(): Promise<WorkMutationResult> {
+    return Promise.resolve(this.mutationResult);
+  }
+
   rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]): Promise<WorkMutationResult> {
     this.lastRebase = input;
     return Promise.resolve(this.mutationResult);
+  }
+
+  restoreSavedDraft(): ReturnType<WorksRepository['restoreSavedDraft']> {
+    return Promise.resolve({ outcome: 'state_conflict' });
   }
 
   seedDraft(input: Parameters<WorksRepository['seedDraft']>[0]): Promise<WorkMutationResult> {
@@ -133,6 +173,15 @@ describe('private Work Draft authoring (e2e)', () => {
       })
       .overrideProvider(WorkMediaService)
       .useValue(media)
+      .overrideProvider(PublicationService)
+      .useValue({
+        getPublicMedia: () => {
+          throw new PublicationError('PUBLIC_WORK_NOT_FOUND', 404);
+        },
+        getPublicWork: () => {
+          throw new PublicationError('PUBLIC_WORK_NOT_FOUND', 404);
+        },
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -169,7 +218,7 @@ describe('private Work Draft authoring (e2e)', () => {
     const response = await studentRequest('post', '/v1/internal/student/works')
       .send(createBody())
       .expect(201);
-    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.body).toMatchObject({
       outcome: 'created',
       work: { publicId: PUBLIC_ID, version: 1 },
@@ -178,9 +227,7 @@ describe('private Work Draft authoring (e2e)', () => {
   });
 
   it('reads only the Submitter-owned private Draft and exposes no Visitor route', async () => {
-    const listResponse = await studentRequest('get', '/v1/internal/student/works?limit=20').expect(
-      200,
-    );
+    const listResponse = await studentRequest('get', '/v1/internal/student/works').expect(200);
     expect(listResponse.headers['cache-control']).toBe('private, no-store');
     expect(listResponse.body).toEqual({
       items: [
@@ -190,7 +237,10 @@ describe('private Work Draft authoring (e2e)', () => {
           updatedAt: '2026-08-25T10:00:00.000Z',
         }),
       ],
+      hasNextPage: false,
+      hasPreviousPage: false,
       nextCursor: null,
+      previousCursor: null,
     });
     expect(JSON.stringify(listResponse.body)).not.toMatch(/studentId|accountId|personId|workId/i);
 
@@ -200,7 +250,7 @@ describe('private Work Draft authoring (e2e)', () => {
 
     await studentRequest('get', `/v1/internal/student/works/${PUBLIC_ID}`)
       .expect(200)
-      .expect(workDraft());
+      .expect({ ...workDraft(), savedAt: '2026-08-25T10:00:00.000Z' });
 
     repository.work = null;
     await studentRequest('get', `/v1/internal/student/works/${PUBLIC_ID}`)
@@ -350,13 +400,19 @@ describe('private Work Draft authoring (e2e)', () => {
         warnings: [],
       });
     await studentRequest('put', `/v1/internal/student/works/${PUBLIC_ID}/media`)
-      .send({ assetId: IDEMPOTENCY_KEY, expectedVersion: 1, mediaKind: 'poster' })
+      .send({
+        assetId: IDEMPOTENCY_KEY,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        mediaKind: 'poster',
+      })
       .expect(200)
       .expect({ outcome: 'attached', version: 2 });
     expect(media.attachReadyMedia).toHaveBeenCalledWith({
       actorAccountId: ACCOUNT_ID,
       assetId: IDEMPOTENCY_KEY,
       expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
       mediaKind: 'poster',
       publicId: PUBLIC_ID,
     });
@@ -388,12 +444,14 @@ function workDraft(): WorkDraftView {
   return {
     activityState: 'active',
     basePublishedRevisionId: null,
+    contributors: [],
     draft: {
       academicPeriod: { semester: '1', year: 2569 },
       category: 'course_work',
       description: 'รายละเอียดผลงาน',
       links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
       summary: 'สรุปผลงาน',
+      submitterStudyYear: 3,
       tags: [
         { displayLabel: 'React', normalizedIdentity: 'react' },
         { displayLabel: 'Web App', normalizedIdentity: 'web app' },
@@ -401,9 +459,13 @@ function workDraft(): WorkDraftView {
       title: 'ระบบแนะนำผลงาน',
       videoLinks: [],
     },
+    isComplete: true,
+    media: [],
     publicationState: 'never_published',
     publishedRevisionId: null,
     publicId: PUBLIC_ID,
+    savedAt: new Date('2026-08-25T10:00:00.000Z'),
+    submitterAttributionName: 'ผู้ส่งผลงาน',
     version: 1,
   };
 }

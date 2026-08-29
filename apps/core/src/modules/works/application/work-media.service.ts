@@ -35,7 +35,8 @@ type WorkMediaErrorCode =
   | 'WORK_MEDIA_NOT_FOUND'
   | 'WORK_MEDIA_NOT_READY'
   | 'WORK_MEDIA_SERVICE_UNAVAILABLE'
-  | 'WORK_MEDIA_VERSION_CONFLICT';
+  | 'WORK_MEDIA_VERSION_CONFLICT'
+  | 'WORK_PENDING_REVISION_EXISTS';
 
 export class WorkMediaError extends Error {
   constructor(
@@ -154,10 +155,34 @@ export class WorkMediaService {
     }
   }
 
+  async getPrivateVariant(input: {
+    actorAccountId: string;
+    assetId: string;
+    publicId: string;
+    width: number;
+  }) {
+    if (!Number.isInteger(input.width) || input.width <= 0 || input.width > 2_560) {
+      throw new WorkMediaError('WORK_MEDIA_NOT_FOUND', 404);
+    }
+    const objectKey = await this.repository.findPrivateVariantObjectKey(input);
+    if (objectKey === null) throw new WorkMediaError('WORK_MEDIA_NOT_FOUND', 404);
+    try {
+      return {
+        url: await this.storage.createPresignedGet({
+          expiresInSeconds: PRESIGN_SECONDS,
+          key: objectKey,
+        }),
+      };
+    } catch {
+      throw new WorkMediaError('WORK_MEDIA_SERVICE_UNAVAILABLE', 503);
+    }
+  }
+
   async attachReadyMedia(input: {
     actorAccountId: string;
     assetId: string;
     expectedVersion: number;
+    idempotencyKey: string;
     mediaKind: WorkMediaKind;
     publicId: string;
   }) {
@@ -165,8 +190,10 @@ export class WorkMediaService {
     if (result.outcome === 'attached') return result;
     const mapping = {
       gallery_full: ['WORK_MEDIA_GALLERY_FULL', 422],
+      idempotency_conflict: ['WORK_MEDIA_IDEMPOTENCY_CONFLICT', 409],
       not_found: ['WORK_MEDIA_NOT_FOUND', 404],
       not_ready: ['WORK_MEDIA_NOT_READY', 409],
+      pending_revision_exists: ['WORK_PENDING_REVISION_EXISTS', 409],
       version_conflict: ['WORK_MEDIA_VERSION_CONFLICT', 409],
     } as const;
     const [code, status] = mapping[result.outcome];

@@ -2,14 +2,14 @@ import { Button, buttonVariants } from '@showcase/ui/button';
 import Link from 'next/link';
 import {
   ArrowRightIcon,
-  BellIcon,
   FilePlus2Icon,
   FolderKanbanIcon,
-  MailIcon,
   ShieldCheckIcon,
-  UserRoundIcon,
+  type LucideIcon,
+  UserRoundPenIcon,
 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
@@ -22,6 +22,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
+import { readStudentSessionToken } from '@/lib/student-auth-session';
+import { getStudentServerEnvironment } from '@/lib/server-environment';
+import { StudentWorksCoreClient } from '@/lib/student-works-core';
 import { Separator } from '@/components/ui/separator';
 import {
   changePasswordAction,
@@ -64,11 +67,14 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   if (state.kind === 'active') {
+    const sessionToken = await readStudentSessionToken();
+    if (sessionToken === null) redirect('/?expired=1');
+    const summary = await new StudentWorksCoreClient(
+      getStudentServerEnvironment(),
+    ).getWorkspaceSummary(sessionToken);
+    const canMutate = state.session.canUseStudentCapabilities && summary.canMutate;
     return (
-      <StudentWorkspaceShell
-        activePage="home"
-        canCreateWork={state.session.canUseStudentCapabilities}
-      >
+      <StudentWorkspaceShell activePage="dashboard" canCreateWork={canMutate}>
         <header className="grid gap-4 border-b border-border/80 pb-8 lg:grid-cols-12 lg:items-end">
           <div className="grid gap-3 lg:col-span-8">
             <Badge variant="secondary">{dashboardT('eyebrow')}</Badge>
@@ -81,8 +87,27 @@ export default async function Home({ searchParams }: HomeProps) {
             {description}
           </p>
         </header>
+        <section
+          aria-label={dashboardT('counts.heading')}
+          className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+        >
+          <DashboardCount label={dashboardT('counts.drafts')} value={summary.draftCount} />
+          <DashboardCount
+            label={dashboardT('counts.changeRequests')}
+            value={summary.changeRequestCount}
+          />
+          <DashboardCount
+            label={dashboardT('counts.pendingReview')}
+            value={summary.pendingReviewCount}
+          />
+          <DashboardCount label={dashboardT('counts.published')} value={summary.publishedCount} />
+          <DashboardCount
+            label={dashboardT('counts.unreadNotifications')}
+            value={summary.unreadNotificationCount}
+          />
+        </section>
         <div className="mt-8 grid max-w-6xl gap-6 xl:grid-cols-12">
-          <Card className="xl:col-span-7">
+          <Card className="xl:col-span-5">
             <CardHeader className="gap-3">
               <FilePlus2Icon aria-hidden="true" className="size-6 text-primary" />
               <CardTitle>
@@ -91,7 +116,7 @@ export default async function Home({ searchParams }: HomeProps) {
               <CardDescription>{dashboardT('primary.description')}</CardDescription>
             </CardHeader>
             <CardContent>
-              {state.session.canUseStudentCapabilities ? (
+              {canMutate ? (
                 <Link className={buttonVariants({ size: 'lg' })} href="/works/new">
                   {t('active.createWork')}
                   <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
@@ -106,7 +131,7 @@ export default async function Home({ searchParams }: HomeProps) {
             </CardContent>
           </Card>
 
-          <Card className="xl:col-span-5">
+          <Card className="xl:col-span-7">
             <CardHeader>
               <CardTitle>
                 <h2 className="text-xl font-semibold">{dashboardT('quick.title')}</h2>
@@ -114,20 +139,36 @@ export default async function Home({ searchParams }: HomeProps) {
               <CardDescription>{dashboardT('quick.description')}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-1">
-              <DashboardLink href="/works" icon={FolderKanbanIcon} label={dashboardT('myWorks')} />
-              <Separator />
-              <DashboardLink href="/profile" icon={UserRoundIcon} label={t('active.profile')} />
-              <Separator />
+              {canMutate ? (
+                <>
+                  <DashboardLink
+                    href="/works/new"
+                    icon={FilePlus2Icon}
+                    label={dashboardT('quick.addWork')}
+                  />
+                  <Separator />
+                </>
+              ) : null}
+              {!canMutate || summary.latestActionableDraftPublicId === null ? null : (
+                <>
+                  <DashboardLink
+                    href={`/works/${summary.latestActionableDraftPublicId}`}
+                    icon={ArrowRightIcon}
+                    label={dashboardT('quick.continueLatest')}
+                  />
+                  <Separator />
+                </>
+              )}
               <DashboardLink
-                href="/contributor-invitations"
-                icon={MailIcon}
-                label={t('active.invitations')}
+                href="/works"
+                icon={FolderKanbanIcon}
+                label={dashboardT('quick.manageWorks')}
               />
               <Separator />
               <DashboardLink
-                href="/notifications"
-                icon={BellIcon}
-                label={t('active.notifications')}
+                href="/profile"
+                icon={UserRoundPenIcon}
+                label={dashboardT('quick.editProfile')}
               />
             </CardContent>
           </Card>
@@ -205,7 +246,7 @@ function DashboardLink({
   label,
 }: {
   href: string;
-  icon: typeof UserRoundIcon;
+  icon: LucideIcon;
   label: string;
 }) {
   return (
@@ -217,5 +258,20 @@ function DashboardLink({
       <span className="min-w-0 flex-1">{label}</span>
       <ArrowRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
     </Link>
+  );
+}
+
+function DashboardCount({ label, value }: { label: string; value: number }) {
+  return (
+    <Card>
+      <CardHeader className="gap-2 p-5">
+        <CardDescription>{label}</CardDescription>
+        <CardTitle>
+          <span className="text-3xl tabular-nums" data-testid="workspace-count">
+            {value}
+          </span>
+        </CardTitle>
+      </CardHeader>
+    </Card>
   );
 }

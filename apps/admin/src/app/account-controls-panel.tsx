@@ -186,6 +186,54 @@ function StudentControls({
           </AlertDescription>
         </Alert>
       )}
+      <FieldSet aria-label={t('name.title')}>
+        <form
+          action={action}
+          className="flex flex-col gap-4 rounded-card border border-border p-4"
+          key={student.version}
+        >
+          <input name="operation" type="hidden" value="correctName" />
+          <MutationFields
+            idempotencyKey={idempotencyKey}
+            studentAccountId={student.accountId}
+            version={student.version}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="student-first-name">{t('name.firstName')}</FieldLabel>
+              <Input
+                defaultValue={student.firstNameTh}
+                id="student-first-name"
+                maxLength={100}
+                name="firstNameTh"
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="student-last-name">{t('name.lastName')}</FieldLabel>
+              <Input
+                defaultValue={student.lastNameTh}
+                id="student-last-name"
+                maxLength={100}
+                name="lastNameTh"
+                required
+              />
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="student-name-reason">{t('name.reason')}</FieldLabel>
+            <textarea
+              className="min-h-28 rounded-control border border-input bg-card px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-sm"
+              id="student-name-reason"
+              maxLength={2000}
+              name="reason"
+              required
+            />
+            <FieldDescription>{t('name.reasonHelp')}</FieldDescription>
+          </Field>
+          <SubmitButton label={t('name.submit')} loading={t('saving')} />
+        </form>
+      </FieldSet>
       <FieldSet aria-label={t('extension.title')}>
         <form action={action} className="flex flex-col gap-4 rounded-card border border-border p-4">
           <input name="operation" type="hidden" value="extend" />

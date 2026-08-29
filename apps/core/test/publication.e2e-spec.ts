@@ -12,6 +12,7 @@ import {
   type PublicationResult,
   type PublicWorkView,
 } from '../src/modules/works/application/publication.ports';
+import { WORK_MEDIA_STORAGE } from '../src/modules/works/application/work-media.ports';
 
 const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
 const ADMIN_ACCOUNT_ID = '84000000-0000-4000-8000-000000000001';
@@ -28,10 +29,14 @@ class E2ePublicationRepository implements PublicationRepository {
     return Promise.resolve(this.result);
   }
 
-  findPublicMediaUrl(workPublicId: string, assetId: string, width: number): Promise<string | null> {
+  findPublicMediaObjectKey(
+    workPublicId: string,
+    assetId: string,
+    width: number,
+  ): Promise<string | null> {
     return Promise.resolve(
       workPublicId === WORK_PUBLIC_ID && assetId === ASSET_ID && width === 480
-        ? `https://media.example.test/media/${ASSET_ID}/480.webp`
+        ? `media/${ASSET_ID}/480.webp`
         : null,
     );
   }
@@ -50,6 +55,11 @@ describe('first Work publication and public detail (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PUBLICATION_REPOSITORY)
       .useValue(repository)
+      .overrideProvider(WORK_MEDIA_STORAGE)
+      .useValue({
+        createPresignedGet: ({ key }: { key: string }) =>
+          Promise.resolve(`https://r2.example.test/presigned/${key}`),
+      })
       .overrideProvider(AdminAuthService)
       .useValue({
         authorizeAdmin: (token: string) => {
@@ -110,7 +120,7 @@ describe('first Work publication and public detail (e2e)', () => {
       .expect(200);
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.body).toEqual({
-      url: `https://media.example.test/media/${ASSET_ID}/480.webp`,
+      url: `https://r2.example.test/presigned/media/${ASSET_ID}/480.webp`,
     });
     await request(app.getHttpServer())
       .get(`/v1/public/works/${WORK_PUBLIC_ID}/media/${ASSET_ID}/variants/999`)
@@ -145,7 +155,9 @@ function publicWork(): PublicWorkView {
     attributions: [
       {
         affiliation: null,
+        attributionPublicId: REVISION_PUBLIC_ID,
         attributionName: 'ชื่อผู้ส่ง',
+        canRequestRemoval: false,
         contributionRole: null,
         profilePublicId: null,
         studyYear: 2,

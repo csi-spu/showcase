@@ -34,11 +34,6 @@ export class UpdateProfileDto {
   @MaxLength(500)
   bio!: string | null;
 
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  displayName!: string;
-
   @IsInt()
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)

@@ -34,10 +34,7 @@ const DATABASE_URL =
 
 describe('PostgresPublicationRepository integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
-  const repository = new PostgresPublicationRepository(
-    database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.test' }),
-  );
+  const repository = new PostgresPublicationRepository(database);
   const reviews = new PostgresReviewsRepository(database);
 
   beforeAll(async () => {
@@ -63,11 +60,15 @@ describe('PostgresPublicationRepository integration', () => {
           (${ADMIN_ACCOUNT_ID}, 'admin')
       `;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th) values
+          (${STUDENT_PERSON_ID}, 'ผู้ส่ง', 'ผลงาน'),
+          (${CONTRIBUTOR_PERSON_ID}, 'ผู้ร่วม', 'ผลงาน')
+      `;
+      await transaction`
         insert into public.public_profiles (
-          person_id, public_id, display_name, version, created_at, updated_at
+          person_id, public_id, version, created_at, updated_at
         ) values (
-          ${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, 'ชื่อโปรไฟล์ส่วนตัว',
-          1, ${NOW}, ${NOW}
+          ${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, 1, ${NOW}, ${NOW}
         )
       `;
       await transaction`
@@ -80,6 +81,15 @@ describe('PostgresPublicationRepository integration', () => {
         ) values (
           ${WORK_ID}, ${WORK_PUBLIC_ID}, ${STUDENT_PERSON_ID}, 'active', 'never_published',
           ${NOW}, ${NOW}
+        )
+      `;
+      await transaction`
+        insert into private.work_drafts (
+          work_id, title, summary, description, category, academic_year, semester,
+          submitter_study_year, version, created_at, updated_at
+        ) values (
+          ${WORK_ID}, 'ระบบแนะนำผลงาน', 'สรุปผลงาน', 'รายละเอียดผลงาน',
+          'course_work', 2569, '1', 2, 2, ${NOW}, ${NOW}
         )
       `;
       await transaction`
@@ -140,7 +150,9 @@ describe('PostgresPublicationRepository integration', () => {
 
   it('keeps the first Revision and its media absent from public reads before approval', async () => {
     await expect(repository.findPublicWork(WORK_PUBLIC_ID)).resolves.toBeNull();
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480),
+    ).resolves.toBeNull();
     await expect(
       database.sql`
         insert into private.reviews (
@@ -235,10 +247,12 @@ describe('PostgresPublicationRepository integration', () => {
     expect(JSON.stringify(work)).not.toMatch(
       /studentId|accountId|personId|provider|ชื่อโปรไฟล์ส่วนตัว/i,
     );
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBe(
-      `https://media.example.test/media/${POSTER_ID}/480.webp`,
+    await expect(repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBe(
+      `media/${POSTER_ID}/480.webp`,
     );
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 999)).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 999),
+    ).resolves.toBeNull();
 
     const state = await database.sql<
       Array<{
@@ -256,6 +270,7 @@ describe('PostgresPublicationRepository integration', () => {
           parameters: { revisionNumber: number; title: string };
           type: string;
         };
+        draft_lifecycle_state: string;
         publication_state: string;
         published_revision_id: string;
         revision_status: string;
@@ -273,7 +288,9 @@ describe('PostgresPublicationRepository integration', () => {
             and event_type = 'work_revision_published') as event_count,
         (select payload from private.outbox_events
           where aggregate_type = 'work_revision' and aggregate_id = revision.public_id
-            and event_type = 'work_revision_published') as event_payload
+            and event_type = 'work_revision_published') as event_payload,
+        (select lifecycle_state from private.work_drafts where work_id = work.id)
+          as draft_lifecycle_state
       from public.works as work
       join private.work_revisions as revision on revision.id = work.published_revision_id
       join private.reviews as review on review.revision_id = revision.id
@@ -287,6 +304,7 @@ describe('PostgresPublicationRepository integration', () => {
         active_work_count: 1,
         catalog_revision_id: REVISION_ID,
         decision: 'approved',
+        draft_lifecycle_state: 'retained',
         event_count: 1,
         publication_state: 'published',
         published_revision_id: REVISION_ID,
@@ -381,7 +399,7 @@ describe('PostgresPublicationRepository integration', () => {
       title: 'ระบบแนะนำผลงาน',
     });
     await expect(
-      repository.findPublicMediaUrl(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
     ).resolves.toBeNull();
 
     const attempts = await Promise.all([
@@ -411,10 +429,12 @@ describe('PostgresPublicationRepository integration', () => {
       tags: [{ displayLabel: 'Vue' }],
       title: 'ผลงานฉบับใหม่',
     });
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBeNull();
     await expect(
-      repository.findPublicMediaUrl(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
-    ).resolves.toBe(`https://media.example.test/media/${SECOND_POSTER_ID}/480.webp`);
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
+    ).resolves.toBe(`media/${SECOND_POSTER_ID}/480.webp`);
 
     const state = await database.sql<
       Array<{

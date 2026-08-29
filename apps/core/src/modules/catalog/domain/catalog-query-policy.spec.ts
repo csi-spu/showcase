@@ -1,6 +1,7 @@
 import {
   CatalogQueryError,
   normalizePeopleCatalogQuery,
+  normalizeTagSuggestionQuery,
   normalizeWorkCatalogQuery,
   type RawWorkCatalogQuery,
 } from './catalog-query-policy';
@@ -87,6 +88,17 @@ describe('Public Catalog query policy', () => {
       query: 'สมชาย',
       sort: 'relevance',
     });
+  });
+
+  it('normalizes a bounded Tag suggestion query', () => {
+    expect(normalizeTagSuggestionQuery('  ＲＥＡＣＴ   Native  ')).toBe('react native');
+  });
+
+  it.each(['', 'ก', '🙂', 'a'.repeat(51)])('rejects invalid Tag suggestion query %j', (query) => {
+    expectQueryError(
+      () => normalizeTagSuggestionQuery(query),
+      'CATALOG_TAG_SUGGESTION_QUERY_INVALID',
+    );
   });
 });
 

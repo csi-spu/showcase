@@ -152,8 +152,9 @@ function work(
 function person(): PeopleCatalogCard {
   return {
     bio: 'สนใจระบบเว็บ',
-    displayName: 'นักศึกษาตัวอย่าง',
     entryYear: 2567,
+    firstName: 'นักศึกษา',
+    lastName: 'ตัวอย่าง',
     photo: null,
     publicId: '9c000000-0000-4000-8000-000000000001',
     publishedWorkCount: 3,

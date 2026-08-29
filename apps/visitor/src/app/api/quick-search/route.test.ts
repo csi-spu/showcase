@@ -29,8 +29,9 @@ describe('Visitor quick search route', () => {
       items: [
         {
           bio: 'สนใจระบบเว็บ',
-          displayName: 'อริสา ใจดี',
           entryYear: 2566,
+          firstName: 'อริสา',
+          lastName: 'ใจดี',
           photo: null,
           publicId: '10000000-0000-4000-8000-000000000001',
           publishedWorkCount: 2,

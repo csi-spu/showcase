@@ -4,6 +4,7 @@ import type {
   AcademicYearSettings,
   BeginPasswordResetResult,
   CompletePasswordResetResult,
+  CorrectStudentNameResult,
   ExtendStudentAccessResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
@@ -201,6 +202,59 @@ describe('AccountControlsService Student Access Period', () => {
     );
     expect(repository.extendStudentAccessInput).toBeNull();
   });
+
+  it('corrects the immutable Roster Name only through an audited Admin mutation', async () => {
+    repository.correctStudentNameResult = {
+      outcome: 'updated',
+      student: { ...STUDENT, firstNameTh: 'สมหญิง', lastNameTh: 'มั่นใจ', version: 3 },
+    };
+
+    await expect(
+      service.correctStudentName({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        expectedVersion: 2,
+        firstNameTh: '  สมหญิง  ',
+        idempotencyKey: IDEMPOTENCY_KEY,
+        lastNameTh: '  มั่นใจ  ',
+        reason: '  แก้ไขตามหลักฐานจากทะเบียน  ',
+        studentAccountId: STUDENT_ACCOUNT_ID,
+      }),
+    ).resolves.toMatchObject({
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นใจ',
+      version: 3,
+    });
+    expect(repository.correctStudentNameInput).toEqual({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      expectedVersion: 2,
+      firstNameTh: 'สมหญิง',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      lastNameTh: 'มั่นใจ',
+      now: NOW,
+      reason: 'แก้ไขตามหลักฐานจากทะเบียน',
+      studentAccountId: STUDENT_ACCOUNT_ID,
+    });
+  });
+
+  it.each([
+    ['', 'ใจดี', 'เหตุผลที่ตรวจสอบได้'],
+    ['สมชาย', '', 'เหตุผลที่ตรวจสอบได้'],
+    ['ก'.repeat(100), 'ข', 'เหตุผลที่ตรวจสอบได้'],
+    ['สมชาย', 'ใจดี', ''],
+  ])('rejects invalid Roster Name correction input', async (firstNameTh, lastNameTh, reason) => {
+    await expect(
+      service.correctStudentName({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        expectedVersion: 2,
+        firstNameTh,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        lastNameTh,
+        reason,
+        studentAccountId: STUDENT_ACCOUNT_ID,
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(repository.correctStudentNameInput).toBeNull();
+  });
 });
 
 describe('AccountControlsService Student password reset', () => {
@@ -352,6 +406,12 @@ class TestRepository implements AccountControlsRepository {
   completePasswordResetResult: CompletePasswordResetResult = { outcome: 'not_pending' };
   failPasswordResetInput: Parameters<AccountControlsRepository['failPasswordReset']>[0] | null =
     null;
+  correctStudentNameInput: Parameters<AccountControlsRepository['correctStudentName']>[0] | null =
+    null;
+  correctStudentNameResult: CorrectStudentNameResult = {
+    outcome: 'updated',
+    student: STUDENT,
+  };
 
   getAcademicYear(): Promise<AcademicYearSettings> {
     return Promise.resolve(this.settings);
@@ -374,6 +434,13 @@ class TestRepository implements AccountControlsRepository {
   ): Promise<ExtendStudentAccessResult> {
     this.extendStudentAccessInput = input;
     return Promise.resolve(this.extendStudentAccessResult);
+  }
+
+  correctStudentName(
+    input: Parameters<AccountControlsRepository['correctStudentName']>[0],
+  ): Promise<CorrectStudentNameResult> {
+    this.correctStudentNameInput = input;
+    return Promise.resolve(this.correctStudentNameResult);
   }
 
   beginPasswordReset(

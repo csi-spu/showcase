@@ -7,9 +7,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarProvider,
@@ -20,23 +17,24 @@ import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
-import {
-  StudentProfileCoreClient,
-  StudentProfileCoreError,
-  type PrivatePublicProfile,
-} from '@/lib/student-profile-core';
+import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student-profile-core';
 import { logoutAction } from './student-auth.actions';
 import { LogoutForm } from './student-auth-forms';
 import { StudentBrand } from './student-brand';
 import {
   StudentSidebarNavigation,
-  type StudentSidebarItem,
+  type StudentSidebarGroup,
   type StudentWorkspacePage,
 } from './student-sidebar-navigation';
 
 export type { StudentWorkspacePage } from './student-sidebar-navigation';
 
-type StudentSidebarProfile = Pick<PrivatePublicProfile, 'displayName' | 'entryYear' | 'photo'>;
+interface StudentSidebarProfile {
+  entryYear: number;
+  firstName: string;
+  lastName: string;
+  photo: { height: number; url: string; width: number } | null;
+}
 
 export async function StudentWorkspaceShell({
   activePage,
@@ -53,32 +51,33 @@ export async function StudentWorkspaceShell({
     getTranslations('Workspace'),
     profile === undefined ? loadStudentSidebarProfile() : Promise.resolve(profile),
   ]);
-  const items: StudentSidebarItem[] = [
-    { href: '/', label: t('navigation.home'), page: 'home' },
-    { href: '/works', label: t('navigation.work'), page: 'work' },
-    ...(canCreateWork
-      ? [
-          {
-            href: '/works/new',
-            label: t('navigation.createWork'),
-            page: 'create-work' as const,
-          },
-        ]
-      : []),
+  const groups: StudentSidebarGroup[] = [
     {
-      href: '/contributor-invitations',
-      label: t('navigation.invitations'),
-      page: 'invitations',
+      items: [
+        { href: '/', label: t('navigation.dashboard'), page: 'dashboard' },
+        { href: '/notifications', label: t('navigation.notifications'), page: 'notifications' },
+      ],
+      label: t('navigation.overviewGroup'),
     },
     {
-      href: '/notifications',
-      label: t('navigation.notifications'),
-      page: 'notifications',
+      items: [
+        { href: '/works', label: t('navigation.allWorks'), page: 'works' },
+        { href: '/works/new', label: t('navigation.addWork'), page: 'add-work' },
+      ],
+      label: t('navigation.workGroup'),
+    },
+    {
+      items: [{ href: '/profile', label: t('navigation.editProfile'), page: 'edit-profile' }],
+      label: t('navigation.profileGroup'),
     },
   ];
-  const activeItem = items.find((item) => item.page === activePage);
-  const activeLabel = activePage === 'profile' ? t('navigation.profile') : activeItem?.label;
+  const activeLabel = groups
+    .flatMap((group) => group.items)
+    .find((item) => item.page === activePage)?.label;
   const statusLabel = canCreateWork ? t('status.active') : t('status.readOnly');
+  const rosterName = sidebarProfile
+    ? `${sidebarProfile.firstName} ${sidebarProfile.lastName}`
+    : t('profile.fallback');
 
   return (
     <SidebarProvider className="student-canvas mx-auto max-w-[1600px]">
@@ -98,12 +97,7 @@ export async function StudentWorkspaceShell({
           </p>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('navigation.label')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <StudentSidebarNavigation activePage={activePage} items={items} />
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <StudentSidebarNavigation activePage={activePage} groups={groups} />
         </SidebarContent>
         <SidebarFooter className="gap-3 p-4 group-data-[collapsible=icon]:p-2">
           <Link
@@ -113,7 +107,7 @@ export async function StudentWorkspaceShell({
             <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-soft text-primary group-data-[collapsible=icon]:size-8">
               {sidebarProfile?.photo ? (
                 <Image
-                  alt={t('profile.photoAlt', { name: sidebarProfile.displayName })}
+                  alt={t('profile.photoAlt', { name: rosterName })}
                   className="object-cover"
                   fill
                   sizes="40px"
@@ -125,9 +119,7 @@ export async function StudentWorkspaceShell({
               )}
             </span>
             <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <span className="block truncate text-sm font-semibold">
-                {sidebarProfile?.displayName ?? t('profile.fallback')}
-              </span>
+              <span className="block truncate text-sm font-semibold">{rosterName}</span>
               {sidebarProfile ? (
                 <span className="block truncate text-xs text-muted-foreground">
                   {t('profile.entryYear', { year: sidebarProfile.entryYear })}
@@ -186,7 +178,9 @@ async function loadStudentSidebarProfile(): Promise<StudentSidebarProfile | null
     const response = await new StudentProfileCoreClient(getStudentServerEnvironment()).getProfile(
       sessionToken,
     );
-    return response.profile;
+    return response.person === null
+      ? null
+      : { ...response.person, photo: response.profile?.photo ?? null };
   } catch (error: unknown) {
     if (
       error instanceof StudentProfileCoreError &&

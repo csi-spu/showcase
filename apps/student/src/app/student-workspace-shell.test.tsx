@@ -34,16 +34,18 @@ vi.mock('@/lib/student-profile-core', () => ({
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async () => (key: string, values?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
-      'navigation.createWork': 'สร้างผลงาน',
-      'navigation.home': 'ภาพรวม',
-      'navigation.invitations': 'คำเชิญผู้ร่วมผลงาน',
+      'navigation.addWork': 'เพิ่มผลงาน',
+      'navigation.allWorks': 'ผลงานทั้งหมด',
+      'navigation.dashboard': 'แดชบอร์ด',
+      'navigation.editProfile': 'แก้ไขโปรไฟล์',
       'navigation.label': 'เมนูนักศึกษา',
       'navigation.menuDescription': 'เลือกหน้าที่ต้องการเปิด',
       'navigation.menuTitle': 'เมนูระบบนักศึกษา',
       'navigation.notifications': 'การแจ้งเตือน',
       'navigation.openMenu': 'เปิดเมนู',
-      'navigation.profile': 'โปรไฟล์สาธารณะ',
-      'navigation.work': 'จัดการผลงาน',
+      'navigation.overviewGroup': 'ภาพรวม',
+      'navigation.profileGroup': 'โปรไฟล์',
+      'navigation.workGroup': 'จัดการผลงาน',
       'profile.entryYear': 'ปีที่เข้าศึกษา {year}',
       'profile.fallback': 'ยังไม่ได้ตั้งค่าโปรไฟล์',
       'profile.photoAlt': 'รูปโปรไฟล์ของ {name}',
@@ -75,12 +77,13 @@ describe('StudentWorkspaceShell', () => {
   it('uses the animated sidebar and marks the current desktop page', async () => {
     render(
       await StudentWorkspaceShell({
-        activePage: 'profile',
+        activePage: 'edit-profile',
         canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: {
-          displayName: 'ณัฐดนัย สุขใจ',
           entryYear: 2569,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
           photo: { height: 512, url: 'https://media.example.test/private.webp', width: 512 },
         },
       }),
@@ -104,9 +107,10 @@ describe('StudentWorkspaceShell', () => {
     expect(sidebar.innerHTML).not.toContain('private.webp');
     expect(screen.getByRole('button', { name: 'เปิดเมนู' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'สร้างผลงาน' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'จัดการผลงาน' }).getAttribute('href')).toBe(
-      '/works',
-    );
+    expect(
+      within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
+    ).toBe('/works');
+    expect(within(navigation).queryByRole('link', { name: 'ความยินยอมโปรไฟล์' })).toBeNull();
     const workspaceHeader = screen.getByRole('banner');
     expect(workspaceHeader.classList.contains('z-30')).toBe(true);
     expect(workspaceHeader.classList.contains('bg-background')).toBe(true);
@@ -118,7 +122,7 @@ describe('StudentWorkspaceShell', () => {
     const user = userEvent.setup();
     render(
       await StudentWorkspaceShell({
-        activePage: 'profile',
+        activePage: 'edit-profile',
         canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: null,
@@ -136,11 +140,11 @@ describe('StudentWorkspaceShell', () => {
         .getAttribute('href'),
     ).toBe('/profile');
     expect(within(dialog).queryByRole('link', { name: 'สร้างผลงาน' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'จัดการผลงาน' }).getAttribute('href')).toBe(
-      '/works',
-    );
+    expect(
+      within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
+    ).toBe('/works');
 
-    await user.click(within(dialog).getByRole('link', { name: 'ภาพรวม' }));
+    await user.click(within(dialog).getByRole('link', { name: 'แดชบอร์ด' }));
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'เมนู' })).toBeNull();
     });
@@ -149,23 +153,32 @@ describe('StudentWorkspaceShell', () => {
   it('loads the private profile summary when the page has not already loaded it', async () => {
     sidebarProfile.getProfile.mockResolvedValue({
       canEditProfile: true,
-      profile: {
-        displayName: 'ชลธิชา',
+      person: {
         entryYear: 2568,
+        firstName: 'ชลธิชา',
+        lastName: 'สุขใจ',
+      },
+      profile: {
+        bio: null,
+        consent: null,
+        links: [],
         photo: null,
+        photoId: null,
+        publicId: '71000000-0000-4000-8000-000000000001',
+        version: 1,
       },
     });
 
     render(
       await StudentWorkspaceShell({
-        activePage: 'home',
+        activePage: 'dashboard',
         canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),
     );
 
     expect(sidebarProfile.getProfile).toHaveBeenCalledWith('session-token');
-    expect(screen.getByText('ชลธิชา')).toBeTruthy();
+    expect(screen.getByText('ชลธิชา สุขใจ')).toBeTruthy();
     expect(screen.getByText('ปีที่เข้าศึกษา 2568')).toBeTruthy();
   });
 
@@ -177,7 +190,7 @@ describe('StudentWorkspaceShell', () => {
 
     render(
       await StudentWorkspaceShell({
-        activePage: 'home',
+        activePage: 'dashboard',
         canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),

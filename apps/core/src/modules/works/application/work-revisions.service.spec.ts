@@ -21,6 +21,10 @@ class FakeWorkRevisionRepository implements WorkRevisionRepository {
   lastWithdraw: Parameters<WorkRevisionRepository['withdrawRevision']>[0] | undefined;
   lastList: Parameters<WorkRevisionRepository['listReviewQueue']>[0] | undefined;
 
+  findSubmissionContext() {
+    return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566 });
+  }
+
   findRevisionForReview(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.detail);
   }
@@ -54,11 +58,11 @@ describe('WorkRevisionsService', () => {
     service = new WorkRevisionsService(repository, { now: () => NOW });
   });
 
-  it('submits normalized attribution with expected Draft/base versions and idempotency', async () => {
+  it('atomically submits the normalized latest Draft with session-derived attribution', async () => {
     await expect(
       service.submit({
         actorAccountId: ACCOUNT_ID,
-        attributionName: '  ชื่อผู้ส่ง  ',
+        ...completeDraftInput(),
         expectedBasePublishedRevisionId: null,
         expectedDraftVersion: 4,
         idempotencyKey: IDEMPOTENCY_KEY,
@@ -70,9 +74,13 @@ describe('WorkRevisionsService', () => {
       actorAccountId: ACCOUNT_ID,
       expectedBasePublishedRevisionId: null,
       expectedDraftVersion: 4,
+      draft: {
+        ...normalizedDraft(),
+        title: 'ชื่อผลงาน',
+      },
       idempotencyKey: IDEMPOTENCY_KEY,
       now: NOW,
-      submitterAttribution: { attributionName: 'ชื่อผู้ส่ง', studyYear: 2 },
+      studyYear: 2,
       workPublicId: WORK_PUBLIC_ID,
     });
   });
@@ -94,10 +102,19 @@ describe('WorkRevisionsService', () => {
     await expect(service.submit(submissionInput())).rejects.toMatchObject({ code, status });
   });
 
-  it('rejects invalid Submitter attribution before persistence', async () => {
-    await expect(
-      service.submit({ ...submissionInput(), attributionName: ' ', studyYear: 9 }),
-    ).rejects.toMatchObject({ code: 'WORK_SUBMITTER_ATTRIBUTION_INVALID', status: 422 });
+  it('rejects Submitter Study Year outside 1-4 before persistence', async () => {
+    await expect(service.submit({ ...submissionInput(), studyYear: 9 })).rejects.toMatchObject({
+      code: 'WORK_SUBMITTER_ATTRIBUTION_INVALID',
+      status: 422,
+    });
+    expect(repository.lastSubmit).toBeUndefined();
+  });
+
+  it('rejects incomplete final Draft content before persistence', async () => {
+    await expect(service.submit({ ...submissionInput(), title: ' ' })).rejects.toMatchObject({
+      code: 'WORK_SUBMISSION_INCOMPLETE',
+      status: 422,
+    });
     expect(repository.lastSubmit).toBeUndefined();
   });
 
@@ -153,12 +170,44 @@ describe('WorkRevisionsService', () => {
 function submissionInput() {
   return {
     actorAccountId: ACCOUNT_ID,
-    attributionName: 'ชื่อผู้ส่ง',
+    ...completeDraftInput(),
     expectedBasePublishedRevisionId: null,
     expectedDraftVersion: 4,
     idempotencyKey: IDEMPOTENCY_KEY,
     studyYear: 2,
     workPublicId: WORK_PUBLIC_ID,
+  };
+}
+
+function completeDraftInput() {
+  return {
+    academicPeriod: { semester: '1' as const, year: 2569 },
+    category: 'course_work' as const,
+    description: 'รายละเอียด',
+    links: [{ label: 'GitHub', url: 'https://github.com/csi-spu/showcase' }],
+    summary: 'สรุป',
+    tags: ['แท็ก'],
+    title: '  ชื่อผลงาน  ',
+    videoLinks: ['https://youtu.be/dQw4w9WgXcQ'],
+  };
+}
+
+function normalizedDraft() {
+  return {
+    academicPeriod: { semester: '1' as const, year: 2569 },
+    category: 'course_work' as const,
+    description: 'รายละเอียด',
+    links: [{ label: 'GitHub', url: 'https://github.com/csi-spu/showcase' }],
+    summary: 'สรุป',
+    tags: [{ displayLabel: 'แท็ก', normalizedIdentity: 'แท็ก' }],
+    title: 'ชื่อผลงาน',
+    videoLinks: [
+      {
+        provider: 'youtube' as const,
+        providerVideoId: 'dQw4w9WgXcQ',
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      },
+    ],
   };
 }
 

@@ -1,5 +1,4 @@
 import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
-import type { SubmitterAttribution } from '../domain/work-revision-policy';
 
 export const WORK_REVISIONS_REPOSITORY = Symbol('WORK_REVISIONS_REPOSITORY');
 
@@ -56,6 +55,7 @@ export interface ReviewQueuePage {
 
 export type WorkRevisionFailureOutcome =
   | 'attribution_duplicate'
+  | 'attribution_incomplete'
   | 'attribution_limit_exceeded'
   | 'attribution_unresolved'
   | 'base_revision_conflict'
@@ -75,6 +75,10 @@ export type WorkRevisionResult =
   | { outcome: WorkRevisionFailureOutcome };
 
 export interface WorkRevisionRepository {
+  findSubmissionContext(
+    actorAccountId: string,
+    workPublicId: string,
+  ): Promise<{ currentAcademicYear: number; entryYear: number } | null>;
   findPendingRevision(
     actorAccountId: string,
     workPublicId: string,
@@ -86,11 +90,12 @@ export interface WorkRevisionRepository {
   }): Promise<ReviewQueuePage | { outcome: 'invalid_cursor' }>;
   submitRevision(input: {
     actorAccountId: string;
+    draft: NormalizedWorkDraft;
     expectedBasePublishedRevisionId: string | null;
     expectedDraftVersion: number;
     idempotencyKey: string;
     now: Date;
-    submitterAttribution: SubmitterAttribution;
+    studyYear: number;
     workPublicId: string;
   }): Promise<WorkRevisionResult>;
   withdrawRevision(input: {

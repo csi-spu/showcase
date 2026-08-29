@@ -150,6 +150,11 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
         await transaction`
           update public.works set activity_state = ${transition.state.activityState},
             publication_state = ${transition.state.publicationState},
+            archive_source = case
+              when ${input.operation} = 'archive' then 'admin'
+              when ${input.operation} = 'restore_active' then null
+              else archive_source
+            end,
             version = ${transition.state.version}, updated_at = ${input.now}
           where id = ${work.id}
         `;

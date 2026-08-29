@@ -1,0 +1,3 @@
+# Assign Contributors without Attribution Invitations
+
+The Submitter directly adds and removes Account-backed or External Contributors on a Work Draft, and Core captures those entries in a Revision without any Attribution Invitation, recipient acceptance, consent state, token exchange, or recovery session; this supersedes the invitation boundary referenced by ADR 0006 while retaining its exact Student ID lookup controls. We rejected explicit recipient acceptance because the chosen Student authoring flow treats Contributor attribution as Submitter-managed data, accepting the risk of publication without the named Person's knowledge or consent and relying on reviewed correction and removal processes for disputes.

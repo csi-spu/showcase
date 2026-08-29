@@ -5,29 +5,24 @@ const CONTRIBUTOR_LIMIT = 20;
 
 export type WorkRevisionCompletenessReason =
   | 'attribution_duplicate'
+  | 'attribution_incomplete'
   | 'attribution_limit_exceeded'
-  | 'attribution_unresolved'
   | 'incomplete_content'
   | 'invalid_submitter_attribution'
   | 'media_not_ready'
   | 'missing_poster';
 
-export type RevisionInvitation =
-  | {
-      affiliation: string | null;
-      attributionName: string;
-      contributionRole: string | null;
-      kind: 'account' | 'external';
-      personId: string;
-      state: 'accepted';
-      studyYear: number | null;
-    }
-  | { state: 'expired' | 'pending' | 'rejected' | 'revoked' | 'withdrawn' };
+export interface WorkRevisionContributor {
+  attributionName: string;
+  contributionRole: string | null;
+  kind: 'account' | 'external';
+  personId: string;
+}
 
 export interface WorkRevisionCandidate {
   academicRange: { currentAcademicYear: number; entryYear: number };
   draft: NormalizedWorkDraft;
-  invitations: RevisionInvitation[];
+  contributors: WorkRevisionContributor[];
   media: Array<{
     assetId: string;
     kind: 'gallery' | 'poster';
@@ -53,7 +48,7 @@ export function normalizeSubmitterAttribution(
     attributionName.length <= ATTRIBUTION_NAME_MAX_LENGTH &&
     Number.isInteger(input.studyYear) &&
     input.studyYear >= 1 &&
-    input.studyYear <= 8
+    input.studyYear <= 4
     ? { attributionName, studyYear: input.studyYear }
     : null;
 }
@@ -75,20 +70,27 @@ export function evaluateWorkRevisionCandidate(
   );
   if (!content.isValid) return { isComplete: false, reason: 'incomplete_content' };
 
-  const acceptedCount = candidate.invitations.filter(
-    (invitation) => invitation.state === 'accepted',
-  ).length;
-  if (acceptedCount > CONTRIBUTOR_LIMIT) {
+  if (candidate.contributors.length > CONTRIBUTOR_LIMIT) {
     return { isComplete: false, reason: 'attribution_limit_exceeded' };
   }
-  const acceptedPersonIds = candidate.invitations.flatMap((invitation) =>
-    invitation.state === 'accepted' ? [invitation.personId] : [],
-  );
-  if (new Set(acceptedPersonIds).size !== acceptedPersonIds.length) {
+  const accountPersonIds = candidate.contributors
+    .filter((contributor) => contributor.kind === 'account')
+    .map((contributor) => contributor.personId);
+  if (new Set(accountPersonIds).size !== accountPersonIds.length) {
     return { isComplete: false, reason: 'attribution_duplicate' };
   }
-  if (candidate.invitations.some((invitation) => invitation.state === 'pending')) {
-    return { isComplete: false, reason: 'attribution_unresolved' };
+  if (
+    candidate.contributors.some(
+      (contributor) =>
+        contributor.personId.length === 0 ||
+        contributor.attributionName.trim().length < 1 ||
+        contributor.attributionName.trim().length > ATTRIBUTION_NAME_MAX_LENGTH ||
+        contributor.contributionRole === null ||
+        contributor.contributionRole.trim().length < 1 ||
+        contributor.contributionRole.trim().length > 100,
+    )
+  ) {
+    return { isComplete: false, reason: 'attribution_incomplete' };
   }
 
   if (candidate.media.some((media) => media.status !== 'ready')) {

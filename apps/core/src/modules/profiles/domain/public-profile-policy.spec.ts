@@ -2,7 +2,6 @@ import { evaluatePublicProfile, type PublicProfileDraftInput } from './public-pr
 
 const VALID_PROFILE: PublicProfileDraftInput = {
   bio: 'สนใจการออกแบบระบบที่ดูแลได้ในระยะยาว',
-  displayName: 'ณัฐดนัย สุขใจ',
   links: [
     { label: 'เว็บไซต์', url: 'https://example.com' },
     { label: 'GitHub', url: 'https://github.com/example' },
@@ -16,7 +15,6 @@ describe('Public Profile policy', () => {
       evaluatePublicProfile({
         ...VALID_PROFILE,
         bio: '  สนใจระบบเว็บ  ',
-        displayName: '  ณัฐดนัย สุขใจ  ',
         links: [
           { label: ' เว็บไซต์ ', url: 'https://example.com/portfolio' },
           { label: 'GitHub', url: 'https://github.com/example' },
@@ -30,7 +28,6 @@ describe('Public Profile policy', () => {
       profile: {
         ...VALID_PROFILE,
         bio: 'สนใจระบบเว็บ',
-        displayName: 'ณัฐดนัย สุขใจ',
         links: [
           { label: 'เว็บไซต์', url: 'https://example.com/portfolio' },
           { label: 'GitHub', url: 'https://github.com/example' },
@@ -43,8 +40,6 @@ describe('Public Profile policy', () => {
   });
 
   it.each([
-    ['blank display name', { ...VALID_PROFILE, displayName: '   ' }],
-    ['long display name', { ...VALID_PROFILE, displayName: 'ก'.repeat(101) }],
     ['long bio', { ...VALID_PROFILE, bio: 'ก'.repeat(501) }],
     [
       'too many links',

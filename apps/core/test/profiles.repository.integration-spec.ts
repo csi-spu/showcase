@@ -29,6 +29,10 @@ describe('PostgresProfilesRepository integration', () => {
         values (${PERSON_ID}, 2569, 2576)
       `;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ณัฐดนัย', 'สุขใจ')
+      `;
+      await transaction`
         insert into public.accounts (id, person_id, provider_user_id, credential_state)
         values (${ACCOUNT_ID}, ${PERSON_ID}, ${PROVIDER_USER_ID}, 'set')
       `;
@@ -44,7 +48,11 @@ describe('PostgresProfilesRepository integration', () => {
   });
 
   it('proves roster-like Account creation grants neither Public Profile nor Profile Consent', async () => {
-    await expect(repository.findPrivateProfile(ACCOUNT_ID)).resolves.toBeNull();
+    await expect(repository.findPrivateProfile(ACCOUNT_ID)).resolves.toMatchObject({
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
+      profile: null,
+    });
     const consents = await database.sql<{ count: number }[]>`
       select count(*)::integer as count
       from public.profile_consents
@@ -62,7 +70,6 @@ describe('PostgresProfilesRepository integration', () => {
         now: new Date('2026-08-25T08:00:00.000Z'),
         profile: {
           bio: 'สนใจระบบเว็บ',
-          displayName: 'ณัฐดนัย สุขใจ',
           links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
           photoId: null,
         },
@@ -77,13 +84,15 @@ describe('PostgresProfilesRepository integration', () => {
 
     const privateProfile = await repository.findPrivateProfile(ACCOUNT_ID);
     expect(privateProfile).toMatchObject({
-      consent: null,
-      displayName: 'ณัฐดนัย สุขใจ',
       entryYear: 2569,
-      version: 1,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
+      profile: { consent: null, version: 1 },
     });
-    expect(privateProfile?.publicId).toMatch(/^[0-9a-f-]{36}$/);
-    await expect(repository.findPublicProfile(privateProfile!.publicId)).resolves.toBeNull();
+    expect(privateProfile?.profile?.publicId).toMatch(/^[0-9a-f-]{36}$/);
+    await expect(
+      repository.findPublicProfile(privateProfile!.profile!.publicId),
+    ).resolves.toBeNull();
 
     await expect(
       repository.grantConsent({
@@ -95,13 +104,14 @@ describe('PostgresProfilesRepository integration', () => {
       }),
     ).resolves.toEqual({ outcome: 'updated' });
 
-    await expect(repository.findPublicProfile(privateProfile!.publicId)).resolves.toEqual({
+    await expect(repository.findPublicProfile(privateProfile!.profile!.publicId)).resolves.toEqual({
       bio: 'สนใจระบบเว็บ',
-      displayName: 'ณัฐดนัย สุขใจ',
       entryYear: 2569,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
       links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
       photo: null,
-      publicId: privateProfile!.publicId,
+      publicId: privateProfile!.profile!.publicId,
     });
   });
 
@@ -115,7 +125,6 @@ describe('PostgresProfilesRepository integration', () => {
         now: new Date('2026-08-25T08:07:00.000Z'),
         profile: {
           bio: 'ปรับข้อมูลล่าสุด',
-          displayName: 'ณัฐดนัย สุขใจ',
           links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
           photoId: null,
         },
@@ -130,11 +139,9 @@ describe('PostgresProfilesRepository integration', () => {
       }),
     ).resolves.toEqual({ outcome: 'updated' });
 
-    await expect(repository.findPublicProfile(before!.publicId)).resolves.toBeNull();
+    await expect(repository.findPublicProfile(before!.profile!.publicId)).resolves.toBeNull();
     await expect(repository.findPrivateProfile(ACCOUNT_ID)).resolves.toMatchObject({
-      consent: null,
-      publicId: before!.publicId,
-      version: 4,
+      profile: { consent: null, publicId: before!.profile!.publicId, version: 4 },
     });
     const [history, outbox] = await Promise.all([
       database.sql<{ count: number }[]>`

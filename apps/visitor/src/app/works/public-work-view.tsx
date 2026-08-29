@@ -7,6 +7,8 @@ import { BlurFade } from '@/components/ui/blur-fade';
 import { InteractiveGridPattern } from '@/components/ui/interactive-grid-pattern';
 import type { PublicWork } from '@/lib/public-work-core';
 import { WorkPosterFallback } from '../catalog-artwork';
+import { requestAttributionRemovalAction } from './[publicId]/attribution-removal.actions';
+import { AttributionRemovalForm } from './[publicId]/attribution-removal-form';
 
 interface PublicWorkLabels {
   academicPeriod: string;
@@ -20,6 +22,17 @@ interface PublicWorkLabels {
   missingPoster: string;
   posterAlt: string;
   publishedAt: string;
+  removal: Record<
+    | 'heading'
+    | 'help'
+    | 'invalid'
+    | 'rateLimited'
+    | 'reason'
+    | 'received'
+    | 'submit'
+    | 'unavailable',
+    string
+  >;
   studyYear(year: number): string;
   tagsLabel: string;
   videos: string;
@@ -131,6 +144,17 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
                       {attribution.contributionRole ? <p>{attribution.contributionRole}</p> : null}
                       {attribution.affiliation ? (
                         <p className="text-sm text-muted-foreground">{attribution.affiliation}</p>
+                      ) : null}
+                      {attribution.canRequestRemoval ? (
+                        <AttributionRemovalForm
+                          action={requestAttributionRemovalAction.bind(
+                            null,
+                            work.workPublicId,
+                            attribution.attributionPublicId,
+                          )}
+                          idempotencyKey={crypto.randomUUID()}
+                          labels={labels.removal}
+                        />
                       ) : null}
                     </div>
                   </li>

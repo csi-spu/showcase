@@ -37,6 +37,56 @@ describe('PublicWorkCoreClient', () => {
       new PublicWorkCoreClient('https://core.example.test', fetchMock).getWork(WORK_PUBLIC_ID),
     ).resolves.toBeNull();
   });
+
+  it('submits only target, reason, and idempotency without asserted identity or contact', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ received: true }, { status: 202 }));
+    await expect(
+      new PublicWorkCoreClient('https://core.example.test', fetchMock).requestAttributionRemoval(
+        WORK_PUBLIC_ID,
+        '76000000-0000-4000-8000-000000000006',
+        {
+          idempotencyKey: '76000000-0000-4000-8000-000000000007',
+          reason: 'เหตุผลที่ต้องการนำชื่อออก',
+        },
+      ),
+    ).resolves.toEqual({ received: true });
+    const body = String(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(JSON.parse(body)).toEqual({
+      idempotencyKey: '76000000-0000-4000-8000-000000000007',
+      reason: 'เหตุผลที่ต้องการนำชื่อออก',
+    });
+    expect(body).not.toMatch(/studentId|email|phone|cookie|token/i);
+  });
+
+  it('forwards only a trusted source-safe key for distributed rate limiting', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ received: true }, { status: 202 }));
+
+    await new PublicWorkCoreClient(
+      'https://core.example.test',
+      fetchMock,
+    ).requestAttributionRemoval(
+      WORK_PUBLIC_ID,
+      '76000000-0000-4000-8000-000000000006',
+      {
+        idempotencyKey: '76000000-0000-4000-8000-000000000007',
+        reason: 'เหตุผลที่ต้องการนำชื่อออก',
+      },
+      {
+        bffSecret: 'visitor-bff-secret-that-is-long-enough',
+        sourceKey: 'a'.repeat(64),
+      },
+    );
+
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      'x-visitor-bff-secret': 'visitor-bff-secret-that-is-long-enough',
+      'x-visitor-source-key': 'a'.repeat(64),
+    });
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain('203.0.113.42');
+  });
 });
 
 function publicWork() {
@@ -45,7 +95,9 @@ function publicWork() {
     attributions: [
       {
         affiliation: null,
+        attributionPublicId: '76000000-0000-4000-8000-000000000006',
         attributionName: 'ชื่อผู้ส่ง',
+        canRequestRemoval: false,
         contributionRole: null,
         profilePublicId: '86000000-0000-4000-8000-000000000003',
         studyYear: 2,
