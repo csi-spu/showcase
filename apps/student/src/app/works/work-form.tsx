@@ -515,7 +515,7 @@ function AttributionStep({
       <h2 className="text-2xl font-semibold">{t('wizard.step3')}</h2>
       <Field>
         <FieldLabel>{t('attribution.submitter')}</FieldLabel>
-        <Input readOnly value={attributionName ?? t('attribution.profileRequired')} />
+        <Input readOnly value={attributionName ?? t('attribution.rosterNameUnavailable')} />
       </Field>
       <Field>
         <FieldLabel htmlFor="study-year">{t('attribution.studyYear')}</FieldLabel>

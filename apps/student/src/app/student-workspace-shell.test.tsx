@@ -81,8 +81,9 @@ describe('StudentWorkspaceShell', () => {
         canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: {
-          displayName: 'ณัฐดนัย สุขใจ',
           entryYear: 2569,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
           photo: { height: 512, url: 'https://media.example.test/private.webp', width: 512 },
         },
       }),
@@ -152,10 +153,19 @@ describe('StudentWorkspaceShell', () => {
   it('loads the private profile summary when the page has not already loaded it', async () => {
     sidebarProfile.getProfile.mockResolvedValue({
       canEditProfile: true,
-      profile: {
-        displayName: 'ชลธิชา',
+      person: {
         entryYear: 2568,
+        firstName: 'ชลธิชา',
+        lastName: 'สุขใจ',
+      },
+      profile: {
+        bio: null,
+        consent: null,
+        links: [],
         photo: null,
+        photoId: null,
+        publicId: '71000000-0000-4000-8000-000000000001',
+        version: 1,
       },
     });
 
@@ -168,7 +178,7 @@ describe('StudentWorkspaceShell', () => {
     );
 
     expect(sidebarProfile.getProfile).toHaveBeenCalledWith('session-token');
-    expect(screen.getByText('ชลธิชา')).toBeTruthy();
+    expect(screen.getByText('ชลธิชา สุขใจ')).toBeTruthy();
     expect(screen.getByText('ปีที่เข้าศึกษา 2568')).toBeTruthy();
   });
 

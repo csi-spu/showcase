@@ -9,6 +9,9 @@ export function mapAccountControlError(error: unknown): AccountControlErrorMessa
   if (error.code === 'PASSWORD_RESET_PROVIDER_UNAVAILABLE') return 'providerUnavailable';
   if (error.code === 'STUDENT_ACCESS_CANNOT_BE_SHORTENED') return 'shortening';
   if (error.code === 'STUDENT_ACCOUNT_NOT_FOUND') return 'notFound';
+  if (['STUDENT_NAME_INVALID', 'STUDENT_NAME_REASON_INVALID'].includes(error.code)) {
+    return 'invalid';
+  }
   if (
     ['ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 'ACCOUNT_CONTROL_VERSION_CONFLICT'].includes(
       error.code,

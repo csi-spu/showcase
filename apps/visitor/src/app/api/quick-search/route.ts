@@ -26,9 +26,9 @@ export function createQuickSearchHandler(catalog: QuickSearchCatalog) {
       ]);
       return Response.json(
         {
-          people: peoplePage.items.map(({ displayName, entryYear, publicId }) => ({
+          people: peoplePage.items.map(({ entryYear, firstName, lastName, publicId }) => ({
             entryYear,
-            name: displayName,
+            name: `${firstName} ${lastName}`,
             publicId,
           })),
           works: worksPage.items.map(({ attributions, title, workPublicId }) => ({

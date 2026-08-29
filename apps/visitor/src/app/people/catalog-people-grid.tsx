@@ -25,8 +25,10 @@ export function CatalogPeopleGrid({
 
   return (
     <ol className="grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
-      {people.map((person, index) => (
-        <li key={person.publicId}>
+      {people.map((person, index) => {
+        const rosterName = `${person.firstName} ${person.lastName}`;
+        return (
+          <li key={person.publicId}>
           <BlurFade blur="4px" delay={Math.min(index, 5) * 0.06} duration={0.4} inView>
             <article
               className="group grid min-h-40 grid-cols-[7rem_minmax(0,1fr)] gap-4 rounded-media border border-border bg-card p-3 transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30 motion-reduce:transform-none sm:grid-cols-[8.5rem_minmax(0,1fr)]"
@@ -37,7 +39,7 @@ export function CatalogPeopleGrid({
                 href={`/people/${person.publicId}`}
               >
                 <PersonPortrait
-                  alt={labels.photoAlt(person.displayName)}
+                  alt={labels.photoAlt(rosterName)}
                   person={person}
                   sizes="(max-width: 639px) 112px, 136px"
                 />
@@ -54,7 +56,7 @@ export function CatalogPeopleGrid({
                     className="transition-colors duration-150 group-hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
                     href={`/people/${person.publicId}`}
                   >
-                    {person.displayName}
+                    {rosterName}
                   </Link>
                 </h2>
                 {person.bio ? (
@@ -68,8 +70,9 @@ export function CatalogPeopleGrid({
               </div>
             </article>
           </BlurFade>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 }

@@ -10,8 +10,9 @@ describe('PublicProfileCoreClient', () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
         bio: null,
-        displayName: 'ณัฐดนัย',
         entryYear: 2569,
+        firstName: 'ณัฐดนัย',
+        lastName: 'สุขใจ',
         links: [],
         photo: null,
         publicId: PUBLIC_ID,
@@ -41,8 +42,9 @@ describe('PublicProfileCoreClient', () => {
       Response.json({
         accountId: 'private',
         bio: null,
-        displayName: 'ณัฐดนัย',
         entryYear: 2569,
+        firstName: 'ณัฐดนัย',
+        lastName: 'สุขใจ',
         links: [],
         photo: null,
         publicId: PUBLIC_ID,

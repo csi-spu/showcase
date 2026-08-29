@@ -47,6 +47,29 @@ describe('Admin Account control validation', () => {
       studentAccountId: ACCOUNT_ID,
     });
   });
+
+  it('normalizes an audited Roster Name correction', () => {
+    expect(
+      validateStudentAccountOperation(
+        new FormDataBuilder()
+          .set('operation', 'correctName')
+          .set('studentAccountId', ACCOUNT_ID)
+          .set('expectedVersion', '2')
+          .set('idempotencyKey', IDEMPOTENCY_KEY)
+          .set('firstNameTh', '  สมหญิง  ')
+          .set('lastNameTh', '  มั่นใจ  ')
+          .set('reason', '  แก้ไขตามหลักฐานจากทะเบียน  ').value,
+      ),
+    ).toEqual({
+      expectedVersion: 2,
+      firstNameTh: 'สมหญิง',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      lastNameTh: 'มั่นใจ',
+      operation: 'correctName',
+      reason: 'แก้ไขตามหลักฐานจากทะเบียน',
+      studentAccountId: ACCOUNT_ID,
+    });
+  });
 });
 
 class FormDataBuilder {

@@ -66,6 +66,25 @@ export async function manageStudentAccountAction(
         temporaryPassword: null,
       };
     }
+    if (input.operation === 'correctName') {
+      const student = await coreClient().correctStudentName(
+        sessionToken,
+        input.studentAccountId,
+        {
+          expectedVersion: input.expectedVersion,
+          firstNameTh: input.firstNameTh,
+          idempotencyKey: input.idempotencyKey,
+          lastNameTh: input.lastNameTh,
+          reason: input.reason,
+        },
+      );
+      return {
+        error: null,
+        idempotencyKey: randomUUID(),
+        student,
+        temporaryPassword: null,
+      };
+    }
     const result = await coreClient().resetStudentPassword(sessionToken, input.studentAccountId, {
       expectedVersion: input.expectedVersion,
       idempotencyKey: input.idempotencyKey,

@@ -9,7 +9,7 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import type { PrivatePublicProfile } from '@/lib/student-profile-core';
+import type { PrivatePerson, PrivatePublicProfile } from '@/lib/student-profile-core';
 import {
   INITIAL_PROFILE_ACTION_STATE,
   type ProfileActionError,
@@ -32,7 +32,6 @@ type FinalizePhotoUpload = (
 ) => Promise<{ data: { photoId: string; status: 'ready' } } | { error: ProfileActionError }>;
 interface ProfileDraftState {
   bio: string;
-  displayName: string;
   links: Array<{ label: string; url: string }>;
 }
 
@@ -41,6 +40,7 @@ export function ProfileForm({
   createPhotoUpload,
   finalizePhotoUpload,
   idempotencyKey,
+  person,
   profile,
   updateAction,
 }: {
@@ -48,6 +48,7 @@ export function ProfileForm({
   createPhotoUpload: CreatePhotoUpload;
   finalizePhotoUpload: FinalizePhotoUpload;
   idempotencyKey: string;
+  person: PrivatePerson | null;
   profile: PrivatePublicProfile | null;
   updateAction: ProfileAction;
 }) {
@@ -106,21 +107,17 @@ export function ProfileForm({
       ) : null}
 
       <div className="grid gap-6 rounded-surface border border-border/80 bg-card p-6 shadow-[0_1rem_2.5rem_-2rem_rgba(50,20,45,0.22)] sm:p-8">
-        <Field>
-          <FieldLabel htmlFor="display-name">{t('displayName')}</FieldLabel>
-          <Input
-            disabled={!canEditProfile}
-            id="display-name"
-            maxLength={100}
-            name="displayName"
-            onChange={(event) => {
-              const displayName = event.currentTarget.value;
-              setDraft((current) => ({ ...current, displayName }));
-            }}
-            required
-            value={draft.displayName}
-          />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="first-name">{t('firstName')}</FieldLabel>
+            <Input id="first-name" readOnly value={person?.firstName ?? ''} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="last-name">{t('lastName')}</FieldLabel>
+            <Input id="last-name" readOnly value={person?.lastName ?? ''} />
+          </Field>
+        </div>
+        <FieldDescription>{t('nameHelp')}</FieldDescription>
         <Field>
           <FieldLabel htmlFor="bio">{t('bio')}</FieldLabel>
           <Textarea
@@ -237,7 +234,6 @@ export function ProfileForm({
 function createDraft(profile: PrivatePublicProfile | null): ProfileDraftState {
   return {
     bio: profile?.bio ?? '',
-    displayName: profile?.displayName ?? '',
     links: Array.from({ length: 5 }, (_, index) => ({
       label: profile?.links[index]?.label ?? '',
       url: profile?.links[index]?.url ?? '',

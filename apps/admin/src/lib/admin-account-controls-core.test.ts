@@ -88,4 +88,36 @@ describe('AdminAccountControlsCoreClient', () => {
       },
     ]);
   });
+
+  it('sends a Roster Name correction only to the private Admin endpoint', async () => {
+    const response = {
+      accessEndsAcademicYear: 2576,
+      accountId: '20000000-0000-4000-8000-000000000001',
+      canUseStudentCapabilities: true,
+      currentAcademicYear: 2570,
+      entryYear: 2569,
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นใจ',
+      state: 'student',
+      version: 3,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    const client = new AdminAccountControlsCoreClient(config, fetchMock);
+    const input = {
+      expectedVersion: 2,
+      firstNameTh: 'สมหญิง',
+      idempotencyKey: '30000000-0000-4000-8000-000000000003',
+      lastNameTh: 'มั่นใจ',
+      reason: 'แก้ไขตามหลักฐานทะเบียน',
+    };
+
+    await expect(
+      client.correctStudentName('opaque-admin-session', response.accountId, input),
+    ).resolves.toEqual(response);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/admin/account-controls/students/${response.accountId}/name`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('PUT');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(input);
+  });
 });

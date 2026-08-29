@@ -46,12 +46,16 @@ export default async function ProfilePage() {
     <StudentWorkspaceShell
       activePage="edit-profile"
       canCreateWork={state.session.canUseStudentCapabilities}
-      profile={response.profile}
+      profile={
+        response.person === null
+          ? null
+          : { ...response.person, photo: response.profile?.photo ?? null }
+      }
     >
       <WorkspacePage
         description={t('description')}
         eyebrow="โปรไฟล์สาธารณะ"
-        meta={response.profile ? t('entryYear', { year: response.profile.entryYear }) : undefined}
+        meta={response.person ? t('entryYear', { year: response.person.entryYear }) : undefined}
         title={t('heading')}
       >
         <div className="grid gap-8">
@@ -60,6 +64,7 @@ export default async function ProfilePage() {
             createPhotoUpload={createPhotoUploadAction}
             finalizePhotoUpload={finalizePhotoUploadAction}
             idempotencyKey={updateIdempotencyKey}
+            person={response.person}
             profile={response.profile}
             updateAction={updateProfileAction}
           />

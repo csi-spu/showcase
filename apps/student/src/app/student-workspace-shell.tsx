@@ -20,7 +20,6 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import {
   StudentProfileCoreClient,
   StudentProfileCoreError,
-  type PrivatePublicProfile,
 } from '@/lib/student-profile-core';
 import { logoutAction } from './student-auth.actions';
 import { LogoutForm } from './student-auth-forms';
@@ -33,7 +32,12 @@ import {
 
 export type { StudentWorkspacePage } from './student-sidebar-navigation';
 
-type StudentSidebarProfile = Pick<PrivatePublicProfile, 'displayName' | 'entryYear' | 'photo'>;
+interface StudentSidebarProfile {
+  entryYear: number;
+  firstName: string;
+  lastName: string;
+  photo: { height: number; url: string; width: number } | null;
+}
 
 export async function StudentWorkspaceShell({
   activePage,
@@ -74,6 +78,9 @@ export async function StudentWorkspaceShell({
     .flatMap((group) => group.items)
     .find((item) => item.page === activePage)?.label;
   const statusLabel = canCreateWork ? t('status.active') : t('status.readOnly');
+  const rosterName = sidebarProfile
+    ? `${sidebarProfile.firstName} ${sidebarProfile.lastName}`
+    : t('profile.fallback');
 
   return (
     <SidebarProvider className="student-canvas mx-auto max-w-[1600px]">
@@ -103,7 +110,7 @@ export async function StudentWorkspaceShell({
             <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-soft text-primary group-data-[collapsible=icon]:size-8">
               {sidebarProfile?.photo ? (
                 <Image
-                  alt={t('profile.photoAlt', { name: sidebarProfile.displayName })}
+                  alt={t('profile.photoAlt', { name: rosterName })}
                   className="object-cover"
                   fill
                   sizes="40px"
@@ -116,7 +123,7 @@ export async function StudentWorkspaceShell({
             </span>
             <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
               <span className="block truncate text-sm font-semibold">
-                {sidebarProfile?.displayName ?? t('profile.fallback')}
+                {rosterName}
               </span>
               {sidebarProfile ? (
                 <span className="block truncate text-xs text-muted-foreground">
@@ -176,7 +183,9 @@ async function loadStudentSidebarProfile(): Promise<StudentSidebarProfile | null
     const response = await new StudentProfileCoreClient(getStudentServerEnvironment()).getProfile(
       sessionToken,
     );
-    return response.profile;
+    return response.person === null
+      ? null
+      : { ...response.person, photo: response.profile?.photo ?? null };
   } catch (error: unknown) {
     if (
       error instanceof StudentProfileCoreError &&

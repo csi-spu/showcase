@@ -4,8 +4,9 @@ import { z } from 'zod';
 const publicProfileSchema = z
   .object({
     bio: z.string().nullable(),
-    displayName: z.string().min(1).max(100),
     entryYear: z.number().int(),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
     links: z.array(z.object({ label: z.string(), url: z.url() }).strict()).max(5),
     photo: z
       .object({

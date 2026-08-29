@@ -102,6 +102,26 @@ export class AdminAccountControlsCoreClient {
     });
   }
 
+  correctStudentName(
+    sessionToken: string,
+    accountId: string,
+    input: {
+      expectedVersion: number;
+      firstNameTh: string;
+      idempotencyKey: string;
+      lastNameTh: string;
+      reason: string;
+    },
+  ): Promise<AdminStudentAccountControls> {
+    return this.client.request({
+      body: input,
+      method: 'PUT',
+      path: `/v1/internal/admin/account-controls/students/${accountId}/name`,
+      responseSchema: studentAccountControlsSchema,
+      sessionToken,
+    });
+  }
+
   resetStudentPassword(
     sessionToken: string,
     accountId: string,

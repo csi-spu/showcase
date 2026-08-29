@@ -46,8 +46,9 @@ describe('PublicCatalogCoreClient', () => {
       items: [
         {
           bio: 'สนใจการออกแบบประสบการณ์ที่ใช้งานง่าย',
-          displayName: 'อริสา ใจดี',
           entryYear: 2566,
+          firstName: 'อริสา',
+          lastName: 'ใจดี',
           photo: null,
           publicId: id(4),
           publishedWorkCount: 2,

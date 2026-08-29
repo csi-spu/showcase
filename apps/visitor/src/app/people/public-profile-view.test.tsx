@@ -16,8 +16,9 @@ describe('Visitor Public Profile UI', () => {
         }}
         profile={{
           bio: 'สนใจระบบเว็บ',
-          displayName: 'ณัฐดนัย',
           entryYear: 2569,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
           links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
           photo: { height: 512, url: 'https://private-media.example/object', width: 512 },
           publicId: '81000000-0000-4000-8000-000000000001',
@@ -47,8 +48,9 @@ describe('Visitor Public Profile UI', () => {
         }}
         profile={{
           bio: '   ',
-          displayName: 'ณัฐดนัย',
           entryYear: 2569,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
           links: [],
           photo: null,
           publicId: '81000000-0000-4000-8000-000000000001',

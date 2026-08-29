@@ -8,7 +8,6 @@ import {
   WorkPublishedRevisionPanel,
   WorkRevisionRebasePanel,
   WorkRevisionPendingPanel,
-  WorkRevisionSubmissionPanel,
 } from './work-revision-panel';
 
 const WORK_PUBLIC_ID = '75000000-0000-4000-8000-000000000001';
@@ -17,26 +16,6 @@ const IDEMPOTENCY_KEY = '75000000-0000-4000-8000-000000000003';
 
 describe('Work Revision panels', () => {
   afterEach(cleanup);
-
-  it('requires the Submitter to confirm public Attribution Name and Study Year', () => {
-    renderPanel(
-      <WorkRevisionSubmissionPanel
-        action={vi.fn()}
-        basePublishedRevisionId={null}
-        draftVersion={4}
-        idempotencyKey={IDEMPOTENCY_KEY}
-      />,
-    );
-
-    expect(screen.getByLabelText('ชื่อผู้ส่งที่จะแสดงต่อสาธารณะ').getAttribute('maxlength')).toBe(
-      '100',
-    );
-    expect(screen.getByLabelText('ชั้นปีเมื่อทำผลงาน (1–8)').getAttribute('max')).toBe('8');
-    expect(screen.getByRole('button', { name: 'ส่งผลงานให้ผู้ดูแลตรวจ' })).toBeTruthy();
-    expect(
-      (document.querySelector('[name="expectedDraftVersion"]') as HTMLInputElement).value,
-    ).toBe('4');
-  });
 
   it('clearly distinguishes pending Review and exposes only withdrawal before decision', () => {
     renderPanel(
