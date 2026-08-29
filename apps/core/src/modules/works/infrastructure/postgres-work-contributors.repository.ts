@@ -62,9 +62,7 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
       await this.deleteExpiredCandidates(sql, input.now);
       const expiresAt = new Date(input.now.getTime() + CANDIDATE_LIFETIME_MILLISECONDS);
       const references = (await sql`
-        insert into private.work_contributor_candidates (
-          work_id, person_id, expires_at, created_at
-        ) ${sql(
+        insert into private.work_contributor_candidates ${sql(
           candidates.map((candidate) => ({
             created_at: input.now,
             expires_at: expiresAt,

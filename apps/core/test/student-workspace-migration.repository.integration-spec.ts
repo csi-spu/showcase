@@ -26,6 +26,10 @@ const REVOKED_INVITATION_ID = '56000000-0000-4000-8000-000000000017';
 const EXPIRED_INVITATION_ID = '56000000-0000-4000-8000-000000000018';
 const WITHDRAWN_INVITATION_ID = '56000000-0000-4000-8000-000000000019';
 const RACING_INVITATION_ID = '56000000-0000-4000-8000-000000000020';
+const SUBMITTER_ACCOUNT_ID = '56000000-0000-4000-8000-000000000021';
+const TERMINAL_ACCOUNT_ID = '56000000-0000-4000-8000-000000000022';
+const SUBMITTER_PROVIDER_ID = '56000000-0000-4000-8000-000000000023';
+const TERMINAL_PROVIDER_ID = '56000000-0000-4000-8000-000000000024';
 
 describe('issue #56 Phase A migration integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
@@ -51,16 +55,20 @@ describe('issue #56 Phase A migration integration', () => {
       `;
       await sql`
         insert into public.students (person_id, entry_year, access_ends_academic_year) values
-          (${ACCEPTED_PERSON_ID}, 2566, 2573), (${PENDING_PERSON_ID}, 2566, 2573)
+          (${SUBMITTER_PERSON_ID}, 2566, 2573), (${ACCEPTED_PERSON_ID}, 2566, 2573),
+          (${PENDING_PERSON_ID}, 2566, 2573), (${TERMINAL_PERSON_ID}, 2566, 2573)
       `;
       await sql`
         insert into public.accounts (id, person_id, provider_user_id, credential_state) values
+          (${SUBMITTER_ACCOUNT_ID}, ${SUBMITTER_PERSON_ID}, ${SUBMITTER_PROVIDER_ID}, 'set'),
           (${ACCEPTED_ACCOUNT_ID}, ${ACCEPTED_PERSON_ID}, ${ACCEPTED_PROVIDER_ID}, 'set'),
-          (${PENDING_ACCOUNT_ID}, ${PENDING_PERSON_ID}, ${PENDING_PROVIDER_ID}, 'set')
+          (${PENDING_ACCOUNT_ID}, ${PENDING_PERSON_ID}, ${PENDING_PROVIDER_ID}, 'set'),
+          (${TERMINAL_ACCOUNT_ID}, ${TERMINAL_PERSON_ID}, ${TERMINAL_PROVIDER_ID}, 'set')
       `;
       await sql`
         insert into public.account_roles (account_id, role) values
-          (${ACCEPTED_ACCOUNT_ID}, 'student'), (${PENDING_ACCOUNT_ID}, 'student')
+          (${SUBMITTER_ACCOUNT_ID}, 'student'), (${ACCEPTED_ACCOUNT_ID}, 'student'),
+          (${PENDING_ACCOUNT_ID}, 'student'), (${TERMINAL_ACCOUNT_ID}, 'student')
       `;
       await sql`
         insert into public.works (
@@ -345,6 +353,46 @@ describe('issue #56 Phase A migration integration', () => {
     `;
   });
 
+  it('creates an opaque Contributor Candidate reference for a name match after cutover', async () => {
+    const result = await database.sql.begin(async (sql) => {
+      await sql`savepoint contributor_candidate_search`;
+      try {
+        await sql`select * from private.execute_issue_56_contributor_cutover()`;
+        const transactionRepository = new PostgresWorkContributorsRepository({
+          sql: {
+            begin: <T>(callback: (transaction: typeof sql) => Promise<T>) => callback(sql),
+          },
+        } as unknown as DatabaseClient);
+        return await transactionRepository.searchCandidates({
+          actorAccountId: SUBMITTER_ACCOUNT_ID,
+          nameQuery: 'คน ปฏิเสธ',
+          now: NOW,
+          sourceKeyHash: '3'.repeat(64),
+          studentIdHash: null,
+          workPublicId: WORK_PUBLIC_ID,
+        });
+      } finally {
+        await sql`rollback to savepoint contributor_candidate_search`;
+      }
+    });
+
+    expect(result).toMatchObject({
+      candidates: [
+        {
+          firstName: 'คน',
+          lastName: 'ปฏิเสธ',
+        },
+      ],
+      outcome: 'matches',
+    });
+    if (result.outcome !== 'matches') throw new Error('EXPECTED_CONTRIBUTOR_CANDIDATE_MATCH');
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.candidateReference).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(JSON.stringify(result)).not.toMatch(/accountId|personId|studentId/i);
+  });
+
   it('keeps historical Study Year 8 while enforcing the new attribution model', async () => {
     await database.sql`
       insert into private.work_revisions (
@@ -488,13 +536,22 @@ describe('issue #56 Phase A migration integration', () => {
       await sql`delete from public.works where id = ${WORK_ID}`;
       await sql`
         delete from public.account_roles
-        where account_id in (${ACCEPTED_ACCOUNT_ID}, ${PENDING_ACCOUNT_ID})
+        where account_id in (
+          ${SUBMITTER_ACCOUNT_ID}, ${ACCEPTED_ACCOUNT_ID}, ${PENDING_ACCOUNT_ID},
+          ${TERMINAL_ACCOUNT_ID}
+        )
       `;
       await sql`
-        delete from public.accounts where id in (${ACCEPTED_ACCOUNT_ID}, ${PENDING_ACCOUNT_ID})
+        delete from public.accounts where id in (
+          ${SUBMITTER_ACCOUNT_ID}, ${ACCEPTED_ACCOUNT_ID}, ${PENDING_ACCOUNT_ID},
+          ${TERMINAL_ACCOUNT_ID}
+        )
       `;
       await sql`
-        delete from public.students where person_id in (${ACCEPTED_PERSON_ID}, ${PENDING_PERSON_ID})
+        delete from public.students where person_id in (
+          ${SUBMITTER_PERSON_ID}, ${ACCEPTED_PERSON_ID}, ${PENDING_PERSON_ID},
+          ${TERMINAL_PERSON_ID}
+        )
       `;
       await sql`
         delete from private.person_names
