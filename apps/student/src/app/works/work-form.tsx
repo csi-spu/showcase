@@ -61,14 +61,16 @@ type SaveAttempt = {
 
 export function WorkForm({
   context,
+  initialStep = 0,
   initialWork,
 }: {
   context: WorkAuthoringContext;
+  initialStep?: number;
   initialWork: WorkDraft | null;
 }) {
   const t = useTranslations('Work');
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [values, setValues] = useState(() => valuesFromWork(initialWork));
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<
@@ -82,6 +84,7 @@ export function WorkForm({
   const [isSubmitting, startSubmission] = useTransition();
   const valuesRef = useRef(values);
   const lastSavedRef = useRef(values);
+  const hasCanonicalWorkRouteRef = useRef(initialWork !== null);
   const conflictRef = useRef(false);
   const pendingAttemptRef = useRef<SaveAttempt | null>(null);
   const submissionIdempotencyKeyRef = useRef<string | null>(null);
@@ -90,7 +93,7 @@ export function WorkForm({
     valuesRef.current = values;
   }, [values]);
 
-  const saveDraft = async (): Promise<boolean> => {
+  const saveDraft = async (targetStep: number): Promise<boolean> => {
     if (conflictRef.current) return false;
     const snapshot = valuesRef.current;
     const currentPublicId = workPublicId;
@@ -128,9 +131,12 @@ export function WorkForm({
       setContributors(result.work.contributors);
       if (attempt.publicId === null) {
         setWorkPublicId(result.publicId);
-        window.history.replaceState(null, '', `/works/${result.publicId}`);
       }
       const isCurrent = valuesRef.current === attempt.snapshot;
+      if (isCurrent && !hasCanonicalWorkRouteRef.current) {
+        hasCanonicalWorkRouteRef.current = true;
+        router.replace(`/works/${result.publicId}?step=${targetStep + 1}`, { scroll: false });
+      }
       setSaveState(isCurrent ? 'saved' : 'unsynced');
       return isCurrent;
     }
@@ -235,8 +241,9 @@ export function WorkForm({
   const goNext = () => {
     if (isSaving) return;
     startSaving(async () => {
-      if (await saveDraft()) {
-        setStep((value) => Math.min(value + 1, STEP_COUNT - 1));
+      const targetStep = Math.min(step + 1, STEP_COUNT - 1);
+      if (await saveDraft(targetStep)) {
+        setStep(targetStep);
       }
     });
   };

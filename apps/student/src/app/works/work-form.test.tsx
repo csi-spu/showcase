@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 
 const mocks = vi.hoisted(() => ({
-  onReplace: undefined as (() => void) | undefined,
+  onReplace: undefined as ((href: string) => void) | undefined,
   saveDraft: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
@@ -15,9 +15,9 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
     refresh: vi.fn(),
-    replace: (...args: unknown[]) => {
-      mocks.replace(...args);
-      mocks.onReplace?.();
+    replace: (href: string, options?: unknown) => {
+      mocks.replace(href, options);
+      mocks.onReplace?.(href);
     },
   }),
 }));
@@ -43,6 +43,7 @@ describe('five-step Work authoring', () => {
     cleanup();
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('shows exactly five approved steps and does not create a Work by opening the page', async () => {
@@ -103,8 +104,10 @@ describe('five-step Work authoring', () => {
         publicId: null,
       }),
     );
-    expect(window.location.pathname).toBe('/works/64000000-0000-4000-8000-000000000001');
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.replace).toHaveBeenCalledWith(
+      '/works/64000000-0000-4000-8000-000000000001?step=2',
+      { scroll: false },
+    );
   });
 
   it('keeps the next step mounted after the first Draft save resolves', async () => {
@@ -114,6 +117,11 @@ describe('five-step Work authoring', () => {
         resolveSave = resolve;
       }),
     );
+    const replaceState = window.history.replaceState.bind(window.history);
+    vi.spyOn(window.history, 'replaceState').mockImplementation((data, unused, url) => {
+      replaceState(data, unused, url);
+      mocks.onReplace?.(String(url));
+    });
     renderRemountingRoute();
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
 
@@ -199,6 +207,7 @@ describe('five-step Work authoring', () => {
 
     expect(mocks.saveDraft.mock.calls[1]?.[0]).toEqual(mocks.saveDraft.mock.calls[0]?.[0]);
     expect(mocks.saveDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.replace).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
     await act(async () => Promise.resolve());
@@ -207,6 +216,10 @@ describe('five-step Work authoring', () => {
       patch: { title: 'ผลงานล่าสุด' },
       publicId: '64000000-0000-4000-8000-000000000001',
     });
+    expect(mocks.replace).toHaveBeenCalledWith(
+      '/works/64000000-0000-4000-8000-000000000001?step=2',
+      { scroll: false },
+    );
   });
 
   it('keeps Contributor assignment inside the attribution step', async () => {
@@ -311,9 +324,15 @@ function renderForm(initialWork: Parameters<typeof WorkForm>[0]['initialWork'] =
 
 function renderRemountingRoute() {
   function RouteHarness() {
-    const [route, setRoute] = useState<'new' | 'saved'>('new');
+    const [route, setRoute] = useState({ initialStep: 0, key: 'new' });
     useEffect(() => {
-      mocks.onReplace = () => setRoute('saved');
+      mocks.onReplace = (href) => {
+        const target = new URL(href, window.location.origin);
+        setRoute({
+          initialStep: target.searchParams.get('step') === '2' ? 1 : 0,
+          key: 'saved',
+        });
+      };
       return () => {
         mocks.onReplace = undefined;
       };
@@ -321,8 +340,9 @@ function renderRemountingRoute() {
     return (
       <WorkForm
         context={{ currentAcademicYear: 2569, entryYear: 2566 }}
-        initialWork={route === 'new' ? null : savedWorkResult().work}
-        key={route}
+        initialStep={route.initialStep}
+        initialWork={route.key === 'new' ? null : savedWorkResult().work}
+        key={route.key}
       />
     );
   }

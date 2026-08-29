@@ -20,9 +20,16 @@ import { WorkRevisionDetails } from '../work-revision-details';
 import { WorkPublishedRevisionPanel, WorkRevisionPendingPanel } from '../work-revision-panel';
 import { seedPublishedWorkDraftAction, withdrawWorkRevisionAction } from '../work.actions';
 
-export default async function EditWorkPage({ params }: { params: Promise<{ publicId: string }> }) {
+export default async function EditWorkPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ publicId: string }>;
+  searchParams: Promise<{ step?: string | string[] }>;
+}) {
   const parsed = z.uuid().safeParse((await params).publicId);
   if (!parsed.success) notFound();
+  const initialStep = parseInitialStep((await searchParams).step);
   const auth = await getStudentAuthPageState();
   if (auth.kind !== 'active') redirect('/?expired=1');
   const token = await readStudentSessionToken();
@@ -93,7 +100,7 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
           ) : null}
           {state.kind === 'draft' ? (
             canMutate ? (
-              <WorkForm context={state.context} initialWork={state.work} />
+              <WorkForm context={state.context} initialStep={initialStep} initialWork={state.work} />
             ) : null
           ) : state.kind === 'pending' ? (
             <WorkRevisionDetails
@@ -150,6 +157,11 @@ export default async function EditWorkPage({ params }: { params: Promise<{ publi
       </WorkspacePage>
     </StudentWorkspaceShell>
   );
+}
+
+function parseInitialStep(value: string | string[] | undefined): number {
+  const parsed = z.enum(['1', '2', '3', '4', '5']).safeParse(value);
+  return parsed.success ? Number(parsed.data) - 1 : 0;
 }
 
 async function loadState(client: StudentWorksCoreClient, token: string, publicId: string) {
