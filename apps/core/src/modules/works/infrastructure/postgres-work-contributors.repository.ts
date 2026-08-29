@@ -33,8 +33,11 @@ interface OperationRow {
 
 interface CandidateRow {
   first_name: string;
+  has_public_photo: boolean;
   last_name: string;
   person_id: string;
+  public_entry_year: number | null;
+  public_profile_id: string | null;
 }
 
 @Injectable()
@@ -84,6 +87,14 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
           candidateReference: this.required(referenceByPerson.get(candidate.person_id)),
           firstName: candidate.first_name,
           lastName: candidate.last_name,
+          publicProfile:
+            candidate.public_profile_id === null
+              ? null
+              : {
+                  entryYear: this.requiredPublicEntryYear(candidate.public_entry_year),
+                  hasPhoto: candidate.has_public_photo,
+                  publicId: candidate.public_profile_id,
+                },
         })),
         outcome: 'matches',
       };
@@ -97,12 +108,23 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
   ): Promise<CandidateRow[]> {
     return sql<CandidateRow[]>`
         select name.first_name_th as first_name, name.last_name_th as last_name,
-          account.person_id
+          account.person_id,
+          case when consent.id is null then null else profile.public_id end
+            as public_profile_id,
+          case when consent.id is null then null else student.entry_year end
+            as public_entry_year,
+          consent.id is not null and photo.id is not null as has_public_photo
         from private.student_auth_identities as identity
         join public.accounts as account on account.id = identity.account_id
         join public.account_roles as role
           on role.account_id = account.id and role.role = 'student'
+        join public.students as student on student.person_id = account.person_id
         join private.person_names as name on name.person_id = account.person_id
+        left join public.public_profiles as profile on profile.person_id = account.person_id
+        left join public.profile_consents as consent
+          on consent.person_id = profile.person_id and consent.withdrawn_at is null
+        left join private.profile_photo_assets as photo
+          on photo.id = profile.photo_id and photo.status = 'ready'
         where identity.student_id_hash = ${studentIdHash}
           and account.status = 'active'
           and name.first_name_th is not null and name.last_name_th is not null
@@ -131,11 +153,20 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
     const contains = `%${this.escapeLike(nameQuery)}%`;
     return sql<CandidateRow[]>`
       select name.first_name_th as first_name, name.last_name_th as last_name,
-        account.person_id
+        account.person_id,
+        case when consent.id is null then null else profile.public_id end as public_profile_id,
+        case when consent.id is null then null else student.entry_year end as public_entry_year,
+        consent.id is not null and photo.id is not null as has_public_photo
       from private.person_names as name
       join public.accounts as account on account.person_id = name.person_id
       join public.account_roles as role
         on role.account_id = account.id and role.role = 'student'
+      join public.students as student on student.person_id = account.person_id
+      left join public.public_profiles as profile on profile.person_id = account.person_id
+      left join public.profile_consents as consent
+        on consent.person_id = profile.person_id and consent.withdrawn_at is null
+      left join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
       where account.status = 'active'
         and name.first_name_th is not null and name.last_name_th is not null
         and (
@@ -178,11 +209,20 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
     const prefix = `${this.escapeLike(nameQuery)}%`;
     return sql<CandidateRow[]>`
       select name.first_name_th as first_name, name.last_name_th as last_name,
-        account.person_id
+        account.person_id,
+        case when consent.id is null then null else profile.public_id end as public_profile_id,
+        case when consent.id is null then null else student.entry_year end as public_entry_year,
+        consent.id is not null and photo.id is not null as has_public_photo
       from private.person_names as name
       join public.accounts as account on account.person_id = name.person_id
       join public.account_roles as role
         on role.account_id = account.id and role.role = 'student'
+      join public.students as student on student.person_id = account.person_id
+      left join public.public_profiles as profile on profile.person_id = account.person_id
+      left join public.profile_consents as consent
+        on consent.person_id = profile.person_id and consent.withdrawn_at is null
+      left join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
       where account.status = 'active'
         and name.first_name_th is not null and name.last_name_th is not null
         and (
@@ -215,6 +255,11 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
         limit ${EXPIRED_CANDIDATE_CLEANUP_LIMIT}
       )
     `;
+  }
+
+  private requiredPublicEntryYear(value: number | null): number {
+    if (value === null) throw new Error('CONTRIBUTOR_PUBLIC_PROFILE_INVARIANT');
+    return value;
   }
 
   addAccount(

@@ -43,6 +43,11 @@ describe('StudentWorksCoreClient', () => {
           candidateReference: '64000000-0000-4000-8000-000000000002',
           firstName: 'สมชาย',
           lastName: 'ใจดี',
+          publicProfile: {
+            entryYear: 2566,
+            hasPhoto: true,
+            publicId: '64000000-0000-4000-8000-000000000003',
+          },
         },
       ]),
     );
@@ -53,6 +58,11 @@ describe('StudentWorksCoreClient', () => {
         candidateReference: '64000000-0000-4000-8000-000000000002',
         firstName: 'สมชาย',
         lastName: 'ใจดี',
+        publicProfile: {
+          entryYear: 2566,
+          hasPhoto: true,
+          publicId: '64000000-0000-4000-8000-000000000003',
+        },
       },
     ]);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({

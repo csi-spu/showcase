@@ -30,6 +30,7 @@ const SUBMITTER_ACCOUNT_ID = '56000000-0000-4000-8000-000000000021';
 const TERMINAL_ACCOUNT_ID = '56000000-0000-4000-8000-000000000022';
 const SUBMITTER_PROVIDER_ID = '56000000-0000-4000-8000-000000000023';
 const TERMINAL_PROVIDER_ID = '56000000-0000-4000-8000-000000000024';
+const TERMINAL_PROFILE_PUBLIC_ID = '56000000-0000-4000-8000-000000000025';
 
 describe('issue #56 Phase A migration integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
@@ -57,6 +58,28 @@ describe('issue #56 Phase A migration integration', () => {
         insert into public.students (person_id, entry_year, access_ends_academic_year) values
           (${SUBMITTER_PERSON_ID}, 2566, 2573), (${ACCEPTED_PERSON_ID}, 2566, 2573),
           (${PENDING_PERSON_ID}, 2566, 2573), (${TERMINAL_PERSON_ID}, 2566, 2573)
+      `;
+      await sql`
+        insert into public.public_profiles
+        select profile.*
+        from jsonb_populate_record(
+          null::public.public_profiles,
+          jsonb_build_object(
+            'person_id', ${TERMINAL_PERSON_ID},
+            'public_id', ${TERMINAL_PROFILE_PUBLIC_ID},
+            'display_name', 'คน ปฏิเสธ',
+            'bio', null,
+            'photo_id', null,
+            'version', 1,
+            'created_at', ${NOW},
+            'updated_at', ${NOW}
+          )
+        ) as profile
+      `;
+      await sql`
+        insert into public.profile_consents (
+          person_id, consent_text_version, granted_at
+        ) values (${TERMINAL_PERSON_ID}, 'phase-1', ${NOW})
       `;
       await sql`
         insert into public.accounts (id, person_id, provider_user_id, credential_state) values
@@ -381,6 +404,11 @@ describe('issue #56 Phase A migration integration', () => {
         {
           firstName: 'คน',
           lastName: 'ปฏิเสธ',
+          publicProfile: {
+            entryYear: 2566,
+            hasPhoto: false,
+            publicId: TERMINAL_PROFILE_PUBLIC_ID,
+          },
         },
       ],
       outcome: 'matches',
@@ -547,6 +575,8 @@ describe('issue #56 Phase A migration integration', () => {
           ${TERMINAL_ACCOUNT_ID}
         )
       `;
+      await sql`delete from public.profile_consents where person_id = ${TERMINAL_PERSON_ID}`;
+      await sql`delete from public.public_profiles where person_id = ${TERMINAL_PERSON_ID}`;
       await sql`
         delete from public.students where person_id in (
           ${SUBMITTER_PERSON_ID}, ${ACCEPTED_PERSON_ID}, ${PENDING_PERSON_ID},

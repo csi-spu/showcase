@@ -80,6 +80,7 @@ describe('searchContributorCandidatesAction', () => {
         candidateReference: '64000000-0000-4000-8000-000000000004',
         firstName: 'สมชาย',
         lastName: 'ใจดี',
+        publicProfile: null,
       },
     ]);
   });

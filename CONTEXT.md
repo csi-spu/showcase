@@ -127,7 +127,7 @@ A Person, with or without an Account, whom the Submitter credits on a Work. Addi
 _Avoid_: Collaborator, editor, member
 
 **Contributor Candidate**:
-An existing Student or Alumnus Person returned through a bounded, authenticated Student Roster search while a Submitter edits an owned Work Draft. A candidate exposes only the locked Roster first and last names plus a short-lived opaque reference; it never exposes Student ID, Account ID, or Person ID.
+An existing Student or Alumnus Person returned through a bounded, authenticated Student Roster search while a Submitter edits an owned Work Draft. A candidate exposes the locked Roster first and last names plus a short-lived opaque reference. When active Profile Consent exists, it may also expose the Person's public profile identifier, Entry Year, and ready-photo availability as optional identification context. It never exposes Student ID, Account ID, or Person ID.
 _Avoid_: Public Profile result, roster row
 
 **Attribution Snapshot**:

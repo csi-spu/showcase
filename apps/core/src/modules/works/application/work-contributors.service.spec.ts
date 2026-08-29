@@ -29,7 +29,18 @@ describe('WorkContributorsService', () => {
 
   it('searches bounded minimal candidates by name without returning private identifiers', async () => {
     repository.searchCandidates.mockResolvedValue({
-      candidates: [{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }],
+      candidates: [
+        {
+          candidateReference: REFERENCE,
+          firstName: 'สมชาย',
+          lastName: 'ใจดี',
+          publicProfile: {
+            entryYear: 2566,
+            hasPhoto: true,
+            publicId: '76000000-0000-4000-8000-000000000005',
+          },
+        },
+      ],
       outcome: 'matches',
     });
     await expect(
@@ -39,7 +50,18 @@ describe('WorkContributorsService', () => {
         sourceAddress: 'safe-source',
         workPublicId: WORK_ID,
       }),
-    ).resolves.toEqual([{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }]);
+    ).resolves.toEqual([
+      {
+        candidateReference: REFERENCE,
+        firstName: 'สมชาย',
+        lastName: 'ใจดี',
+        publicProfile: {
+          entryYear: 2566,
+          hasPhoto: true,
+          publicId: '76000000-0000-4000-8000-000000000005',
+        },
+      },
+    ]);
     expect(repository.searchCandidates.mock.calls[0]?.[0]).toEqual({
       actorAccountId: ACCOUNT_ID,
       nameQuery: 'สมชาย',
@@ -52,7 +74,14 @@ describe('WorkContributorsService', () => {
 
   it('hashes an exact Student ID but never returns it', async () => {
     repository.searchCandidates.mockResolvedValue({
-      candidates: [{ candidateReference: REFERENCE, firstName: 'สมชาย', lastName: 'ใจดี' }],
+      candidates: [
+        {
+          candidateReference: REFERENCE,
+          firstName: 'สมชาย',
+          lastName: 'ใจดี',
+          publicProfile: null,
+        },
+      ],
       outcome: 'matches',
     });
     const result = await service.search({

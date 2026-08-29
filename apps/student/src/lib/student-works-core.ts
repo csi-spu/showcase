@@ -180,6 +180,14 @@ const contributorCandidateSchema = z
     candidateReference: z.uuid(),
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
+    publicProfile: z
+      .object({
+        entryYear: z.number().int().min(2400).max(9999),
+        hasPhoto: z.boolean(),
+        publicId: z.uuid(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 const tagSuggestionSchema = z

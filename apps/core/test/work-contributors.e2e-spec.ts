@@ -26,6 +26,11 @@ describe('direct Work Contributors (e2e)', () => {
         candidateReference: CANDIDATE_REFERENCE,
         firstName: 'สมชาย',
         lastName: 'ใจดี',
+        publicProfile: {
+          entryYear: 2566,
+          hasPhoto: true,
+          publicId: '57000000-0000-4000-8000-000000000006',
+        },
       },
     ]),
     remove: jest.fn().mockResolvedValue({
@@ -85,6 +90,11 @@ describe('direct Work Contributors (e2e)', () => {
         candidateReference: CANDIDATE_REFERENCE,
         firstName: 'สมชาย',
         lastName: 'ใจดี',
+        publicProfile: {
+          entryYear: 2566,
+          hasPhoto: true,
+          publicId: '57000000-0000-4000-8000-000000000006',
+        },
       },
     ]);
     expect(JSON.stringify(response.body)).not.toMatch(/studentId|accountId|personId|12345678/i);

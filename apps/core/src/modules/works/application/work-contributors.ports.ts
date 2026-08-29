@@ -11,6 +11,11 @@ export interface ContributorCandidateView {
   candidateReference: string;
   firstName: string;
   lastName: string;
+  publicProfile: {
+    entryYear: number;
+    hasPhoto: boolean;
+    publicId: string;
+  } | null;
 }
 
 export type ContributorMutationFailure =
