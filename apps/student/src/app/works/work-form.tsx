@@ -292,7 +292,7 @@ export function WorkForm({
           {step === 0 ? (
             <DetailsStep context={context} t={t} update={update} values={values} />
           ) : null}
-          {step === 1 ? (
+          <div hidden={step !== 1}>
             <MediaStep
               onVersion={(next) => {
                 applyMutationVersion(next);
@@ -302,7 +302,7 @@ export function WorkForm({
               t={t}
               version={version}
             />
-          ) : null}
+          </div>
           {step === 2 ? (
             <AttributionStep
               attributionName={effectiveWork?.submitterAttributionName ?? null}

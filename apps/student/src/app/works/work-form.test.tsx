@@ -29,7 +29,14 @@ vi.mock('./work.actions', () => ({
 vi.mock('./work-contributor-editor', () => ({
   WorkContributorEditor: () => <div>contributor-editor</div>,
 }));
-vi.mock('./work-media-upload', () => ({ WorkMediaUpload: () => <div>media-upload</div> }));
+vi.mock('./work-media-upload', () => ({
+  WorkMediaUpload: ({ mediaKind }: { mediaKind: 'gallery' | 'poster' }) => (
+    <div>
+      media-upload
+      <input aria-label={`media-client-state-${mediaKind}`} />
+    </div>
+  ),
+}));
 import { WorkForm } from './work-form';
 
 describe('five-step Work authoring', () => {
@@ -237,6 +244,20 @@ describe('five-step Work authoring', () => {
 
     expect(mocks.saveDraft).not.toHaveBeenCalled();
     expect(screen.getAllByText('media-upload')).toHaveLength(2);
+  });
+
+  it('preserves client-side media state after advancing and returning to the media step', async () => {
+    renderForm(savedWorkResult().work);
+    await advanceSteps(1);
+    const posterState = screen.getByLabelText('media-client-state-poster');
+    fireEvent.change(posterState, { target: { value: 'uploaded-preview' } });
+
+    await advanceSteps(1);
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
+
+    expect((screen.getByLabelText('media-client-state-poster') as HTMLInputElement).value).toBe(
+      'uploaded-preview',
+    );
   });
 
   it('maps invalid optional discovery data back to step four and reviews every field group', async () => {
