@@ -49,7 +49,7 @@ The authoritative Thai first and last names recorded for a Student or Alumnus Pe
 _Avoid_: Display Name, profile name, nickname
 
 **Roster Batch**:
-A Student Roster file whose rows may span multiple Entry Years and are processed asynchronously in bounded, retry-safe chunks. Each row derives its Entry Year from its Student ID. Importing the same rows again leaves existing records unchanged and reports the outcome.
+A bounded Admin submission containing either one manually entered Student Roster row or rows from one Student Roster file. Its rows may span multiple Entry Years and are processed asynchronously in bounded, retry-safe chunks. Each row derives its Entry Year from its Student ID. Submitting the same rows again leaves existing records unchanged and reports the outcome.
 _Avoid_: Account batch, CSV upload
 
 **Roster Conflict**:

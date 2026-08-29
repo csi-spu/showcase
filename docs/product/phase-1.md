@@ -6,7 +6,7 @@ Publish reviewed Student Works and consented Public Profiles through a Thai-firs
 
 ## Included
 
-- Annual CSV Student Roster import with additive idempotency, row-level errors, conflict reporting, and downloadable error CSV.
+- Individual Student Roster entry and annual CSV import with additive idempotency, row-level errors, conflict reporting, and downloadable error CSV.
 - Student ID/password login through Core and Supabase Auth.
 - Forced password change on first login and after Admin reset.
 - Eight-academic-year Student Access Period with individual Admin extension.
@@ -27,13 +27,12 @@ Publish reviewed Student Works and consented Public Profiles through a Thai-firs
 
 ## Student Roster constraints
 
-- A Roster Batch is a UTF-8 CSV of at most 5 MB and 10,000 data rows. Its header is exactly `student_id`, `first_name_th`, and `last_name_th`; missing or unknown columns reject the file before processing.
-- Student ID is exactly eight ASCII digits. Its first two digits must match the last two digits of the selected Buddhist Entry Year.
-- Thai first and last names are required, trimmed, and Unicode-normalized for comparison. Every occurrence of a duplicated Student ID within one file is a row error so processing does not depend on row order.
-- The Admin selects one Entry Year for the Roster Batch. Core derives each row's Entry Year from its Student ID and rejects a row when the derived year does not match the selected year.
+- A Roster Batch contains either one Student entered by an Admin or a UTF-8 CSV of at most 5 MB and 10,000 data rows. A CSV header is exactly `student_id`, `first_name_th`, and `last_name_th`; missing or unknown columns reject the file before processing.
+- Student ID is exactly eight ASCII digits. Core derives the Buddhist Entry Year by prefixing `25` to its first two digits; the Admin never enters or selects Entry Year.
+- Thai first and last names are required, trimmed, and Unicode-normalized for comparison. Every occurrence of a duplicated Student ID within one CSV is a row error so processing does not depend on row order.
 - Processing an accepted row idempotently creates or retains its Person, Student, Account, and private synthetic Supabase Auth identity. First login never provisions an Account.
 - Core persists the Roster Batch before processing it asynchronously in bounded, retry-safe chunks. Its visible lifecycle is `pending`, `processing`, `completed`, or `completed_with_errors`.
-- Reaching a completed state creates one idempotent in-app notification for the Admin who uploaded the Roster Batch; notification presentation remains part of the notification specification.
+- Reaching a completed state creates one idempotent in-app notification for the Admin who submitted the Roster Batch; notification presentation remains part of the notification specification.
 - A row whose Student ID matches the same normalized Thai first and last names is idempotently unchanged. Different names create a Roster Conflict without changing the existing Person or Account. These Roster first and last names are the only Account-backed Person name fields in Phase 1; Students and Alumni cannot edit them.
 - An Admin resolves a Roster Conflict through an audited `keep_existing` or `accept_incoming_name` action. Accepting the incoming name requires a reason and changes only the Person's private Thai first and last names.
 - Conflict resolution never reassigns a Student ID, Account, Public Profile, or Work history to another Person.

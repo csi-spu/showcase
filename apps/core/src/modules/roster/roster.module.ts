@@ -7,11 +7,12 @@ import { RosterWorker } from './application/roster.worker';
 import { PostgresRosterRepository } from './infrastructure/postgres-roster.repository';
 import { SupabaseStudentIdentityAdapter } from './infrastructure/supabase-student-identity.adapter';
 import { AdminRosterController } from './transport/admin-roster.controller';
+import { AdminRosterStudentController } from './transport/admin-roster-student.controller';
 import { RosterExceptionFilter } from './transport/roster-exception.filter';
 
 @Module({
   imports: [AuthModule],
-  controllers: [AdminRosterController],
+  controllers: [AdminRosterController, AdminRosterStudentController],
   providers: [
     RosterImportService,
     RosterWorker,

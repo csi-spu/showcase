@@ -7,6 +7,36 @@ const config = {
 };
 
 describe('AdminRosterCoreClient', () => {
+  it('queues one Student without sending a client-owned Entry Year', async () => {
+    const response = {
+      batchId: '20000000-0000-4000-8000-000000000001',
+      createdCount: 0,
+      entryYears: [2569],
+      failedCount: 0,
+      processedRowCount: 0,
+      status: 'pending',
+      totalRowCount: 1,
+      unchangedCount: 0,
+      uploadedAt: '2026-08-25T06:00:00.000Z',
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    const client = new AdminRosterCoreClient(config, fetchMock);
+
+    await expect(
+      client.createStudent('opaque-session', {
+        firstNameTh: 'สมชาย',
+        lastNameTh: 'ใจดี',
+        studentId: '69000001',
+      }),
+    ).resolves.toEqual(response);
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ firstNameTh: 'สมชาย', lastNameTh: 'ใจดี', studentId: '69000001' }),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://core.example.test/v1/internal/admin/roster-students',
+    );
+  });
+
   it('uploads private CSV bytes with an opaque Admin session', async () => {
     const response = {
       batchId: '20000000-0000-4000-8000-000000000001',

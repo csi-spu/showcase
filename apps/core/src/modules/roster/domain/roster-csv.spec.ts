@@ -1,4 +1,24 @@
-import { RosterCsvError, parseRosterCsv } from './roster-csv';
+import { RosterCsvError, parseRosterCsv, prepareRosterStudent } from './roster-csv';
+
+describe('prepareRosterStudent', () => {
+  it('normalizes names and derives the Buddhist Entry Year from Student ID', () => {
+    const decomposedName = '\u0E01\u0E33';
+
+    expect(
+      prepareRosterStudent({
+        firstNameTh: ` ${decomposedName} `,
+        lastNameTh: ' ใจดี ',
+        studentId: '69000001',
+      }),
+    ).toEqual({
+      entryYear: 2569,
+      firstNameTh: decomposedName.normalize('NFC'),
+      lastNameTh: 'ใจดี',
+      rowNumber: 2,
+      studentId: '69000001',
+    });
+  });
+});
 
 describe('parseRosterCsv', () => {
   it('accepts the exact header and normalizes trimmed Thai names to NFC', () => {

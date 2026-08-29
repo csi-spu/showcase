@@ -1,5 +1,5 @@
 import { Button } from '@showcase/ui/button';
-import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon } from 'lucide-react';
+import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon, UserPlusIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +23,13 @@ import {
 import { ChangePasswordForm, LoginForm, LogoutForm } from './admin-auth-forms';
 import { RosterBatchStatus } from './roster-batch-status';
 import { RosterConflictList } from './roster-conflict-list';
+import { RosterStudentForm } from './roster-student-form';
 import { RosterUploadForm } from './roster-upload-form';
-import { resolveRosterConflictAction, uploadRosterAction } from './roster.actions';
+import {
+  createRosterStudentAction,
+  resolveRosterConflictAction,
+  uploadRosterAction,
+} from './roster.actions';
 import { AdminWorkspaceShell } from './admin-workspace-shell';
 
 interface HomeProps {
@@ -105,7 +110,18 @@ export default async function Home({ searchParams }: HomeProps) {
           ) : null}
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <Card className="border-l-4 border-l-primary xl:col-span-7">
+            <Card className="border-l-4 border-l-primary xl:col-span-5">
+              <CardHeader>
+                <UserPlusIcon aria-hidden="true" className="size-6 text-primary" />
+                <CardTitle>{rosterT('single.title')}</CardTitle>
+                <CardDescription>{rosterT('single.description')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <RosterStudentForm action={createRosterStudentAction} />
+              </CardContent>
+            </Card>
+
+            <Card className="xl:col-span-7">
               <CardHeader>
                 <FileSpreadsheetIcon aria-hidden="true" className="size-6 text-primary" />
                 <CardTitle>{rosterT('form.groupLabel')}</CardTitle>
@@ -116,7 +132,7 @@ export default async function Home({ searchParams }: HomeProps) {
               </CardContent>
             </Card>
 
-            <Card className="xl:col-span-5">
+            <Card className="xl:col-span-12">
               <CardHeader>
                 <ListChecksIcon aria-hidden="true" className="size-6 text-primary" />
                 <CardTitle>{rosterT('preparation.title')}</CardTitle>

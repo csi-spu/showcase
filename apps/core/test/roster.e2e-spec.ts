@@ -170,6 +170,57 @@ describe('Admin Roster Batch API (e2e)', () => {
     await app.close();
   });
 
+  it('queues one Student with server-derived Entry Year and returns no private identity data', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/internal/admin/roster-students')
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
+      .send({ firstNameTh: 'สมชาย', lastNameTh: 'ใจดี', studentId: '69000001' })
+      .expect(202);
+
+    expect(created.body).toMatchObject({
+      entryYears: [2569],
+      status: 'pending',
+      totalRowCount: 1,
+    });
+    expect(repository.input).toMatchObject({
+      uploaderAccountId: ADMIN_ACCOUNT_ID,
+      rows: [expect.objectContaining({ entryYear: 2569, firstNameTh: 'สมชาย' })],
+    });
+    expect(JSON.stringify(created.body)).not.toContain('69000001');
+  });
+
+  it.each([
+    [
+      'an invalid Student ID',
+      { firstNameTh: 'สมชาย', lastNameTh: 'ใจดี', studentId: '6900000' },
+      400,
+      'INVALID_REQUEST',
+    ],
+    [
+      'an empty normalized name',
+      { firstNameTh: '   ', lastNameTh: 'ใจดี', studentId: '69000001' },
+      422,
+      'INVALID_FIRST_NAME',
+    ],
+    [
+      'a client-owned Entry Year',
+      { entryYear: 2500, firstNameTh: 'สมชาย', lastNameTh: 'ใจดี', studentId: '69000001' },
+      400,
+      'INVALID_REQUEST',
+    ],
+  ])('rejects %s before queuing work', async (_case, body, status, code) => {
+    await request(app.getHttpServer())
+      .post('/v1/internal/admin/roster-students')
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
+      .send(body)
+      .expect(status)
+      .expect({ error: { code } });
+
+    expect(repository.batch).toBeNull();
+  });
+
   it('accepts multiple cohorts in one private CSV and returns safe Batch status', async () => {
     const csv = Buffer.from(
       'student_id,first_name_th,last_name_th\n66000001,สมชาย,ใจดี\n70000001,สมหญิง,มั่นคง',
