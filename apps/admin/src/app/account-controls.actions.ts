@@ -67,17 +67,13 @@ export async function manageStudentAccountAction(
       };
     }
     if (input.operation === 'correctName') {
-      const student = await coreClient().correctStudentName(
-        sessionToken,
-        input.studentAccountId,
-        {
-          expectedVersion: input.expectedVersion,
-          firstNameTh: input.firstNameTh,
-          idempotencyKey: input.idempotencyKey,
-          lastNameTh: input.lastNameTh,
-          reason: input.reason,
-        },
-      );
+      const student = await coreClient().correctStudentName(sessionToken, input.studentAccountId, {
+        expectedVersion: input.expectedVersion,
+        firstNameTh: input.firstNameTh,
+        idempotencyKey: input.idempotencyKey,
+        lastNameTh: input.lastNameTh,
+        reason: input.reason,
+      });
       return {
         error: null,
         idempotencyKey: randomUUID(),

@@ -127,8 +127,7 @@ export function WorkTagInput({
           onChange={(event) => {
             const nextQuery = event.target.value;
             const nextNormalized = normalizeLabel(nextQuery);
-            const canSuggest =
-              nextNormalized.length >= 2 && !nextQuery.includes(',') && !isAtLimit;
+            const canSuggest = nextNormalized.length >= 2 && !nextQuery.includes(',') && !isAtLimit;
             setQuery(nextQuery);
             setActiveIndex(0);
             setIsLoading(canSuggest);
@@ -210,9 +209,7 @@ export function WorkTagInput({
           </ul>
         ) : null}
       </div>
-      <FieldDescription>
-        {isAtLimit ? t('tagInput.limit') : t('tagInput.help')}
-      </FieldDescription>
+      <FieldDescription>{isAtLimit ? t('tagInput.limit') : t('tagInput.help')}</FieldDescription>
       {hasComma ? <FieldError>{t('tagInput.noComma')}</FieldError> : null}
       {isUnavailable ? <FieldError>{t('tagInput.unavailable')}</FieldError> : null}
     </Field>

@@ -17,10 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
-import {
-  StudentProfileCoreClient,
-  StudentProfileCoreError,
-} from '@/lib/student-profile-core';
+import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student-profile-core';
 import { logoutAction } from './student-auth.actions';
 import { LogoutForm } from './student-auth-forms';
 import { StudentBrand } from './student-brand';
@@ -122,9 +119,7 @@ export async function StudentWorkspaceShell({
               )}
             </span>
             <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <span className="block truncate text-sm font-semibold">
-                {rosterName}
-              </span>
+              <span className="block truncate text-sm font-semibold">{rosterName}</span>
               {sidebarProfile ? (
                 <span className="block truncate text-xs text-muted-foreground">
                   {t('profile.entryYear', { year: sidebarProfile.entryYear })}
