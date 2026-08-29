@@ -1,459 +1,85 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StudentWorksCoreClient } from './student-works-core';
-
 const SESSION = 'opaque-session';
 const PUBLIC_ID = '64000000-0000-4000-8000-000000000001';
-const IDEMPOTENCY_KEY = '64000000-0000-4000-8000-000000000002';
 
 describe('StudentWorksCoreClient', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('lists owned Works with every private lifecycle state and an encoded cursor', async () => {
-    const nextCursor = 'cursor/value+with=symbols';
-    const item = {
-      activityState: 'active' as const,
-      hasDraft: true,
-      latestRevisionStatus: 'changes_requested' as const,
-      publicationState: 'published' as const,
-      publicId: PUBLIC_ID,
-      title: 'ระบบแนะนำผลงาน',
-      updatedAt: '2026-08-25T10:00:00.000Z',
+  it('requests one authoritative workspace summary', async () => {
+    const response = {
+      canMutate: true,
+      changeRequestCount: 1,
+      draftCount: 2,
+      latestActionableDraftPublicId: PUBLIC_ID,
+      pendingReviewCount: 3,
+      publishedCount: 4,
+      unreadNotificationCount: 5,
     };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ items: [item], nextCursor }));
-    const client = createClient(fetchMock);
-
-    await expect(client.listWorks(SESSION, { cursor: nextCursor, limit: 20 })).resolves.toEqual({
-      items: [item],
-      nextCursor,
-    });
-
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    await expect(client(fetchMock).getWorkspaceSummary(SESSION)).resolves.toEqual(response);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `https://core.example.test/v1/internal/student/works?limit=20&cursor=${encodeURIComponent(nextCursor)}`,
+      'https://core.example.test/v1/internal/student/works/workspace-summary',
     );
   });
 
-  it('reads safe authoring bounds and one private Work Draft through the BFF', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ currentAcademicYear: 2569, entryYear: 2566 }))
-      .mockResolvedValueOnce(Response.json(work()));
-    const client = createClient(fetchMock);
-
-    await expect(client.getAuthoringContext(SESSION)).resolves.toEqual({
-      currentAcademicYear: 2569,
-      entryYear: 2566,
-    });
-    await expect(client.getWork(SESSION, PUBLIC_ID)).resolves.toMatchObject({
-      publicId: PUBLIC_ID,
-      version: 1,
-    });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://core.example.test/v1/internal/student/works/authoring-context',
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}`,
-    ]);
-    for (const [, init] of fetchMock.mock.calls) {
-      expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${SESSION}`);
-      expect(new Headers(init?.headers).get('x-student-bff-secret')).toBe('server-secret');
-      expect(init?.cache).toBe('no-store');
-    }
-  });
-
-  it('creates and updates only the generic Work Draft contract', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ outcome: 'created', work: work() }))
-      .mockResolvedValueOnce(
-        Response.json({ outcome: 'updated', work: { ...work(), version: 2 } }),
-      );
-    const client = createClient(fetchMock);
-    const input = mutationInput();
-
-    await client.createWork(SESSION, input);
-    await client.updateWork(SESSION, PUBLIC_ID, { ...input, expectedVersion: 1 });
-
-    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'PUT']);
-    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
-      input,
-      { ...input, expectedVersion: 1 },
-    ]);
-    expect(fetchMock.mock.calls.map(([, init]) => String(init?.body)).join('')).not.toMatch(
-      /studentId|accountId|personId|media|contributor/i,
-    );
-  });
-
-  it('reads Published Work authoring state and sends explicit seed/rebase commands', async () => {
-    const publishedRevisionId = '64000000-0000-4000-8000-000000000003';
-    const publishedWork = {
-      ...work(),
-      basePublishedRevisionId: publishedRevisionId,
-      publicationState: 'published' as const,
-      publishedRevisionId,
-    };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({
-          activityState: 'active',
-          draft: null,
-          publicationState: 'published',
-          publishedRevisionId,
-          publicId: PUBLIC_ID,
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ outcome: 'created', work: publishedWork }))
-      .mockResolvedValueOnce(
-        Response.json({ outcome: 'updated', work: { ...publishedWork, version: 2 } }),
-      );
-    const client = createClient(fetchMock);
-
-    await expect(client.getAuthoringState(SESSION, PUBLIC_ID)).resolves.toMatchObject({
-      draft: null,
-      publishedRevisionId,
-    });
-    await client.seedPublishedDraft(SESSION, PUBLIC_ID, {
-      expectedPublishedRevisionId: publishedRevisionId,
-      idempotencyKey: IDEMPOTENCY_KEY,
-    });
-    await client.rebaseDraft(SESSION, PUBLIC_ID, {
-      expectedPublishedRevisionId: publishedRevisionId,
-      expectedVersion: 1,
-      idempotencyKey: IDEMPOTENCY_KEY,
-    });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/authoring-state`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/draft`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/draft/rebase`,
-    ]);
-    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'POST']);
-  });
-
-  it('uses recovery state and Removal Request contracts without exposing actor identifiers', async () => {
-    const requestPublicId = '64000000-0000-4000-8000-000000000004';
-    const recovery = {
-      activityState: 'active',
-      publicationState: 'published',
-      publicId: PUBLIC_ID,
-      publishedRevisionId: '64000000-0000-4000-8000-000000000005',
-      publishedRevisionPublicId: '64000000-0000-4000-8000-000000000003',
-      version: 2,
-    };
-    const removalRequest = {
-      createdAt: '2026-08-26T05:00:00.000Z',
-      decisionReason: null,
-      publicId: requestPublicId,
-      reason: 'ต้องการหยุดเผยแพร่ผลงานชิ้นนี้',
-      revisionPublicId: recovery.publishedRevisionPublicId,
-      state: 'pending',
-      title: 'ระบบแนะนำผลงาน',
-      version: 1,
-      workVersion: 2,
-      workPublicId: PUBLIC_ID,
-    };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json(recovery))
-      .mockResolvedValueOnce(Response.json({ request: removalRequest }))
-      .mockResolvedValueOnce(Response.json({ outcome: 'created', request: removalRequest }))
-      .mockResolvedValueOnce(
-        Response.json({
-          outcome: 'resolved',
-          request: { ...removalRequest, state: 'cancelled', version: 2 },
-        }),
-      );
-    const client = createClient(fetchMock);
-
-    await client.getRecoveryState(SESSION, PUBLIC_ID);
-    await client.getPendingRemovalRequest(SESSION, PUBLIC_ID);
-    await client.createRemovalRequest(SESSION, PUBLIC_ID, {
-      expectedWorkVersion: 2,
-      idempotencyKey: IDEMPOTENCY_KEY,
-      reason: removalRequest.reason,
-    });
-    await client.cancelRemovalRequest(SESSION, requestPublicId, {
-      expectedVersion: 1,
-      idempotencyKey: IDEMPOTENCY_KEY,
-    });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/recovery-state`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/removal-request`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/removal-requests`,
-      `https://core.example.test/v1/internal/student/removal-requests/${requestPublicId}/cancel`,
-    ]);
-    expect(fetchMock.mock.calls.map(([, init]) => String(init?.body)).join('')).not.toMatch(
-      /actorAccountId|studentId|personId/i,
-    );
-  });
-
-  it('uses exact private Work media contracts through Core', async () => {
-    const assetId = '64000000-0000-4000-8000-000000000003';
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({
-          assetId,
-          expiresAt: '2026-08-25T12:10:00.000Z',
-          headers: { 'content-type': 'image/jpeg' },
-          status: 'pending_upload',
-          uploadUrl: 'https://r2.example.test/presigned',
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ assetId, status: 'uploaded' }))
-      .mockResolvedValueOnce(
-        Response.json({
-          assetId,
-          preview: {
-            expiresAt: '2026-08-25T12:10:00.000Z',
-            height: 1600,
-            url: 'https://r2.example.test/preview',
-            width: 1200,
-          },
-          rejectionCode: null,
-          status: 'ready',
-          warnings: [],
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ outcome: 'attached', version: 2 }));
-    const client = createClient(fetchMock);
-
-    await client.authorizeMediaUpload(SESSION, PUBLIC_ID, {
-      byteSize: 1024,
-      contentType: 'image/jpeg',
-      fileExtension: 'jpg',
-      idempotencyKey: IDEMPOTENCY_KEY,
-      mediaKind: 'poster',
-    });
-    await client.finalizeMediaUpload(SESSION, PUBLIC_ID, assetId);
-    await expect(client.getMediaUploadStatus(SESSION, PUBLIC_ID, assetId)).resolves.toMatchObject({
-      preview: { width: 1200 },
-      status: 'ready',
-    });
-    await client.attachMedia(SESSION, PUBLIC_ID, {
-      assetId,
-      expectedVersion: 1,
-      mediaKind: 'poster',
-    });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${assetId}/finalize`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media-uploads/${assetId}`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media`,
-    ]);
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      byteSize: 1024,
-      contentType: 'image/jpeg',
-      fileExtension: 'jpg',
-      idempotencyKey: IDEMPOTENCY_KEY,
-      mediaKind: 'poster',
-    });
-  });
-
-  it('uses bounded invitation contracts without exposing Account or Person identifiers', async () => {
-    const invitation = {
-      affiliation: null,
-      attributionName: null,
-      contributionRole: null,
-      createdAt: '2026-08-25T10:00:00.000Z',
-      expiresAt: '2026-09-08T10:00:00.000Z',
-      kind: 'account' as const,
-      proposedAttributionName: null,
-      publicId: '64000000-0000-4000-8000-000000000004',
-      state: 'pending' as const,
-      studyYear: null,
-      version: 1,
-    };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ items: [invitation], nextCursor: null }))
-      .mockResolvedValueOnce(Response.json({ outcome: 'received' }))
-      .mockResolvedValueOnce(Response.json({ outcome: 'accepted' }));
-    const client = createClient(fetchMock);
-
-    await expect(client.listReceivedInvitations(SESSION)).resolves.toEqual({
-      items: [invitation],
+  it('binds the exact-12 Work page cursor to the selected view', async () => {
+    const response = {
+      hasNextPage: false,
+      hasPreviousPage: false,
+      items: [],
       nextCursor: null,
-    });
-    await client.createAccountInvitation(SESSION, PUBLIC_ID, {
-      idempotencyKey: IDEMPOTENCY_KEY,
-      studentId: '69000001',
-    });
-    await client.transitionAccountInvitation(SESSION, invitation.publicId, 'accept', {
-      attributionName: 'ผู้ร่วมผลงาน',
-      consent: true,
-      expectedVersion: 1,
-      idempotencyKey: IDEMPOTENCY_KEY,
-      studyYear: 4,
-    });
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://core.example.test/v1/internal/student/contributor-invitations',
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/contributor-invitations/account`,
-      `https://core.example.test/v1/internal/student/contributor-invitations/${invitation.publicId}/accept`,
-    ]);
-    expect(JSON.stringify(invitation)).not.toMatch(/accountId|personId|studentId/i);
-  });
-
-  it('submits, reads, withdraws, and receives Change Request feedback through exact contracts', async () => {
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-    const revision = workRevision();
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ outcome: 'created', revision }))
-      .mockResolvedValueOnce(Response.json({ revision }))
-      .mockResolvedValueOnce(
-        Response.json({ outcome: 'withdrawn', revision: { ...revision, status: 'withdrawn' } }),
-      )
-      .mockResolvedValueOnce(Response.json({ review: changeRequest() }));
-    const client = createClient(fetchMock);
-    const submitInput = {
-      attributionName: 'ชื่อผู้ส่ง',
-      expectedBasePublishedRevisionId: null,
-      expectedDraftVersion: 1,
-      idempotencyKey: IDEMPOTENCY_KEY,
-      studyYear: 2,
+      previousCursor: null,
     };
-
-    await client.submitRevision(SESSION, PUBLIC_ID, submitInput);
-    await expect(client.getPendingRevision(SESSION, PUBLIC_ID)).resolves.toEqual(revision);
-    await client.withdrawRevision(SESSION, PUBLIC_ID, revision.publicId, {
-      expectedRevisionVersion: 1,
-      idempotencyKey: IDEMPOTENCY_KEY,
-    });
-    await expect(client.getLatestChangeRequest(SESSION, PUBLIC_ID)).resolves.toEqual(
-      changeRequest(),
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+    await client(fetchMock).listWorks(SESSION, { cursor: 'signed.cursor', view: 'saved' });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://core.example.test/v1/internal/student/works?view=saved&cursor=signed.cursor',
     );
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/pending`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/${revision.publicId}/withdraw`,
-      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/change-request`,
-    ]);
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(submitInput);
-    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
   });
-  it('uses recovery-code session endpoints for External Contributor removal', async () => {
-    const removal = {
-      attributionName: 'Alex Example',
-      correctionRevisionPublicId: null,
-      createdAt: '2026-08-26T05:00:00.000Z',
-      publicId: '64000000-0000-4000-8000-000000000011',
-      reason: 'ขอถอนชื่อออกจากผลงานนี้',
-      revisionPublicId: '64000000-0000-4000-8000-000000000012',
-      state: 'pending',
-      version: 1,
-      workPublicId: PUBLIC_ID,
-    };
+
+  it('uses Student ID only in the private lookup request and accepts a response that cannot echo it', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
+      .mockResolvedValue(
         Response.json({
-          invitation: {
-            affiliation: null,
-            attributionName: 'Alex Example',
-            contributionRole: 'Advisor',
-            createdAt: '2026-08-25T15:00:00.000Z',
-            expiresAt: '2026-09-08T15:00:00.000Z',
-            kind: 'external',
-            proposedAttributionName: 'Alex Example',
-            publicId: '64000000-0000-4000-8000-000000000013',
-            state: 'accepted',
-            studyYear: null,
-            version: 2,
-          },
-          invitationSessionToken: 'session',
-          sessionExpiresAt: '2026-08-26T05:30:00.000Z',
+          candidateReference: '64000000-0000-4000-8000-000000000002',
+          firstName: 'สมชาย',
+          lastName: 'ใจดี',
         }),
-      )
-      .mockResolvedValueOnce(Response.json(null))
-      .mockResolvedValueOnce(Response.json({ outcome: 'created', request: removal }));
-    const client = createClient(fetchMock);
-    await client.exchangeExternalRecoveryCode('recovery-secret-123');
-    await client.getAttributionRemovalRequest('session');
-    await client.createAttributionRemovalRequest('session', {
-      idempotencyKey: IDEMPOTENCY_KEY,
-      reason: removal.reason,
+      );
+    await expect(
+      client(fetchMock).lookupContributor(SESSION, PUBLIC_ID, '12345678'),
+    ).resolves.toEqual({
+      candidateReference: '64000000-0000-4000-8000-000000000002',
+      firstName: 'สมชาย',
+      lastName: 'ใจดี',
     });
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://core.example.test/v1/internal/student/external-contributor-recovery/exchange',
-      'https://core.example.test/v1/internal/student/external-contributor-recovery/removal-request',
-      'https://core.example.test/v1/internal/student/external-contributor-recovery/removal-requests',
-    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      studentId: '12345678',
+    });
+  });
+
+  it('requests an owner-authorized processed media variant', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ url: 'https://media.example.test/private-variant' }));
+
+    await expect(
+      client(fetchMock).getPrivateMediaVariant(
+        SESSION,
+        PUBLIC_ID,
+        '64000000-0000-4000-8000-000000000003',
+        768,
+      ),
+    ).resolves.toEqual({ url: 'https://media.example.test/private-variant' });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media/64000000-0000-4000-8000-000000000003/variants/768`,
+    );
   });
 });
 
-function createClient(fetchImpl: typeof fetch) {
+function client(fetchImpl: typeof fetch) {
   return new StudentWorksCoreClient(
     { coreUrl: 'https://core.example.test', studentBffSecret: 'server-secret' },
     fetchImpl,
   );
-}
-
-function changeRequest() {
-  return {
-    decision: 'changes_requested' as const,
-    feedback: 'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
-    publicId: '64000000-0000-4000-8000-000000000004',
-    reason: 'content' as const,
-    revisionNumber: 1,
-    revisionPublicId: '64000000-0000-4000-8000-000000000003',
-    reviewedAt: '2026-08-25T16:00:00.000Z',
-    workPublicId: PUBLIC_ID,
-  };
-}
-
-function mutationInput() {
-  return {
-    academicPeriod: { semester: '1' as const, year: 2569 },
-    category: 'course_work' as const,
-    description: 'รายละเอียดผลงาน',
-    idempotencyKey: IDEMPOTENCY_KEY,
-    links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
-    summary: 'สรุปผลงาน',
-    tags: ['React'],
-    title: 'ระบบแนะนำผลงาน',
-    videoLinks: [],
-  };
-}
-
-function work() {
-  return {
-    activityState: 'active' as const,
-    basePublishedRevisionId: null,
-    draft: {
-      academicPeriod: { semester: '1' as const, year: 2569 },
-      category: 'course_work' as const,
-      description: 'รายละเอียดผลงาน',
-      links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
-      summary: 'สรุปผลงาน',
-      tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
-      title: 'ระบบแนะนำผลงาน',
-      videoLinks: [],
-    },
-    publicationState: 'never_published' as const,
-    publishedRevisionId: null,
-    publicId: PUBLIC_ID,
-    version: 1,
-  };
-}
-
-function workRevision() {
-  return {
-    authorKind: 'student_submission' as const,
-    attributions: [],
-    content: work().draft,
-    media: [],
-    number: 1,
-    publicId: '64000000-0000-4000-8000-000000000003',
-    status: 'pending_review' as const,
-    submittedAt: '2026-08-25T15:00:00.000Z',
-    version: 1,
-    withdrawnAt: null,
-    workPublicId: PUBLIC_ID,
-  };
 }

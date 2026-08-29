@@ -8,11 +8,9 @@ import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student
 import {
   createPhotoUploadAction,
   finalizePhotoUploadAction,
-  grantConsentAction,
   updateProfileAction,
-  withdrawConsentAction,
 } from './profile.actions';
-import { ConsentPanel, ProfileForm } from './profile-form';
+import { ProfileForm } from './profile-form';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
 import { WorkspacePage } from '../workspace-page';
 
@@ -36,21 +34,14 @@ export default async function ProfilePage() {
     }
     throw error;
   }
-  const [t, updateIdempotencyKey, consentIdempotencyKey] = await Promise.all([
+  const [t, updateIdempotencyKey] = await Promise.all([
     getTranslations('ProfilePage'),
     Promise.resolve(randomUUID()),
-    Promise.resolve(randomUUID()),
   ]);
-  const publicProfileUrl = response.profile
-    ? new URL(
-        `/people/${response.profile.publicId}`,
-        getStudentServerEnvironment().visitorUrl,
-      ).toString()
-    : undefined;
 
   return (
     <StudentWorkspaceShell
-      activePage="profile"
+      activePage="edit-profile"
       canCreateWork={state.session.canUseStudentCapabilities}
       profile={response.profile}
     >
@@ -69,15 +60,6 @@ export default async function ProfilePage() {
             profile={response.profile}
             updateAction={updateProfileAction}
           />
-          {response.profile ? (
-            <ConsentPanel
-              grantAction={grantConsentAction}
-              idempotencyKey={consentIdempotencyKey}
-              profile={response.profile}
-              publicProfileUrl={publicProfileUrl}
-              withdrawAction={withdrawConsentAction}
-            />
-          ) : null}
         </div>
       </WorkspacePage>
     </StudentWorkspaceShell>

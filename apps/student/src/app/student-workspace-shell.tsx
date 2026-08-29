@@ -7,9 +7,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarProvider,
@@ -30,7 +27,7 @@ import { LogoutForm } from './student-auth-forms';
 import { StudentBrand } from './student-brand';
 import {
   StudentSidebarNavigation,
-  type StudentSidebarItem,
+  type StudentSidebarGroup,
   type StudentWorkspacePage,
 } from './student-sidebar-navigation';
 
@@ -53,31 +50,36 @@ export async function StudentWorkspaceShell({
     getTranslations('Workspace'),
     profile === undefined ? loadStudentSidebarProfile() : Promise.resolve(profile),
   ]);
-  const items: StudentSidebarItem[] = [
-    { href: '/', label: t('navigation.home'), page: 'home' },
-    { href: '/works', label: t('navigation.work'), page: 'work' },
-    ...(canCreateWork
-      ? [
-          {
-            href: '/works/new',
-            label: t('navigation.createWork'),
-            page: 'create-work' as const,
-          },
-        ]
-      : []),
+  const groups: StudentSidebarGroup[] = [
     {
-      href: '/contributor-invitations',
-      label: t('navigation.invitations'),
-      page: 'invitations',
+      items: [
+        { href: '/', label: t('navigation.dashboard'), page: 'dashboard' },
+        { href: '/notifications', label: t('navigation.notifications'), page: 'notifications' },
+      ],
+      label: t('navigation.overviewGroup'),
     },
     {
-      href: '/notifications',
-      label: t('navigation.notifications'),
-      page: 'notifications',
+      items: [
+        { href: '/works', label: t('navigation.allWorks'), page: 'works' },
+        { href: '/works/new', label: t('navigation.addWork'), page: 'add-work' },
+      ],
+      label: t('navigation.workGroup'),
+    },
+    {
+      items: [
+        { href: '/profile', label: t('navigation.editProfile'), page: 'edit-profile' },
+        {
+          href: '/profile/consent',
+          label: t('navigation.profileConsent'),
+          page: 'profile-consent',
+        },
+      ],
+      label: t('navigation.profileGroup'),
     },
   ];
-  const activeItem = items.find((item) => item.page === activePage);
-  const activeLabel = activePage === 'profile' ? t('navigation.profile') : activeItem?.label;
+  const activeLabel = groups
+    .flatMap((group) => group.items)
+    .find((item) => item.page === activePage)?.label;
   const statusLabel = canCreateWork ? t('status.active') : t('status.readOnly');
 
   return (
@@ -98,12 +100,7 @@ export async function StudentWorkspaceShell({
           </p>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('navigation.label')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <StudentSidebarNavigation activePage={activePage} items={items} />
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <StudentSidebarNavigation activePage={activePage} groups={groups} />
         </SidebarContent>
         <SidebarFooter className="gap-3 p-4 group-data-[collapsible=icon]:p-2">
           <Link

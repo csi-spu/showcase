@@ -65,7 +65,7 @@ describe('WorkMediaUpload', () => {
     expect(await screen.findByText('กำลังอัปโหลด 50%')).toBeTruthy();
     FakeXmlHttpRequest.latest?.respond(200);
 
-    await waitFor(() => expect(actions.attach).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('เพิ่มรูปภาพแล้ว')).toBeTruthy());
     expect(actions.authorize).toHaveBeenCalledWith({
       byteSize: file.size,
       contentType: 'image/jpeg',
@@ -78,6 +78,7 @@ describe('WorkMediaUpload', () => {
     expect(actions.attach).toHaveBeenCalledWith({
       assetId: ASSET_ID,
       expectedVersion: 1,
+      idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
       mediaKind: 'poster',
       publicId: PUBLIC_ID,
     });
@@ -143,7 +144,7 @@ describe('WorkMediaUpload', () => {
     FakeXmlHttpRequest.latest?.respond(200);
 
     expect(await screen.findByText(/ระบบปฏิเสธไฟล์รูปภาพ/)).toBeTruthy();
-    expect(actions.attach).not.toHaveBeenCalled();
+    expect(actions.attach).toHaveBeenCalledOnce();
   });
 });
 
@@ -154,7 +155,12 @@ function renderUpload({ height = 1600, width = 1200 }: { height?: number; width?
   );
   return render(
     <NextIntlClientProvider locale="th" messages={messages}>
-      <WorkMediaUpload expectedVersion={1} mediaKind="poster" publicId={PUBLIC_ID} />
+      <WorkMediaUpload
+        expectedVersion={1}
+        mediaKind="poster"
+        onVersion={vi.fn()}
+        publicId={PUBLIC_ID}
+      />
     </NextIntlClientProvider>,
   );
 }

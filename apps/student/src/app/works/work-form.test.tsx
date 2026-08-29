@@ -1,321 +1,278 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
-import type { WorkDraft } from '@/lib/student-works-core';
-import { WorkForm } from './work-form';
-import type { WorkActionState } from './work-action-state';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-
-const successAction = vi.fn(async (): Promise<WorkActionState> => ({
-  error: null,
-  fieldErrors: [],
-  idempotencyKey: '64000000-0000-4000-8000-000000000003',
-  success: true,
-  version: null,
+const mocks = vi.hoisted(() => ({
+  autosave: vi.fn(),
+  lookup: vi.fn(),
+  replace: vi.fn(),
+  submit: vi.fn(),
 }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: mocks.replace }),
+}));
+vi.mock('./work.actions', () => ({
+  addAccountContributorAction: vi.fn(),
+  addExternalContributorAction: vi.fn(),
+  autosaveWorkAction: mocks.autosave,
+  lookupContributorAction: mocks.lookup,
+  removeContributorAction: vi.fn(),
+  submitLatestWorkAction: mocks.submit,
+}));
+vi.mock('./work-media-upload', () => ({ WorkMediaUpload: () => <div>media-upload</div> }));
+import { WorkForm } from './work-form';
 
-describe('Student Work Draft form', () => {
+describe('five-step Work authoring', () => {
   afterEach(() => {
     cleanup();
-    vi.restoreAllMocks();
+    vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
-  it('guides creation through three clear steps and preserves the Work contract', async () => {
-    const user = userEvent.setup();
-    const { container } = renderForm();
-
-    expect(screen.getByText('ขั้นที่ 1 จาก 3')).toBeTruthy();
-    expect(screen.getByRole('group', { name: 'รายละเอียดผลงาน' })).toBeTruthy();
-    expect(screen.queryByRole('group', { name: 'ประเภทและช่วงเวลา' })).toBeNull();
-    expect(screen.getByLabelText('ชื่อผลงาน').getAttribute('maxlength')).toBe('150');
-    expect(screen.getByLabelText('สรุปผลงาน').getAttribute('maxlength')).toBe('300');
-    expect(screen.getByLabelText('รายละเอียดผลงาน').getAttribute('maxlength')).toBe('10000');
-
-    await user.type(screen.getByLabelText('ชื่อผลงาน'), 'ระบบแนะนำผลงาน');
-    await user.type(screen.getByLabelText('สรุปผลงาน'), 'สรุปสิ่งที่ผลงานทำ');
-    await user.type(screen.getByLabelText('รายละเอียดผลงาน'), 'รายละเอียดและที่มาของผลงาน');
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    expect(screen.getByText('ขั้นที่ 2 จาก 3')).toBeTruthy();
-    expect(screen.getByRole('combobox', { name: 'ประเภทผลงาน' })).toBeTruthy();
-    const categoryInput = container.querySelector('input[name="category"]') as HTMLInputElement;
-    for (const category of ['competition_entry', 'academic_article', 'course_work']) {
-      fireEvent.change(categoryInput, { target: { value: category } });
-      await waitFor(() => expect(categoryInput.value).toBe(category));
-    }
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    expect(screen.getByText('ขั้นที่ 3 จาก 3')).toBeTruthy();
-    expect(screen.getAllByRole('textbox', { name: /ชื่อของลิงก์/ })).toHaveLength(1);
-    expect(screen.getAllByRole('textbox', { name: /URL ของลิงก์/ })).toHaveLength(1);
-    expect(screen.getAllByRole('textbox', { name: /แท็ก/ })).toHaveLength(1);
-    expect(screen.getAllByRole('textbox', { name: /URL วิดีโอ/ })).toHaveLength(1);
-    await user.click(screen.getByRole('button', { name: 'เพิ่มลิงก์' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มแท็ก' }));
-    await user.click(screen.getByRole('button', { name: 'เพิ่มวิดีโอ' }));
-    expect(screen.getAllByRole('textbox', { name: /ชื่อของลิงก์/ })).toHaveLength(2);
-    expect(screen.getAllByRole('textbox', { name: /แท็ก/ })).toHaveLength(2);
-    expect(screen.getAllByRole('textbox', { name: /URL วิดีโอ/ })).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'สร้างร่างและเพิ่มรูป' })).toBeTruthy();
-    expect(screen.queryByText(/สื่อ|ผู้ร่วมผลงาน/)).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
-    await user.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
-    expect((screen.getByLabelText('ชื่อผลงาน') as HTMLInputElement).value).toBe('ระบบแนะนำผลงาน');
-  }, 20_000);
-
-  it('keeps the Student on the current step when a required field is missing', async () => {
-    const user = userEvent.setup();
+  it('shows exactly five approved steps and does not create a Work by opening the page', async () => {
+    vi.useFakeTimers();
     renderForm();
-
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    expect(screen.getByText('ขั้นที่ 1 จาก 3')).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByLabelText('ชื่อผลงาน'));
-    expect(screen.getByText('กรุณากรอกข้อมูลจำเป็นให้ครบ')).toBeTruthy();
-    expect(screen.getByText('กรุณากรอกชื่อผลงานไม่เกิน 150 ตัวอักษร')).toBeTruthy();
-    expect(screen.getByText('กรุณากรอกสรุปไม่เกิน 300 ตัวอักษร')).toBeTruthy();
-    expect(screen.getByText('กรุณากรอกรายละเอียดไม่เกิน 10,000 ตัวอักษร')).toBeTruthy();
+    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.getByRole('button', { name: /1 ข้อมูลผลงาน/ })).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(mocks.autosave).not.toHaveBeenCalled();
   });
 
-  it('shows prominent requirement badges, examples, and live character counts', async () => {
-    const user = userEvent.setup();
-    renderForm();
-
-    for (const badge of visibleRequirementLabels('จำเป็น')) {
-      expect(badge.getAttribute('data-slot')).toBe('badge');
-      expect(badge.className).toContain('text-destructive');
-    }
-    expect(screen.getByLabelText('ชื่อผลงาน').getAttribute('placeholder')).toMatch(/SMS/);
-    expect(screen.getByLabelText('สรุปผลงาน').getAttribute('placeholder')).toMatch(/ช่วยแก้ปัญหา/);
-    expect(screen.getByLabelText('รายละเอียดผลงาน').getAttribute('placeholder')).toMatch(
-      /ปัญหาที่พบ/,
-    );
-    expect(screen.getByText('0 / 300')).toBeTruthy();
-    expect(screen.getByText('0 / 10,000')).toBeTruthy();
-
-    await user.type(screen.getByLabelText('สรุปผลงาน'), 'abc');
-    await user.type(screen.getByLabelText('รายละเอียดผลงาน'), 'hello');
-    expect(screen.getByText('3 / 300')).toBeTruthy();
-    expect(screen.getByText('5 / 10,000')).toBeTruthy();
-  });
-
-  it('marks required fields and optional groups and rejects whitespace-only content', async () => {
-    const user = userEvent.setup();
-    const action = vi.fn(successAction);
-    renderForm({ action });
-
-    expect(visibleRequirementLabels('จำเป็น')).toHaveLength(3);
-    await user.type(screen.getByLabelText('ชื่อผลงาน'), '   ');
-    await user.type(screen.getByLabelText('สรุปผลงาน'), 'สรุปผลงาน');
-    await user.type(screen.getByLabelText('รายละเอียดผลงาน'), 'รายละเอียดผลงาน');
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    expect(screen.getByText('กรุณากรอกชื่อผลงานไม่เกิน 150 ตัวอักษร')).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByLabelText('ชื่อผลงาน'));
-    expect(action).not.toHaveBeenCalled();
-
-    await user.clear(screen.getByLabelText('ชื่อผลงาน'));
-    await user.type(screen.getByLabelText('ชื่อผลงาน'), 'ระบบแนะนำผลงาน');
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    expect(visibleRequirementLabels('จำเป็น')).toHaveLength(3);
-
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    expect(visibleRequirementLabels('ไม่บังคับ')).toHaveLength(3);
-  });
-
-  it('constrains Academic Period to the Submitter Entry Year through Current Academic Year', async () => {
-    const user = userEvent.setup();
-    renderForm();
-    fillRequiredDetails();
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    const year = screen.getByLabelText('ปีการศึกษา') as HTMLInputElement;
-    expect(year.min).toBe('2566');
-    expect(year.max).toBe('2569');
-    expect(screen.getByRole('combobox', { name: 'ภาคการศึกษา' })).toBeTruthy();
-  });
-
-  it('shows Thai field feedback and preserves entered data after a recoverable error', async () => {
-    const user = userEvent.setup();
-    const action = vi.fn(async (): Promise<WorkActionState> => ({
-      error: 'invalid',
-      fieldErrors: ['links'],
-      idempotencyKey: '64000000-0000-4000-8000-000000000002',
-      success: false,
-      version: null,
-    }));
-    renderForm({ action });
-    const title = screen.getByLabelText('ชื่อผลงาน') as HTMLInputElement;
-    fireEvent.change(title, { target: { value: 'ข้อมูลที่ต้องเก็บไว้' } });
-    fireEvent.change(screen.getByLabelText('สรุปผลงาน'), { target: { value: 'สรุป' } });
-    fireEvent.change(screen.getByLabelText('รายละเอียดผลงาน'), {
-      target: { value: 'รายละเอียด' },
-    });
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    fireEvent.change(screen.getByLabelText('URL ของลิงก์ 1'), {
-      target: { value: 'http://example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'สร้างร่างและเพิ่มรูป' }));
-
-    await waitFor(() => expect(screen.getByText(/ลิงก์ต้องมีชื่อและใช้ HTTPS/)).toBeTruthy(), {
-      timeout: 5_000,
-    });
-    expect(title.value).toBe('ข้อมูลที่ต้องเก็บไว้');
-    expect(screen.getByLabelText('URL ของลิงก์ 1').getAttribute('aria-invalid')).toBe('true');
-  }, 10_000);
-
-  it('returns to the step containing a server-side field error', async () => {
-    const user = userEvent.setup();
-    const action = vi.fn(async (): Promise<WorkActionState> => ({
-      error: 'invalid',
-      fieldErrors: ['academicPeriod'],
-      idempotencyKey: '64000000-0000-4000-8000-000000000002',
-      success: false,
-      version: null,
-    }));
-    renderForm({ action });
-    fillRequiredDetails();
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-
-    await user.click(screen.getByRole('button', { name: 'สร้างร่างและเพิ่มรูป' }));
-
-    await waitFor(
-      () => {
-        expect(screen.getByText('ขั้นที่ 2 จาก 3')).toBeTruthy();
-        expect(screen.getByText(/ปีและภาคการศึกษาต้องอยู่ในช่วงสิทธิ์/)).toBeTruthy();
-      },
-      { timeout: 5_000 },
-    );
-  }, 10_000);
-
-  it('submits values from every completed step when creating the private Draft', async () => {
-    const user = userEvent.setup();
-    const action = vi.fn(
-      async (previousState: WorkActionState, formData: FormData): Promise<WorkActionState> => {
-        void previousState;
-        void formData;
-        return successAction();
-      },
-    );
-    renderForm({ action });
-    fillRequiredDetails();
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    await user.type(screen.getByLabelText('แท็ก 1'), 'React');
-
-    await user.click(screen.getByRole('button', { name: 'สร้างร่างและเพิ่มรูป' }));
-
-    await waitFor(() => expect(action).toHaveBeenCalledOnce());
-    const submittedForm = action.mock.calls[0]?.[1];
-    expect(submittedForm?.get('title')).toBe('ระบบแนะนำผลงาน');
-    expect(submittedForm?.get('academicYear')).toBe('2569');
-    expect(submittedForm?.get('tag0')).toBe('React');
-  });
-
-  it('uses the same three-step authoring convention when editing an existing Draft', async () => {
-    const user = userEvent.setup();
-    const { container } = renderForm({
-      mode: 'edit',
+  it('creates an incomplete private Draft after the first meaningful change and one-second debounce', async () => {
+    vi.useFakeTimers();
+    mocks.autosave.mockResolvedValue({
+      outcome: 'saved',
       publicId: '64000000-0000-4000-8000-000000000001',
-      work: existingWork(),
+      savedAt: '2026-08-29T00:00:00.000Z',
+      version: 1,
+      work: {
+        activityState: 'active',
+        basePublishedRevisionId: null,
+        contributors: [],
+        draft: {
+          academicPeriod: { semester: null, year: null },
+          category: null,
+          description: null,
+          links: [],
+          submitterStudyYear: null,
+          summary: null,
+          tags: [],
+          title: 'ผลงานใหม่',
+          videoLinks: [],
+        },
+        isComplete: false,
+        media: [],
+        publicationState: 'never_published',
+        publishedRevisionId: null,
+        publicId: '64000000-0000-4000-8000-000000000001',
+        savedAt: '2026-08-29T00:00:00.000Z',
+        submitterAttributionName: 'ผู้ส่ง',
+        version: 1,
+      },
     });
-
-    expect(screen.getByText('ขั้นที่ 1 จาก 3')).toBeTruthy();
-    expect((screen.getByLabelText('ชื่อผลงาน') as HTMLInputElement).value).toBe('ระบบแนะนำผลงาน');
-    expect(
-      (container.querySelector('input[name="expectedVersion"]') as HTMLInputElement).value,
-    ).toBe('3');
-    expect(screen.getByRole('heading', { name: /อัปโหลดโปสเตอร์\s*จำเป็น/ })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: /อัปโหลดภาพแกลเลอรี\s*ไม่บังคับ/ })).toBeTruthy();
-    expect(screen.getByLabelText('เลือกไฟล์โปสเตอร์').closest('[hidden]')).toBeNull();
-
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    expect(screen.getByText('ขั้นที่ 2 จาก 3')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    expect(screen.getByText('ขั้นที่ 3 จาก 3')).toBeTruthy();
-    expect(screen.getAllByRole('textbox', { name: /ชื่อของลิงก์/ })).toHaveLength(2);
-    expect(screen.getAllByRole('textbox', { name: /แท็ก/ })).toHaveLength(2);
-    expect(screen.getAllByRole('textbox', { name: /URL วิดีโอ/ })).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'บันทึกร่าง' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'ส่งผลงานให้ผู้ดูแลตรวจ' })).toBeNull();
-    expect(screen.queryByText(/เผยแพร่|ผู้ร่วมผลงาน/)).toBeNull();
+    renderForm();
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: '  ผลงานใหม่  ' } });
+    expect(screen.getByText('ยังไม่ได้บันทึกข้อมูลล่าสุด')).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(mocks.autosave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedVersion: null,
+        patch: { title: 'ผลงานใหม่' },
+        publicId: null,
+      }),
+    );
+    expect(mocks.replace).toHaveBeenCalledWith('/works/64000000-0000-4000-8000-000000000001', {
+      scroll: false,
+    });
   });
 
-  it('advances version and rotates the idempotency key after a successful edit', async () => {
-    const action = vi.fn(async (): Promise<WorkActionState> => ({
-      error: null,
-      fieldErrors: [],
-      idempotencyKey: '64000000-0000-4000-8000-000000000004',
-      success: true,
-      version: 4,
-    }));
-    const { container } = renderForm({ action, mode: 'edit', work: existingWork() });
+  it('retries an ambiguous first autosave with the same payload and idempotency key', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mocks.autosave
+      .mockResolvedValueOnce({ error: 'unavailable', outcome: 'error' })
+      .mockResolvedValueOnce(savedWorkResult());
+    renderForm();
 
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
-    fireEvent.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(mocks.autosave).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    await act(() => vi.runOnlyPendingTimersAsync());
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
 
-    await waitFor(() => {
-      expect(
-        (container.querySelector('input[name="expectedVersion"]') as HTMLInputElement).value,
-      ).toBe('4');
-      expect(
-        (container.querySelector('input[name="idempotencyKey"]') as HTMLInputElement).value,
-      ).toBe('64000000-0000-4000-8000-000000000004');
+    expect(mocks.autosave).toHaveBeenCalledTimes(2);
+    expect(mocks.autosave.mock.calls[1]?.[0]).toEqual(mocks.autosave.mock.calls[0]?.[0]);
+  });
+
+  it('queues newer local values until the ambiguous autosave is confirmed', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    mocks.autosave
+      .mockResolvedValueOnce({ error: 'unavailable', outcome: 'error' })
+      .mockResolvedValueOnce(savedWorkResult())
+      .mockResolvedValueOnce({
+        ...savedWorkResult(),
+        version: 2,
+        work: {
+          ...savedWorkResult().work,
+          draft: { ...savedWorkResult().work.draft, title: 'ผลงานล่าสุด' },
+          version: 2,
+        },
+      });
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานล่าสุด' } });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    await act(() => vi.runOnlyPendingTimersAsync());
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+
+    expect(mocks.autosave.mock.calls[1]?.[0]).toEqual(mocks.autosave.mock.calls[0]?.[0]);
+    expect(mocks.autosave.mock.calls[2]?.[0]).toMatchObject({
+      expectedVersion: 1,
+      patch: { title: 'ผลงานล่าสุด' },
+      publicId: '64000000-0000-4000-8000-000000000001',
     });
+  });
+
+  it('keeps the Student ID only in lookup input and clears it immediately after lookup', async () => {
+    mocks.lookup.mockResolvedValue({ candidate: null });
+    renderForm(savedWorkResult().work);
+    fireEvent.click(screen.getByRole('button', { name: /3 การแสดงชื่อ/ }));
+    const input = screen.getByLabelText('รหัสนักศึกษา 8 หลัก') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '12345678' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ค้นหาแบบตรงกัน' }));
+
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(mocks.lookup).toHaveBeenCalledWith({
+      publicId: '64000000-0000-4000-8000-000000000001',
+      studentId: '12345678',
+    });
+  });
+
+  it('maps invalid optional discovery data back to step four and reviews every field group', () => {
+    vi.useFakeTimers();
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: /4 การค้นพบ/ }));
+    fireEvent.change(screen.getByLabelText('GitHub'), {
+      target: { value: 'https://example.com/not-github' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /5 ตรวจสอบและส่ง/ }));
+
+    expect(screen.getByRole('button', { name: 'กลับไปแก้ไขขั้นที่ 4' })).toBeTruthy();
+    for (const label of [
+      'ประเภทผลงาน',
+      'ปีการศึกษา',
+      'ภาคการศึกษา',
+      'โปสเตอร์',
+      'ภาพแกลเลอรี',
+      'ผู้ส่งผลงาน',
+      'ชั้นปีเมื่อทำผลงาน',
+      'ผู้ร่วมผลงาน',
+      'ลิงก์',
+      'แท็ก คั่นด้วยจุลภาค',
+      'ลิงก์วิดีโอ YouTube หรือ TikTok แยกบรรทัด',
+    ]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+  });
+
+  it('reuses the final submission idempotency key after an unavailable result', async () => {
+    mocks.submit.mockResolvedValueOnce({ error: 'unavailable' }).mockResolvedValueOnce({
+      outcome: 'submitted',
+      revisionPublicId: '64000000-0000-4000-8000-000000000009',
+    });
+    renderForm(completeWork());
+    fireEvent.click(screen.getByRole('button', { name: /5 ตรวจสอบและส่ง/ }));
+    const submit = screen.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' });
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' }));
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(2));
+
+    expect(mocks.submit.mock.calls[1]?.[0].idempotencyKey).toBe(
+      mocks.submit.mock.calls[0]?.[0].idempotencyKey,
+    );
   });
 });
 
-function renderForm(overrides: Partial<React.ComponentProps<typeof WorkForm>> = {}) {
+function renderForm(initialWork: Parameters<typeof WorkForm>[0]['initialWork'] = null) {
   return render(
     <NextIntlClientProvider locale="th" messages={messages}>
       <WorkForm
-        action={successAction}
         context={{ currentAcademicYear: 2569, entryYear: 2566 }}
-        idempotencyKey="64000000-0000-4000-8000-000000000002"
-        mode="create"
-        work={null}
-        {...overrides}
+        initialWork={initialWork}
       />
     </NextIntlClientProvider>,
   );
 }
 
-function fillRequiredDetails() {
-  fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ระบบแนะนำผลงาน' } });
-  fireEvent.change(screen.getByLabelText('สรุปผลงาน'), { target: { value: 'สรุปผลงาน' } });
-  fireEvent.change(screen.getByLabelText('รายละเอียดผลงาน'), {
-    target: { value: 'รายละเอียดผลงาน' },
-  });
-}
-
-function visibleRequirementLabels(text: 'จำเป็น' | 'ไม่บังคับ') {
-  return screen.getAllByText(text).filter((element) => element.closest('[hidden]') === null);
-}
-
-function existingWork(): WorkDraft {
+function completeWork(): NonNullable<Parameters<typeof WorkForm>[0]['initialWork']> {
+  const base = savedWorkResult().work;
   return {
-    activityState: 'active',
-    basePublishedRevisionId: null,
+    ...base,
     draft: {
-      academicPeriod: { semester: '2', year: 2568 },
+      ...base.draft,
+      academicPeriod: { semester: '1', year: 2569 },
       category: 'course_work',
       description: 'รายละเอียดผลงาน',
-      links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
+      submitterStudyYear: 2,
       summary: 'สรุปผลงาน',
-      tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
-      title: 'ระบบแนะนำผลงาน',
-      videoLinks: [],
     },
-    publicationState: 'never_published',
-    publishedRevisionId: null,
+    isComplete: true,
+    media: [
+      {
+        assetId: '64000000-0000-4000-8000-000000000008',
+        height: 1800,
+        kind: 'poster',
+        position: 1,
+        rejectionCode: null,
+        status: 'ready',
+        width: 1200,
+      },
+    ],
+  };
+}
+
+function savedWorkResult() {
+  return {
+    outcome: 'saved' as const,
     publicId: '64000000-0000-4000-8000-000000000001',
-    version: 3,
+    savedAt: '2026-08-29T00:00:00.000Z',
+    version: 1,
+    work: {
+      activityState: 'active' as const,
+      basePublishedRevisionId: null,
+      contributors: [],
+      draft: {
+        academicPeriod: { semester: null, year: null },
+        category: null,
+        description: null,
+        links: [],
+        submitterStudyYear: null,
+        summary: null,
+        tags: [],
+        title: 'ผลงานใหม่',
+        videoLinks: [],
+      },
+      isComplete: false,
+      media: [],
+      publicationState: 'never_published' as const,
+      publishedRevisionId: null,
+      publicId: '64000000-0000-4000-8000-000000000001',
+      savedAt: '2026-08-29T00:00:00.000Z',
+      submitterAttributionName: 'ผู้ส่ง',
+      version: 1,
+    },
   };
 }

@@ -34,16 +34,19 @@ vi.mock('@/lib/student-profile-core', () => ({
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async () => (key: string, values?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
-      'navigation.createWork': 'สร้างผลงาน',
-      'navigation.home': 'ภาพรวม',
-      'navigation.invitations': 'คำเชิญผู้ร่วมผลงาน',
+      'navigation.addWork': 'เพิ่มผลงาน',
+      'navigation.allWorks': 'ผลงานทั้งหมด',
+      'navigation.dashboard': 'แดชบอร์ด',
+      'navigation.editProfile': 'แก้ไขโปรไฟล์',
       'navigation.label': 'เมนูนักศึกษา',
       'navigation.menuDescription': 'เลือกหน้าที่ต้องการเปิด',
       'navigation.menuTitle': 'เมนูระบบนักศึกษา',
       'navigation.notifications': 'การแจ้งเตือน',
       'navigation.openMenu': 'เปิดเมนู',
-      'navigation.profile': 'โปรไฟล์สาธารณะ',
-      'navigation.work': 'จัดการผลงาน',
+      'navigation.overviewGroup': 'ภาพรวม',
+      'navigation.profileConsent': 'ความยินยอมโปรไฟล์',
+      'navigation.profileGroup': 'โปรไฟล์',
+      'navigation.workGroup': 'จัดการผลงาน',
       'profile.entryYear': 'ปีที่เข้าศึกษา {year}',
       'profile.fallback': 'ยังไม่ได้ตั้งค่าโปรไฟล์',
       'profile.photoAlt': 'รูปโปรไฟล์ของ {name}',
@@ -75,7 +78,7 @@ describe('StudentWorkspaceShell', () => {
   it('uses the animated sidebar and marks the current desktop page', async () => {
     render(
       await StudentWorkspaceShell({
-        activePage: 'profile',
+        activePage: 'edit-profile',
         canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: {
@@ -104,9 +107,9 @@ describe('StudentWorkspaceShell', () => {
     expect(sidebar.innerHTML).not.toContain('private.webp');
     expect(screen.getByRole('button', { name: 'เปิดเมนู' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'สร้างผลงาน' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'จัดการผลงาน' }).getAttribute('href')).toBe(
-      '/works',
-    );
+    expect(
+      within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
+    ).toBe('/works');
     const workspaceHeader = screen.getByRole('banner');
     expect(workspaceHeader.classList.contains('z-30')).toBe(true);
     expect(workspaceHeader.classList.contains('bg-background')).toBe(true);
@@ -118,7 +121,7 @@ describe('StudentWorkspaceShell', () => {
     const user = userEvent.setup();
     render(
       await StudentWorkspaceShell({
-        activePage: 'profile',
+        activePage: 'edit-profile',
         canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: null,
@@ -136,11 +139,11 @@ describe('StudentWorkspaceShell', () => {
         .getAttribute('href'),
     ).toBe('/profile');
     expect(within(dialog).queryByRole('link', { name: 'สร้างผลงาน' })).toBeNull();
-    expect(within(navigation).getByRole('link', { name: 'จัดการผลงาน' }).getAttribute('href')).toBe(
-      '/works',
-    );
+    expect(
+      within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
+    ).toBe('/works');
 
-    await user.click(within(dialog).getByRole('link', { name: 'ภาพรวม' }));
+    await user.click(within(dialog).getByRole('link', { name: 'แดชบอร์ด' }));
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'เมนู' })).toBeNull();
     });
@@ -158,7 +161,7 @@ describe('StudentWorkspaceShell', () => {
 
     render(
       await StudentWorkspaceShell({
-        activePage: 'home',
+        activePage: 'dashboard',
         canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),
@@ -177,7 +180,7 @@ describe('StudentWorkspaceShell', () => {
 
     render(
       await StudentWorkspaceShell({
-        activePage: 'home',
+        activePage: 'dashboard',
         canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),

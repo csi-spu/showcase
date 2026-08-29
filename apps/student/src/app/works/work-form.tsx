@@ -1,752 +1,1141 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
-import { CircleAlertIcon, LightbulbIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState, useRef, useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSeparator,
-  FieldSet,
-} from '@/components/ui/field';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import type { WorkAuthoringContext, WorkDraft } from '@/lib/student-works-core';
-import type { WorkField } from '@/lib/student-work-validation';
-import { initialWorkActionState, type WorkActionState } from './work-action-state';
+import type {
+  WorkAuthoringContext,
+  WorkContributor,
+  WorkDraft,
+  WorkDraftPatch,
+} from '@/lib/student-works-core';
+import {
+  addAccountContributorAction,
+  addExternalContributorAction,
+  autosaveWorkAction,
+  lookupContributorAction,
+  removeContributorAction,
+  submitLatestWorkAction,
+} from './work.actions';
 import { WorkMediaUpload } from './work-media-upload';
 
-type WorkAction = (previousState: WorkActionState, formData: FormData) => Promise<WorkActionState>;
-
-const CATEGORY_ITEMS = [
-  { label: 'ผลงานรายวิชา', value: 'course_work' },
-  { label: 'ผลงานประกวด', value: 'competition_entry' },
-  { label: 'บทความวิชาการ', value: 'academic_article' },
-] as const;
-const SEMESTER_ITEMS = [
-  { label: 'ภาคการศึกษาที่ 1', value: '1' },
-  { label: 'ภาคการศึกษาที่ 2', value: '2' },
-  { label: 'ภาคฤดูร้อน', value: 'summer' },
-] as const;
+const STEP_COUNT = 5;
+type SaveState = 'saved' | 'saving' | 'unsynced';
+type DraftValues = {
+  academicPeriod: { semester: '1' | '2' | 'summer' | ''; year: string };
+  category: 'course_work' | 'competition_entry' | 'academic_article' | '';
+  description: string;
+  githubUrl: string;
+  links: Array<{ label: string; url: string }>;
+  studyYear: '' | '1' | '2' | '3' | '4';
+  summary: string;
+  tags: string;
+  title: string;
+  videoLinks: string;
+};
+type NormalizedValues = {
+  academicPeriod: { semester: '1' | '2' | 'summer' | null; year: number | null };
+  category: 'course_work' | 'competition_entry' | 'academic_article' | null;
+  description: string | null;
+  links: Array<{ label: string; url: string }>;
+  submitterStudyYear: number | null;
+  summary: string | null;
+  tags: string[];
+  title: string | null;
+  videoLinks: string[];
+};
+type SaveAttempt = {
+  expectedVersion: number | null;
+  idempotencyKey: string;
+  patch: WorkDraftPatch;
+  publicId: string | null;
+  snapshot: DraftValues;
+};
 
 export function WorkForm({
-  action,
   context,
-  idempotencyKey,
-  mode,
-  publicId,
-  work,
+  initialWork,
 }: {
-  action: WorkAction;
   context: WorkAuthoringContext;
-  idempotencyKey: string;
-  mode: 'create' | 'edit';
-  publicId?: string;
-  work: WorkDraft | null;
+  initialWork: WorkDraft | null;
 }) {
   const t = useTranslations('Work');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [state, formAction] = useActionState(
-    async (previousState: WorkActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.fieldErrors.length > 0) {
-        const errorStep = firstErrorStep(nextState.fieldErrors);
-        setCurrentStep(errorStep);
+  const router = useRouter();
+  const [step, setStep] = useState(0);
+  const [values, setValues] = useState(() => valuesFromWork(initialWork));
+  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [error, setError] = useState<
+    null | 'conflict' | 'forbidden' | 'invalid' | 'unauthenticated' | 'unavailable'
+  >(null);
+  const [workPublicId, setWorkPublicId] = useState(initialWork?.publicId ?? null);
+  const [version, setVersion] = useState(initialWork?.version ?? null);
+  const [contributors, setContributors] = useState(initialWork?.contributors ?? []);
+  const [serverWork, setServerWork] = useState(initialWork);
+  const [saveTick, setSaveTick] = useState(0);
+  const [isSubmitting, startSubmission] = useTransition();
+  const valuesRef = useRef(values);
+  const workPublicIdRef = useRef(workPublicId);
+  const versionRef = useRef(version);
+  const lastSavedRef = useRef(values);
+  const retryAttemptRef = useRef(0);
+  const conflictRef = useRef(false);
+  const savingRef = useRef(false);
+  const needsSaveRef = useRef(false);
+  const pendingAttemptRef = useRef<SaveAttempt | null>(null);
+  const retryNowRef = useRef(false);
+  const submissionIdempotencyKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    valuesRef.current = values;
+    workPublicIdRef.current = workPublicId;
+    versionRef.current = version;
+  }, [values, version, workPublicId]);
+
+  const save = useCallback(async () => {
+    if (conflictRef.current) return;
+    if (savingRef.current) {
+      needsSaveRef.current = true;
+      return;
+    }
+    const snapshot = valuesRef.current;
+    const currentPublicId = workPublicIdRef.current;
+    const patch = createPatch(lastSavedRef.current, snapshot, currentPublicId !== null);
+    if (
+      pendingAttemptRef.current === null &&
+      (patch === null || (currentPublicId === null && !hasMeaningfulValue(snapshot)))
+    ) {
+      setSaveState('saved');
+      return;
+    }
+    const attempt = pendingAttemptRef.current ?? {
+      expectedVersion: versionRef.current,
+      idempotencyKey: crypto.randomUUID(),
+      patch: patch!,
+      publicId: currentPublicId,
+      snapshot,
+    };
+    pendingAttemptRef.current = attempt;
+    retryNowRef.current = false;
+    setSaveState('saving');
+    setError(null);
+    savingRef.current = true;
+    const result = await autosaveWorkAction({
+      expectedVersion: attempt.expectedVersion,
+      idempotencyKey: attempt.idempotencyKey,
+      patch: attempt.patch,
+      publicId: attempt.publicId,
+    });
+    savingRef.current = false;
+    if (result.outcome === 'saved') {
+      retryAttemptRef.current = 0;
+      pendingAttemptRef.current = null;
+      lastSavedRef.current = attempt.snapshot;
+      versionRef.current = result.version;
+      setVersion(result.version);
+      setServerWork(result.work);
+      setContributors(result.work.contributors);
+      setSaveState(valuesRef.current === attempt.snapshot ? 'saved' : 'unsynced');
+      if (attempt.publicId === null) {
+        workPublicIdRef.current = result.publicId;
+        setWorkPublicId(result.publicId);
+        router.replace(`/works/${result.publicId}`, { scroll: false });
       }
-      return nextState;
-    },
-    initialWorkActionState(idempotencyKey, work?.version ?? null),
-  );
-  const [draft, setDraft] = useState(() => createFormDraft(work, context));
-  const [visibleLinkCount, setVisibleLinkCount] = useState(() =>
-    initialCollectionFieldCount(work?.draft.links.length ?? 0, 5),
-  );
-  const [visibleTagCount, setVisibleTagCount] = useState(() =>
-    initialCollectionFieldCount(work?.draft.tags.length ?? 0, 5),
-  );
-  const [visibleVideoCount, setVisibleVideoCount] = useState(() =>
-    initialCollectionFieldCount(work?.draft.videoLinks.length ?? 0, 3),
-  );
-  const [clientFieldErrors, setClientFieldErrors] = useState<WorkField[]>([]);
-  const formRef = useRef<HTMLFormElement>(null);
-  const currentWorkVersion =
-    work === null ? null : Math.max(work.version, state.version ?? work.version);
-  const isInvalid = (field: WorkField) =>
-    clientFieldErrors.includes(field) || state.fieldErrors.includes(field);
-
-  const showNextStep = () => {
-    const requiredFieldErrors = findRequiredFieldErrors(draft).filter(
-      (field) => firstErrorStep([field]) === currentStep,
+      if (needsSaveRef.current || valuesRef.current !== attempt.snapshot) {
+        needsSaveRef.current = false;
+        setSaveTick((value) => value + 1);
+      }
+      return;
+    }
+    setError(result.error);
+    setSaveState('unsynced');
+    if (result.error === 'conflict') {
+      conflictRef.current = true;
+      return;
+    }
+    if (result.error !== 'unavailable') {
+      pendingAttemptRef.current = null;
+      return;
+    }
+    const base = Math.min(1_000 * 2 ** retryAttemptRef.current++, 30_000);
+    window.setTimeout(
+      () => {
+        retryNowRef.current = true;
+        setSaveTick((value) => value + 1);
+      },
+      Math.round(base * (0.8 + Math.random() * 0.4)),
     );
-    if (requiredFieldErrors.length > 0) {
-      showClientErrors(requiredFieldErrors);
-      return;
-    }
-    const form = formRef.current;
-    const panel = form?.querySelector<HTMLElement>(`[data-step-panel="${currentStep}"]`);
-    const invalidControl = panel
-      ? Array.from(
-          panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-            'input, textarea, select',
-          ),
-        ).find((control) => !control.checkValidity())
-      : undefined;
-    if (invalidControl) {
-      invalidControl.reportValidity();
-      invalidControl.focus();
-      return;
-    }
-    setClientFieldErrors([]);
-    const nextStep = Math.min(currentStep + 1, 2);
-    setCurrentStep(nextStep);
-  };
+  }, [router]);
 
-  const showClientErrors = (fieldErrors: WorkField[]) => {
-    setClientFieldErrors(fieldErrors);
-    const errorStep = firstErrorStep(fieldErrors);
-    setCurrentStep(errorStep);
-    focusFirstError(formRef.current, fieldErrors[0]);
-    requestAnimationFrame(() => focusFirstError(formRef.current, fieldErrors[0]));
-  };
+  useEffect(() => {
+    if (values === lastSavedRef.current) return;
+    setSaveState('unsynced');
+    const timer = window.setTimeout(() => void save(), retryNowRef.current ? 0 : 1_000);
+    return () => window.clearTimeout(timer);
+  }, [save, saveTick, values]);
 
-  const clearClientFieldError = (field: WorkField) => {
-    setClientFieldErrors((current) => current.filter((candidate) => candidate !== field));
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (saveState !== 'saved') event.preventDefault();
+    };
+    const guardLinks = (event: MouseEvent) => {
+      if (saveState === 'saved') return;
+      const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (target !== null && !window.confirm(t('autosave.leaveWarning'))) event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    document.addEventListener('click', guardLinks, true);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      document.removeEventListener('click', guardLinks, true);
+    };
+  }, [saveState, t]);
+
+  const update = <K extends keyof DraftValues>(key: K, value: DraftValues[K]) => {
+    submissionIdempotencyKeyRef.current = null;
+    setValues((current) => ({ ...current, [key]: value }));
+  };
+  const applyMutationVersion = (nextVersion: number) => {
+    submissionIdempotencyKeyRef.current = null;
+    setVersion(nextVersion);
+  };
+  const effectiveWork =
+    initialWork !== null && (serverWork === null || initialWork.version >= serverWork.version)
+      ? initialWork
+      : serverWork;
+  const hasReadyPoster =
+    effectiveWork?.media.some((item) => item.kind === 'poster' && item.status === 'ready') ?? false;
+  const hasUnreadyMedia = effectiveWork?.media.some((item) => item.status !== 'ready') ?? false;
+  const isStale =
+    effectiveWork !== null &&
+    effectiveWork.basePublishedRevisionId !== effectiveWork.publishedRevisionId;
+  const incompleteSteps = useMemo(
+    () =>
+      findIncompleteSteps(
+        values,
+        hasReadyPoster,
+        hasUnreadyMedia,
+        effectiveWork?.submitterAttributionName ?? null,
+      ),
+    [effectiveWork?.submitterAttributionName, hasReadyPoster, hasUnreadyMedia, values],
+  );
+  const canSubmit =
+    workPublicId !== null &&
+    version !== null &&
+    saveState === 'saved' &&
+    !hasUnreadyMedia &&
+    !isStale &&
+    incompleteSteps.length === 0 &&
+    !isSubmitting;
+
+  const submit = () => {
+    if (!canSubmit || workPublicId === null || version === null) return;
+    startSubmission(async () => {
+      const idempotencyKey = submissionIdempotencyKeyRef.current ?? crypto.randomUUID();
+      submissionIdempotencyKeyRef.current = idempotencyKey;
+      const result = await submitLatestWorkAction({
+        draft: completeDraft(values),
+        expectedBasePublishedRevisionId: effectiveWork?.basePublishedRevisionId ?? null,
+        expectedDraftVersion: version,
+        idempotencyKey,
+        publicId: workPublicId,
+        studyYear: Number(values.studyYear),
+      });
+      if ('error' in result) {
+        if (result.error !== 'unavailable') submissionIdempotencyKeyRef.current = null;
+        setError(
+          result.error === 'conflict'
+            ? 'conflict'
+            : result.error === 'unavailable'
+              ? 'unavailable'
+              : 'invalid',
+        );
+        return;
+      }
+      submissionIdempotencyKeyRef.current = null;
+      router.push(`/works/${workPublicId}`);
+      router.refresh();
+    });
   };
 
   return (
-    <>
-      <form
-        action={formAction}
-        className="grid w-full gap-6"
-        onSubmit={(event) => {
-          const requiredFieldErrors = findRequiredFieldErrors(draft);
-          if (requiredFieldErrors.length > 0) {
-            event.preventDefault();
-            showClientErrors(requiredFieldErrors);
-          } else {
-            setClientFieldErrors([]);
-          }
-        }}
-        ref={formRef}
-      >
-        <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-        {state.version === null ? null : (
-          <input name="expectedVersion" type="hidden" value={state.version} />
-        )}
-
-        <WorkWizardSteps currentStep={currentStep} onSelect={setCurrentStep} />
-
-        <div className="min-w-0 rounded-surface border border-border bg-card p-5 sm:p-8 lg:p-10">
-          {clientFieldErrors.length > 0 ? (
-            <Alert className="mb-6" variant="destructive">
-              <CircleAlertIcon aria-hidden="true" />
-              <AlertTitle>{t('errors.requiredHeading')}</AlertTitle>
-              <AlertDescription>{t('errors.requiredDescription')}</AlertDescription>
-            </Alert>
-          ) : null}
-          <FieldSet
-            className="border-0 bg-transparent p-0"
-            data-step-panel="0"
-            hidden={currentStep !== 0}
-          >
-            <FieldLegend className="text-2xl tracking-tight">
-              {t('wizard.steps.details.title')}
-            </FieldLegend>
-            <FieldDescription>{t('wizard.steps.details.help')}</FieldDescription>
-            <Alert className="mx-auto w-full max-w-4xl">
-              <LightbulbIcon aria-hidden="true" />
-              <AlertTitle>{t('example.heading')}</AlertTitle>
-              <AlertDescription>{t('example.description')}</AlertDescription>
-            </Alert>
-            <FieldGroup className="mx-auto max-w-4xl">
-              <Field data-invalid={isInvalid('title') || undefined}>
-                <FieldLabel htmlFor="work-title">
-                  {t('title')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Input
-                  aria-label={t('title')}
-                  aria-invalid={isInvalid('title') || undefined}
-                  id="work-title"
-                  maxLength={150}
-                  name="title"
-                  onChange={(event) => {
-                    setDraft((current) => ({ ...current, title: event.target.value }));
-                    clearClientFieldError('title');
-                  }}
-                  placeholder={t('placeholders.title')}
-                  required
-                  value={draft.title}
-                />
-                {isInvalid('title') ? <FieldError>{t('fieldErrors.title')}</FieldError> : null}
-              </Field>
-              <Field data-invalid={isInvalid('summary') || undefined}>
-                <FieldLabel htmlFor="work-summary">
-                  {t('summary')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Textarea
-                  aria-label={t('summary')}
-                  aria-invalid={isInvalid('summary') || undefined}
-                  id="work-summary"
-                  maxLength={300}
-                  name="summary"
-                  onChange={(event) => {
-                    setDraft((current) => ({ ...current, summary: event.target.value }));
-                    clearClientFieldError('summary');
-                  }}
-                  placeholder={t('placeholders.summary')}
-                  required
-                  rows={4}
-                  value={draft.summary}
-                />
-                <FieldDescription className="flex flex-wrap items-center justify-between gap-2">
-                  <span>{t('summaryHelp')}</span>
-                  <CharacterCount current={draft.summary.length} maximum={300} />
-                </FieldDescription>
-                {isInvalid('summary') ? <FieldError>{t('fieldErrors.summary')}</FieldError> : null}
-              </Field>
-              <Field data-invalid={isInvalid('description') || undefined}>
-                <FieldLabel htmlFor="work-description">
-                  {t('description')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Textarea
-                  aria-label={t('description')}
-                  aria-invalid={isInvalid('description') || undefined}
-                  className="min-h-72 resize-y"
-                  id="work-description"
-                  maxLength={10_000}
-                  name="description"
-                  onChange={(event) => {
-                    setDraft((current) => ({ ...current, description: event.target.value }));
-                    clearClientFieldError('description');
-                  }}
-                  placeholder={t('placeholders.description')}
-                  required
-                  rows={10}
-                  value={draft.description}
-                />
-                <FieldDescription className="flex flex-wrap items-center justify-between gap-2">
-                  <span>{t('descriptionHelp')}</span>
-                  <CharacterCount current={draft.description.length} maximum={10_000} />
-                </FieldDescription>
-                {isInvalid('description') ? (
-                  <FieldError>{t('fieldErrors.description')}</FieldError>
-                ) : null}
-              </Field>
-            </FieldGroup>
-          </FieldSet>
-
-          <FieldSet
-            className="border-0 bg-transparent p-0"
-            data-step-panel="1"
-            hidden={currentStep !== 1}
-          >
-            <FieldLegend className="text-2xl tracking-tight">
-              {t('wizard.steps.classification.title')}
-            </FieldLegend>
-            <FieldDescription>{t('wizard.steps.classification.help')}</FieldDescription>
-            <FieldGroup className="mx-auto max-w-5xl lg:grid lg:grid-cols-3 lg:gap-x-6">
-              <Field data-invalid={isInvalid('category') || undefined}>
-                <FieldLabel htmlFor="work-category">
-                  {t('category')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Select
-                  items={CATEGORY_ITEMS}
-                  name="category"
-                  onValueChange={(value) => {
-                    if (value !== null) {
-                      setDraft((current) => ({ ...current, category: value }));
-                    }
-                  }}
-                  value={draft.category}
-                >
-                  <SelectTrigger
-                    aria-label={t('category')}
-                    aria-invalid={isInvalid('category') || undefined}
-                    className="w-full"
-                    id="work-category"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {CATEGORY_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {isInvalid('category') ? (
-                  <FieldError>{t('fieldErrors.category')}</FieldError>
-                ) : null}
-              </Field>
-              <Field data-invalid={isInvalid('academicPeriod') || undefined}>
-                <FieldLabel htmlFor="academic-year">
-                  {t('academicYear')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Input
-                  aria-label={t('academicYear')}
-                  aria-invalid={isInvalid('academicPeriod') || undefined}
-                  id="academic-year"
-                  max={context.currentAcademicYear}
-                  min={context.entryYear}
-                  name="academicYear"
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, academicYear: event.target.value }))
-                  }
-                  required
-                  type="number"
-                  value={draft.academicYear}
-                />
-                <FieldDescription>
-                  {t('academicYearHelp', {
-                    from: context.entryYear,
-                    to: context.currentAcademicYear,
-                  })}
-                </FieldDescription>
-              </Field>
-              <Field data-invalid={isInvalid('academicPeriod') || undefined}>
-                <FieldLabel htmlFor="semester">
-                  {t('semester')} <RequirementLabel isRequired />
-                </FieldLabel>
-                <Select
-                  items={SEMESTER_ITEMS}
-                  name="semester"
-                  onValueChange={(value) => {
-                    if (value !== null) {
-                      setDraft((current) => ({ ...current, semester: value }));
-                    }
-                  }}
-                  value={draft.semester}
-                >
-                  <SelectTrigger
-                    aria-label={t('semester')}
-                    aria-invalid={isInvalid('academicPeriod') || undefined}
-                    className="w-full"
-                    id="semester"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {SEMESTER_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-              {isInvalid('academicPeriod') ? (
-                <FieldError className="lg:col-span-3">{t('fieldErrors.academicPeriod')}</FieldError>
-              ) : null}
-            </FieldGroup>
-          </FieldSet>
-
-          <section
-            aria-labelledby="work-extras-heading"
-            data-step-panel="2"
-            hidden={currentStep !== 2}
-          >
-            <header className="mb-7 grid gap-2">
-              <h2 className="text-2xl font-medium tracking-tight" id="work-extras-heading">
-                {t('wizard.steps.extras.title')}
-              </h2>
-              <p className="max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
-                {t('wizard.steps.extras.help')}
-              </p>
-            </header>
-            <FieldGroup className="mx-auto max-w-5xl gap-10">
-              <FieldSet className="border-0 bg-transparent p-0">
-                <FieldLegend className="flex items-center gap-2">
-                  {t('sections.links')} <RequirementLabel />
-                </FieldLegend>
-                <FieldDescription>{t('sections.linksHelp')}</FieldDescription>
-                <FieldGroup>
-                  {Array.from({ length: visibleLinkCount }, (_, index) => (
-                    <FieldGroup className="grid gap-3 sm:grid-cols-2" key={index}>
-                      <Field data-invalid={isInvalid('links') || undefined}>
-                        <FieldLabel htmlFor={`work-link-label-${index}`}>
-                          {t('linkLabel', { number: index + 1 })}
-                        </FieldLabel>
-                        <Input
-                          aria-label={t('linkLabel', { number: index + 1 })}
-                          aria-invalid={isInvalid('links') || undefined}
-                          id={`work-link-label-${index}`}
-                          maxLength={50}
-                          name={`linkLabel${index}`}
-                          onChange={(event) => {
-                            const label = event.target.value;
-                            setDraft((current) => ({
-                              ...current,
-                              links: current.links.map((link, currentIndex) =>
-                                currentIndex === index ? { ...link, label } : link,
-                              ),
-                            }));
-                          }}
-                          placeholder={t('placeholders.linkLabel')}
-                          value={draft.links[index]?.label ?? ''}
-                        />
-                      </Field>
-                      <Field data-invalid={isInvalid('links') || undefined}>
-                        <FieldLabel htmlFor={`work-link-url-${index}`}>
-                          {t('linkUrl', { number: index + 1 })}
-                        </FieldLabel>
-                        <Input
-                          aria-label={t('linkUrl', { number: index + 1 })}
-                          aria-invalid={isInvalid('links') || undefined}
-                          id={`work-link-url-${index}`}
-                          maxLength={2_048}
-                          name={`linkUrl${index}`}
-                          onChange={(event) => {
-                            const url = event.target.value;
-                            setDraft((current) => ({
-                              ...current,
-                              links: current.links.map((link, currentIndex) =>
-                                currentIndex === index ? { ...link, url } : link,
-                              ),
-                            }));
-                          }}
-                          placeholder={t('placeholders.linkUrl')}
-                          type="url"
-                          value={draft.links[index]?.url ?? ''}
-                        />
-                      </Field>
-                    </FieldGroup>
-                  ))}
-                  {visibleLinkCount < 5 ? (
-                    <Button
-                      className="w-fit"
-                      onClick={() => setVisibleLinkCount((count) => Math.min(count + 1, 5))}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      {t('wizard.addLink')}
-                    </Button>
-                  ) : null}
-                  {isInvalid('links') ? <FieldError>{t('fieldErrors.links')}</FieldError> : null}
-                </FieldGroup>
-              </FieldSet>
-
-              <FieldSeparator />
-              <FieldGroup className="gap-10">
-                <FieldSet className="border-0 bg-transparent p-0">
-                  <FieldLegend className="flex items-center gap-2">
-                    {t('sections.tags')} <RequirementLabel />
-                  </FieldLegend>
-                  <FieldDescription>{t('sections.tagsHelp')}</FieldDescription>
-                  <FieldGroup>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      {Array.from({ length: visibleTagCount }, (_, index) => (
-                        <Field data-invalid={isInvalid('tags') || undefined} key={index}>
-                          <FieldLabel htmlFor={`work-tag-${index}`}>
-                            {t('tag', { number: index + 1 })}
-                          </FieldLabel>
-                          <Input
-                            aria-label={t('tag', { number: index + 1 })}
-                            aria-invalid={isInvalid('tags') || undefined}
-                            id={`work-tag-${index}`}
-                            maxLength={50}
-                            name={`tag${index}`}
-                            onChange={(event) => {
-                              const tag = event.target.value;
-                              setDraft((current) => ({
-                                ...current,
-                                tags: current.tags.map((currentTag, currentIndex) =>
-                                  currentIndex === index ? tag : currentTag,
-                                ),
-                              }));
-                            }}
-                            placeholder={t('placeholders.tag')}
-                            value={draft.tags[index] ?? ''}
-                          />
-                        </Field>
-                      ))}
-                    </div>
-                    {visibleTagCount < 5 ? (
-                      <Button
-                        className="w-fit"
-                        onClick={() => setVisibleTagCount((count) => Math.min(count + 1, 5))}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        {t('wizard.addTag')}
-                      </Button>
-                    ) : null}
-                    {isInvalid('tags') ? <FieldError>{t('fieldErrors.tags')}</FieldError> : null}
-                  </FieldGroup>
-                </FieldSet>
-
-                <FieldSeparator />
-                <FieldSet className="border-0 bg-transparent p-0">
-                  <FieldLegend className="flex items-center gap-2">
-                    {t('sections.videos')} <RequirementLabel />
-                  </FieldLegend>
-                  <FieldDescription>{t('sections.videosHelp')}</FieldDescription>
-                  <FieldGroup>
-                    {Array.from({ length: visibleVideoCount }, (_, index) => (
-                      <Field data-invalid={isInvalid('videoLinks') || undefined} key={index}>
-                        <FieldLabel htmlFor={`work-video-link-${index}`}>
-                          {t('videoLink', { number: index + 1 })}
-                        </FieldLabel>
-                        <Input
-                          aria-label={t('videoLink', { number: index + 1 })}
-                          aria-invalid={isInvalid('videoLinks') || undefined}
-                          id={`work-video-link-${index}`}
-                          maxLength={2_048}
-                          name={`videoLink${index}`}
-                          onChange={(event) => {
-                            const videoLink = event.target.value;
-                            setDraft((current) => ({
-                              ...current,
-                              videoLinks: current.videoLinks.map((currentLink, currentIndex) =>
-                                currentIndex === index ? videoLink : currentLink,
-                              ),
-                            }));
-                          }}
-                          placeholder={t('placeholders.videoLink')}
-                          type="url"
-                          value={draft.videoLinks[index] ?? ''}
-                        />
-                      </Field>
-                    ))}
-                    {visibleVideoCount < 3 ? (
-                      <Button
-                        className="w-fit"
-                        onClick={() => setVisibleVideoCount((count) => Math.min(count + 1, 3))}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        {t('wizard.addVideo')}
-                      </Button>
-                    ) : null}
-                    {isInvalid('videoLinks') ? (
-                      <FieldError>{t('fieldErrors.videoLinks')}</FieldError>
-                    ) : null}
-                  </FieldGroup>
-                </FieldSet>
-              </FieldGroup>
-            </FieldGroup>
-          </section>
-
-          <ActionFeedback state={state} />
-          <div className="mt-8 flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-            {currentStep > 0 ? (
+    <div className="grid gap-6">
+      <ol aria-label={t('wizard.label')} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {Array.from({ length: STEP_COUNT }, (_, index) => (
+          <li key={index}>
+            <Button
+              aria-current={step === index ? 'step' : undefined}
+              className="w-full"
+              onClick={() => setStep(index)}
+              type="button"
+              variant={step === index ? 'default' : 'outline'}
+            >
+              {t(`wizard.step${index + 1}`)}
+            </Button>
+          </li>
+        ))}
+      </ol>
+      <p aria-live="polite" className="text-sm text-muted-foreground">
+        {t(`autosave.${saveState}`)}
+      </p>
+      {error === null ? null : (
+        <Alert variant="destructive">
+          <AlertTitle>{t(`autosave.errors.${error}.title`)}</AlertTitle>
+          <AlertDescription>
+            {t(`autosave.errors.${error}.description`)}
+            {error === 'conflict' ? (
               <Button
-                onClick={() => setCurrentStep((step) => Math.max(step - 1, 0))}
+                className="mt-3"
+                onClick={() => window.location.reload()}
                 type="button"
                 variant="outline"
               >
-                {t('wizard.back')}
+                {t('autosave.loadLatest')}
               </Button>
-            ) : (
-              <span aria-hidden="true" />
-            )}
-            {currentStep < 2 ? (
-              <Button onClick={showNextStep} type="button">
-                {t('wizard.next')}
-              </Button>
-            ) : (
-              <SubmitButton
-                label={t(mode === 'create' ? 'wizard.createAndAddMedia' : 'save')}
-                pendingLabel={t('saving')}
-              />
-            )}
-          </div>
-        </div>
-      </form>
-      {publicId === undefined || work === null ? null : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <WorkMediaUpload
-            expectedVersion={currentWorkVersion ?? work.version}
-            mediaKind="poster"
-            publicId={publicId}
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      )}
+      <section className="grid gap-5 rounded-surface border border-border bg-card p-5 sm:p-8">
+        {step === 0 ? (
+          <DetailsStep context={context} t={t} update={update} values={values} />
+        ) : null}
+        {step === 1 ? (
+          <MediaStep
+            onVersion={(next) => {
+              applyMutationVersion(next);
+              setSaveState('saved');
+            }}
+            publicId={workPublicId}
+            t={t}
+            version={version}
           />
-          <WorkMediaUpload
-            expectedVersion={currentWorkVersion ?? work.version}
-            mediaKind="gallery"
-            publicId={publicId}
+        ) : null}
+        {step === 2 ? (
+          <AttributionStep
+            attributionName={effectiveWork?.submitterAttributionName ?? null}
+            contributors={contributors}
+            onContributors={setContributors}
+            onVersion={applyMutationVersion}
+            publicId={workPublicId}
+            studyYear={values.studyYear}
+            t={t}
+            updateStudyYear={(next) => update('studyYear', next)}
+            version={version}
           />
-        </div>
+        ) : null}
+        {step === 3 ? <DiscoveryStep t={t} update={update} values={values} /> : null}
+        {step === 4 ? (
+          <ReviewStep
+            attributionName={effectiveWork?.submitterAttributionName ?? null}
+            canSubmit={canSubmit}
+            contributors={contributors}
+            incompleteSteps={incompleteSteps}
+            media={effectiveWork?.media ?? []}
+            onEdit={setStep}
+            onSubmit={submit}
+            t={t}
+            values={values}
+          />
+        ) : null}
+      </section>
+      <div className="flex justify-between gap-3">
+        <Button
+          disabled={step === 0}
+          onClick={() => setStep((value) => value - 1)}
+          type="button"
+          variant="outline"
+        >
+          {t('wizard.previous')}
+        </Button>
+        {step === STEP_COUNT - 1 ? null : (
+          <Button
+            onClick={() => setStep((value) => Math.min(value + 1, STEP_COUNT - 1))}
+            type="button"
+          >
+            {t('wizard.next')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type Translation = ReturnType<typeof useTranslations<'Work'>>;
+type Update = <K extends keyof DraftValues>(key: K, value: DraftValues[K]) => void;
+
+function DetailsStep({
+  context,
+  t,
+  update,
+  values,
+}: {
+  context: WorkAuthoringContext;
+  t: Translation;
+  update: Update;
+  values: DraftValues;
+}) {
+  return (
+    <>
+      <h2 className="text-2xl font-semibold">{t('wizard.step1')}</h2>
+      <TextField
+        label={t('title')}
+        maxLength={150}
+        onChange={(value) => update('title', value)}
+        required
+        value={values.title}
+      />
+      <TextAreaField
+        label={t('summary')}
+        maxLength={300}
+        onChange={(value) => update('summary', value)}
+        value={values.summary}
+      />
+      <TextAreaField
+        label={t('description')}
+        maxLength={10_000}
+        onChange={(value) => update('description', value)}
+        value={values.description}
+      />
+      <Field>
+        <FieldLabel htmlFor="work-category">{t('category')}</FieldLabel>
+        <select
+          className="h-10 rounded-control border bg-background px-3"
+          id="work-category"
+          onChange={(event) => update('category', event.target.value as DraftValues['category'])}
+          value={values.category}
+        >
+          <option value="">{t('select')}</option>
+          <option value="course_work">{t('categories.course_work')}</option>
+          <option value="competition_entry">{t('categories.competition_entry')}</option>
+          <option value="academic_article">{t('categories.academic_article')}</option>
+        </select>
+      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor="work-year">{t('academicYear')}</FieldLabel>
+          <select
+            className="h-10 rounded-control border bg-background px-3"
+            id="work-year"
+            onChange={(event) =>
+              update('academicPeriod', { ...values.academicPeriod, year: event.target.value })
+            }
+            value={values.academicPeriod.year}
+          >
+            <option value="">{t('select')}</option>
+            {Array.from(
+              { length: context.currentAcademicYear - context.entryYear + 1 },
+              (_, index) => context.entryYear + index,
+            ).map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="work-semester">{t('semester')}</FieldLabel>
+          <select
+            className="h-10 rounded-control border bg-background px-3"
+            id="work-semester"
+            onChange={(event) =>
+              update('academicPeriod', {
+                ...values.academicPeriod,
+                semester: event.target.value as DraftValues['academicPeriod']['semester'],
+              })
+            }
+            value={values.academicPeriod.semester}
+          >
+            <option value="">{t('select')}</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="summer">{t('summer')}</option>
+          </select>
+        </Field>
+      </div>
+    </>
+  );
+}
+
+function MediaStep({
+  onVersion,
+  publicId,
+  t,
+  version,
+}: {
+  onVersion: (version: number) => void;
+  publicId: string | null;
+  t: Translation;
+  version: number | null;
+}) {
+  if (publicId === null || version === null) return <p>{t('media.saveFirst')}</p>;
+  return (
+    <>
+      <h2 className="text-2xl font-semibold">{t('wizard.step2')}</h2>
+      <WorkMediaUpload
+        expectedVersion={version}
+        mediaKind="poster"
+        onVersion={onVersion}
+        publicId={publicId}
+      />
+      <WorkMediaUpload
+        expectedVersion={version}
+        mediaKind="gallery"
+        onVersion={onVersion}
+        publicId={publicId}
+      />
+    </>
+  );
+}
+
+function AttributionStep({
+  attributionName,
+  contributors,
+  onContributors,
+  onVersion,
+  publicId,
+  studyYear,
+  t,
+  updateStudyYear,
+  version,
+}: {
+  attributionName: string | null;
+  contributors: WorkContributor[];
+  onContributors: (items: WorkContributor[]) => void;
+  onVersion: (version: number) => void;
+  publicId: string | null;
+  studyYear: DraftValues['studyYear'];
+  t: Translation;
+  updateStudyYear: (value: DraftValues['studyYear']) => void;
+  version: number | null;
+}) {
+  return (
+    <>
+      <h2 className="text-2xl font-semibold">{t('wizard.step3')}</h2>
+      <Field>
+        <FieldLabel>{t('attribution.submitter')}</FieldLabel>
+        <Input readOnly value={attributionName ?? t('attribution.profileRequired')} />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="study-year">{t('attribution.studyYear')}</FieldLabel>
+        <select
+          className="h-10 rounded-control border bg-background px-3"
+          id="study-year"
+          onChange={(event) => updateStudyYear(event.target.value as DraftValues['studyYear'])}
+          value={studyYear}
+        >
+          <option value="">{t('select')}</option>
+          {[1, 2, 3, 4].map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {publicId === null || version === null ? (
+        <p>{t('attribution.saveFirst')}</p>
+      ) : (
+        <ContributorEditor
+          contributors={contributors}
+          onContributors={onContributors}
+          onVersion={onVersion}
+          publicId={publicId}
+          t={t}
+          version={version}
+        />
       )}
     </>
   );
 }
 
-const WORK_WIZARD_STEPS = ['details', 'classification', 'extras'] as const;
-const STEP_PROGRESS_CLASSES = ['w-1/3', 'w-2/3', 'w-full'] as const;
-
-function WorkWizardSteps({
-  currentStep,
-  onSelect,
+function ContributorEditor({
+  contributors,
+  onContributors,
+  onVersion,
+  publicId,
+  t,
+  version,
 }: {
-  currentStep: number;
-  onSelect: (step: number) => void;
+  contributors: WorkContributor[];
+  onContributors: (items: WorkContributor[]) => void;
+  onVersion: (version: number) => void;
+  publicId: string;
+  t: Translation;
+  version: number;
 }) {
-  const t = useTranslations('Work.wizard');
-
+  const [studentId, setStudentId] = useState('');
+  const [candidate, setCandidate] = useState<{
+    candidateReference: string;
+    firstName: string;
+    lastName: string;
+  } | null>(null);
+  const [accountRole, setAccountRole] = useState('');
+  const [external, setExternal] = useState({ firstName: '', lastName: '', role: '' });
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const apply = (result: Awaited<ReturnType<typeof addAccountContributorAction>>) => {
+    if ('error' in result) {
+      setMessage(t(`attribution.errors.${result.error}`));
+      return;
+    }
+    onContributors(result.contributors as WorkContributor[]);
+    onVersion(result.version);
+    setMessage(null);
+  };
   return (
-    <nav aria-label={t('label')} className="border-b border-border/80 pb-5">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-semibold text-primary tabular-nums">
-          {t('progress', { current: currentStep + 1, total: WORK_WIZARD_STEPS.length })}
-        </p>
-        <div className="h-1 w-24 overflow-hidden rounded-full bg-muted sm:w-40">
-          <span
-            aria-hidden="true"
-            className={`block h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none ${STEP_PROGRESS_CLASSES[currentStep]}`}
+    <div className="grid gap-5">
+      <h3 className="text-lg font-semibold">{t('attribution.contributors')}</h3>
+      <ul className="grid gap-2">
+        {contributors.map((item) => (
+          <li
+            className="flex items-center justify-between rounded-control border p-3"
+            key={item.publicId}
+          >
+            <span>
+              {item.attributionName} · {item.contributionRole}
+            </span>
+            <Button
+              disabled={pending}
+              onClick={() =>
+                start(async () =>
+                  apply(
+                    await removeContributorAction({
+                      contributorPublicId: item.publicId,
+                      expectedVersion: version,
+                      idempotencyKey: crypto.randomUUID(),
+                      publicId,
+                    }),
+                  ),
+                )
+              }
+              type="button"
+              variant="outline"
+            >
+              {t('attribution.remove')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {message === null ? null : <FieldError>{message}</FieldError>}
+      <div className="grid gap-3 rounded-control border p-4">
+        <TextField
+          label={t('attribution.studentId')}
+          maxLength={8}
+          onChange={setStudentId}
+          value={studentId}
+        />
+        <Button
+          disabled={pending || !/^[0-9]{8}$/u.test(studentId)}
+          onClick={() =>
+            start(async () => {
+              const result = await lookupContributorAction({ publicId, studentId });
+              setStudentId('');
+              if ('error' in result || result.candidate === null) {
+                setCandidate(null);
+                setMessage(t('attribution.noCandidate'));
+                return;
+              }
+              setCandidate(result.candidate);
+              setMessage(null);
+            })
+          }
+          type="button"
+          variant="outline"
+        >
+          {t('attribution.lookup')}
+        </Button>
+        {candidate === null ? null : (
+          <>
+            <p>
+              {candidate.firstName} {candidate.lastName}
+            </p>
+            <TextField
+              label={t('attribution.role')}
+              maxLength={100}
+              onChange={setAccountRole}
+              value={accountRole}
+            />
+            <Button
+              disabled={pending || accountRole.trim() === ''}
+              onClick={() =>
+                start(async () => {
+                  apply(
+                    await addAccountContributorAction({
+                      candidateReference: candidate.candidateReference,
+                      contributionRole: accountRole,
+                      expectedVersion: version,
+                      idempotencyKey: crypto.randomUUID(),
+                      publicId,
+                    }),
+                  );
+                  setCandidate(null);
+                  setAccountRole('');
+                })
+              }
+              type="button"
+            >
+              {t('attribution.add')}
+            </Button>
+          </>
+        )}
+      </div>
+      <div className="grid gap-3 rounded-control border p-4">
+        <TextField
+          label={t('attribution.firstName')}
+          maxLength={100}
+          onChange={(firstName) => setExternal((current) => ({ ...current, firstName }))}
+          value={external.firstName}
+        />
+        <TextField
+          label={t('attribution.lastName')}
+          maxLength={100}
+          onChange={(lastName) => setExternal((current) => ({ ...current, lastName }))}
+          value={external.lastName}
+        />
+        <TextField
+          label={t('attribution.role')}
+          maxLength={100}
+          onChange={(role) => setExternal((current) => ({ ...current, role }))}
+          value={external.role}
+        />
+        <Button
+          disabled={pending || Object.values(external).some((value) => value.trim() === '')}
+          onClick={() =>
+            start(async () => {
+              apply(
+                await addExternalContributorAction({
+                  contributionRole: external.role,
+                  expectedVersion: version,
+                  firstName: external.firstName,
+                  idempotencyKey: crypto.randomUUID(),
+                  lastName: external.lastName,
+                  publicId,
+                }),
+              );
+              setExternal({ firstName: '', lastName: '', role: '' });
+            })
+          }
+          type="button"
+        >
+          {t('attribution.addExternal')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DiscoveryStep({
+  t,
+  update,
+  values,
+}: {
+  t: Translation;
+  update: Update;
+  values: DraftValues;
+}) {
+  return (
+    <>
+      <h2 className="text-2xl font-semibold">{t('wizard.step4')}</h2>
+      <TextField
+        label="GitHub"
+        maxLength={2_048}
+        onChange={(value) => update('githubUrl', value)}
+        value={values.githubUrl}
+      />
+      <FieldDescription>{t('discovery.githubHelp')}</FieldDescription>
+      {values.links.map((link, index) => (
+        <div className="grid gap-3 sm:grid-cols-2" key={index}>
+          <TextField
+            label={t('discovery.linkLabel')}
+            maxLength={50}
+            onChange={(label) =>
+              update(
+                'links',
+                values.links.map((item, itemIndex) =>
+                  itemIndex === index ? { ...item, label } : item,
+                ),
+              )
+            }
+            value={link.label}
+          />
+          <TextField
+            label={t('discovery.linkUrl')}
+            maxLength={2_048}
+            onChange={(url) =>
+              update(
+                'links',
+                values.links.map((item, itemIndex) =>
+                  itemIndex === index ? { ...item, url } : item,
+                ),
+              )
+            }
+            value={link.url}
           />
         </div>
-      </div>
-      <ol className="mt-4 grid gap-2 sm:grid-cols-3">
-        {WORK_WIZARD_STEPS.map((step, index) => {
-          const isCurrent = index === currentStep;
-          return (
-            <li key={step}>
-              <button
-                aria-label={`${index + 1}. ${t(`steps.${step}.title`)}`}
-                aria-current={isCurrent ? 'step' : undefined}
-                className="group flex w-full min-w-0 items-center gap-3 rounded-control border border-transparent p-2.5 text-left transition-colors hover:bg-muted disabled:cursor-default disabled:hover:bg-transparent sm:p-3"
-                disabled={index >= currentStep}
-                onClick={() => onSelect(index)}
-                type="button"
-              >
-                <span
-                  className={`grid size-8 shrink-0 place-items-center rounded-control border text-sm font-semibold tabular-nums ${
-                    isCurrent
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : index < currentStep
-                        ? 'border-primary/30 bg-primary-soft text-primary'
-                        : 'border-border bg-background text-muted-foreground'
-                  }`}
-                >
-                  {index + 1}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">
-                    {t(`steps.${step}.title`)}
-                  </span>
-                  <span className="mt-0.5 hidden text-xs leading-relaxed text-muted-foreground lg:block">
-                    {t(`steps.${step}.shortHelp`)}
-                  </span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </nav>
+      ))}
+      {values.links.length < 4 ? (
+        <Button
+          onClick={() => update('links', [...values.links, { label: '', url: '' }])}
+          type="button"
+          variant="outline"
+        >
+          {t('discovery.addLink')}
+        </Button>
+      ) : null}
+      <TextField
+        label={t('tags')}
+        maxLength={254}
+        onChange={(value) => update('tags', value)}
+        value={values.tags}
+      />
+      <TextAreaField
+        label={t('videoLinks')}
+        maxLength={6_200}
+        onChange={(value) => update('videoLinks', value)}
+        value={values.videoLinks}
+      />
+    </>
   );
 }
 
-function firstErrorStep(fields: WorkField[]): number {
-  if (fields.some((field) => ['description', 'summary', 'title'].includes(field))) return 0;
-  if (fields.some((field) => ['academicPeriod', 'category'].includes(field))) return 1;
-  return 2;
-}
-
-function focusFirstError(form: HTMLFormElement | null, field: WorkField | undefined) {
-  const selectorByField: Partial<Record<WorkField, string>> = {
-    academicPeriod: '[name="academicYear"]',
-    category: '[name="category"]',
-    description: '[name="description"]',
-    links: '[name^="linkLabel"], [name^="linkUrl"]',
-    summary: '[name="summary"]',
-    tags: '[name^="tag"]',
-    title: '[name="title"]',
-    videoLinks: '[name^="videoLink"]',
-  };
-  if (!field) return;
-  form?.querySelector<HTMLElement>(selectorByField[field] ?? '')?.focus();
-}
-
-function RequirementLabel({ isRequired = false }: { isRequired?: boolean }) {
-  const t = useTranslations('Work.requirement');
+function ReviewStep({
+  attributionName,
+  canSubmit,
+  contributors,
+  incompleteSteps,
+  media,
+  onEdit,
+  onSubmit,
+  t,
+  values,
+}: {
+  attributionName: string | null;
+  canSubmit: boolean;
+  contributors: WorkContributor[];
+  incompleteSteps: number[];
+  media: WorkDraft['media'];
+  onEdit: (step: number) => void;
+  onSubmit: () => void;
+  t: Translation;
+  values: DraftValues;
+}) {
+  const poster = media.find((item) => item.kind === 'poster');
   return (
-    <Badge aria-hidden="true" variant={isRequired ? 'destructive' : 'outline'}>
-      {t(isRequired ? 'required' : 'optional')}
-    </Badge>
+    <>
+      <h2 className="text-2xl font-semibold">{t('wizard.step5')}</h2>
+      <dl className="grid gap-3">
+        <div>
+          <dt className="font-medium">{t('title')}</dt>
+          <dd>{values.title || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('summary')}</dt>
+          <dd>{values.summary || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('description')}</dt>
+          <dd className="whitespace-pre-wrap">{values.description || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('category')}</dt>
+          <dd>{values.category === '' ? '—' : t(`categories.${values.category}`)}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('academicYear')}</dt>
+          <dd>{values.academicPeriod.year || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('semester')}</dt>
+          <dd>
+            {values.academicPeriod.semester === 'summer'
+              ? t('summer')
+              : values.academicPeriod.semester || '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('review.poster')}</dt>
+          <dd>{poster === undefined ? '—' : t(`review.mediaStatus.${poster.status}`)}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('review.gallery')}</dt>
+          <dd>
+            {t('review.galleryCount', {
+              count: media.filter((item) => item.kind === 'gallery').length,
+            })}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('attribution.submitter')}</dt>
+          <dd>{attributionName ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('attribution.studyYear')}</dt>
+          <dd>{values.studyYear || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('attribution.contributors')}</dt>
+          <dd>
+            {contributors
+              .map((item) => `${item.attributionName} (${item.contributionRole})`)
+              .join(', ') || '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('discovery.links')}</dt>
+          <dd>
+            {[values.githubUrl, ...values.links.map((item) => item.url)]
+              .filter(Boolean)
+              .join(', ') || '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('tags')}</dt>
+          <dd>{values.tags || '—'}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">{t('videoLinks')}</dt>
+          <dd className="whitespace-pre-wrap">{values.videoLinks || '—'}</dd>
+        </div>
+      </dl>
+      {incompleteSteps.length === 0 ? null : (
+        <Alert variant="destructive">
+          <AlertTitle>{t('review.incomplete')}</AlertTitle>
+          <AlertDescription>
+            <ul>
+              {incompleteSteps.map((item) => (
+                <li key={item}>
+                  <button className="underline" onClick={() => onEdit(item)} type="button">
+                    {t('review.editStep', { step: item + 1 })}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+      <Button disabled={!canSubmit} onClick={onSubmit} type="button">
+        {t('review.submit')}
+      </Button>
+    </>
   );
 }
 
-function CharacterCount({ current, maximum }: { current: number; maximum: number }) {
+function TextField({
+  label,
+  maxLength,
+  onChange,
+  required = false,
+  value,
+}: {
+  label: string;
+  maxLength: number;
+  onChange: (value: string) => void;
+  required?: boolean;
+  value: string;
+}) {
+  const id = useId();
   return (
-    <span aria-live="polite" className="shrink-0 font-medium tabular-nums text-foreground">
-      {current.toLocaleString('en-US')} / {maximum.toLocaleString('en-US')}
-    </span>
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        maxLength={maxLength}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        value={value}
+      />
+    </Field>
+  );
+}
+function TextAreaField({
+  label,
+  maxLength,
+  onChange,
+  value,
+}: {
+  label: string;
+  maxLength: number;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const id = useId();
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Textarea
+        id={id}
+        maxLength={maxLength}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </Field>
   );
 }
 
-function createFormDraft(work: WorkDraft | null, context: WorkAuthoringContext) {
+function emptyValues(): DraftValues {
   return {
-    academicYear: String(work?.draft.academicPeriod.year ?? context.currentAcademicYear),
-    category: work?.draft.category ?? ('course_work' as const),
-    description: work?.draft.description ?? '',
-    links: Array.from({ length: 5 }, (_, index) => ({
-      label: work?.draft.links[index]?.label ?? '',
-      url: work?.draft.links[index]?.url ?? '',
-    })),
-    semester: work?.draft.academicPeriod.semester ?? ('1' as const),
-    summary: work?.draft.summary ?? '',
-    tags: Array.from({ length: 5 }, (_, index) => work?.draft.tags[index]?.displayLabel ?? ''),
-    title: work?.draft.title ?? '',
-    videoLinks: Array.from({ length: 3 }, (_, index) => work?.draft.videoLinks[index]?.url ?? ''),
+    academicPeriod: { semester: '', year: '' },
+    category: '',
+    description: '',
+    githubUrl: '',
+    links: [],
+    studyYear: '',
+    summary: '',
+    tags: '',
+    title: '',
+    videoLinks: '',
   };
 }
-
-function findRequiredFieldErrors(draft: ReturnType<typeof createFormDraft>): WorkField[] {
-  const errors: WorkField[] = [];
-  if (draft.title.trim().length === 0) errors.push('title');
-  if (draft.summary.trim().length === 0) errors.push('summary');
-  if (draft.description.trim().length === 0) errors.push('description');
-  return errors;
+function valuesFromWork(work: WorkDraft | null): DraftValues {
+  const draft = work?.draft;
+  const github = draft?.links.find((link) => link.label === 'GitHub');
+  return {
+    academicPeriod: {
+      semester: draft?.academicPeriod.semester ?? '',
+      year: draft?.academicPeriod.year?.toString() ?? '',
+    },
+    category: draft?.category ?? '',
+    description: draft?.description ?? '',
+    githubUrl: github?.url ?? '',
+    links: draft?.links.filter((link) => link.label !== 'GitHub') ?? [],
+    studyYear:
+      (draft?.submitterStudyYear?.toString() as DraftValues['studyYear'] | undefined) ?? '',
+    summary: draft?.summary ?? '',
+    tags: draft?.tags.map((tag) => tag.displayLabel).join(', ') ?? '',
+    title: draft?.title ?? '',
+    videoLinks: draft?.videoLinks.map((link) => link.url).join('\n') ?? '',
+  };
 }
-
-function initialCollectionFieldCount(populatedFieldCount: number, maximum: number): number {
-  return Math.min(maximum, Math.max(1, populatedFieldCount + 1));
+function normalized(values: DraftValues): NormalizedValues {
+  const links = [
+    ...(values.githubUrl.trim() === '' ? [] : [{ label: 'GitHub', url: values.githubUrl.trim() }]),
+    ...values.links
+      .filter((link) => link.label.trim() !== '' || link.url.trim() !== '')
+      .map((link) => ({ label: link.label.trim(), url: link.url.trim() })),
+  ];
+  return {
+    academicPeriod: {
+      semester: values.academicPeriod.semester || null,
+      year: values.academicPeriod.year === '' ? null : Number(values.academicPeriod.year),
+    },
+    category: values.category || null,
+    description: values.description.trim() || null,
+    links,
+    submitterStudyYear: values.studyYear === '' ? null : Number(values.studyYear),
+    summary: values.summary.trim() || null,
+    tags: values.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+    title: values.title.trim() || null,
+    videoLinks: values.videoLinks
+      .split(/\r?\n/u)
+      .map((link) => link.trim())
+      .filter(Boolean),
+  };
 }
-
-function ActionFeedback({ state }: { state: WorkActionState }) {
-  const t = useTranslations('Work');
-  if (state.error !== null) {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>{t('errors.heading')}</AlertTitle>
-        <AlertDescription>{t(`errors.${state.error}`)}</AlertDescription>
-      </Alert>
-    );
+function createPatch(
+  previous: DraftValues,
+  current: DraftValues,
+  isPersisted: boolean,
+): WorkDraftPatch | null {
+  const before = normalized(previous);
+  const after = normalized(current);
+  const empty = normalized(emptyValues());
+  const patch: WorkDraftPatch = {};
+  for (const key of Object.keys(after) as Array<keyof WorkDraftPatch>) {
+    if (!isPersisted && JSON.stringify(after[key]) === JSON.stringify(empty[key])) continue;
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+      Object.assign(patch, { [key]: after[key] });
   }
-  return state.success ? <p className="text-sm text-success">{t('saved')}</p> : null;
+  return Object.keys(patch).length === 0 ? null : patch;
+}
+function hasMeaningfulValue(values: DraftValues) {
+  const value = normalized(values);
+  return Object.values(value).some(
+    (item) =>
+      item !== null &&
+      (Array.isArray(item)
+        ? item.length > 0
+        : typeof item === 'object'
+          ? Object.values(item).some((part) => part !== null)
+          : true),
+  );
+}
+function completeDraft(values: DraftValues) {
+  const value = normalized(values);
+  return {
+    academicPeriod: { semester: value.academicPeriod.semester!, year: value.academicPeriod.year! },
+    category: value.category!,
+    description: value.description!,
+    links: value.links,
+    summary: value.summary!,
+    tags: value.tags,
+    title: value.title!,
+    videoLinks: value.videoLinks,
+  };
+}
+function findIncompleteSteps(
+  values: DraftValues,
+  hasReadyPoster: boolean,
+  hasUnreadyMedia: boolean,
+  attributionName: string | null,
+) {
+  const steps = new Set<number>();
+  const value = normalized(values);
+  if (
+    value.title === null ||
+    value.summary === null ||
+    value.description === null ||
+    value.category === null ||
+    value.academicPeriod.semester === null ||
+    value.academicPeriod.year === null
+  )
+    steps.add(0);
+  if (!hasReadyPoster || hasUnreadyMedia) steps.add(1);
+  if (attributionName === null || value.submitterStudyYear === null) steps.add(2);
+  if (!isDiscoveryValid(values)) steps.add(3);
+  return [...steps];
 }
 
-function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button disabled={pending} size="lg" type="submit">
-      {pending ? <Spinner aria-label={pendingLabel} data-icon="inline-start" /> : null}
-      {pending ? pendingLabel : label}
-    </Button>
-  );
+function isDiscoveryValid(values: DraftValues): boolean {
+  const links = normalized(values).links;
+  if (links.length > 5) return false;
+  const normalizedUrls = new Set<string>();
+  for (const link of links) {
+    if (link.label.trim() === '') return false;
+    const url = safeUrl(link.url);
+    if (url === null || url.protocol !== 'https:') return false;
+    if (
+      link.label === 'GitHub' &&
+      url.hostname !== 'github.com' &&
+      !url.hostname.endsWith('.github.com')
+    )
+      return false;
+    if (normalizedUrls.has(url.toString())) return false;
+    normalizedUrls.add(url.toString());
+  }
+  const tags = normalized(values).tags;
+  if (tags.length > 5) return false;
+  const videos = normalized(values).videoLinks;
+  if (videos.length > 3) return false;
+  return videos.every((value) => {
+    const url = safeUrl(value);
+    if (url === null || url.protocol !== 'https:') return false;
+    return ['youtube.com', 'youtu.be', 'tiktok.com'].some(
+      (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+    );
+  });
+}
+
+function safeUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
 }

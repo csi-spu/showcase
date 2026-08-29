@@ -22,9 +22,9 @@ describe('Thai Student messages', () => {
 
   it('uses direct dashboard copy', () => {
     expect(messages.Dashboard.title).toBe('จัดการผลงานของคุณ');
-    expect(messages.Dashboard.description).toBe('จัดการผลงาน โปรไฟล์ คำเชิญ และการแจ้งเตือน');
+    expect(messages.Dashboard.description).toBe('ติดตามสถานะผลงานและไปยังงานที่ต้องทำต่อ');
     expect(messages.Auth.active.createWork).toBe('อัปโหลดผลงาน');
-    expect(messages.Workspace.navigation.createWork).toBe('อัปโหลดผลงาน');
+    expect(messages.Workspace.navigation.addWork).toBe('เพิ่มผลงาน');
     expect(messages.WorkPage.createHeading).toBe('อัปโหลดผลงาน');
   });
 

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
@@ -6,7 +5,6 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
 import { WorkForm } from '../work-form';
-import { createWorkAction } from '../work.actions';
 import { StudentWorkspaceShell } from '../../student-workspace-shell';
 
 export default async function NewWorkPage() {
@@ -23,22 +21,13 @@ export default async function NewWorkPage() {
   } catch (error: unknown) {
     handleLoadError(error);
   }
-  const [t, idempotencyKey] = await Promise.all([
-    getTranslations('WorkPage'),
-    Promise.resolve(randomUUID()),
-  ]);
+  const t = await getTranslations('WorkPage');
 
   return (
-    <StudentWorkspaceShell activePage="create-work" canCreateWork>
+    <StudentWorkspaceShell activePage="add-work" canCreateWork>
       <div>
         <h1 className="sr-only">{t('createHeading')}</h1>
-        <WorkForm
-          action={createWorkAction}
-          context={context}
-          idempotencyKey={idempotencyKey}
-          mode="create"
-          work={null}
-        />
+        <WorkForm context={context} initialWork={null} />
       </div>
     </StudentWorkspaceShell>
   );

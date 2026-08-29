@@ -6,90 +6,189 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
-import { StudentWorksCoreClient, StudentWorksCoreError } from '@/lib/student-works-core';
-import { validateWorkForm } from '@/lib/student-work-validation';
-import type { WorkActionError, WorkActionState } from './work-action-state';
+import {
+  StudentWorksCoreClient,
+  StudentWorksCoreError,
+  type WorkDraft,
+  type WorkDraftPatch,
+} from '@/lib/student-works-core';
 import type {
   WorkRevisionActionError,
   WorkRevisionActionState,
 } from './work-revision-action-state';
 import type { WorkRemovalActionError, WorkRemovalActionState } from './work-removal-state';
 
-export async function createWorkAction(
-  previousState: WorkActionState,
-  formData: FormData,
-): Promise<WorkActionState> {
-  const token = await sessionToken();
-  const works = client();
-  let context;
-  try {
-    context = await works.getAuthoringContext(token);
-  } catch (error: unknown) {
-    return failed(previousState, mapError(error));
-  }
-  const validation = validateWorkForm(formData, context);
-  if (!validation.success) {
-    return failed(previousState, 'invalid', validation.fieldErrors);
-  }
-  if ('expectedVersion' in validation.data) return failed(previousState, 'invalid');
+const categorySchema = z.enum(['course_work', 'competition_entry', 'academic_article']);
+const semesterSchema = z.enum(['1', '2', 'summer']);
+const linkSchema = z.object({ label: z.string().max(50), url: z.string().max(2_048) }).strict();
+const draftPatchSchema = z
+  .object({
+    academicPeriod: z
+      .object({ semester: semesterSchema.nullable(), year: z.number().int().nullable() })
+      .strict()
+      .nullable()
+      .optional(),
+    category: categorySchema.nullable().optional(),
+    description: z.string().max(10_000).nullable().optional(),
+    links: z.array(linkSchema).max(5).optional(),
+    submitterStudyYear: z.number().int().min(1).max(4).nullable().optional(),
+    summary: z.string().max(300).nullable().optional(),
+    tags: z.array(z.string().max(50)).max(5).optional(),
+    title: z.string().max(150).nullable().optional(),
+    videoLinks: z.array(z.string().max(2_048)).max(3).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
+const completeDraftSchema = z
+  .object({
+    academicPeriod: z.object({ semester: semesterSchema, year: z.number().int() }).strict(),
+    category: categorySchema,
+    description: z.string().trim().min(1).max(10_000),
+    links: z.array(linkSchema).max(5),
+    summary: z.string().trim().min(1).max(300),
+    tags: z.array(z.string().max(50)).max(5),
+    title: z.string().trim().min(1).max(150),
+    videoLinks: z.array(z.string().max(2_048)).max(3),
+  })
+  .strict();
 
-  let publicId: string;
-  try {
-    const result = await works.createWork(token, validation.data);
-    publicId = result.work.publicId;
-  } catch (error: unknown) {
-    return failed(previousState, mapError(error));
+export type AutosaveActionResult =
+  | {
+      outcome: 'saved';
+      publicId: string;
+      savedAt: string;
+      version: number;
+      work: WorkDraft;
+    }
+  | {
+      error: 'conflict' | 'forbidden' | 'invalid' | 'unauthenticated' | 'unavailable';
+      outcome: 'error';
+    };
+
+export async function autosaveWorkAction(input: unknown): Promise<AutosaveActionResult> {
+  const parsed = z
+    .object({
+      expectedVersion: z.number().int().positive().nullable(),
+      idempotencyKey: z.uuid(),
+      patch: draftPatchSchema,
+      publicId: z.uuid().nullable(),
+    })
+    .strict()
+    .safeParse(input);
+  if (
+    !parsed.success ||
+    (parsed.data.publicId === null) !== (parsed.data.expectedVersion === null)
+  ) {
+    return actionError('invalid');
   }
-  revalidatePath('/');
-  redirect(`/works/${publicId}`);
+  const token = await optionalSessionToken();
+  if (token === null) return actionError('unauthenticated');
+  try {
+    const patch = parsed.data.patch as WorkDraftPatch;
+    const result =
+      parsed.data.publicId === null
+        ? await client().createWork(token, {
+            ...patch,
+            idempotencyKey: parsed.data.idempotencyKey,
+          })
+        : await client().patchWork(token, parsed.data.publicId, {
+            ...patch,
+            expectedVersion: parsed.data.expectedVersion!,
+            idempotencyKey: parsed.data.idempotencyKey,
+          });
+    revalidatePath('/');
+    revalidatePath('/works');
+    revalidatePath(`/works/${result.work.publicId}`);
+    return {
+      outcome: 'saved',
+      publicId: result.work.publicId,
+      savedAt: result.work.savedAt,
+      version: result.work.version,
+      work: result.work,
+    };
+  } catch (error: unknown) {
+    return actionError(mapAutosaveError(error));
+  }
 }
 
-export async function updateWorkAction(
-  publicId: string,
-  previousState: WorkActionState,
-  formData: FormData,
-): Promise<WorkActionState> {
-  const parsedPublicId = z.uuid().safeParse(publicId);
-  if (!parsedPublicId.success) return failed(previousState, 'invalid');
-  const token = await sessionToken();
-  const works = client();
-  let context;
+export async function lookupContributorAction(input: unknown) {
+  const parsed = z
+    .object({ publicId: z.uuid(), studentId: z.string().regex(/^[0-9]{8}$/u) })
+    .strict()
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  const token = await optionalSessionToken();
+  if (token === null) return { error: 'unauthenticated' as const };
   try {
-    context = await works.getAuthoringContext(token);
+    return {
+      candidate: await client().lookupContributor(
+        token,
+        parsed.data.publicId,
+        parsed.data.studentId,
+      ),
+    };
   } catch (error: unknown) {
-    return failed(previousState, mapError(error));
+    return { error: mapContributorError(error) };
   }
-  const validation = validateWorkForm(formData, context);
-  if (!validation.success) {
-    return failed(previousState, 'invalid', validation.fieldErrors);
-  }
-  if (!('expectedVersion' in validation.data)) return failed(previousState, 'invalid');
-
-  let version: number;
-  try {
-    const result = await works.updateWork(token, parsedPublicId.data, validation.data);
-    version = result.work.version;
-  } catch (error: unknown) {
-    return failed(previousState, mapError(error));
-  }
-  revalidatePath(`/works/${parsedPublicId.data}`);
-  return {
-    error: null,
-    fieldErrors: [],
-    idempotencyKey: randomUUID(),
-    success: true,
-    version,
-  };
 }
 
-export async function uploadWorkMediaAction(input: {
-  byteSize: number;
-  contentType: string;
-  fileExtension: string;
-  idempotencyKey: string;
-  mediaKind: 'gallery' | 'poster';
-  publicId: string;
-}) {
+export async function addAccountContributorAction(input: unknown) {
+  const parsed = z
+    .object({
+      candidateReference: z.uuid(),
+      contributionRole: z.string().trim().min(1).max(100),
+      expectedVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+    })
+    .strict()
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  return contributorMutation(parsed.data, (token) => {
+    const { publicId, ...body } = parsed.data;
+    return client().addAccountContributor(token, publicId, body);
+  });
+}
+
+export async function addExternalContributorAction(input: unknown) {
+  const parsed = z
+    .object({
+      contributionRole: z.string().trim().min(1).max(100),
+      expectedVersion: z.number().int().positive(),
+      firstName: z.string().trim().min(1).max(100),
+      idempotencyKey: z.uuid(),
+      lastName: z.string().trim().min(1).max(100),
+      publicId: z.uuid(),
+    })
+    .strict()
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  return contributorMutation(parsed.data, (token) => {
+    const { publicId, ...body } = parsed.data;
+    return client().addExternalContributor(token, publicId, body);
+  });
+}
+
+export async function removeContributorAction(input: unknown) {
+  const parsed = z
+    .object({
+      contributorPublicId: z.uuid(),
+      expectedVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+    })
+    .strict()
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  return contributorMutation(parsed.data, (token) =>
+    client().removeContributor(token, parsed.data.publicId, parsed.data.contributorPublicId, {
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    }),
+  );
+}
+
+export async function uploadWorkMediaAction(input: unknown) {
   const parsed = z
     .object({
       byteSize: z.number().int().positive().max(5_242_880),
@@ -99,6 +198,7 @@ export async function uploadWorkMediaAction(input: {
       mediaKind: z.enum(['gallery', 'poster']),
       publicId: z.uuid(),
     })
+    .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
   try {
@@ -106,23 +206,46 @@ export async function uploadWorkMediaAction(input: {
     const { publicId, ...authorization } = parsed.data;
     return await client().authorizeMediaUpload(token, publicId, authorization);
   } catch (error: unknown) {
-    return { error: mapError(error) };
+    return { error: mapAutosaveError(error) };
   }
 }
 
-export async function finalizeWorkMediaAction(input: { assetId: string; publicId: string }) {
-  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).safeParse(input);
+export async function attachWorkMediaAction(input: unknown) {
+  const parsed = z
+    .object({
+      assetId: z.uuid(),
+      expectedVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      mediaKind: z.enum(['gallery', 'poster']),
+      publicId: z.uuid(),
+    })
+    .strict()
+    .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
   try {
-    const token = await sessionToken();
-    return await client().finalizeMediaUpload(token, parsed.data.publicId, parsed.data.assetId);
+    const { publicId, ...body } = parsed.data;
+    return await client().attachMedia(await sessionToken(), publicId, body);
   } catch (error: unknown) {
-    return { error: mapError(error) };
+    return { error: mapAutosaveError(error) };
   }
 }
 
-export async function getWorkMediaStatusAction(input: { assetId: string; publicId: string }) {
-  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).safeParse(input);
+export async function finalizeWorkMediaAction(input: unknown) {
+  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).strict().safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const };
+  try {
+    return await client().finalizeMediaUpload(
+      await sessionToken(),
+      parsed.data.publicId,
+      parsed.data.assetId,
+    );
+  } catch (error: unknown) {
+    return { error: mapAutosaveError(error) };
+  }
+}
+
+export async function getWorkMediaStatusAction(input: unknown) {
+  const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).strict().safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
   try {
     return await client().getMediaUploadStatus(
@@ -131,72 +254,72 @@ export async function getWorkMediaStatusAction(input: { assetId: string; publicI
       parsed.data.assetId,
     );
   } catch (error: unknown) {
-    return { error: mapError(error) };
+    return { error: mapAutosaveError(error) };
   }
 }
 
-export async function attachWorkMediaAction(input: {
-  assetId: string;
-  expectedVersion: number;
-  mediaKind: 'gallery' | 'poster';
-  publicId: string;
-}) {
+export async function submitLatestWorkAction(input: unknown) {
   const parsed = z
     .object({
-      assetId: z.uuid(),
-      expectedVersion: z.number().int().positive(),
-      mediaKind: z.enum(['gallery', 'poster']),
+      draft: completeDraftSchema,
+      expectedBasePublishedRevisionId: z.uuid().nullable(),
+      expectedDraftVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
       publicId: z.uuid(),
+      studyYear: z.number().int().min(1).max(4),
     })
+    .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await optionalSessionToken();
+  if (token === null) return { error: 'unauthenticated' as const };
   try {
-    return await client().attachMedia(await sessionToken(), parsed.data.publicId, {
-      assetId: parsed.data.assetId,
-      expectedVersion: parsed.data.expectedVersion,
-      mediaKind: parsed.data.mediaKind,
+    const { publicId, ...submission } = parsed.data;
+    const result = await client().submitRevision(token, publicId, {
+      ...submission,
+      draft: {
+        ...submission.draft,
+        tags: submission.draft.tags.map((tag) => ({
+          displayLabel: tag,
+          normalizedIdentity: tag,
+        })),
+        videoLinks: submission.draft.videoLinks.map((url) => ({
+          provider: url.includes('tiktok.com') ? ('tiktok' as const) : ('youtube' as const),
+          providerVideoId: url,
+          url,
+        })),
+      },
     });
+    revalidatePath('/');
+    revalidatePath('/works');
+    revalidatePath(`/works/${publicId}`);
+    return { outcome: 'submitted' as const, revisionPublicId: result.revision.publicId };
   } catch (error: unknown) {
-    return { error: mapError(error) };
+    return { error: mapSubmissionError(error) };
   }
 }
 
-export async function submitWorkRevisionAction(
-  publicId: string,
-  previousState: WorkRevisionActionState,
-  formData: FormData,
-): Promise<WorkRevisionActionState> {
-  const parsedPublicId = z.uuid().safeParse(publicId);
-  const expectedBaseValue = formData.get('expectedBasePublishedRevisionId');
-  const parsed = z
-    .object({
-      attributionName: z.string().trim().min(1).max(100),
-      expectedBasePublishedRevisionId: z.uuid().nullable(),
-      expectedDraftVersion: z.coerce.number().int().positive(),
-      idempotencyKey: z.uuid(),
-      studyYear: z.coerce.number().int().min(1).max(8),
-    })
-    .safeParse({
-      attributionName: formData.get('attributionName'),
-      expectedBasePublishedRevisionId: expectedBaseValue === '' ? null : expectedBaseValue,
-      expectedDraftVersion: formData.get('expectedDraftVersion'),
-      idempotencyKey: formData.get('idempotencyKey'),
-      studyYear: formData.get('studyYear'),
-    });
-  if (!parsedPublicId.success || !parsed.success) {
-    return revisionFailed(previousState, 'invalid');
-  }
-  try {
-    await client().submitRevision(await sessionToken(), parsedPublicId.data, parsed.data);
-  } catch (error: unknown) {
-    if (error instanceof StudentWorksCoreError && error.code === 'WORK_PENDING_REVISION_EXISTS') {
-      revalidatePath(`/works/${parsedPublicId.data}`);
-      return { error: null, idempotencyKey: randomUUID(), success: true };
-    }
-    return revisionFailed(previousState, mapRevisionError(error));
-  }
-  revalidatePath(`/works/${parsedPublicId.data}`);
-  return { error: null, idempotencyKey: randomUUID(), success: true };
+export async function archiveSavedDraftAction(input: unknown) {
+  const parsed = savedDraftCommand(input, true);
+  if (!parsed.success) return;
+  await client().archiveSavedDraft(await sessionToken(), parsed.data.publicId, {
+    confirmation: true,
+    expectedVersion: parsed.data.expectedVersion,
+    idempotencyKey: parsed.data.idempotencyKey,
+  });
+  revalidatePath('/');
+  revalidatePath('/works');
+}
+
+export async function restoreSavedDraftAction(input: unknown) {
+  const parsed = savedDraftCommand(input, false);
+  if (!parsed.success) return;
+  await client().restoreSavedDraft(await sessionToken(), parsed.data.publicId, {
+    expectedVersion: parsed.data.expectedVersion,
+    idempotencyKey: parsed.data.idempotencyKey,
+  });
+  revalidatePath('/');
+  revalidatePath('/works');
 }
 
 export async function withdrawWorkRevisionAction(
@@ -242,11 +365,7 @@ export async function seedPublishedWorkDraftAction(
   formData: FormData,
 ): Promise<WorkRevisionActionState> {
   const parsed = z
-    .object({
-      expectedPublishedRevisionId: z.uuid(),
-      idempotencyKey: z.uuid(),
-      publicId: z.uuid(),
-    })
+    .object({ expectedPublishedRevisionId: z.uuid(), idempotencyKey: z.uuid(), publicId: z.uuid() })
     .safeParse({
       expectedPublishedRevisionId: formData.get('expectedPublishedRevisionId'),
       idempotencyKey: formData.get('idempotencyKey'),
@@ -362,33 +481,86 @@ export async function cancelWorkRemovalRequestAction(
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
 
-function client(): StudentWorksCoreClient {
+function client() {
   return new StudentWorksCoreClient(getStudentServerEnvironment());
 }
 
+async function optionalSessionToken() {
+  return readStudentSessionToken();
+}
+
 async function sessionToken(): Promise<string> {
-  const token = await readStudentSessionToken();
+  const token = await optionalSessionToken();
   if (token === null) redirect('/?expired=1');
   return token;
 }
 
-function failed(
-  previousState: WorkActionState,
-  error: WorkActionError,
-  fieldErrors: WorkActionState['fieldErrors'] = [],
-): WorkActionState {
-  return { ...previousState, error, fieldErrors, success: false };
+function actionError(error: Exclude<AutosaveActionResult, { outcome: 'saved' }>['error']) {
+  return { error, outcome: 'error' as const };
 }
 
-function mapError(error: unknown): WorkActionError {
-  if (!(error instanceof StudentWorksCoreError)) return 'network';
+function mapAutosaveError(
+  error: unknown,
+): Exclude<AutosaveActionResult, { outcome: 'saved' }>['error'] {
+  if (!(error instanceof StudentWorksCoreError)) return 'unavailable';
   if (['WORK_IDEMPOTENCY_CONFLICT', 'WORK_VERSION_CONFLICT'].includes(error.code)) {
     return 'conflict';
   }
   if (['INVALID_REQUEST', 'INVALID_WORK_DRAFT'].includes(error.code)) return 'invalid';
-  return error.code === 'AUTH_SERVICE_UNAVAILABLE' || error.code === 'WORKS_SERVICE_UNAVAILABLE'
-    ? 'network'
-    : 'unavailable';
+  if (['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)) return 'unauthenticated';
+  if (error.code === 'FORBIDDEN' || error.code === 'WORK_AUTHORING_FORBIDDEN') return 'forbidden';
+  return 'unavailable';
+}
+
+function mapContributorError(error: unknown) {
+  if (!(error instanceof StudentWorksCoreError)) return 'unavailable' as const;
+  if (error.code === 'CONTRIBUTOR_LOOKUP_RATE_LIMITED') return 'rate_limited' as const;
+  if (error.code === 'WORK_VERSION_CONFLICT') return 'conflict' as const;
+  if (['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code))
+    return 'unauthenticated' as const;
+  if (error.code === 'FORBIDDEN') return 'forbidden' as const;
+  if (error.status === 422) return 'invalid' as const;
+  return 'unavailable' as const;
+}
+
+async function contributorMutation<T extends { publicId: string }>(
+  input: T,
+  mutation: (token: string) => Promise<{ contributors: unknown; version: number }>,
+) {
+  const token = await optionalSessionToken();
+  if (token === null) return { error: 'unauthenticated' as const };
+  try {
+    const result = await mutation(token);
+    revalidatePath(`/works/${input.publicId}`);
+    return result;
+  } catch (error: unknown) {
+    return { error: mapContributorError(error) };
+  }
+}
+
+function mapSubmissionError(error: unknown) {
+  if (!(error instanceof StudentWorksCoreError)) return 'unavailable' as const;
+  if (error.code === 'WORK_POSTER_REQUIRED') return 'poster' as const;
+  if (error.code === 'WORK_MEDIA_NOT_READY') return 'media' as const;
+  if (error.code === 'WORK_SUBMISSION_INCOMPLETE') return 'incomplete' as const;
+  if (error.code === 'WORK_SUBMITTER_ATTRIBUTION_INVALID') return 'profile' as const;
+  if (error.status === 409) return 'conflict' as const;
+  if (['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code))
+    return 'unauthenticated' as const;
+  if (error.code === 'FORBIDDEN') return 'forbidden' as const;
+  return error.status === 422 ? ('attribution' as const) : ('unavailable' as const);
+}
+
+function savedDraftCommand(input: unknown, confirmation: boolean) {
+  return z
+    .object({
+      confirmation: z.literal(confirmation).optional(),
+      expectedVersion: z.number().int().positive(),
+      idempotencyKey: z.uuid(),
+      publicId: z.uuid(),
+    })
+    .strict()
+    .safeParse(input);
 }
 
 function revisionFailed(
@@ -400,35 +572,13 @@ function revisionFailed(
 
 function mapRevisionError(error: unknown): WorkRevisionActionError {
   if (!(error instanceof StudentWorksCoreError)) return 'network';
-  if (
-    [
-      'WORK_IDEMPOTENCY_CONFLICT',
-      'WORK_PENDING_REVISION_EXISTS',
-      'WORK_REVISION_STATE_CONFLICT',
-      'WORK_REVISION_VERSION_CONFLICT',
-      'WORK_BASE_REVISION_CONFLICT',
-      'WORK_DRAFT_EXISTS',
-      'WORK_NOT_PUBLISHED',
-      'WORK_VERSION_CONFLICT',
-    ].includes(error.code)
-  )
-    return 'conflict';
+  if (error.status === 409) return 'conflict';
   if (error.code === 'WORK_POSTER_REQUIRED') return 'poster';
   if (error.code === 'WORK_MEDIA_NOT_READY') return 'media';
-  if (
-    [
-      'WORK_ATTRIBUTION_UNRESOLVED',
-      'WORK_ATTRIBUTION_LIMIT_EXCEEDED',
-      'WORK_ATTRIBUTION_DUPLICATE',
-      'WORK_SUBMITTER_ATTRIBUTION_INVALID',
-    ].includes(error.code)
-  )
-    return 'attribution';
+  if (error.code.includes('ATTRIBUTION')) return 'attribution';
   if (error.code === 'WORK_SUBMISSION_INCOMPLETE') return 'incomplete';
   if (error.code === 'INVALID_REQUEST') return 'invalid';
-  return ['AUTH_SERVICE_UNAVAILABLE', 'WORKS_SERVICE_UNAVAILABLE'].includes(error.code)
-    ? 'network'
-    : 'unavailable';
+  return 'network';
 }
 
 function removalFailed(
@@ -440,16 +590,7 @@ function removalFailed(
 
 function mapRemovalError(error: unknown): WorkRemovalActionError {
   if (!(error instanceof StudentWorksCoreError)) return 'network';
-  if (
-    [
-      'REMOVAL_REQUEST_STATE_CONFLICT',
-      'WORK_IDEMPOTENCY_CONFLICT',
-      'WORK_RECOVERY_STATE_CONFLICT',
-      'WORK_RECOVERY_VERSION_CONFLICT',
-    ].includes(error.code)
-  ) {
-    return 'conflict';
-  }
-  if (['INVALID_REQUEST', 'WORK_RECOVERY_REASON_INVALID'].includes(error.code)) return 'invalid';
-  return error.code === 'WORKS_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
+  if (error.status === 409) return 'conflict';
+  if (error.code === 'INVALID_REQUEST') return 'invalid';
+  return 'network';
 }

@@ -8,6 +8,9 @@ const semesterSchema = z.enum(['1', '2', 'summer']);
 const academicPeriodSchema = z
   .object({ semester: semesterSchema, year: z.number().int() })
   .strict();
+const partialAcademicPeriodSchema = z
+  .object({ semester: semesterSchema.nullable(), year: z.number().int().nullable() })
+  .strict();
 const workLinkSchema = z.object({ label: z.string(), url: z.url() }).strict();
 const normalizedTagSchema = z
   .object({ displayLabel: z.string(), normalizedIdentity: z.string() })
@@ -31,14 +34,51 @@ const workDraftContentSchema = z
     videoLinks: z.array(videoLinkSchema).max(3),
   })
   .strict();
+const partialWorkDraftContentSchema = z
+  .object({
+    academicPeriod: partialAcademicPeriodSchema,
+    category: workCategorySchema.nullable(),
+    description: z.string().nullable(),
+    links: z.array(workLinkSchema).max(5),
+    submitterStudyYear: z.number().int().min(1).max(4).nullable(),
+    summary: z.string().nullable(),
+    tags: z.array(normalizedTagSchema).max(5),
+    title: z.string().nullable(),
+    videoLinks: z.array(videoLinkSchema).max(3),
+  })
+  .strict();
+const contributorSchema = z
+  .object({
+    attributionName: z.string(),
+    contributionRole: z.string().nullable(),
+    kind: z.enum(['account', 'external']),
+    publicId: z.uuid(),
+  })
+  .strict();
+const draftMediaSchema = z
+  .object({
+    assetId: z.uuid(),
+    height: z.number().int().positive().nullable(),
+    kind: z.enum(['gallery', 'poster']),
+    position: z.number().int().min(1).max(3),
+    rejectionCode: z.enum(['expired', 'invalid_media', 'processing_failed']).nullable(),
+    status: z.enum(['pending_upload', 'uploaded', 'processing', 'ready', 'rejected']),
+    width: z.number().int().positive().nullable(),
+  })
+  .strict();
 const workDraftSchema = z
   .object({
     activityState: z.literal('active'),
     basePublishedRevisionId: z.uuid().nullable(),
-    draft: workDraftContentSchema,
+    contributors: z.array(contributorSchema).max(20),
+    draft: partialWorkDraftContentSchema,
+    isComplete: z.boolean(),
+    media: z.array(draftMediaSchema).max(4),
     publicationState: z.enum(['never_published', 'published', 'unpublished']),
     publishedRevisionId: z.uuid().nullable(),
     publicId: z.uuid(),
+    savedAt: z.iso.datetime(),
+    submitterAttributionName: z.string().nullable(),
     version: z.number().int().positive(),
   })
   .strict();
@@ -51,21 +91,63 @@ const workAuthoringStateSchema = z
     publicId: z.uuid(),
   })
   .strict();
+const posterSchema = z
+  .object({
+    assetId: z.uuid(),
+    height: z.number().int().positive(),
+    variants: z.array(
+      z
+        .object({ height: z.number().int().positive(), width: z.number().int().positive() })
+        .strict(),
+    ),
+    width: z.number().int().positive(),
+  })
+  .strict();
 const workListItemSchema = z
   .object({
     activityState: z.enum(['active', 'archived']),
+    academicPeriod: academicPeriodSchema.nullable(),
+    category: workCategorySchema.nullable(),
+    displayedSource: z.enum(['draft', 'pending_revision', 'published_revision', 'placeholder']),
     hasDraft: z.boolean(),
+    isDraftComplete: z.boolean(),
     latestRevisionStatus: z
       .enum(['approved', 'changes_requested', 'pending_review', 'withdrawn'])
       .nullable(),
+    poster: posterSchema.nullable(),
+    primaryAction: z
+      .enum(['continue_editing', 'return_to_editing', 'view_details', 'view_public_work'])
+      .nullable(),
     publicationState: z.enum(['never_published', 'published', 'unpublished']),
     publicId: z.uuid(),
-    title: z.string().min(1).max(150),
+    secondaryActions: z.array(
+      z.enum(['archive_saved_draft', 'create_new_revision', 'withdraw_submission']),
+    ),
+    summary: z.string().nullable(),
+    title: z.string().nullable(),
     updatedAt: z.iso.datetime(),
+    version: z.number().int().positive(),
   })
   .strict();
 const workListPageSchema = z
-  .object({ items: z.array(workListItemSchema).max(50), nextCursor: z.string().nullable() })
+  .object({
+    hasNextPage: z.boolean(),
+    hasPreviousPage: z.boolean(),
+    items: z.array(workListItemSchema).max(12),
+    nextCursor: z.string().nullable(),
+    previousCursor: z.string().nullable(),
+  })
+  .strict();
+const workspaceSummarySchema = z
+  .object({
+    canMutate: z.boolean(),
+    changeRequestCount: z.number().int().nonnegative(),
+    draftCount: z.number().int().nonnegative(),
+    latestActionableDraftPublicId: z.uuid().nullable(),
+    pendingReviewCount: z.number().int().nonnegative(),
+    publishedCount: z.number().int().nonnegative(),
+    unreadNotificationCount: z.number().int().nonnegative(),
+  })
   .strict();
 const authoringContextSchema = z
   .object({ currentAcademicYear: z.number().int(), entryYear: z.number().int() })
@@ -73,6 +155,30 @@ const authoringContextSchema = z
 const mutationResultSchema = z
   .object({ outcome: z.enum(['created', 'replayed', 'updated']), work: workDraftSchema })
   .strict();
+const savedDraftMutationSchema = z
+  .object({
+    outcome: z.enum(['archived', 'replayed', 'restored']),
+    work: z
+      .object({
+        activityState: z.enum(['active', 'archived']),
+        publicationState: z.literal('never_published'),
+        publicId: z.uuid(),
+        version: z.number().int().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+const contributorMutationSchema = z
+  .object({
+    contributors: z.array(contributorSchema).max(20),
+    outcome: z.enum(['added', 'removed', 'replayed']),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const contributorCandidateSchema = z
+  .object({ candidateReference: z.uuid(), firstName: z.string(), lastName: z.string() })
+  .strict()
+  .nullable();
 const mediaUploadSchema = z
   .object({
     assetId: z.uuid(),
@@ -82,29 +188,6 @@ const mediaUploadSchema = z
       .strict(),
     status: z.literal('pending_upload'),
     uploadUrl: z.url(),
-  })
-  .strict();
-const attributionInvitationSchema = z
-  .object({
-    affiliation: z.string().nullable(),
-    attributionName: z.string().nullable(),
-    contributionRole: z.string().nullable(),
-    createdAt: z.iso.datetime(),
-    expiresAt: z.iso.datetime(),
-    kind: z.enum(['account', 'external']),
-    proposedAttributionName: z.string().nullable(),
-    publicId: z.uuid(),
-    state: z.enum(['pending', 'accepted', 'rejected', 'revoked', 'expired', 'withdrawn']),
-    studyYear: z.number().int().min(1).max(8).nullable(),
-    version: z.number().int().positive(),
-  })
-  .strict();
-const attributionInvitationPageSchema = z
-  .object({ items: z.array(attributionInvitationSchema), nextCursor: z.string().nullable() })
-  .strict();
-const invitationOutcomeSchema = z
-  .object({
-    outcome: z.enum(['accepted', 'received', 'rejected', 'replayed', 'revoked', 'withdrawn']),
   })
   .strict();
 const workRevisionSchema = z
@@ -132,10 +215,7 @@ const workRevisionSchema = z
           position: z.number().int().min(1).max(3),
           variants: z.array(
             z
-              .object({
-                height: z.number().int().positive().max(2_560),
-                width: z.number().int().positive().max(2_560),
-              })
+              .object({ height: z.number().int().positive(), width: z.number().int().positive() })
               .strict(),
           ),
           width: z.number().int().positive().max(2_560),
@@ -152,10 +232,7 @@ const workRevisionSchema = z
   })
   .strict();
 const workRevisionMutationSchema = z
-  .object({
-    outcome: z.enum(['created', 'replayed', 'withdrawn']),
-    revision: workRevisionSchema,
-  })
+  .object({ outcome: z.enum(['created', 'replayed', 'withdrawn']), revision: workRevisionSchema })
   .strict();
 const changeRequestSchema = z
   .object({
@@ -194,50 +271,33 @@ const removalRequestSchema = z
   })
   .strict();
 const removalRequestMutationSchema = z
-  .object({
-    outcome: z.enum(['created', 'replayed', 'resolved']),
-    request: removalRequestSchema,
-  })
-  .strict();
-const attributionRemovalRequestSchema = z
-  .object({
-    attributionName: z.string(),
-    correctionRevisionPublicId: z.uuid().nullable(),
-    createdAt: z.iso.datetime(),
-    publicId: z.uuid(),
-    reason: z.string().min(10).max(1_000),
-    revisionPublicId: z.uuid(),
-    state: z.enum(['accepted', 'declined', 'pending']),
-    version: z.number().int().positive(),
-    workPublicId: z.uuid(),
-  })
+  .object({ outcome: z.enum(['created', 'replayed', 'resolved']), request: removalRequestSchema })
   .strict();
 
 export type WorkDraft = z.infer<typeof workDraftSchema>;
+export type WorkDraftContent = z.infer<typeof workDraftContentSchema>;
+export type WorkDraftPatch = Partial<{
+  academicPeriod: { semester: z.infer<typeof semesterSchema> | null; year: number | null } | null;
+  category: z.infer<typeof workCategorySchema> | null;
+  description: string | null;
+  links: Array<z.infer<typeof workLinkSchema>>;
+  submitterStudyYear: number | null;
+  summary: string | null;
+  tags: string[];
+  title: string | null;
+  videoLinks: string[];
+}>;
 export type WorkAuthoringState = z.infer<typeof workAuthoringStateSchema>;
 export type WorkAuthoringContext = z.infer<typeof authoringContextSchema>;
 export type WorkListItem = z.infer<typeof workListItemSchema>;
 export type WorkListPage = z.infer<typeof workListPageSchema>;
-export type WorkMutationInput = {
-  academicPeriod: z.infer<typeof academicPeriodSchema>;
-  category: z.infer<typeof workCategorySchema>;
-  description: string;
-  idempotencyKey: string;
-  links: Array<z.infer<typeof workLinkSchema>>;
-  summary: string;
-  tags: string[];
-  title: string;
-  videoLinks: string[];
-};
-export type WorkUpdateInput = WorkMutationInput & { expectedVersion: number };
-export type WorkMediaKind = 'gallery' | 'poster';
-export type AttributionInvitation = z.infer<typeof attributionInvitationSchema>;
-export type AttributionInvitationPage = z.infer<typeof attributionInvitationPageSchema>;
+export type WorkspaceSummary = z.infer<typeof workspaceSummarySchema>;
+export type WorkContributor = z.infer<typeof contributorSchema>;
 export type WorkRevision = z.infer<typeof workRevisionSchema>;
 export type WorkChangeRequest = z.infer<typeof changeRequestSchema>;
 export type WorkRecovery = z.infer<typeof workRecoverySchema>;
 export type RemovalRequest = z.infer<typeof removalRequestSchema>;
-export type AttributionRemovalRequest = z.infer<typeof attributionRemovalRequestSchema>;
+export type WorkMediaKind = 'gallery' | 'poster';
 
 interface StudentWorksCoreConfig {
   coreUrl: string;
@@ -256,94 +316,65 @@ export class StudentWorksCoreClient {
   }
 
   getAuthoringContext(sessionToken: string): Promise<WorkAuthoringContext> {
-    return this.client.request({
-      method: 'GET',
-      path: '/v1/internal/student/works/authoring-context',
-      responseSchema: authoringContextSchema,
+    return this.get(
+      '/v1/internal/student/works/authoring-context',
+      authoringContextSchema,
       sessionToken,
-    });
+    );
   }
 
-  listWorks(
-    sessionToken: string,
-    input: { cursor?: string; limit: number },
-  ): Promise<WorkListPage> {
-    const query = new URLSearchParams({ limit: String(input.limit) });
-    if (input.cursor !== undefined) query.set('cursor', input.cursor);
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works?${query.toString()}`,
-      responseSchema: workListPageSchema,
+  getWorkspaceSummary(sessionToken: string): Promise<WorkspaceSummary> {
+    return this.get(
+      '/v1/internal/student/works/workspace-summary',
+      workspaceSummarySchema,
       sessionToken,
-    });
+    );
+  }
+
+  listWorks(sessionToken: string, input: { cursor?: string; view: 'current' | 'saved' }) {
+    const query = new URLSearchParams({ view: input.view });
+    if (input.cursor !== undefined) query.set('cursor', input.cursor);
+    return this.get(
+      `/v1/internal/student/works?${query.toString()}`,
+      workListPageSchema,
+      sessionToken,
+    );
   }
 
   getWork(sessionToken: string, publicId: string): Promise<WorkDraft> {
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}`,
-      responseSchema: workDraftSchema,
-      sessionToken,
-    });
+    return this.get(`/v1/internal/student/works/${publicId}`, workDraftSchema, sessionToken);
   }
 
   getAuthoringState(sessionToken: string, publicId: string): Promise<WorkAuthoringState> {
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/authoring-state`,
-      responseSchema: workAuthoringStateSchema,
+    return this.get(
+      `/v1/internal/student/works/${publicId}/authoring-state`,
+      workAuthoringStateSchema,
       sessionToken,
-    });
+    );
   }
 
-  getRecoveryState(sessionToken: string, publicId: string): Promise<WorkRecovery> {
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/recovery-state`,
-      responseSchema: workRecoverySchema,
+  createWork(sessionToken: string, input: WorkDraftPatch & { idempotencyKey: string }) {
+    return this.request(
+      'POST',
+      '/v1/internal/student/works',
+      mutationResultSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  async getPendingRemovalRequest(
+  patchWork(
     sessionToken: string,
     publicId: string,
-  ): Promise<RemovalRequest | null> {
-    const result = await this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/removal-request`,
-      responseSchema: z.object({ request: removalRequestSchema.nullable() }).strict(),
-      sessionToken,
-    });
-    return result.request;
-  }
-
-  createRemovalRequest(
-    sessionToken: string,
-    publicId: string,
-    input: { expectedWorkVersion: number; idempotencyKey: string; reason: string },
+    input: WorkDraftPatch & { expectedVersion: number; idempotencyKey: string },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/removal-requests`,
-      responseSchema: removalRequestMutationSchema,
+    return this.request(
+      'PATCH',
+      `/v1/internal/student/works/${publicId}`,
+      mutationResultSchema,
       sessionToken,
-    });
-  }
-
-  cancelRemovalRequest(
-    sessionToken: string,
-    requestPublicId: string,
-    input: { expectedVersion: number; idempotencyKey: string },
-  ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/removal-requests/${requestPublicId}/cancel`,
-      responseSchema: removalRequestMutationSchema,
-      sessionToken,
-    });
+      input,
+    );
   }
 
   seedPublishedDraft(
@@ -351,51 +382,119 @@ export class StudentWorksCoreClient {
     publicId: string,
     input: { expectedPublishedRevisionId: string; idempotencyKey: string },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/draft`,
-      responseSchema: mutationResultSchema,
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/draft`,
+      mutationResultSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
   rebaseDraft(
     sessionToken: string,
     publicId: string,
+    input: { expectedPublishedRevisionId: string; expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/draft/rebase`,
+      mutationResultSchema,
+      sessionToken,
+      input,
+    );
+  }
+
+  archiveSavedDraft(
+    sessionToken: string,
+    publicId: string,
+    input: { confirmation: true; expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/archive-saved-draft`,
+      savedDraftMutationSchema,
+      sessionToken,
+      input,
+    );
+  }
+
+  restoreSavedDraft(
+    sessionToken: string,
+    publicId: string,
+    input: { expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/restore-saved-draft`,
+      savedDraftMutationSchema,
+      sessionToken,
+      input,
+    );
+  }
+
+  lookupContributor(sessionToken: string, publicId: string, studentId: string) {
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/contributor-candidates/lookup`,
+      contributorCandidateSchema,
+      sessionToken,
+      { studentId },
+    );
+  }
+
+  addAccountContributor(
+    sessionToken: string,
+    publicId: string,
     input: {
-      expectedPublishedRevisionId: string;
+      candidateReference: string;
+      contributionRole: string;
       expectedVersion: number;
       idempotencyKey: string;
     },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/draft/rebase`,
-      responseSchema: mutationResultSchema,
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/contributors/account`,
+      contributorMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  createWork(sessionToken: string, input: WorkMutationInput) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: '/v1/internal/student/works',
-      responseSchema: mutationResultSchema,
+  addExternalContributor(
+    sessionToken: string,
+    publicId: string,
+    input: {
+      contributionRole: string;
+      expectedVersion: number;
+      firstName: string;
+      idempotencyKey: string;
+      lastName: string;
+    },
+  ) {
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/contributors/external`,
+      contributorMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  updateWork(sessionToken: string, publicId: string, input: WorkUpdateInput) {
-    return this.client.request({
-      body: input,
-      method: 'PUT',
-      path: `/v1/internal/student/works/${publicId}`,
-      responseSchema: mutationResultSchema,
+  removeContributor(
+    sessionToken: string,
+    publicId: string,
+    contributorPublicId: string,
+    input: { expectedVersion: number; idempotencyKey: string },
+  ) {
+    return this.request(
+      'DELETE',
+      `/v1/internal/student/works/${publicId}/contributors/${contributorPublicId}`,
+      contributorMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
   authorizeMediaUpload(
@@ -409,42 +508,41 @@ export class StudentWorksCoreClient {
       mediaKind: WorkMediaKind;
     },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/media-uploads`,
-      responseSchema: mediaUploadSchema,
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/media-uploads`,
+      mediaUploadSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
   finalizeMediaUpload(sessionToken: string, publicId: string, assetId: string) {
-    return this.client.request({
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/media-uploads/${assetId}/finalize`,
-      responseSchema: z
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/media-uploads/${assetId}/finalize`,
+      z
         .object({
           assetId: z.uuid(),
           status: z.enum(['uploaded', 'processing', 'ready', 'rejected']),
         })
         .strict(),
       sessionToken,
-    });
+    );
   }
 
   getMediaUploadStatus(sessionToken: string, publicId: string, assetId: string) {
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/media-uploads/${assetId}`,
-      responseSchema: z
+    return this.get(
+      `/v1/internal/student/works/${publicId}/media-uploads/${assetId}`,
+      z
         .object({
           assetId: z.uuid(),
           preview: z
             .object({
               expiresAt: z.iso.datetime(),
-              height: z.number().int().positive().max(2_560),
+              height: z.number().int().positive(),
               url: z.url(),
-              width: z.number().int().positive().max(2_560),
+              width: z.number().int().positive(),
             })
             .strict()
             .nullable(),
@@ -454,30 +552,41 @@ export class StudentWorksCoreClient {
         })
         .strict(),
       sessionToken,
-    });
+    );
+  }
+
+  getPrivateMediaVariant(sessionToken: string, publicId: string, assetId: string, width: number) {
+    return this.get(
+      `/v1/internal/student/works/${publicId}/media/${assetId}/variants/${width}`,
+      z.object({ url: z.url() }).strict(),
+      sessionToken,
+    );
   }
 
   attachMedia(
     sessionToken: string,
     publicId: string,
-    input: { assetId: string; expectedVersion: number; mediaKind: WorkMediaKind },
+    input: {
+      assetId: string;
+      expectedVersion: number;
+      idempotencyKey: string;
+      mediaKind: WorkMediaKind;
+    },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'PUT',
-      path: `/v1/internal/student/works/${publicId}/media`,
-      responseSchema: z
-        .object({ outcome: z.literal('attached'), version: z.number().int().positive() })
-        .strict(),
+    return this.request(
+      'PUT',
+      `/v1/internal/student/works/${publicId}/media`,
+      z.object({ outcome: z.literal('attached'), version: z.number().int().positive() }).strict(),
       sessionToken,
-    });
+      input,
+    );
   }
 
   submitRevision(
     sessionToken: string,
     publicId: string,
     input: {
-      attributionName: string;
+      draft: WorkDraftContent;
       expectedBasePublishedRevisionId: string | null;
       expectedDraftVersion: number;
       idempotencyKey: string;
@@ -485,7 +594,15 @@ export class StudentWorksCoreClient {
     },
   ) {
     return this.client.request({
-      body: input,
+      body: {
+        ...input.draft,
+        expectedBasePublishedRevisionId: input.expectedBasePublishedRevisionId,
+        expectedDraftVersion: input.expectedDraftVersion,
+        idempotencyKey: input.idempotencyKey,
+        studyYear: input.studyYear,
+        tags: input.draft.tags.map((tag) => tag.displayLabel),
+        videoLinks: input.draft.videoLinks.map((link) => link.url),
+      },
       method: 'POST',
       path: `/v1/internal/student/works/${publicId}/revisions`,
       responseSchema: workRevisionMutationSchema,
@@ -495,23 +612,12 @@ export class StudentWorksCoreClient {
   }
 
   async getPendingRevision(sessionToken: string, publicId: string): Promise<WorkRevision | null> {
-    const result = await this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/revisions/pending`,
-      responseSchema: z.object({ revision: workRevisionSchema.nullable() }).strict(),
+    const result = await this.get(
+      `/v1/internal/student/works/${publicId}/revisions/pending`,
+      z.object({ revision: workRevisionSchema.nullable() }).strict(),
       sessionToken,
-    });
+    );
     return result.revision;
-  }
-
-  async getLatestChangeRequest(sessionToken: string, publicId: string): Promise<WorkChangeRequest> {
-    const result = await this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/change-request`,
-      responseSchema: z.object({ review: changeRequestSchema }).strict(),
-      sessionToken,
-    });
-    return result.review;
   }
 
   withdrawRevision(
@@ -520,203 +626,88 @@ export class StudentWorksCoreClient {
     revisionPublicId: string,
     input: { expectedRevisionVersion: number; idempotencyKey: string },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/revisions/${revisionPublicId}/withdraw`,
-      responseSchema: workRevisionMutationSchema,
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/revisions/${revisionPublicId}/withdraw`,
+      workRevisionMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  listWorkInvitations(sessionToken: string, publicId: string) {
-    return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/student/works/${publicId}/contributor-invitations`,
-      responseSchema: attributionInvitationPageSchema,
+  async getLatestChangeRequest(sessionToken: string, publicId: string): Promise<WorkChangeRequest> {
+    const result = await this.get(
+      `/v1/internal/student/works/${publicId}/change-request`,
+      z.object({ review: changeRequestSchema }).strict(),
       sessionToken,
-    });
+    );
+    return result.review;
   }
 
-  listReceivedInvitations(sessionToken: string) {
-    return this.client.request({
-      method: 'GET',
-      path: '/v1/internal/student/contributor-invitations',
-      responseSchema: attributionInvitationPageSchema,
+  getRecoveryState(sessionToken: string, publicId: string): Promise<WorkRecovery> {
+    return this.get(
+      `/v1/internal/student/works/${publicId}/recovery-state`,
+      workRecoverySchema,
       sessionToken,
-    });
+    );
   }
 
-  createAccountInvitation(
+  async getPendingRemovalRequest(
     sessionToken: string,
     publicId: string,
-    input: { idempotencyKey: string; studentId: string },
-  ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/contributor-invitations/account`,
-      responseSchema: invitationOutcomeSchema,
+  ): Promise<RemovalRequest | null> {
+    const result = await this.get(
+      `/v1/internal/student/works/${publicId}/removal-request`,
+      z.object({ request: removalRequestSchema.nullable() }).strict(),
       sessionToken,
-    });
+    );
+    return result.request;
   }
 
-  createExternalInvitation(
+  createRemovalRequest(
     sessionToken: string,
     publicId: string,
-    input: {
-      affiliation?: string;
-      attributionName: string;
-      contributionRole: string;
-      idempotencyKey: string;
-    },
+    input: { expectedWorkVersion: number; idempotencyKey: string; reason: string },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/contributor-invitations/external`,
-      responseSchema: z
-        .object({
-          invitation: attributionInvitationSchema,
-          invitationToken: z.string().optional(),
-          outcome: z.enum(['created', 'replayed']),
-        })
-        .strict(),
+    return this.request(
+      'POST',
+      `/v1/internal/student/works/${publicId}/removal-requests`,
+      removalRequestMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  transitionAccountInvitation(
+  cancelRemovalRequest(
     sessionToken: string,
-    invitationPublicId: string,
-    action: 'accept' | 'reject' | 'withdraw',
-    input:
-      | { expectedVersion: number; idempotencyKey: string }
-      | {
-          attributionName: string;
-          consent: boolean;
-          expectedVersion: number;
-          idempotencyKey: string;
-          studyYear: number;
-        },
-  ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/contributor-invitations/${invitationPublicId}/${action}`,
-      responseSchema: invitationOutcomeSchema,
-      sessionToken,
-    });
-  }
-
-  revokeInvitation(
-    sessionToken: string,
-    publicId: string,
-    invitationPublicId: string,
+    requestPublicId: string,
     input: { expectedVersion: number; idempotencyKey: string },
   ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/works/${publicId}/contributor-invitations/${invitationPublicId}/revoke`,
-      responseSchema: invitationOutcomeSchema,
+    return this.request(
+      'POST',
+      `/v1/internal/student/removal-requests/${requestPublicId}/cancel`,
+      removalRequestMutationSchema,
       sessionToken,
-    });
+      input,
+    );
   }
 
-  exchangeExternalInvitation(token: string, studentSessionToken?: string) {
-    return this.client.request({
-      body: { token },
-      method: 'POST',
-      path: '/v1/internal/student/external-contributor-invitations/exchange',
-      responseSchema: z
-        .object({
-          invitation: attributionInvitationSchema,
-          invitationSessionToken: z.string(),
-          sessionExpiresAt: z.iso.datetime(),
-        })
-        .strict(),
-      ...(studentSessionToken === undefined ? {} : { sessionToken: studentSessionToken }),
-    });
+  private get<T>(
+    path: `/${string}`,
+    responseSchema: z.ZodType<T>,
+    sessionToken: string,
+  ): Promise<T> {
+    return this.client.request({ method: 'GET', path, responseSchema, sessionToken });
   }
 
-  exchangeExternalRecoveryCode(recoveryCode: string) {
-    return this.client.request({
-      body: { recoveryCode },
-      method: 'POST',
-      path: '/v1/internal/student/external-contributor-recovery/exchange',
-      responseSchema: z
-        .object({
-          invitation: attributionInvitationSchema,
-          invitationSessionToken: z.string(),
-          sessionExpiresAt: z.iso.datetime(),
-        })
-        .strict(),
-    });
-  }
-
-  getAttributionRemovalRequest(invitationSessionToken: string) {
-    return this.client.request({
-      method: 'GET',
-      path: '/v1/internal/student/external-contributor-recovery/removal-request',
-      responseSchema: attributionRemovalRequestSchema.nullable(),
-      sessionToken: invitationSessionToken,
-    });
-  }
-
-  createAttributionRemovalRequest(
-    invitationSessionToken: string,
-    input: { idempotencyKey: string; reason: string },
-  ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: '/v1/internal/student/external-contributor-recovery/removal-requests',
-      responseSchema: z
-        .object({
-          outcome: z.enum(['created', 'replayed']),
-          request: attributionRemovalRequestSchema,
-        })
-        .strict(),
-      sessionToken: invitationSessionToken,
-    });
-  }
-
-  getExternalInvitation(invitationSessionToken: string) {
-    return this.client.request({
-      method: 'GET',
-      path: '/v1/internal/student/external-contributor-invitations/current',
-      responseSchema: attributionInvitationSchema,
-      sessionToken: invitationSessionToken,
-    });
-  }
-
-  transitionExternalInvitation(
-    invitationSessionToken: string,
-    action: 'accept' | 'reject',
-    input:
-      | { expectedVersion: number; idempotencyKey: string }
-      | {
-          affiliation?: string;
-          attributionName: string;
-          consent: boolean;
-          contributionRole: string;
-          expectedVersion: number;
-          idempotencyKey: string;
-        },
-  ) {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/student/external-contributor-invitations/${action}`,
-      responseSchema: z
-        .object({
-          outcome: z.enum(['accepted', 'rejected', 'replayed']),
-          recoveryCode: z.string().optional(),
-        })
-        .strict(),
-      sessionToken: invitationSessionToken,
-    });
+  private request<T>(
+    method: 'DELETE' | 'PATCH' | 'POST' | 'PUT',
+    path: `/${string}`,
+    responseSchema: z.ZodType<T>,
+    sessionToken: string,
+    body?: unknown,
+  ): Promise<T> {
+    return this.client.request({ body, method, path, responseSchema, sessionToken });
   }
 }
 
