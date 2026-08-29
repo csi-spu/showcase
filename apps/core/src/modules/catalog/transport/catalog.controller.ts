@@ -11,7 +11,7 @@ import {
   normalizeWorkCatalogQuery,
 } from '../domain/catalog-query-policy';
 import { CatalogExceptionFilter } from './catalog-exception.filter';
-import { PeopleCatalogQueryDto, WorkCatalogQueryDto } from './catalog.dto';
+import { PeopleCatalogQueryDto, TagSuggestionQueryDto, WorkCatalogQueryDto } from './catalog.dto';
 import type { CatalogSitemapKind } from '../application/catalog.ports';
 
 const PUBLIC_CACHE_CONTROL = 'public, max-age=0, s-maxage=60, stale-while-revalidate=60';
@@ -85,6 +85,15 @@ export class CatalogController {
       'showcase-catalog-works',
       'showcase-catalog-people',
     ]);
+  }
+
+  @Get('tags/suggestions')
+  async suggestTags(
+    @Query() input: TagSuggestionQueryDto,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    return respond(request, response, await this.catalog.suggestTags(input.q), false, []);
   }
 
   @Get('tags/:publicId')

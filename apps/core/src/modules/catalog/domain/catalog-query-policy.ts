@@ -5,6 +5,7 @@ const PAGE_SIZE_DEFAULT = 24;
 const PAGE_SIZE_MAXIMUM = 48;
 const QUERY_MAXIMUM_LENGTH = 100;
 const QUERY_MINIMUM_LENGTH = 2;
+const TAG_SUGGESTION_QUERY_MAXIMUM_LENGTH = 50;
 const TAG_LIMIT = 5;
 const ACADEMIC_YEAR_MINIMUM = 2400;
 const ACADEMIC_YEAR_MAXIMUM = 2700;
@@ -61,6 +62,7 @@ export type CatalogQueryErrorCode =
   | 'CATALOG_SORT_INVALID'
   | 'CATALOG_TAG_INVALID'
   | 'CATALOG_TAG_LIMIT'
+  | 'CATALOG_TAG_SUGGESTION_QUERY_INVALID'
   | 'CATALOG_YEAR_INVALID';
 
 export class CatalogQueryError extends Error {
@@ -127,6 +129,16 @@ function normalizeQuery(input: QueryValue): string | null {
 
 export function normalizeCatalogSearchText(value: string): string {
   return caseFold(value.normalize('NFKC').trim().replace(/\s+/gu, ' '));
+}
+
+export function normalizeTagSuggestionQuery(value: QueryValue): string {
+  const raw = scalar(value, 'CATALOG_TAG_SUGGESTION_QUERY_INVALID');
+  const normalized = normalizeCatalogSearchText(raw ?? '');
+  const length = Array.from(normalized).length;
+  if (length < QUERY_MINIMUM_LENGTH || length > TAG_SUGGESTION_QUERY_MAXIMUM_LENGTH) {
+    fail('CATALOG_TAG_SUGGESTION_QUERY_INVALID');
+  }
+  return normalized;
 }
 
 function normalizePageSize(input: QueryValue): number {

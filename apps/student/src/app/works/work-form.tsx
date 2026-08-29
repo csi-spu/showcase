@@ -23,8 +23,10 @@ import {
   submitLatestWorkAction,
 } from './work.actions';
 import { WorkMediaUpload } from './work-media-upload';
+import { WorkTagInput } from './work-tag-input';
 
 const STEP_COUNT = 5;
+const ACADEMIC_YEAR_MINIMUM = 2400;
 type SaveState = 'saved' | 'saving' | 'unsynced';
 type DraftValues = {
   academicPeriod: { semester: '1' | '2' | 'summer' | ''; year: string };
@@ -34,7 +36,7 @@ type DraftValues = {
   links: Array<{ label: string; url: string }>;
   studyYear: '' | '1' | '2' | '3' | '4';
   summary: string;
-  tags: string;
+  tags: string[];
   title: string;
   videoLinks: string;
 };
@@ -428,14 +430,15 @@ function DetailsStep({
           >
             <option value="">{t('select')}</option>
             {Array.from(
-              { length: context.currentAcademicYear - context.entryYear + 1 },
-              (_, index) => context.entryYear + index,
+              { length: context.currentAcademicYear - ACADEMIC_YEAR_MINIMUM + 1 },
+              (_, index) => context.currentAcademicYear - index,
             ).map((year) => (
               <option key={year} value={year}>
                 {year}
               </option>
             ))}
           </select>
+          <FieldDescription>{t('academicYearHelp')}</FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="work-semester">{t('semester')}</FieldLabel>
@@ -786,12 +789,7 @@ function DiscoveryStep({
           {t('discovery.addLink')}
         </Button>
       ) : null}
-      <TextField
-        label={t('tags')}
-        maxLength={254}
-        onChange={(value) => update('tags', value)}
-        value={values.tags}
-      />
+      <WorkTagInput onChange={(value) => update('tags', value)} value={values.tags} />
       <TextAreaField
         label={t('videoLinks')}
         maxLength={6_200}
@@ -894,7 +892,7 @@ function ReviewStep({
         </div>
         <div>
           <dt className="font-medium">{t('tags')}</dt>
-          <dd>{values.tags || '—'}</dd>
+          <dd>{values.tags.map((tag) => `#${tag}`).join(' · ') || '—'}</dd>
         </div>
         <div>
           <dt className="font-medium">{t('videoLinks')}</dt>
@@ -985,7 +983,7 @@ function emptyValues(): DraftValues {
     links: [],
     studyYear: '',
     summary: '',
-    tags: '',
+    tags: [],
     title: '',
     videoLinks: '',
   };
@@ -1005,7 +1003,7 @@ function valuesFromWork(work: WorkDraft | null): DraftValues {
     studyYear:
       (draft?.submitterStudyYear?.toString() as DraftValues['studyYear'] | undefined) ?? '',
     summary: draft?.summary ?? '',
-    tags: draft?.tags.map((tag) => tag.displayLabel).join(', ') ?? '',
+    tags: draft?.tags.map((tag) => tag.displayLabel) ?? [],
     title: draft?.title ?? '',
     videoLinks: draft?.videoLinks.map((link) => link.url).join('\n') ?? '',
   };
@@ -1027,10 +1025,7 @@ function normalized(values: DraftValues): NormalizedValues {
     links,
     submitterStudyYear: values.studyYear === '' ? null : Number(values.studyYear),
     summary: values.summary.trim() || null,
-    tags: values.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean),
+    tags: values.tags,
     title: values.title.trim() || null,
     videoLinks: values.videoLinks
       .split(/\r?\n/u)

@@ -64,6 +64,7 @@ export interface CatalogRepository {
   }): Promise<CatalogSlice<PeopleCatalogCard>>;
   listPopularTags(): Promise<PublicTagView[]>;
   listSitemapEntries(kind: CatalogSitemapKind, bucket: number): Promise<CatalogSitemapEntry[]>;
+  suggestTags(query: string): Promise<PublicTagView[]>;
   listWorks(input: {
     after: CatalogPosition | null;
     query: WorkCatalogQuery;

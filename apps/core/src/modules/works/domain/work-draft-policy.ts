@@ -9,6 +9,7 @@ const LINK_URL_MAX_LENGTH = 2_048;
 const TAG_LIMIT = 5;
 const TAG_MAX_LENGTH = 50;
 const VIDEO_LINK_LIMIT = 3;
+const ACADEMIC_YEAR_MINIMUM = 2400;
 
 export const WORK_CATEGORIES = ['course_work', 'competition_entry', 'academic_article'] as const;
 export const WORK_SEMESTERS = ['1', '2', 'summer'] as const;
@@ -113,7 +114,7 @@ export function normalizeWorkDraftPatch(
         (semester !== null && semester !== '' && !WORK_SEMESTERS.includes(semester)) ||
         (year !== null &&
           (!Number.isInteger(year) ||
-            year < academicRange.entryYear ||
+            year < ACADEMIC_YEAR_MINIMUM ||
             year > academicRange.currentAcademicYear))
       ) {
         return { isValid: false };
@@ -159,7 +160,7 @@ export function evaluateWorkDraft(
     !hasLengthBetween(description, 1, DESCRIPTION_MAX_LENGTH) ||
     !WORK_CATEGORIES.includes(input.category) ||
     !WORK_SEMESTERS.includes(input.academicPeriod.semester) ||
-    input.academicPeriod.year < academicRange.entryYear ||
+    input.academicPeriod.year < ACADEMIC_YEAR_MINIMUM ||
     input.academicPeriod.year > academicRange.currentAcademicYear ||
     input.links.length > LINK_LIMIT ||
     input.tags.length > TAG_LIMIT ||
@@ -281,7 +282,7 @@ function normalizeTags(input: string[]): NormalizedWorkDraft['tags'] | null {
   const identities = new Set<string>();
   for (const tag of input) {
     const displayLabel = tag.normalize('NFKC').trim().replace(/\s+/gu, ' ');
-    if (!hasLengthBetween(displayLabel, 1, TAG_MAX_LENGTH)) {
+    if (!hasLengthBetween(displayLabel, 1, TAG_MAX_LENGTH) || displayLabel.includes(',')) {
       return null;
     }
     const normalizedIdentity = caseFold(displayLabel);

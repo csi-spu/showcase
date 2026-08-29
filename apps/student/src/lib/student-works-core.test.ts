@@ -75,6 +75,22 @@ describe('StudentWorksCoreClient', () => {
       `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/media/64000000-0000-4000-8000-000000000003/variants/768`,
     );
   });
+
+  it('requests bounded Published Tag suggestions through Core', async () => {
+    const response = [
+      {
+        activeWorkCount: 3,
+        displayLabel: 'React Native',
+        publicId: '64000000-0000-4000-8000-000000000004',
+      },
+    ];
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
+
+    await expect(client(fetchMock).suggestTags(SESSION, 'react')).resolves.toEqual(response);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://core.example.test/v1/public/tags/suggestions?q=react',
+    );
+  });
 });
 
 function client(fetchImpl: typeof fetch) {

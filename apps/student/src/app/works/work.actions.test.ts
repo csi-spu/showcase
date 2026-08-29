@@ -3,6 +3,7 @@ const dependencies = vi.hoisted(() => ({
   createWork: vi.fn(),
   readToken: vi.fn(),
   revalidate: vi.fn(),
+  suggestTags: vi.fn(),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: dependencies.revalidate }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
@@ -16,13 +17,14 @@ vi.mock('@/lib/student-auth-session', () => ({ readStudentSessionToken: dependen
 vi.mock('@/lib/student-works-core', () => ({
   StudentWorksCoreClient: class {
     createWork = dependencies.createWork;
+    suggestTags = dependencies.suggestTags;
   },
   StudentWorksCoreError: class extends Error {
     code = 'TEST';
     status = 500;
   },
 }));
-import { autosaveWorkAction } from './work.actions';
+import { autosaveWorkAction, suggestWorkTagsAction } from './work.actions';
 
 describe('autosaveWorkAction', () => {
   beforeEach(() => {
@@ -60,5 +62,35 @@ describe('autosaveWorkAction', () => {
       }),
     ).resolves.toEqual({ error: 'invalid', outcome: 'error' });
     expect(dependencies.createWork).not.toHaveBeenCalled();
+  });
+});
+
+describe('suggestWorkTagsAction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.readToken.mockResolvedValue('session');
+    dependencies.suggestTags.mockResolvedValue([
+      {
+        activeWorkCount: 2,
+        displayLabel: 'React',
+        publicId: '64000000-0000-4000-8000-000000000003',
+      },
+    ]);
+  });
+
+  it('returns Published Tag suggestions for a bounded query', async () => {
+    await expect(suggestWorkTagsAction({ query: 'reac' })).resolves.toMatchObject({
+      outcome: 'success',
+      suggestions: [{ displayLabel: 'React' }],
+    });
+    expect(dependencies.suggestTags).toHaveBeenCalledWith('session', 'reac');
+  });
+
+  it('rejects a short query before Core', async () => {
+    await expect(suggestWorkTagsAction({ query: 'r' })).resolves.toEqual({
+      error: 'invalid',
+      outcome: 'error',
+    });
+    expect(dependencies.suggestTags).not.toHaveBeenCalled();
   });
 });

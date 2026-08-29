@@ -179,6 +179,13 @@ const contributorCandidateSchema = z
   .object({ candidateReference: z.uuid(), firstName: z.string(), lastName: z.string() })
   .strict()
   .nullable();
+const tagSuggestionSchema = z
+  .object({
+    activeWorkCount: z.number().int().positive(),
+    displayLabel: z.string().min(1).max(50),
+    publicId: z.uuid(),
+  })
+  .strict();
 const mediaUploadSchema = z
   .object({
     assetId: z.uuid(),
@@ -297,6 +304,7 @@ export type WorkRevision = z.infer<typeof workRevisionSchema>;
 export type WorkChangeRequest = z.infer<typeof changeRequestSchema>;
 export type WorkRecovery = z.infer<typeof workRecoverySchema>;
 export type RemovalRequest = z.infer<typeof removalRequestSchema>;
+export type TagSuggestion = z.infer<typeof tagSuggestionSchema>;
 export type WorkMediaKind = 'gallery' | 'poster';
 
 interface StudentWorksCoreConfig {
@@ -440,6 +448,15 @@ export class StudentWorksCoreClient {
       contributorCandidateSchema,
       sessionToken,
       { studentId },
+    );
+  }
+
+  suggestTags(sessionToken: string, query: string): Promise<TagSuggestion[]> {
+    const search = new URLSearchParams({ q: query });
+    return this.get(
+      `/v1/public/tags/suggestions?${search.toString()}`,
+      z.array(tagSuggestionSchema).max(8),
+      sessionToken,
     );
   }
 

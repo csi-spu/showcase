@@ -26,13 +26,23 @@ describe('Work Draft policy', () => {
     });
   });
 
-  it('rejects an invalid supplied partial field without requiring omitted fields', () => {
+  it('accepts a historical Academic Period before the Submitter Entry Year', () => {
     expect(
       normalizeWorkDraftPatch(
         { academicPeriod: { semester: '1', year: 2565 } },
         { currentAcademicYear: 2569, entryYear: 2566 },
       ),
-    ).toEqual({ isValid: false });
+    ).toEqual({
+      isValid: true,
+      patch: { academicPeriod: { semester: '1', year: 2565 } },
+    });
+
+    expect(
+      evaluateWorkDraft(validDraft({ academicPeriod: { semester: '1', year: 2565 } }), {
+        currentAcademicYear: 2569,
+        entryYear: 2566,
+      }),
+    ).toMatchObject({ isValid: true });
   });
 
   it('normalizes Submitter Study Year 1–4 in a partial Draft patch', () => {
@@ -169,6 +179,7 @@ describe('Work Draft policy', () => {
       }),
     ],
     ['blank Tag', validDraft({ tags: [' '] })],
+    ['Tag containing a comma', validDraft({ tags: ['React,Vue'] })],
     ['oversized Tag', validDraft({ tags: ['ก'.repeat(51)] })],
   ])('rejects %s', (_scenario, draft) => {
     expect(evaluateWorkDraft(draft, { currentAcademicYear: 2569, entryYear: 2566 })).toEqual({
@@ -225,7 +236,7 @@ describe('Work Draft policy', () => {
     ).toEqual({ isValid: false });
   });
 
-  it.each([2565, 2570])('rejects Academic Period year %s outside the Submitter range', (year) => {
+  it.each([2399, 2570])('rejects Academic Period year %s outside the supported range', (year) => {
     expect(
       evaluateWorkDraft(validDraft({ academicPeriod: { semester: 'summer', year } }), {
         currentAcademicYear: 2569,

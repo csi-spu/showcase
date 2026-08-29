@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   lookup: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
+  suggest: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: mocks.replace }),
@@ -19,6 +20,7 @@ vi.mock('./work.actions', () => ({
   lookupContributorAction: mocks.lookup,
   removeContributorAction: vi.fn(),
   submitLatestWorkAction: mocks.submit,
+  suggestWorkTagsAction: mocks.suggest,
 }));
 vi.mock('./work-media-upload', () => ({ WorkMediaUpload: () => <div>media-upload</div> }));
 import { WorkForm } from './work-form';
@@ -173,11 +175,18 @@ describe('five-step Work authoring', () => {
       'ชั้นปีเมื่อทำผลงาน',
       'ผู้ร่วมผลงาน',
       'ลิงก์',
-      'แท็ก คั่นด้วยจุลภาค',
+      'แท็ก',
       'ลิงก์วิดีโอ YouTube หรือ TikTok แยกบรรทัด',
     ]) {
       expect(screen.getByText(label)).toBeTruthy();
     }
+  });
+
+  it('offers historical Academic Years before Entry Year but never a future year', () => {
+    renderForm();
+
+    expect(screen.getByRole('option', { name: '2565' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '2570' })).toBeNull();
   });
 
   it('reuses the final submission idempotency key after an unavailable result', async () => {

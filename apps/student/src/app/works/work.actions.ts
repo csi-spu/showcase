@@ -132,6 +132,24 @@ export async function lookupContributorAction(input: unknown) {
   }
 }
 
+export async function suggestWorkTagsAction(input: unknown) {
+  const parsed = z
+    .object({ query: z.string().trim().min(2).max(50) })
+    .strict()
+    .safeParse(input);
+  if (!parsed.success) return { error: 'invalid' as const, outcome: 'error' as const };
+  const token = await optionalSessionToken();
+  if (token === null) return { error: 'unauthenticated' as const, outcome: 'error' as const };
+  try {
+    return {
+      outcome: 'success' as const,
+      suggestions: await client().suggestTags(token, parsed.data.query),
+    };
+  } catch {
+    return { error: 'unavailable' as const, outcome: 'error' as const };
+  }
+}
+
 export async function addAccountContributorAction(input: unknown) {
   const parsed = z
     .object({

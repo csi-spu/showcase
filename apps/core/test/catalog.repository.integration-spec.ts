@@ -165,6 +165,13 @@ describe('PostgresCatalogRepository integration', () => {
     });
   });
 
+  it('suggests at most eight similar Published Tags without zero-count Tags', async () => {
+    await expect(repository.suggestTags('reac')).resolves.toEqual([
+      { activeWorkCount: 2, displayLabel: 'React', publicId: IDS.tagReactPublic },
+    ]);
+    await expect(repository.suggestTags('retain')).resolves.toEqual([]);
+  });
+
   it('builds sitemap shards only from current public eligibility', async () => {
     await expect(repository.listSitemapEntries('works', 0x97)).resolves.toEqual(
       expect.arrayContaining([
@@ -198,6 +205,17 @@ describe('PostgresCatalogRepository integration', () => {
     expect(plan.map((line) => line['QUERY PLAN']).join('\n')).toContain(
       'public_work_catalog_search_idx',
     );
+  });
+
+  it('uses the partial trigram index for Published Tag suggestions', async () => {
+    await database.sql`set enable_seqscan = off`;
+    const plan = await explain(database.sql`
+      select public_id from public.tags
+      where active_work_count > 0 and normalized_identity operator(extensions.%) 'reac'
+      order by extensions.similarity(normalized_identity, 'reac') desc limit 8
+    `);
+    await database.sql`reset enable_seqscan`;
+    expect(plan).toContain('tags_active_normalized_identity_trgm_idx');
   });
 
   it('uses matching indexes for browse, filter, sort, People, and Tag paths', async () => {

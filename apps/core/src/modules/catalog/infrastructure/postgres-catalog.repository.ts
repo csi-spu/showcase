@@ -207,6 +207,33 @@ export class PostgresCatalogRepository implements CatalogRepository {
     return rows.map(mapTag);
   }
 
+  async suggestTags(query: string): Promise<PublicTagView[]> {
+    const prefix = `${escapeLike(query)}%`;
+    const contains = `%${escapeLike(query)}%`;
+    const rows = await this.database.sql<TagRow[]>`
+      select public_id, display_label, active_work_count::integer as active_work_count
+      from public.tags
+      where active_work_count > 0
+        and (
+          normalized_identity like ${contains} escape '\\'
+          or normalized_identity operator(extensions.%) ${query}
+        )
+      order by
+        case
+          when normalized_identity = ${query} then 0
+          when normalized_identity like ${prefix} escape '\\' then 1
+          when normalized_identity like ${contains} escape '\\' then 2
+          else 3
+        end,
+        extensions.similarity(normalized_identity, ${query}) desc,
+        active_work_count desc,
+        lower(display_label),
+        public_id
+      limit 8
+    `;
+    return rows.map(mapTag);
+  }
+
   async listFilterOptions(): Promise<CatalogFilterOptions> {
     const [workRows, entryRows] = await Promise.all([
       this.database.sql<Array<{ year: number }>>`
