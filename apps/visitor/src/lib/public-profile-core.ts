@@ -52,3 +52,14 @@ export function getVisitorCoreUrl(): string {
   if (value === undefined) throw new Error('CORE_URL_NOT_CONFIGURED');
   return new URL(value).origin;
 }
+
+export function getVisitorBffSecret(): string {
+  const value =
+    process.env.VISITOR_BFF_SECRET ??
+    (process.env.NODE_ENV === 'production'
+      ? undefined
+      : 'local-development-only-visitor-bff-secret');
+  if (value === undefined || value.length < 32)
+    throw new Error('VISITOR_BFF_SECRET_NOT_CONFIGURED');
+  return value;
+}

@@ -18,6 +18,7 @@ describe('Admin-to-Visitor Published Work UI', () => {
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
           publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
+          removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
           videos: 'วิดีโอ',
@@ -55,6 +56,7 @@ describe('Admin-to-Visitor Published Work UI', () => {
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
           publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
+          removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
           videos: 'วิดีโอ',
@@ -75,7 +77,9 @@ function publicWork() {
     attributions: [
       {
         affiliation: null,
+        attributionPublicId: '87000000-0000-4000-8000-000000000005',
         attributionName: 'ชื่อผู้ส่ง snapshot',
+        canRequestRemoval: false,
         contributionRole: null,
         profilePublicId: '87000000-0000-4000-8000-000000000004',
         studyYear: 2,
@@ -104,3 +108,14 @@ function publicWork() {
     workPublicId: '87000000-0000-4000-8000-000000000001',
   };
 }
+
+const removalLabels = {
+  heading: 'ขอนำชื่อออก',
+  help: 'รายละเอียด',
+  invalid: 'ไม่ถูกต้อง',
+  rateLimited: 'รอสักครู่',
+  reason: 'เหตุผล',
+  received: 'รับแล้ว',
+  submit: 'ส่ง',
+  unavailable: 'ไม่พร้อม',
+};

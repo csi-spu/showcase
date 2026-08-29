@@ -49,14 +49,18 @@ describe('Admin recovery forms', () => {
   it('explains that attribution removal creates a reviewed correction', () => {
     const attributionRequest: AdminAttributionRemovalRequest = {
       attributionName: 'Alex Example',
+      attributionPublicId: id(23),
       correctionRevisionPublicId: null,
       createdAt: '2026-08-26T05:00:00.000Z',
+      currentPublishedRevisionPublicId: id(24),
+      currentPublishedRevisionVersion: 3,
       publicId: id(20),
       reason: 'ขอถอนชื่อออกจากผลงานนี้',
       revisionPublicId: id(21),
       state: 'pending',
       version: 1,
       workPublicId: work().publicId,
+      workTitle: 'ผลงานตัวอย่าง',
     };
     renderForm(
       <AttributionRemovalDecisionForm
@@ -65,8 +69,8 @@ describe('Admin recovery forms', () => {
         request={attributionRequest}
       />,
     );
-    expect(screen.getByText(/สร้าง Revision แก้ไขใหม่และส่งเข้า Review/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'อนุมัติและสร้าง Revision' })).toBeTruthy();
+    expect(screen.getByText(/เผยแพร่ทันทีในธุรกรรมเดียว/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'อนุมัติและเผยแพร่การนำชื่อออก' })).toBeTruthy();
     expect(screen.queryByText(/ลบถาวร/)).toBeNull();
   });
 });

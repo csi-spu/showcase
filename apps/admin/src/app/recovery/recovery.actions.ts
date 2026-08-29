@@ -101,36 +101,50 @@ export async function decideAttributionRemovalRequestAction(
 ): Promise<RecoveryActionState> {
   const parsed = z
     .object({
-      decision: z.enum(['accept', 'decline']),
+      decision: z.enum(['approve', 'decline']),
       decisionReason: z.string().trim().max(1_000).optional(),
-      expectedVersion: z.coerce.number().int().positive(),
+      expectedPublishedRevisionPublicId: z.uuid().nullable(),
+      expectedPublishedRevisionVersion: z.coerce.number().int().positive().nullable(),
+      expectedRequestVersion: z.coerce.number().int().positive(),
       idempotencyKey: z.uuid(),
       requestPublicId: z.uuid(),
     })
-    .refine((input) => input.decision === 'accept' || (input.decisionReason?.length ?? 0) >= 10, {
+    .refine((input) => input.decision === 'approve' || (input.decisionReason?.length ?? 0) >= 10, {
       path: ['decisionReason'],
     })
+    .refine(
+      (input) =>
+        input.decision === 'decline' ||
+        (input.expectedPublishedRevisionPublicId !== null &&
+          input.expectedPublishedRevisionVersion !== null),
+      { path: ['expectedPublishedRevisionPublicId'] },
+    )
     .safeParse({
       decision: formData.get('decision'),
       decisionReason: formData.get('decisionReason') || undefined,
-      expectedVersion: formData.get('expectedVersion'),
+      expectedPublishedRevisionPublicId: formData.get('expectedPublishedRevisionPublicId') || null,
+      expectedPublishedRevisionVersion: formData.get('expectedPublishedRevisionVersion') || null,
+      expectedRequestVersion: formData.get('expectedRequestVersion'),
       idempotencyKey: formData.get('idempotencyKey'),
       requestPublicId,
     });
   if (!parsed.success) return failed(previousState, 'invalid');
   try {
-    await client().decideAttributionRemovalRequest(
-      await sessionToken(),
-      parsed.data.requestPublicId,
-      {
-        decision: parsed.data.decision,
-        ...(parsed.data.decisionReason === undefined
-          ? {}
-          : { decisionReason: parsed.data.decisionReason }),
-        expectedVersion: parsed.data.expectedVersion,
+    const token = await sessionToken();
+    if (parsed.data.decision === 'decline') {
+      await client().declineAttributionRemovalRequest(token, parsed.data.requestPublicId, {
+        decisionReason: parsed.data.decisionReason!,
+        expectedRequestVersion: parsed.data.expectedRequestVersion,
         idempotencyKey: parsed.data.idempotencyKey,
-      },
-    );
+      });
+    } else {
+      await client().approveAndPublishAttributionRemoval(token, parsed.data.requestPublicId, {
+        expectedPublishedRevisionPublicId: parsed.data.expectedPublishedRevisionPublicId!,
+        expectedPublishedRevisionVersion: parsed.data.expectedPublishedRevisionVersion!,
+        expectedRequestVersion: parsed.data.expectedRequestVersion,
+        idempotencyKey: parsed.data.idempotencyKey,
+      });
+    }
   } catch (error: unknown) {
     await redirectExpiredSession(error);
     return failed(previousState, mapError(error));
@@ -158,6 +172,9 @@ function mapError(error: unknown): RecoveryActionError {
   if (
     [
       'REMOVAL_REQUEST_STATE_CONFLICT',
+      'ATTRIBUTION_REMOVAL_POINTER_CONFLICT',
+      'ATTRIBUTION_REMOVAL_REQUEST_STATE_CONFLICT',
+      'ATTRIBUTION_REMOVAL_VERSION_CONFLICT',
       'WORK_IDEMPOTENCY_CONFLICT',
       'WORK_RECOVERY_STATE_CONFLICT',
       'WORK_RECOVERY_VERSION_CONFLICT',

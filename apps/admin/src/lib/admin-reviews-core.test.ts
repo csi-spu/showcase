@@ -192,18 +192,22 @@ describe('AdminReviewsCoreClient', () => {
   it('lists and decides External Contributor attribution removal requests', async () => {
     const request = {
       attributionName: 'Alex Example',
+      attributionPublicId: '77000000-0000-4000-8000-000000000025',
       correctionRevisionPublicId: null,
       createdAt: '2026-08-26T05:00:00.000Z',
+      currentPublishedRevisionPublicId: REVISION_PUBLIC_ID,
+      currentPublishedRevisionVersion: 1,
       publicId: '77000000-0000-4000-8000-000000000021',
       reason: 'ขอถอนชื่อออกจากผลงานนี้',
       revisionPublicId: REVISION_PUBLIC_ID,
       state: 'pending',
       version: 1,
       workPublicId: '77000000-0000-4000-8000-000000000022',
+      workTitle: 'ผลงานตัวอย่าง',
     };
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ items: [request] }))
+      .mockResolvedValueOnce(Response.json({ items: [request], nextCursor: null }))
       .mockResolvedValueOnce(
         Response.json({
           outcome: 'resolved',
@@ -216,15 +220,16 @@ describe('AdminReviewsCoreClient', () => {
         }),
       );
     const client = new AdminReviewsCoreClient(config, fetchMock);
-    await client.listAttributionRemovalRequests('opaque-admin-session', 20);
-    await client.decideAttributionRemovalRequest('opaque-admin-session', request.publicId, {
-      decision: 'accept',
-      expectedVersion: 1,
+    await client.listAttributionRemovalRequests('opaque-admin-session', { limit: 20 });
+    await client.approveAndPublishAttributionRemoval('opaque-admin-session', request.publicId, {
+      expectedPublishedRevisionPublicId: REVISION_PUBLIC_ID,
+      expectedPublishedRevisionVersion: 1,
+      expectedRequestVersion: 1,
       idempotencyKey: '77000000-0000-4000-8000-000000000024',
     });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       'https://core.example.test/v1/internal/admin/attribution-removal-requests?limit=20',
-      `https://core.example.test/v1/internal/admin/attribution-removal-requests/${request.publicId}/decision`,
+      `https://core.example.test/v1/internal/admin/attribution-removal-requests/${request.publicId}/approve-and-publish-removal`,
     ]);
   });
 });

@@ -118,14 +118,22 @@ export function AttributionRemovalDecisionForm({
       className="grid gap-5 rounded-surface border border-border bg-card p-6"
     >
       <div className="grid gap-2">
-        <h2 className="text-xl font-semibold">{request.attributionName}</h2>
+        <h2 className="text-xl font-semibold">{request.workTitle}</h2>
+        <p className="font-medium">{request.attributionName}</p>
         <p className="whitespace-pre-wrap">{request.reason}</p>
-        <p className="text-sm text-muted-foreground">
-          การอนุมัติจะสร้าง Revision แก้ไขใหม่และส่งเข้า Review โดยไม่เปลี่ยน Revision
-          ที่เผยแพร่อยู่
-        </p>
+        <p className="text-sm text-muted-foreground">{t('attribution.approveHelp')}</p>
       </div>
-      <input name="expectedVersion" type="hidden" value={request.version} />
+      <input name="expectedRequestVersion" type="hidden" value={request.version} />
+      <input
+        name="expectedPublishedRevisionPublicId"
+        type="hidden"
+        value={request.currentPublishedRevisionPublicId ?? ''}
+      />
+      <input
+        name="expectedPublishedRevisionVersion"
+        type="hidden"
+        value={request.currentPublishedRevisionVersion ?? ''}
+      />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
       <div className="grid gap-2">
         <Label htmlFor={`attribution-decision-${request.publicId}`}>{t('decisionReason')}</Label>
@@ -139,11 +147,11 @@ export function AttributionRemovalDecisionForm({
       </div>
       <Feedback state={state} />
       <div className="flex gap-3">
-        <Button disabled={pending} name="decision" type="submit" value="accept">
-          อนุมัติและสร้าง Revision
+        <Button disabled={pending} name="decision" type="submit" value="approve">
+          {t('attribution.approve')}
         </Button>
         <Button disabled={pending} name="decision" type="submit" value="decline" variant="outline">
-          ปฏิเสธคำขอ
+          {t('attribution.decline')}
         </Button>
       </div>
     </form>
