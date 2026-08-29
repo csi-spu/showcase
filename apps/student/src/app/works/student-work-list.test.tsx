@@ -16,6 +16,22 @@ describe('StudentWorkList', () => {
     expect(screen.getByText('เผยแพร่')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'แก้ไขต่อ' })).toBeTruthy();
   });
+
+  it('loads a private Poster directly so the browser sends its Student session cookie', () => {
+    const work = item({
+      poster: {
+        assetId: '64000000-0000-4000-8000-000000000002',
+        height: 1_600,
+        variants: [{ height: 1_600, width: 1_200 }],
+        width: 1_200,
+      },
+    });
+    render(<StudentWorkList canEdit items={[work]} labels={labels} />);
+
+    expect(document.querySelector('img')?.getAttribute('src')).toBe(
+      `/works/${work.publicId}/media/${work.poster?.assetId}/1200`,
+    );
+  });
 });
 
 const labels: Record<string, string> = {
@@ -30,7 +46,7 @@ const labels: Record<string, string> = {
   'review.draft': 'ร่าง',
   'source.draft': 'จากร่าง',
 };
-function item(): WorkListItem {
+function item(overrides: Partial<WorkListItem> = {}): WorkListItem {
   return {
     activityState: 'active',
     academicPeriod: null,
@@ -48,5 +64,6 @@ function item(): WorkListItem {
     title: 'ผลงาน',
     updatedAt: '2026-08-29T00:00:00.000Z',
     version: 2,
+    ...overrides,
   };
 }

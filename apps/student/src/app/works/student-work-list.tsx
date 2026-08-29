@@ -35,6 +35,7 @@ export function StudentWorkList({
                 loading="lazy"
                 sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
                 src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
+                unoptimized
                 width={work.poster.width}
               />
             )}
