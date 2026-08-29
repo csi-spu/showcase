@@ -8,9 +8,11 @@ import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student
 import {
   createPhotoUploadAction,
   finalizePhotoUploadAction,
+  grantConsentAction,
   updateProfileAction,
+  withdrawConsentAction,
 } from './profile.actions';
-import { ProfileForm } from './profile-form';
+import { ConsentPanel, ProfileForm } from './profile-form';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
 import { WorkspacePage } from '../workspace-page';
 
@@ -34,8 +36,9 @@ export default async function ProfilePage() {
     }
     throw error;
   }
-  const [t, updateIdempotencyKey] = await Promise.all([
+  const [t, updateIdempotencyKey, consentIdempotencyKey] = await Promise.all([
     getTranslations('ProfilePage'),
+    Promise.resolve(randomUUID()),
     Promise.resolve(randomUUID()),
   ]);
 
@@ -59,6 +62,20 @@ export default async function ProfilePage() {
             idempotencyKey={updateIdempotencyKey}
             profile={response.profile}
             updateAction={updateProfileAction}
+          />
+          <ConsentPanel
+            grantAction={grantConsentAction}
+            idempotencyKey={consentIdempotencyKey}
+            profile={response.profile}
+            publicProfileUrl={
+              response.profile === null
+                ? undefined
+                : new URL(
+                    `/people/${response.profile.publicId}`,
+                    getStudentServerEnvironment().visitorUrl,
+                  ).toString()
+            }
+            withdrawAction={withdrawConsentAction}
           />
         </div>
       </WorkspacePage>

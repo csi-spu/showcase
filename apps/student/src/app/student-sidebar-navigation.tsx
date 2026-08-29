@@ -5,7 +5,6 @@ import {
   FilePlus2Icon,
   FolderKanbanIcon,
   HouseIcon,
-  ShieldCheckIcon,
   UserRoundPenIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,7 +20,7 @@ import {
 } from '@/components/animate-ui/components/radix/sidebar';
 
 export type StudentWorkspacePage =
-  'add-work' | 'dashboard' | 'edit-profile' | 'notifications' | 'profile-consent' | 'works';
+  'add-work' | 'dashboard' | 'edit-profile' | 'notifications' | 'works';
 
 export interface StudentSidebarItem {
   href: string;
@@ -39,7 +38,6 @@ const PAGE_ICONS: Record<StudentWorkspacePage, LucideIcon> = {
   dashboard: HouseIcon,
   'edit-profile': UserRoundPenIcon,
   notifications: BellIcon,
-  'profile-consent': ShieldCheckIcon,
   works: FolderKanbanIcon,
 };
 

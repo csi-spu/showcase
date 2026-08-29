@@ -2,8 +2,7 @@
 
 import { Button } from '@showcase/ui/button';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
@@ -255,38 +254,70 @@ export function ConsentPanel({
 }: {
   grantAction: ProfileAction;
   idempotencyKey: string;
-  profile: PrivatePublicProfile;
+  profile: PrivatePublicProfile | null;
   publicProfileUrl?: string | undefined;
   withdrawAction: ProfileAction;
 }) {
   const t = useTranslations('Profile');
-  const action = profile.consent === null ? grantAction : withdrawAction;
+  const isGranted = profile !== null && profile.consent !== null;
+  const action = isGranted ? withdrawAction : grantAction;
   const [state, formAction] = useActionState(action, INITIAL_PROFILE_ACTION_STATE);
+
   return (
-    <section className="grid max-w-[45rem] gap-5 rounded-surface border border-border bg-card p-6 sm:p-8">
-      <div className="grid gap-2">
-        <p className="text-sm font-medium text-primary">{t('consent.kicker')}</p>
-        <h2 className="text-2xl font-semibold">{t('consent.heading')}</h2>
-        <p className="text-muted-foreground">
-          {profile.consent === null ? t('consent.private') : t('consent.public')}
+    <section className="grid max-w-[45rem] gap-2 rounded-surface border border-border bg-muted/30 px-4 py-3">
+      <form action={formAction} className="grid gap-2">
+        <input name="expectedVersion" type="hidden" value={profile?.version ?? 0} />
+        <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
+        <ConsentCheckbox
+          checked={isGranted}
+          disabled={profile === null}
+          label={t('consent.grant')}
+          pendingLabel={t('saving')}
+        />
+        <p className="pl-7 text-xs text-muted-foreground">
+          {profile === null
+            ? t('consent.profileRequired')
+            : isGranted
+              ? t('consent.public')
+              : t('consent.private')}
         </p>
-      </div>
-      {profile.consent !== null && publicProfileUrl ? (
-        <a className="font-medium text-primary underline" href={publicProfileUrl}>
+        <ActionFeedback error={state.error} success={state.success} />
+      </form>
+      {isGranted && publicProfileUrl ? (
+        <a className="pl-7 text-sm font-medium text-primary underline" href={publicProfileUrl}>
           {t('consent.viewPublic')}
         </a>
       ) : null}
-      <form action={formAction} className="grid gap-3">
-        <input name="expectedVersion" type="hidden" value={profile.version} />
-        <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
-        <ActionFeedback error={state.error} success={state.success} />
-        <SubmitButton
-          label={profile.consent === null ? t('consent.grant') : t('consent.withdraw')}
-          pendingLabel={t('saving')}
-          variant={profile.consent === null ? 'default' : 'destructive'}
-        />
-      </form>
     </section>
+  );
+}
+
+function ConsentCheckbox({
+  checked,
+  disabled,
+  label,
+  pendingLabel,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  pendingLabel: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium">
+      <input
+        checked={checked}
+        className="size-4 rounded border-input accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled || pending}
+        onChange={(event) => {
+          event.currentTarget.form?.requestSubmit();
+        }}
+        type="checkbox"
+      />
+      <span>{label}</span>
+      {pending ? <Spinner aria-label={pendingLabel} className="size-4" /> : null}
+    </label>
   );
 }
 

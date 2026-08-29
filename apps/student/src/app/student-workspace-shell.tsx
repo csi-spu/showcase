@@ -66,14 +66,7 @@ export async function StudentWorkspaceShell({
       label: t('navigation.workGroup'),
     },
     {
-      items: [
-        { href: '/profile', label: t('navigation.editProfile'), page: 'edit-profile' },
-        {
-          href: '/profile/consent',
-          label: t('navigation.profileConsent'),
-          page: 'profile-consent',
-        },
-      ],
+      items: [{ href: '/profile', label: t('navigation.editProfile'), page: 'edit-profile' }],
       label: t('navigation.profileGroup'),
     },
   ];

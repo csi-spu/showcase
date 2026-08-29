@@ -44,7 +44,6 @@ vi.mock('next-intl/server', () => ({
       'navigation.notifications': 'การแจ้งเตือน',
       'navigation.openMenu': 'เปิดเมนู',
       'navigation.overviewGroup': 'ภาพรวม',
-      'navigation.profileConsent': 'ความยินยอมโปรไฟล์',
       'navigation.profileGroup': 'โปรไฟล์',
       'navigation.workGroup': 'จัดการผลงาน',
       'profile.entryYear': 'ปีที่เข้าศึกษา {year}',
@@ -110,6 +109,7 @@ describe('StudentWorkspaceShell', () => {
     expect(
       within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
     ).toBe('/works');
+    expect(within(navigation).queryByRole('link', { name: 'ความยินยอมโปรไฟล์' })).toBeNull();
     const workspaceHeader = screen.getByRole('banner');
     expect(workspaceHeader.classList.contains('z-30')).toBe(true);
     expect(workspaceHeader.classList.contains('bg-background')).toBe(true);
