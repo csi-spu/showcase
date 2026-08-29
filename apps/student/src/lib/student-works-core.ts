@@ -648,6 +648,15 @@ export class StudentWorksCoreClient {
     return result.revision;
   }
 
+  async getPublishedRevision(sessionToken: string, publicId: string): Promise<WorkRevision | null> {
+    const result = await this.get(
+      `/v1/internal/student/works/${publicId}/revisions/published`,
+      z.object({ revision: workRevisionSchema.nullable() }).strict(),
+      sessionToken,
+    );
+    return result.revision;
+  }
+
   withdrawRevision(
     sessionToken: string,
     publicId: string,

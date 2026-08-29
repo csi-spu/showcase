@@ -1,6 +1,7 @@
 'use client';
 
-import { Button } from '@showcase/ui/button';
+import { Button, buttonVariants } from '@showcase/ui/button';
+import { ExternalLinkIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -48,17 +49,17 @@ export function WorkRevisionPendingPanel({
     initialWorkRevisionActionState(idempotencyKey),
   );
   return (
-    <section className="grid gap-6 rounded-surface border border-border bg-card p-6 sm:p-8">
+    <section className="grid gap-5 rounded-surface border border-border bg-card p-5 shadow-sm">
       <div className="grid gap-2">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-          ฉบับแก้ไข {revision.number}
+        <p className="text-xs font-semibold tracking-[0.14em] text-primary uppercase">
+          {t('pendingEyebrow', { number: revision.number })}
         </p>
-        <h2 className="text-2xl font-semibold">{t('pendingHeading')}</h2>
+        <h2 className="text-xl font-semibold">{t('pendingHeading')}</h2>
         <p className="text-muted-foreground">{t('pendingHelp')}</p>
       </div>
-      <Alert>
+      <Alert className="border-warning/30 bg-warning-background text-warning">
         <AlertTitle>{t('pendingStatus')}</AlertTitle>
-        <AlertDescription>ฉบับที่ {revision.number}</AlertDescription>
+        <AlertDescription>{t('pendingRevision', { number: revision.number })}</AlertDescription>
       </Alert>
       <form action={formAction} className="grid gap-4">
         <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
@@ -73,11 +74,13 @@ export function WorkRevisionPendingPanel({
 export function WorkPublishedRevisionPanel({
   action,
   idempotencyKey,
+  publicHref,
   publishedRevisionId,
   publicationState = 'published',
 }: {
   action: RevisionAction;
   idempotencyKey: string;
+  publicHref?: string;
   publishedRevisionId: string;
   publicationState?: 'published' | 'unpublished';
 }) {
@@ -87,12 +90,14 @@ export function WorkPublishedRevisionPanel({
     initialWorkRevisionActionState(idempotencyKey),
   );
   return (
-    <section className="grid gap-6 rounded-surface border border-information/30 bg-information-background p-6 sm:p-8">
+    <section className="grid gap-5 rounded-surface border border-information/30 bg-information-background p-5 shadow-sm">
       <div className="grid gap-2">
-        <p className="text-sm font-semibold tracking-[0.16em] text-information">
-          ฉบับที่เผยแพร่แล้ว
+        <p className="text-xs font-semibold tracking-[0.14em] text-information uppercase">
+          {t(
+            publicationState === 'published' ? 'published.eyebrow' : 'unpublished.eyebrow',
+          )}
         </p>
-        <h2 className="text-2xl font-semibold">
+        <h2 className="text-xl font-semibold">
           {t(publicationState === 'published' ? 'published.heading' : 'unpublished.heading')}
         </h2>
         <p className="text-muted-foreground">
@@ -105,6 +110,17 @@ export function WorkPublishedRevisionPanel({
         <RevisionFeedback state={state} />
         <SubmitButton label={t('published.create')} pendingLabel={t('published.creating')} />
       </form>
+      {publicHref === undefined ? null : (
+        <a
+          className={buttonVariants({ className: 'w-full', variant: 'outline' })}
+          href={publicHref}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {t('published.viewPublic')}
+          <ExternalLinkIcon aria-hidden="true" data-icon="inline-end" />
+        </a>
+      )}
     </section>
   );
 }

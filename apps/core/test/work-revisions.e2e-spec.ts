@@ -34,6 +34,7 @@ const MEDIA_ID = '74000000-0000-4000-8000-000000000006';
 class E2eWorkRevisionRepository implements WorkRevisionRepository {
   result: WorkRevisionResult = { outcome: 'created', revision: revision() };
   pending: WorkRevisionView | null = null;
+  published: WorkRevisionView | null = null;
 
   findSubmissionContext() {
     return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566 });
@@ -41,6 +42,10 @@ class E2eWorkRevisionRepository implements WorkRevisionRepository {
 
   findPendingRevision(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.pending);
+  }
+
+  findPublishedRevision(): Promise<WorkRevisionView | null> {
+    return Promise.resolve(this.published);
   }
 
   findRevisionForReview(): Promise<WorkRevisionView | null> {
@@ -204,6 +209,20 @@ describe('Work Revision submission and Review queue (e2e)', () => {
       .send({ expectedRevisionVersion: 1, idempotencyKey: IDEMPOTENCY_KEY })
       .expect(200)
       .expect({ outcome: 'withdrawn', revision: { ...revision(), status: 'withdrawn' } });
+  });
+
+  it('exposes the current Published Revision to its owner with read-only authorization', async () => {
+    repository.published = { ...revision(), status: 'approved' };
+    canMutate = false;
+
+    const response = await studentRequest(
+      'get',
+      `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions/published`,
+    ).expect(200);
+
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.body).toEqual({ revision: { ...revision(), status: 'approved' } });
+    expect(JSON.stringify(response.body)).not.toMatch(/accountId|personId|studentId/i);
   });
 
   it('authorizes the bounded Admin Review queue and immutable detail', async () => {

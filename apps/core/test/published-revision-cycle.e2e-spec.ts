@@ -128,6 +128,10 @@ class LifecycleRevisionRepository implements WorkRevisionRepository {
     return Promise.resolve(this.pending);
   }
 
+  findPublishedRevision(): Promise<WorkRevisionView | null> {
+    return Promise.resolve(null);
+  }
+
   findRevisionForReview(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.pending);
   }

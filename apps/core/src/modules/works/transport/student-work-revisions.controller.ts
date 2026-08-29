@@ -49,6 +49,16 @@ export class StudentWorkRevisionsController {
     return { revision: await this.revisions.getPendingRevision(actor.accountId, workPublicId) };
   }
 
+  @Get('published')
+  @Header('Cache-Control', 'private, no-store')
+  async getPublished(
+    @Param('workPublicId', new ParseUUIDPipe({ version: '4' })) workPublicId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
+    return { revision: await this.revisions.getPublishedRevision(actor.accountId, workPublicId) };
+  }
+
   @Post(':revisionPublicId/withdraw')
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')

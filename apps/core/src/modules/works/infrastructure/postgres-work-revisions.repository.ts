@@ -541,6 +541,22 @@ export class PostgresWorkRevisionsRepository
     return row === undefined ? null : this.findRevisionById(this.database.sql, row.revision_id);
   }
 
+  async findPublishedRevision(
+    actorAccountId: string,
+    workPublicId: string,
+  ): Promise<WorkRevisionView | null> {
+    const rows = await this.database.sql<Array<{ revision_id: string }>>`
+      select work.published_revision_id as revision_id
+      from public.works as work
+      join public.accounts as account on account.person_id = work.submitter_person_id
+      where account.id = ${actorAccountId} and work.public_id = ${workPublicId}
+        and work.activity_state = 'active' and work.published_revision_id is not null
+      limit 1
+    `;
+    const row = rows[0];
+    return row === undefined ? null : this.findRevisionById(this.database.sql, row.revision_id);
+  }
+
   async listReviewQueue(input: {
     cursor: string | undefined;
     limit: number;
