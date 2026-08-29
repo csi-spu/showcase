@@ -1,8 +1,55 @@
-import { evaluateWorkDraft, type WorkCategory, type WorkDraftInput } from './work-draft-policy';
+import {
+  evaluateWorkDraft,
+  normalizeWorkDraftPatch,
+  type WorkCategory,
+  type WorkDraftInput,
+} from './work-draft-policy';
 
 const CATEGORIES: WorkCategory[] = ['course_work', 'competition_entry', 'academic_article'];
 
 describe('Work Draft policy', () => {
+  it('normalizes only supplied partial Draft fields and clears empty authoring input', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        {
+          summary: '   ',
+          title: '  ระบบแนะนำผลงาน  ',
+        },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({
+      isValid: true,
+      patch: {
+        summary: null,
+        title: 'ระบบแนะนำผลงาน',
+      },
+    });
+  });
+
+  it('rejects an invalid supplied partial field without requiring omitted fields', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        { academicPeriod: { semester: '1', year: 2565 } },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: false });
+  });
+
+  it('normalizes Submitter Study Year 1–4 in a partial Draft patch', () => {
+    expect(
+      normalizeWorkDraftPatch(
+        { submitterStudyYear: 3 },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: true, patch: { submitterStudyYear: 3 } });
+    expect(
+      normalizeWorkDraftPatch(
+        { submitterStudyYear: 5 },
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toEqual({ isValid: false });
+  });
+
   it.each(CATEGORIES)('uses the same bounded field contract for %s', (category) => {
     expect(
       evaluateWorkDraft(
@@ -154,6 +201,27 @@ describe('Work Draft policy', () => {
         currentAcademicYear: 2569,
         entryYear: 2566,
       }),
+    ).toEqual({ isValid: false });
+  });
+
+  it('accepts the locked GitHub link only for github.com or its subdomains', () => {
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://github.com/csi-spu/showcase' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({ isValid: true });
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://docs.github.com/repositories' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({ isValid: true });
+    expect(
+      evaluateWorkDraft(
+        validDraft({ links: [{ label: 'GitHub', url: 'https://github.com.example.test/repo' }] }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
     ).toEqual({ isValid: false });
   });
 

@@ -1,7 +1,6 @@
 import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
-import { AttributionInvitationError } from '../application/attribution-invitations.service';
 import { WorkError } from '../application/works.service';
 import { WorkMediaError } from '../application/work-media.service';
 import { WorkRevisionError } from '../application/work-revisions.service';
@@ -10,6 +9,7 @@ import { PublicationError } from '../application/publication.service';
 import { AdminCorrectionError } from '../application/admin-corrections.service';
 import { WorkRecoveryError } from '../application/work-recovery.service';
 import { AttributionRemovalError } from '../application/attribution-removal.service';
+import { WorkContributorError } from '../application/work-contributors.service';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -25,8 +25,8 @@ export class WorksExceptionFilter implements ExceptionFilter {
     if (
       error instanceof AuthError ||
       error instanceof AdminCorrectionError ||
-      error instanceof AttributionInvitationError ||
       error instanceof AttributionRemovalError ||
+      error instanceof WorkContributorError ||
       error instanceof WorkError ||
       error instanceof WorkMediaError ||
       error instanceof PublicationError ||
@@ -34,6 +34,11 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof WorkRevisionError ||
       error instanceof WorkRecoveryError
     ) {
+      this.logger.warn({
+        errorCode: error.code,
+        operation: 'work_request_rejected',
+        status: error.status,
+      });
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }

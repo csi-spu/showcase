@@ -18,7 +18,8 @@ import { AdminBffGuard } from '../../auth/transport/admin-bff.guard';
 import { WorkRecoveryService } from '../application/work-recovery.service';
 import { AttributionRemovalService } from '../application/attribution-removal.service';
 import {
-  DecideAttributionRemovalRequestDto,
+  ApproveAttributionRemovalRequestDto,
+  DeclineAttributionRemovalRequestDto,
   DecideRemovalRequestDto,
   RemovalRequestQueueQueryDto,
   WorkRecoveryTransitionDto,
@@ -52,19 +53,35 @@ export class AdminWorkRecoveryController {
     @Headers('authorization') authorization: string | undefined,
   ) {
     await this.auth.authorizeAdmin(this.sessionToken(authorization));
-    return { items: await this.attributionRemoval.listPending(query.limit) };
+    return this.attributionRemoval.listPending(query.limit, query.cursor);
   }
 
-  @Post('attribution-removal-requests/:requestPublicId/decision')
+  @Post('attribution-removal-requests/:requestPublicId/decline')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
-  async decideAttributionRemoval(
+  async declineAttributionRemoval(
     @Param('requestPublicId', new ParseUUIDPipe({ version: '4' })) requestPublicId: string,
-    @Body() input: DecideAttributionRemovalRequestDto,
+    @Body() input: DeclineAttributionRemovalRequestDto,
     @Headers('authorization') authorization: string | undefined,
   ) {
     const actor = await this.auth.authorizeAdmin(this.sessionToken(authorization));
-    return this.attributionRemoval.decide({
+    return this.attributionRemoval.decline({
+      ...input,
+      actorAccountId: actor.accountId,
+      requestPublicId,
+    });
+  }
+
+  @Post('attribution-removal-requests/:requestPublicId/approve-and-publish-removal')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  async approveAttributionRemoval(
+    @Param('requestPublicId', new ParseUUIDPipe({ version: '4' })) requestPublicId: string,
+    @Body() input: ApproveAttributionRemovalRequestDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeAdmin(this.sessionToken(authorization));
+    return this.attributionRemoval.approveAndPublish({
       ...input,
       actorAccountId: actor.accountId,
       requestPublicId,

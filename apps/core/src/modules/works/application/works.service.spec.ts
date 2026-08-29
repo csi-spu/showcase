@@ -6,6 +6,7 @@ import type {
   WorksRepository,
 } from './works.ports';
 import { WorkError, WorksService } from './works.service';
+import { WorkWorkspaceCursorCodec } from '../domain/work-workspace-cursor';
 
 const NOW = new Date('2026-08-25T10:00:00.000Z');
 const ACCOUNT_ID = '61000000-0000-4000-8000-000000000001';
@@ -23,11 +24,30 @@ class FakeWorksRepository implements WorksRepository {
   draft: WorkDraftView | null = null;
   mutationResult: WorkMutationResult = { outcome: 'updated', work: workDraft() };
   lastCreate: Parameters<WorksRepository['createWork']>[0] | undefined;
+  lastPatch: Parameters<WorksRepository['patchDraft']>[0] | undefined;
   lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
   lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
   lastUpdate: Parameters<WorksRepository['updateDraft']>[0] | undefined;
-  listPage: WorkListPage = { items: [], nextCursor: null };
+  listPage: WorkListPage = {
+    hasNextPage: false,
+    hasPreviousPage: false,
+    items: [],
+    nextCursor: null,
+    previousCursor: null,
+  };
   lastList: Parameters<WorksRepository['listOwnedWorks']>[0] | undefined;
+
+  archiveSavedDraft(): ReturnType<WorksRepository['archiveSavedDraft']> {
+    return Promise.resolve({
+      outcome: 'archived',
+      work: {
+        activityState: 'archived',
+        publicationState: 'never_published',
+        publicId: PUBLIC_ID,
+        version: 2,
+      },
+    });
+  }
 
   createWork(input: Parameters<WorksRepository['createWork']>[0]) {
     this.lastCreate = input;
@@ -57,9 +77,38 @@ class FakeWorksRepository implements WorksRepository {
     return Promise.resolve(this.listPage);
   }
 
+  getWorkspaceSummary() {
+    return Promise.resolve({
+      canMutate: true,
+      changeRequestCount: 2,
+      draftCount: 3,
+      latestActionableDraftPublicId: PUBLIC_ID,
+      pendingReviewCount: 4,
+      publishedCount: 5,
+      unreadNotificationCount: 6,
+    });
+  }
+
+  patchDraft(input: Parameters<WorksRepository['patchDraft']>[0]) {
+    this.lastPatch = input;
+    return Promise.resolve(this.mutationResult);
+  }
+
   rebaseDraft(input: Parameters<WorksRepository['rebaseDraft']>[0]) {
     this.lastRebase = input;
     return Promise.resolve(this.mutationResult);
+  }
+
+  restoreSavedDraft(): ReturnType<WorksRepository['restoreSavedDraft']> {
+    return Promise.resolve({
+      outcome: 'restored',
+      work: {
+        activityState: 'active',
+        publicationState: 'never_published',
+        publicId: PUBLIC_ID,
+        version: 3,
+      },
+    });
   }
 
   seedDraft(input: Parameters<WorksRepository['seedDraft']>[0]) {
@@ -79,7 +128,11 @@ describe('WorksService', () => {
 
   beforeEach(() => {
     repository = new FakeWorksRepository();
-    service = new WorksService(repository, { now: () => NOW });
+    service = new WorksService(
+      repository,
+      { now: () => NOW },
+      new WorkWorkspaceCursorCodec('workspace-test-secret-at-least-thirty-two-bytes'),
+    );
   });
 
   it('creates a private Work Draft with one immutable Submitter', async () => {
@@ -95,9 +148,9 @@ describe('WorksService', () => {
 
     expect(repository.lastCreate).toEqual({
       actorAccountId: ACCOUNT_ID,
-      draft: normalizedDraft(),
       idempotencyKey: IDEMPOTENCY_KEY,
       now: NOW,
+      patch: normalizedDraft(),
       submitterPersonId: PERSON_ID,
     });
   });
@@ -117,9 +170,20 @@ describe('WorksService', () => {
       service.createWork({
         actorAccountId: ACCOUNT_ID,
         idempotencyKey: IDEMPOTENCY_KEY,
-        ...input({ title: ' ' }),
+        ...input({ title: 'ก'.repeat(151) }),
       }),
     ).rejects.toMatchObject({ code: 'INVALID_WORK_DRAFT', status: 422 });
+  });
+
+  it('does not create a Work for a blank first change', async () => {
+    await expect(
+      service.createWork({
+        actorAccountId: ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        title: '   ',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_WORK_DRAFT', status: 422 });
+    expect(repository.lastCreate).toBeUndefined();
   });
 
   it('reveals an owned Draft only to the resolved Submitter', async () => {
@@ -141,26 +205,44 @@ describe('WorksService', () => {
 
   it('lists a bounded page of Submitter-owned Works using an opaque keyset cursor', async () => {
     repository.listPage = {
+      hasNextPage: true,
+      hasPreviousPage: false,
       items: [
         {
           activityState: 'active',
+          academicPeriod: { semester: '1', year: 2569 },
+          category: 'course_work',
+          displayedSource: 'draft',
           hasDraft: true,
+          isDraftComplete: true,
           latestRevisionStatus: 'changes_requested',
+          poster: null,
+          primaryAction: 'continue_editing',
           publicationState: 'published',
           publicId: PUBLIC_ID,
+          secondaryActions: [],
+          summary: 'สรุปผลงาน',
           title: 'ระบบจัดการกิจกรรม',
           updatedAt: new Date('2026-08-25T09:00:00.000Z'),
+          version: 1,
         },
       ],
       nextCursor: {
+        direction: 'next',
         publicId: PUBLIC_ID,
         updatedAt: new Date('2026-08-25T09:00:00.000Z'),
       },
+      previousCursor: null,
     };
 
-    const page = await service.listOwnedWorks({ accountId: ACCOUNT_ID, limit: 20 });
+    const page = await service.listOwnedWorks({ accountId: ACCOUNT_ID, view: 'current' });
 
-    expect(repository.lastList).toEqual({ accountId: ACCOUNT_ID, cursor: null, limit: 20 });
+    expect(repository.lastList).toEqual({
+      accountId: ACCOUNT_ID,
+      cursor: null,
+      limit: 12,
+      view: 'current',
+    });
     expect(page.items).toEqual([
       expect.objectContaining({
         publicId: PUBLIC_ID,
@@ -173,9 +255,107 @@ describe('WorksService', () => {
 
   it('rejects a malformed owned Work cursor without querying the repository', async () => {
     await expect(
-      service.listOwnedWorks({ accountId: ACCOUNT_ID, cursor: 'not-a-cursor', limit: 20 }),
+      service.listOwnedWorks({
+        accountId: ACCOUNT_ID,
+        cursor: 'not-a-cursor',
+        view: 'current',
+      }),
     ).rejects.toMatchObject({ code: 'INVALID_WORK_CURSOR', status: 422 });
     expect(repository.lastList).toBeUndefined();
+  });
+
+  it('binds a cursor to actor and Current/Saved view', async () => {
+    repository.listPage = {
+      hasNextPage: true,
+      hasPreviousPage: false,
+      items: [],
+      nextCursor: {
+        direction: 'next',
+        publicId: PUBLIC_ID,
+        updatedAt: NOW,
+      },
+      previousCursor: null,
+    };
+    const current = await service.listOwnedWorks({ accountId: ACCOUNT_ID, view: 'current' });
+    await expect(
+      service.listOwnedWorks({
+        accountId: ACCOUNT_ID,
+        cursor: current.nextCursor!,
+        view: 'saved',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_WORK_CURSOR', status: 422 });
+    expect(repository.lastList?.view).toBe('current');
+  });
+
+  it('returns the authoritative workspace summary without loading Works', async () => {
+    await expect(service.getWorkspaceSummary(ACCOUNT_ID)).resolves.toEqual({
+      canMutate: true,
+      changeRequestCount: 2,
+      draftCount: 3,
+      latestActionableDraftPublicId: PUBLIC_ID,
+      pendingReviewCount: 4,
+      publishedCount: 5,
+      unreadNotificationCount: 6,
+    });
+    expect(repository.lastList).toBeUndefined();
+  });
+
+  it('requires explicit confirmation before archiving a saved Draft', async () => {
+    await expect(
+      service.archiveSavedDraft({
+        actorAccountId: ACCOUNT_ID,
+        confirmation: false,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'WORK_SAVED_DRAFT_CONFIRMATION_REQUIRED',
+      status: 422,
+    });
+    await expect(
+      service.archiveSavedDraft({
+        actorAccountId: ACCOUNT_ID,
+        confirmation: true,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).resolves.toMatchObject({ outcome: 'archived' });
+  });
+
+  it('restores a Submitter-saved Draft without changing content', async () => {
+    await expect(
+      service.restoreSavedDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedVersion: 2,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).resolves.toMatchObject({ outcome: 'restored' });
+  });
+
+  it('patches only supplied fields and normalizes cleared fields to null', async () => {
+    await service.patchDraft({
+      actorAccountId: ACCOUNT_ID,
+      expectedVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      publicId: PUBLIC_ID,
+      summary: '   ',
+      tags: ['  TypeScript  '],
+    });
+
+    expect(repository.lastPatch).toEqual({
+      actorAccountId: ACCOUNT_ID,
+      expectedVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+      patch: {
+        summary: null,
+        tags: [{ displayLabel: 'TypeScript', normalizedIdentity: 'typescript' }],
+      },
+      publicId: PUBLIC_ID,
+    });
   });
 
   it('updates normalized Draft content using the expected version', async () => {
@@ -335,10 +515,15 @@ function workDraft(): WorkDraftView {
   return {
     activityState: 'active',
     basePublishedRevisionId: null,
-    draft: normalizedDraft(),
+    contributors: [],
+    draft: { ...normalizedDraft(), submitterStudyYear: null },
+    isComplete: true,
+    media: [],
     publicationState: 'never_published',
     publishedRevisionId: null,
     publicId: PUBLIC_ID,
+    savedAt: NOW,
+    submitterAttributionName: 'ผู้ส่งผลงาน',
     version: 1,
   };
 }

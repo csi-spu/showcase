@@ -83,6 +83,15 @@ describe('PostgresPublicationRepository integration', () => {
         )
       `;
       await transaction`
+        insert into private.work_drafts (
+          work_id, title, summary, description, category, academic_year, semester,
+          submitter_study_year, version, created_at, updated_at
+        ) values (
+          ${WORK_ID}, 'ระบบแนะนำผลงาน', 'สรุปผลงาน', 'รายละเอียดผลงาน',
+          'course_work', 2569, '1', 2, 2, ${NOW}, ${NOW}
+        )
+      `;
+      await transaction`
         insert into private.work_revisions (
           id, public_id, work_id, revision_number, status, draft_version, title, summary,
           description, category, academic_year, semester, submitted_at, version
@@ -256,6 +265,7 @@ describe('PostgresPublicationRepository integration', () => {
           parameters: { revisionNumber: number; title: string };
           type: string;
         };
+        draft_lifecycle_state: string;
         publication_state: string;
         published_revision_id: string;
         revision_status: string;
@@ -273,7 +283,9 @@ describe('PostgresPublicationRepository integration', () => {
             and event_type = 'work_revision_published') as event_count,
         (select payload from private.outbox_events
           where aggregate_type = 'work_revision' and aggregate_id = revision.public_id
-            and event_type = 'work_revision_published') as event_payload
+            and event_type = 'work_revision_published') as event_payload,
+        (select lifecycle_state from private.work_drafts where work_id = work.id)
+          as draft_lifecycle_state
       from public.works as work
       join private.work_revisions as revision on revision.id = work.published_revision_id
       join private.reviews as review on review.revision_id = revision.id
@@ -287,6 +299,7 @@ describe('PostgresPublicationRepository integration', () => {
         active_work_count: 1,
         catalog_revision_id: REVISION_ID,
         decision: 'approved',
+        draft_lifecycle_state: 'retained',
         event_count: 1,
         publication_state: 'published',
         published_revision_id: REVISION_ID,

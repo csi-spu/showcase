@@ -52,6 +52,10 @@ class FakeRepository implements WorkMediaRepository {
     });
   }
 
+  findPrivateVariantObjectKey() {
+    return Promise.resolve(`work-media/${ASSET_ID}/768.webp`);
+  }
+
   claimNext() {
     return Promise.resolve(this.upload);
   }
@@ -245,6 +249,25 @@ describe('WorkMediaService', () => {
     });
   });
 
+  it('returns an actor-authorized processed variant without exposing its object key', async () => {
+    const service = new WorkMediaService(
+      new FakeRepository(),
+      new FakeStorage(),
+      processedInspector(),
+      { now: () => NOW },
+      { generate: () => ASSET_ID },
+    );
+
+    await expect(
+      service.getPrivateVariant({
+        actorAccountId: ACCOUNT_ID,
+        assetId: ASSET_ID,
+        publicId: PUBLIC_ID,
+        width: 768,
+      }),
+    ).resolves.toEqual({ url: 'https://r2.example.test/processed-preview' });
+  });
+
   it('bounds provider retries and rejects the upload after the repository retry budget is exhausted', async () => {
     const repository = new FakeRepository();
     repository.isProcessingRejected = true;
@@ -334,6 +357,7 @@ describe('WorkMediaService', () => {
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
         mediaKind: 'poster',
         publicId: PUBLIC_ID,
       }),

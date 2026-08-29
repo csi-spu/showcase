@@ -8,6 +8,8 @@ const PERSON_ID = '73000000-0000-4000-8000-000000000001';
 const ACCOUNT_ID = '73000000-0000-4000-8000-000000000002';
 const PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000003';
 const CONTRIBUTOR_PERSON_ID = '73000000-0000-4000-8000-000000000004';
+const CONTRIBUTOR_ACCOUNT_ID = '73000000-0000-4000-8000-000000000015';
+const CONTRIBUTOR_PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000016';
 const OTHER_PERSON_ID = '73000000-0000-4000-8000-000000000005';
 const OTHER_ACCOUNT_ID = '73000000-0000-4000-8000-000000000006';
 const OTHER_PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000007';
@@ -17,7 +19,6 @@ const SECOND_WORK_ID = '73000000-0000-4000-8000-000000000010';
 const SECOND_WORK_PUBLIC_ID = '73000000-0000-4000-8000-000000000011';
 const POSTER_ID = '73000000-0000-4000-8000-000000000012';
 const SECOND_POSTER_ID = '73000000-0000-4000-8000-000000000013';
-const INVITATION_ID = '73000000-0000-4000-8000-000000000014';
 const NOW = new Date('2026-08-25T15:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -36,16 +37,23 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year) values
-          (${PERSON_ID}, 2566, 2573), (${OTHER_PERSON_ID}, 2566, 2573)
+          (${PERSON_ID}, 2566, 2573), (${CONTRIBUTOR_PERSON_ID}, 2566, 2573),
+          (${OTHER_PERSON_ID}, 2566, 2573)
       `;
       await transaction`
         insert into public.accounts (id, person_id, provider_user_id, credential_state) values
           (${ACCOUNT_ID}, ${PERSON_ID}, ${PROVIDER_USER_ID}, 'set'),
+          (${CONTRIBUTOR_ACCOUNT_ID}, ${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROVIDER_USER_ID}, 'set'),
           (${OTHER_ACCOUNT_ID}, ${OTHER_PERSON_ID}, ${OTHER_PROVIDER_USER_ID}, 'set')
       `;
       await transaction`
         insert into public.account_roles (account_id, role)
-        values (${ACCOUNT_ID}, 'student'), (${OTHER_ACCOUNT_ID}, 'student')
+        values (${ACCOUNT_ID}, 'student'), (${CONTRIBUTOR_ACCOUNT_ID}, 'student'),
+          (${OTHER_ACCOUNT_ID}, 'student')
+      `;
+      await transaction`
+        insert into public.public_profiles (person_id, display_name, created_at, updated_at)
+        values (${PERSON_ID}, 'ชื่อผู้ส่ง', ${NOW}, ${NOW})
       `;
       await transaction`
         update public.academic_settings set current_academic_year = 2569, updated_at = ${NOW}
@@ -54,14 +62,12 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       await seedDraft(transaction, WORK_ID, WORK_PUBLIC_ID, POSTER_ID, 3);
       await seedDraft(transaction, SECOND_WORK_ID, SECOND_WORK_PUBLIC_ID, SECOND_POSTER_ID, 1);
       await transaction`
-        insert into private.attribution_invitations (
-          id, work_id, kind, invitee_person_id, accepted_person_id, state,
-          attribution_name, study_year, public_attribution_consented_at,
-          expires_at, created_at, updated_at, resolved_at
+        insert into private.work_draft_contributors (
+          work_id, kind, person_id, attribution_name, contribution_role,
+          position, created_at, updated_at
         ) values (
-          ${INVITATION_ID}, ${WORK_ID}, 'account', ${CONTRIBUTOR_PERSON_ID},
-          ${CONTRIBUTOR_PERSON_ID}, 'accepted', 'ชื่อผู้ร่วมผลงาน', 2, ${NOW},
-          ${new Date('2026-09-08T15:00:00.000Z')}, ${NOW}, ${NOW}, ${NOW}
+          ${WORK_ID}, 'account', ${CONTRIBUTOR_PERSON_ID}, 'ชื่อผู้ร่วมผลงาน',
+          'พัฒนาระบบ', 1, ${NOW}, ${NOW}
         )
       `;
     });
@@ -106,8 +112,9 @@ describe('PostgresWorkRevisionsRepository integration', () => {
           },
           {
             attributionName: 'ชื่อผู้ร่วมผลงาน',
+            contributionRole: 'พัฒนาระบบ',
             kind: 'account',
-            studyYear: 2,
+            studyYear: null,
           },
         ],
         content: { title: 'ระบบแนะนำผลงาน' },
@@ -124,11 +131,9 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       outcome: 'replayed',
       revision: { publicId: created.revision.publicId },
     });
-    await expect(
-      repository.submitRevision(
-        submitInput({ submitterAttribution: { attributionName: 'ชื่อผู้ส่ง', studyYear: 3 } }),
-      ),
-    ).resolves.toEqual({ outcome: 'idempotency_conflict' });
+    await expect(repository.submitRevision(submitInput({ studyYear: 3 }))).resolves.toEqual({
+      outcome: 'idempotency_conflict',
+    });
     await expect(
       repository.submitRevision(submitInput({ idempotencyKey: key(2) })),
     ).resolves.toEqual({ outcome: 'pending_revision_exists' });
@@ -145,7 +150,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       from public.works as work where id = ${WORK_ID}
     `;
     expect(visibility).toEqual([
-      { draft_count: 0, publication_state: 'never_published', published_revision_id: null },
+      { draft_count: 1, publication_state: 'never_published', published_revision_id: null },
     ]);
     const eventCount = await database.sql<Array<{ count: number }>>`
       select count(*)::integer as count from private.outbox_events
@@ -282,7 +287,10 @@ describe('PostgresWorkRevisionsRepository integration', () => {
         )
       `;
       await transaction`delete from private.work_revisions where work_id in (${WORK_ID}, ${SECOND_WORK_ID})`;
-      await transaction`delete from private.attribution_invitations where id = ${INVITATION_ID}`;
+      await transaction`
+        delete from private.work_draft_contributors
+        where work_id in (${WORK_ID}, ${SECOND_WORK_ID})
+      `;
       await transaction`delete from private.work_draft_media where work_id in (${WORK_ID}, ${SECOND_WORK_ID})`;
       await transaction`delete from private.work_draft_video_links where work_id in (${WORK_ID}, ${SECOND_WORK_ID})`;
       await transaction`delete from private.work_draft_tags where work_id in (${WORK_ID}, ${SECOND_WORK_ID})`;
@@ -291,9 +299,19 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       await transaction`delete from private.work_media_variants where asset_id in (${POSTER_ID}, ${SECOND_POSTER_ID})`;
       await transaction`delete from private.work_media_assets where id in (${POSTER_ID}, ${SECOND_POSTER_ID})`;
       await transaction`delete from public.works where id in (${WORK_ID}, ${SECOND_WORK_ID})`;
-      await transaction`delete from public.account_roles where account_id in (${ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})`;
-      await transaction`delete from public.accounts where id in (${ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})`;
-      await transaction`delete from public.students where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
+      await transaction`delete from public.public_profiles where person_id = ${PERSON_ID}`;
+      await transaction`
+        delete from public.account_roles
+        where account_id in (${ACCOUNT_ID}, ${CONTRIBUTOR_ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})
+      `;
+      await transaction`
+        delete from public.accounts
+        where id in (${ACCOUNT_ID}, ${CONTRIBUTOR_ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})
+      `;
+      await transaction`
+        delete from public.students
+        where person_id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${OTHER_PERSON_ID})
+      `;
       await transaction`delete from public.people where id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${OTHER_PERSON_ID})`;
     });
   }
@@ -359,12 +377,26 @@ function submitInput(overrides: Partial<ReturnType<typeof submitInputBase>> = {}
 function submitInputBase() {
   return {
     actorAccountId: ACCOUNT_ID,
+    draft: completeDraft(),
     expectedBasePublishedRevisionId: null,
     expectedDraftVersion: 3,
     idempotencyKey: key(1),
     now: NOW,
-    submitterAttribution: { attributionName: 'ชื่อผู้ส่ง', studyYear: 2 },
+    studyYear: 2,
     workPublicId: WORK_PUBLIC_ID,
+  };
+}
+
+function completeDraft() {
+  return {
+    academicPeriod: { semester: '1' as const, year: 2569 },
+    category: 'course_work' as const,
+    description: 'รายละเอียดผลงาน',
+    links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
+    summary: 'สรุปผลงาน',
+    tags: [{ displayLabel: 'React', normalizedIdentity: 'react' }],
+    title: 'ระบบแนะนำผลงาน',
+    videoLinks: [],
   };
 }
 

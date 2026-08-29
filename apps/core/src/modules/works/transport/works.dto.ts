@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  Equals,
+  IsBoolean,
   IsArray,
   IsIn,
   IsInt,
@@ -37,6 +39,66 @@ export class WorkLinkDto {
 }
 
 export class CreateWorkDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WorkAcademicPeriodDto)
+  academicPeriod?: WorkAcademicPeriodDto | null;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(WORK_CATEGORIES)
+  category?: 'academic_article' | 'competition_entry' | 'course_work' | null;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => WorkLinkDto)
+  links?: WorkLinkDto[];
+
+  @IsOptional()
+  @IsString()
+  summary?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  submitterStudyYear?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsString()
+  title?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  @MaxLength(2_048, { each: true })
+  videoLinks?: string[];
+}
+
+export class UpdateWorkDraftDto extends CreateWorkDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedVersion!: number;
+}
+
+export class CompleteWorkDraftDto {
   @ValidateNested()
   @Type(() => WorkAcademicPeriodDto)
   academicPeriod!: WorkAcademicPeriodDto;
@@ -75,13 +137,6 @@ export class CreateWorkDto {
   videoLinks!: string[];
 }
 
-export class UpdateWorkDraftDto extends CreateWorkDto {
-  @IsInt()
-  @Min(1)
-  @Max(Number.MAX_SAFE_INTEGER)
-  expectedVersion!: number;
-}
-
 export class SeedPublishedWorkDraftDto {
   @IsUUID('4')
   expectedPublishedRevisionId!: string;
@@ -95,6 +150,22 @@ export class RebaseWorkDraftDto extends SeedPublishedWorkDraftDto {
   @Min(1)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedVersion!: number;
+}
+
+export class SavedDraftMutationDto {
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedVersion!: number;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+}
+
+export class ArchiveSavedDraftDto extends SavedDraftMutationDto {
+  @IsBoolean()
+  @Equals(true)
+  confirmation!: boolean;
 }
 
 export class CreateWorkMediaUploadDto {
@@ -128,6 +199,9 @@ export class AttachWorkMediaDto {
   @Max(Number.MAX_SAFE_INTEGER)
   expectedVersion!: number;
 
+  @IsUUID('4')
+  idempotencyKey!: string;
+
   @IsString()
   @IsIn(['poster', 'gallery'])
   mediaKind!: 'gallery' | 'poster';
@@ -140,9 +214,7 @@ export class WorkListQueryDto {
   cursor?: string;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  limit = 20;
+  @IsString()
+  @IsIn(['current', 'saved'])
+  view: 'current' | 'saved' = 'current';
 }

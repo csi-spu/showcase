@@ -6,7 +6,9 @@ import {
   Headers,
   HttpCode,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -20,10 +22,12 @@ import { WorksService } from '../application/works.service';
 import { WorkMediaService } from '../application/work-media.service';
 import {
   AttachWorkMediaDto,
+  ArchiveSavedDraftDto,
   CreateWorkDto,
   CreateWorkMediaUploadDto,
   RebaseWorkDraftDto,
   SeedPublishedWorkDraftDto,
+  SavedDraftMutationDto,
   UpdateWorkDraftDto,
   WorkListQueryDto,
 } from './works.dto';
@@ -49,13 +53,20 @@ export class StudentWorksController {
     return this.works.listOwnedWorks({
       accountId: actor.accountId,
       ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
-      limit: query.limit,
+      view: query.view,
     });
+  }
+
+  @Get('workspace-summary')
+  @Header('Cache-Control', 'private, no-store')
+  async getWorkspaceSummary(@Headers('authorization') authorization: string | undefined) {
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
+    return this.works.getWorkspaceSummary(actor.accountId);
   }
 
   @Post()
   @HttpCode(201)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async createWork(
     @Body() input: CreateWorkDto,
     @Headers('authorization') authorization: string | undefined,
@@ -65,35 +76,35 @@ export class StudentWorksController {
   }
 
   @Get('authoring-context')
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async getAuthoringContext(@Headers('authorization') authorization: string | undefined) {
-    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
     return this.works.getAuthoringContext(actor.accountId);
   }
 
   @Get(':publicId')
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async getDraft(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
     @Headers('authorization') authorization: string | undefined,
   ) {
-    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
     return this.works.getDraft(actor.accountId, publicId);
   }
 
   @Get(':publicId/authoring-state')
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async getAuthoringState(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
     @Headers('authorization') authorization: string | undefined,
   ) {
-    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
     return this.works.getAuthoringState(actor.accountId, publicId);
   }
 
   @Post(':publicId/draft')
   @HttpCode(201)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async seedPublishedDraft(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
     @Body() input: SeedPublishedWorkDraftDto,
@@ -105,7 +116,7 @@ export class StudentWorksController {
 
   @Post(':publicId/draft/rebase')
   @HttpCode(200)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async rebaseDraft(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
     @Body() input: RebaseWorkDraftDto,
@@ -115,16 +126,52 @@ export class StudentWorksController {
     return this.works.rebaseDraft({ ...input, actorAccountId: actor.accountId, publicId });
   }
 
+  @Post(':publicId/archive-saved-draft')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  async archiveSavedDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: ArchiveSavedDraftDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.archiveSavedDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  @Post(':publicId/restore-saved-draft')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  async restoreSavedDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: SavedDraftMutationDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.restoreSavedDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
   @Put(':publicId')
   @HttpCode(200)
-  @Header('Cache-Control', 'no-store')
+  @Header('Cache-Control', 'private, no-store')
   async updateDraft(
     @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
     @Body() input: UpdateWorkDraftDto,
     @Headers('authorization') authorization: string | undefined,
   ) {
     const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
-    return this.works.updateDraft({ ...input, actorAccountId: actor.accountId, publicId });
+    return this.works.patchDraft({ ...input, actorAccountId: actor.accountId, publicId });
+  }
+
+  @Patch(':publicId')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  async patchDraft(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Body() input: UpdateWorkDraftDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    return this.works.patchDraft({ ...input, actorAccountId: actor.accountId, publicId });
   }
 
   @Post(':publicId/media-uploads')
@@ -158,8 +205,25 @@ export class StudentWorksController {
     @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
     @Headers('authorization') authorization: string | undefined,
   ) {
-    const actor = await this.auth.authorizeStudentMutation(this.requireSessionToken(authorization));
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
     return this.media.getUploadStatus({ actorAccountId: actor.accountId, assetId, publicId });
+  }
+
+  @Get(':publicId/media/:assetId/variants/:width')
+  @Header('Cache-Control', 'private, no-store')
+  async getPrivateMediaVariant(
+    @Param('publicId', new ParseUUIDPipe({ version: '4' })) publicId: string,
+    @Param('assetId', new ParseUUIDPipe({ version: '4' })) assetId: string,
+    @Param('width', ParseIntPipe) width: number,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
+    return this.media.getPrivateVariant({
+      actorAccountId: actor.accountId,
+      assetId,
+      publicId,
+      width,
+    });
   }
 
   @Put(':publicId/media')

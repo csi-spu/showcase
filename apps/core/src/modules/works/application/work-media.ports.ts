@@ -62,12 +62,21 @@ export interface WorkMediaRepository {
     actorAccountId: string;
     assetId: string;
     expectedVersion: number;
+    idempotencyKey: string;
     mediaKind: WorkMediaKind;
     now: Date;
     publicId: string;
   }): Promise<
     | { outcome: 'attached'; version: number }
-    | { outcome: 'gallery_full' | 'not_found' | 'not_ready' | 'version_conflict' }
+    | {
+        outcome:
+          | 'gallery_full'
+          | 'idempotency_conflict'
+          | 'not_found'
+          | 'not_ready'
+          | 'pending_revision_exists'
+          | 'version_conflict';
+      }
   >;
   claimNext(now: Date): Promise<WorkMediaUpload | null>;
   completeProcessing(input: {
@@ -104,6 +113,12 @@ export interface WorkMediaRepository {
     warnings: WorkMediaWarning[];
     width: number | null;
   } | null>;
+  findPrivateVariantObjectKey(input: {
+    actorAccountId: string;
+    assetId: string;
+    publicId: string;
+    width: number;
+  }): Promise<string | null>;
   rejectProcessing(input: {
     assetId: string;
     now: Date;

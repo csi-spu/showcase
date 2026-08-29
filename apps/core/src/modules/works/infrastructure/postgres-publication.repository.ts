@@ -152,6 +152,16 @@ export class PostgresPublicationRepository implements PublicationRepository {
             version = version + 1, updated_at = ${input.now}
           where id = ${candidate.work_id}
         `;
+        await transaction`
+          update private.work_drafts
+          set lifecycle_state = 'retained', updated_at = ${input.now}
+          where work_id = ${candidate.work_id}
+            and lifecycle_state = 'active'
+            and version = (
+              select draft_version from private.work_revisions
+              where id = ${candidate.id} and author_kind = 'student_submission'
+            )
+        `;
         await this.replacePublishedTags(
           transaction,
           candidate.id,
@@ -207,7 +217,9 @@ export class PostgresPublicationRepository implements PublicationRepository {
         coalesce((
           select jsonb_agg(
             jsonb_build_object(
+              'attributionPublicId', attribution.attribution_public_id,
               'attributionName', attribution.attribution_name,
+              'canRequestRemoval', attribution.kind <> 'submitter',
               'studyYear', attribution.study_year,
               'contributionRole', attribution.contribution_role,
               'affiliation', attribution.affiliation,
@@ -376,6 +388,20 @@ export class PostgresPublicationRepository implements PublicationRepository {
         and attribution.kind in ('submitter', 'account')
       order by attribution.position
     `;
+    const removedRecipients = await transaction<Array<{ account_id: string }>>`
+      select account.id as account_id
+      from private.work_revision_attributions as previous_attribution
+      join public.accounts as account on account.person_id = previous_attribution.person_id
+      where previous_attribution.revision_id = ${candidate.published_revision_id}
+        and previous_attribution.kind = 'account'
+        and not exists (
+          select 1 from private.work_revision_attributions as current_attribution
+          where current_attribution.revision_id = ${candidate.id}
+            and current_attribution.kind = 'account'
+            and current_attribution.person_id = previous_attribution.person_id
+        )
+      order by account.id
+    `;
     const tags = await transaction<Array<{ public_id: string }>>`
       select distinct tag.public_id
       from private.published_revision_tags as published_tag
@@ -413,6 +439,22 @@ export class PostgresPublicationRepository implements PublicationRepository {
         ${now}
       )
     `;
+    if (removedRecipients.length > 0) {
+      await transaction`
+        insert into private.outbox_events (
+          aggregate_type, aggregate_id, event_type, payload, occurred_at
+        ) values (
+          'work_revision', ${candidate.revision_public_id}, 'work_attribution_removed',
+          ${transaction.json({
+            audience: 'student',
+            parameters: { title: candidate.title },
+            recipientAccountIds: removedRecipients.map((recipient) => recipient.account_id),
+            target: { kind: 'work', workPublicId: candidate.work_public_id },
+            type: 'work_attribution_removed',
+          })}, ${now}
+        )
+      `;
+    }
   }
 
   private async resolveReplay(

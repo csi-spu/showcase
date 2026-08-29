@@ -6,10 +6,11 @@ import {
   type WorkRevisionRepository,
   type WorkRevisionResult,
 } from './work-revisions.ports';
-import { normalizeSubmitterAttribution } from '../domain/work-revision-policy';
+import { evaluateWorkDraft, type WorkDraftInput } from '../domain/work-draft-policy';
 
 type WorkRevisionErrorCode =
   | 'WORK_ATTRIBUTION_DUPLICATE'
+  | 'WORK_ATTRIBUTION_INCOMPLETE'
   | 'WORK_ATTRIBUTION_LIMIT_EXCEEDED'
   | 'WORK_ATTRIBUTION_UNRESOLVED'
   | 'WORK_BASE_REVISION_CONFLICT'
@@ -36,9 +37,8 @@ export class WorkRevisionError extends Error {
   }
 }
 
-interface SubmitWorkRevisionInput {
+interface SubmitWorkRevisionInput extends WorkDraftInput {
   actorAccountId: string;
-  attributionName: string;
   expectedBasePublishedRevisionId: string | null;
   expectedDraftVersion: number;
   idempotencyKey: string;
@@ -62,21 +62,25 @@ export class WorkRevisionsService {
   ) {}
 
   async submit(input: SubmitWorkRevisionInput): Promise<WorkRevisionResult> {
-    const submitterAttribution = normalizeSubmitterAttribution({
-      attributionName: input.attributionName,
-      studyYear: input.studyYear,
-    });
-    if (submitterAttribution === null) {
+    if (!Number.isInteger(input.studyYear) || input.studyYear < 1 || input.studyYear > 4) {
       throw new WorkRevisionError('WORK_SUBMITTER_ATTRIBUTION_INVALID', 422);
     }
+    const context = await this.repository.findSubmissionContext(
+      input.actorAccountId,
+      input.workPublicId,
+    );
+    if (context === null) throw new WorkRevisionError('WORK_NOT_FOUND', 404);
+    const evaluated = evaluateWorkDraft(input, context);
+    if (!evaluated.isValid) throw new WorkRevisionError('WORK_SUBMISSION_INCOMPLETE', 422);
     return this.requireSuccess(
       await this.repository.submitRevision({
         actorAccountId: input.actorAccountId,
+        draft: evaluated.draft,
         expectedBasePublishedRevisionId: input.expectedBasePublishedRevisionId,
         expectedDraftVersion: input.expectedDraftVersion,
         idempotencyKey: input.idempotencyKey,
         now: this.clock.now(),
-        submitterAttribution,
+        studyYear: input.studyYear,
         workPublicId: input.workPublicId,
       }),
     );
@@ -113,6 +117,7 @@ export class WorkRevisionsService {
     if ('revision' in result) return result;
     const mapping: Record<WorkRevisionFailureOutcome, [WorkRevisionErrorCode, number]> = {
       attribution_duplicate: ['WORK_ATTRIBUTION_DUPLICATE', 422],
+      attribution_incomplete: ['WORK_ATTRIBUTION_INCOMPLETE', 422],
       attribution_limit_exceeded: ['WORK_ATTRIBUTION_LIMIT_EXCEEDED', 422],
       attribution_unresolved: ['WORK_ATTRIBUTION_UNRESOLVED', 422],
       base_revision_conflict: ['WORK_BASE_REVISION_CONFLICT', 409],

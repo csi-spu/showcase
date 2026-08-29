@@ -13,13 +13,9 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { CHANGE_REQUEST_REASONS, type ChangeRequestReason } from '../domain/review-decision-policy';
-import { CreateWorkDto } from './works.dto';
+import { CompleteWorkDraftDto } from './works.dto';
 
-export class SubmitWorkRevisionDto {
-  @IsString()
-  @MaxLength(100)
-  attributionName!: string;
-
+export class SubmitWorkRevisionDto extends CompleteWorkDraftDto {
   @IsDefined()
   @ValidateIf((_object, value: unknown) => value !== null)
   @IsUUID('4')
@@ -30,12 +26,9 @@ export class SubmitWorkRevisionDto {
   @Max(Number.MAX_SAFE_INTEGER)
   expectedDraftVersion!: number;
 
-  @IsUUID('4')
-  idempotencyKey!: string;
-
   @IsInt()
   @Min(1)
-  @Max(8)
+  @Max(4)
   studyYear!: number;
 }
 
@@ -91,7 +84,7 @@ export class ApproveAndPublishDto {
   idempotencyKey!: string;
 }
 
-export class AdminCorrectionDto extends CreateWorkDto {
+export class AdminCorrectionDto extends CompleteWorkDraftDto {
   @IsUUID('4')
   expectedPublishedRevisionId!: string;
 

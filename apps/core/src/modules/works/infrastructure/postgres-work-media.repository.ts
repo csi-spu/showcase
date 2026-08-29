@@ -50,7 +50,8 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
         ${input.createdAt}, ${input.createdAt}, ${input.expiresAt}
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
-      join private.work_drafts as draft on draft.work_id = work.id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
       where account.id = ${input.actorAccountId}
         and work.public_id = ${input.publicId}
         and work.activity_state = 'active'
@@ -66,7 +67,8 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
       from private.work_media_assets as asset
       join public.works as work on work.id = asset.work_id
       join public.accounts as account on account.person_id = work.submitter_person_id
-      join private.work_drafts as draft on draft.work_id = work.id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
       where account.id = ${input.actorAccountId}
         and work.public_id = ${input.publicId}
         and asset.authorize_idempotency_key = ${input.idempotencyKey}
@@ -101,7 +103,8 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
         from private.work_media_assets as asset
         join public.works as work on work.id = asset.work_id
         join public.accounts as account on account.person_id = work.submitter_person_id
-        join private.work_drafts as draft on draft.work_id = work.id
+        join private.work_drafts as draft
+          on draft.work_id = work.id and draft.lifecycle_state = 'active'
         where asset.id = ${input.assetId}
           and work.public_id = ${input.publicId}
           and account.id = ${input.actorAccountId}
@@ -144,7 +147,8 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
       from private.work_media_assets as asset
       join public.works as work on work.id = asset.work_id
       join public.accounts as account on account.person_id = work.submitter_person_id
-      join private.work_drafts as draft on draft.work_id = work.id
+      join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
       where asset.id = ${input.assetId}
         and work.public_id = ${input.publicId}
         and account.id = ${input.actorAccountId}
@@ -163,6 +167,39 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
           warnings: row.warnings,
           width: row.width,
         };
+  }
+
+  async findPrivateVariantObjectKey(input: {
+    actorAccountId: string;
+    assetId: string;
+    publicId: string;
+    width: number;
+  }): Promise<string | null> {
+    const rows = await this.database.sql<Array<{ object_key: string }>>`
+      select variant.object_key
+      from private.work_media_variants as variant
+      join private.work_media_assets as asset on asset.id = variant.asset_id
+      join public.works as work on work.id = asset.work_id
+      join public.accounts as account on account.person_id = work.submitter_person_id
+      where asset.id = ${input.assetId}
+        and asset.status = 'ready'
+        and variant.width = ${input.width}
+        and work.public_id = ${input.publicId}
+        and account.id = ${input.actorAccountId}
+        and (
+          exists (
+            select 1 from private.work_draft_media as draft_media
+            where draft_media.asset_id = asset.id and draft_media.work_id = work.id
+          )
+          or exists (
+            select 1 from private.work_revision_media as revision_media
+            join private.work_revisions as revision on revision.id = revision_media.revision_id
+            where revision_media.asset_id = asset.id and revision.work_id = work.id
+          )
+        )
+      limit 1
+    `;
+    return rows[0]?.object_key ?? null;
   }
 
   async claimNext(now: Date): Promise<WorkMediaUpload | null> {
@@ -354,19 +391,52 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
     actorAccountId: string;
     assetId: string;
     expectedVersion: number;
+    idempotencyKey: string;
     mediaKind: WorkMediaKind;
     now: Date;
     publicId: string;
   }): Promise<
     | { outcome: 'attached'; version: number }
-    | { outcome: 'gallery_full' | 'not_found' | 'not_ready' | 'version_conflict' }
+    | {
+        outcome:
+          | 'gallery_full'
+          | 'idempotency_conflict'
+          | 'not_found'
+          | 'not_ready'
+          | 'pending_revision_exists'
+          | 'version_conflict';
+      }
   > {
     return this.database.sql.begin(async (transaction) => {
+      await transaction`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      const payload = {
+        assetId: input.assetId,
+        expectedVersion: input.expectedVersion,
+        mediaKind: input.mediaKind,
+        publicId: input.publicId,
+      };
+      const replay = await transaction<
+        Array<{ is_equivalent: boolean; resulting_version: string }>
+      >`
+        select (actor_account_id = ${input.actorAccountId}
+          and operation = 'work_media_attached'
+          and request_payload = ${transaction.json(payload)}) as is_equivalent,
+          resulting_version
+        from private.work_operations
+        where idempotency_key = ${input.idempotencyKey}
+        limit 1
+      `;
+      if (replay[0] !== undefined) {
+        return replay[0].is_equivalent
+          ? { outcome: 'attached', version: Number(replay[0].resulting_version) }
+          : { outcome: 'idempotency_conflict' };
+      }
       const works = await transaction<Array<{ version: string; work_id: string }>>`
         select draft.version, work.id as work_id
         from public.works as work
         join public.accounts as account on account.person_id = work.submitter_person_id
-        join private.work_drafts as draft on draft.work_id = work.id
+        join private.work_drafts as draft
+          on draft.work_id = work.id and draft.lifecycle_state = 'active'
         where work.public_id = ${input.publicId}
           and account.id = ${input.actorAccountId}
           and work.activity_state = 'active'
@@ -374,6 +444,13 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
       `;
       const work = works[0];
       if (work === undefined) return { outcome: 'not_found' };
+      const pending = await transaction<Array<{ exists: boolean }>>`
+        select exists(
+          select 1 from private.work_revisions
+          where work_id = ${work.work_id} and status = 'pending_review'
+        ) as exists
+      `;
+      if (pending[0]?.exists === true) return { outcome: 'pending_revision_exists' };
       if (Number(work.version) !== input.expectedVersion) return { outcome: 'version_conflict' };
       const assets = await transaction<
         Array<{
@@ -398,7 +475,7 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
         asset.media_kind !== input.mediaKind
       )
         return { outcome: 'not_found' };
-      if (asset.status !== 'ready' || asset.cleanup_started_at !== null || asset.is_attached)
+      if (asset.status === 'rejected' || asset.cleanup_started_at !== null || asset.is_attached)
         return { outcome: 'not_ready' };
       let position = 1;
       if (input.mediaKind === 'poster') {
@@ -418,7 +495,19 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
       `;
       const version = input.expectedVersion + 1;
       await transaction`update private.work_drafts set version = ${version}, updated_at = ${input.now} where work_id = ${work.work_id}`;
-      await transaction`update public.works set updated_at = ${input.now} where id = ${work.work_id}`;
+      await transaction`
+        update public.works set version = version + 1, updated_at = ${input.now}
+        where id = ${work.work_id}
+      `;
+      await transaction`
+        insert into private.work_operations (
+          idempotency_key, actor_account_id, work_id, operation, request_payload,
+          resulting_version, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${work.work_id},
+          'work_media_attached', ${transaction.json(payload)}, ${version}, ${input.now}
+        )
+      `;
       return { outcome: 'attached', version };
     });
   }

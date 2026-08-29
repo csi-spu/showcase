@@ -11,7 +11,9 @@ export interface PublicationView {
 
 export interface PublicWorkAttributionView {
   affiliation: string | null;
+  attributionPublicId: string;
   attributionName: string;
+  canRequestRemoval: boolean;
   contributionRole: string | null;
   profilePublicId: string | null;
   studyYear: number | null;

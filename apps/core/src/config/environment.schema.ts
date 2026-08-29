@@ -7,6 +7,7 @@ const LOCAL_CATALOG_CURSOR_SECRET = 'local-development-only-catalog-cursor-secre
 const LOCAL_CLOUDFLARE_API_TOKEN = 'local-development-only-cloudflare-api-token';
 const LOCAL_STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const LOCAL_VISITOR_CACHE_SECRET = 'local-development-only-visitor-cache-secret';
+const LOCAL_VISITOR_BFF_SECRET = 'local-development-only-visitor-bff-secret';
 const LOCAL_SUPABASE_KEY = 'local-publishable-key-set-by-supabase-status';
 const LOCAL_SUPABASE_SECRET_KEY = 'local-secret-key-set-by-supabase-status';
 const originSchema = z
@@ -48,6 +49,7 @@ const environmentSchema = z
     SUPABASE_SECRET_KEY: z.string().min(1).default(LOCAL_SUPABASE_SECRET_KEY),
     SUPABASE_URL: z.url().default('http://127.0.0.1:54321'),
     VISITOR_CACHE_SECRET: z.string().min(32).default(LOCAL_VISITOR_CACHE_SECRET),
+    VISITOR_BFF_SECRET: z.string().min(32).default(LOCAL_VISITOR_BFF_SECRET),
     VISITOR_URL: originSchema.default('http://localhost:3000'),
   })
   .superRefine((environment, context) => {
@@ -114,6 +116,17 @@ const environmentSchema = z
         code: 'custom',
         message: 'STUDENT_BFF_SECRET must be environment-specific outside local development',
         path: ['STUDENT_BFF_SECRET'],
+      });
+    }
+
+    if (
+      ['production', 'staging'].includes(environment.APP_ENV) &&
+      environment.VISITOR_BFF_SECRET === LOCAL_VISITOR_BFF_SECRET
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'VISITOR_BFF_SECRET must be configured outside local development',
+        path: ['VISITOR_BFF_SECRET'],
       });
     }
 

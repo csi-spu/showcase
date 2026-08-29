@@ -16,6 +16,7 @@ const EXPIRED_ASSET_ID = '65000000-0000-4000-8000-000000000010';
 const MEDIA_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000011';
 const RETRY_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000012';
 const EXPIRED_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000013';
+const ATTACH_KEY = '65000000-0000-4000-8000-000000000014';
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const NOW = new Date('2026-08-25T12:00:00.000Z');
@@ -132,11 +133,12 @@ describe('PostgresWorkMediaRepository integration', () => {
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 1,
+        idempotencyKey: ATTACH_KEY,
         mediaKind: 'poster',
         now: NOW,
         publicId,
       }),
-    ).resolves.toEqual({ outcome: 'not_ready' });
+    ).resolves.toEqual({ outcome: 'attached', version: 2 });
     await expect(
       media.markUploaded({
         actorAccountId: OTHER_ACCOUNT_ID,
@@ -192,6 +194,7 @@ describe('PostgresWorkMediaRepository integration', () => {
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 1,
+        idempotencyKey: ATTACH_KEY,
         mediaKind: 'poster',
         now: NOW,
         publicId,
@@ -202,16 +205,18 @@ describe('PostgresWorkMediaRepository integration', () => {
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 1,
+        idempotencyKey: ATTACH_KEY,
         mediaKind: 'poster',
         now: NOW,
         publicId,
       }),
-    ).resolves.toEqual({ outcome: 'version_conflict' });
+    ).resolves.toEqual({ outcome: 'attached', version: 2 });
     await expect(
       media.attachReadyMedia({
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 2,
+        idempotencyKey: CREATE_KEY,
         mediaKind: 'poster',
         now: NOW,
         publicId,

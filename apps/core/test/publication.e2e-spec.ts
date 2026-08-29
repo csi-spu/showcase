@@ -145,7 +145,9 @@ function publicWork(): PublicWorkView {
     attributions: [
       {
         affiliation: null,
+        attributionPublicId: REVISION_PUBLIC_ID,
         attributionName: 'ชื่อผู้ส่ง',
+        canRequestRemoval: false,
         contributionRole: null,
         profilePublicId: null,
         studyYear: 2,

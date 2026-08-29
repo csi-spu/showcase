@@ -71,6 +71,7 @@ describe('projectNotificationEvent', () => {
     ['removal_request_approved', 'removal_request_approved'],
     ['removal_request_declined', 'removal_request_declined'],
     ['work_archive', 'work_archive'],
+    ['work_attribution_removed', 'work_attribution_removed'],
     ['work_restore_active', 'work_restore_active'],
     ['work_restore_publication', 'work_restore_publication'],
     ['work_revision_changes_requested', 'work_change_requested'],

@@ -1,21 +1,27 @@
-import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import { refreshPublicWorkCatalog } from '../../catalog/infrastructure/postgres-catalog-projection';
 import type {
+  AttributionRemovalDecisionResult,
   AttributionRemovalRepository,
   AttributionRemovalRequestView,
-  AttributionRemovalResult,
 } from '../application/attribution-removal.ports';
 
 type Sql = postgres.Sql | postgres.TransactionSql;
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
 
 interface RemovalRow {
   attribution_name: string;
+  attribution_public_id: string;
   correction_revision_public_id: string | null;
   created_at: Date;
+  current_published_revision_public_id: string | null;
+  current_published_revision_version: string | null;
   id: string;
-  invitation_id: string;
+  kind: 'account' | 'external';
   person_id: string;
   public_id: string;
   reason: string;
@@ -25,300 +31,453 @@ interface RemovalRow {
   version: string;
   work_id: string;
   work_public_id: string;
+  work_title: string;
 }
 
 @Injectable()
 export class PostgresAttributionRemovalRepository implements AttributionRemovalRepository {
   constructor(private readonly database: DatabaseClient) {}
 
-  async create(
-    input: Parameters<AttributionRemovalRepository['create']>[0],
-  ): Promise<AttributionRemovalResult> {
-    const payload = { reason: input.reason };
-    try {
-      return await this.database.sql.begin(async (sql) => {
-        const replay = await this.replay(sql, input.idempotencyKey, null, 'created', payload);
-        if (replay !== null) return replay;
-        const targets = await sql<RemovalRow[]>`
-          select invitation.id as invitation_id, invitation.accepted_person_id as person_id,
-            attribution.attribution_name, work.id as work_id, work.public_id as work_public_id,
-            revision.id as revision_id, revision.public_id as revision_public_id
-          from private.attribution_invitation_sessions as session
-          join private.attribution_invitations as invitation on invitation.id = session.invitation_id
-          join public.works as work on work.id = invitation.work_id
-          join private.work_revisions as revision on revision.id = work.published_revision_id
-          join private.work_revision_attributions as attribution
-            on attribution.revision_id = revision.id
-            and attribution.person_id = invitation.accepted_person_id
-            and attribution.kind = 'external'
-          where session.session_hash = ${input.invitationSessionHash}
-            and session.revoked_at is null and session.expires_at > ${input.now}
-            and invitation.kind = 'external' and invitation.state = 'accepted'
-            and work.activity_state = 'active' and work.publication_state = 'published'
-          for update of work
-        `;
-        const target = targets[0];
-        if (target === undefined) return { outcome: 'not_found' };
-        const inserted = await sql<RemovalRow[]>`
+  async createPublic(
+    input: Parameters<AttributionRemovalRepository['createPublic']>[0],
+  ): ReturnType<AttributionRemovalRepository['createPublic']> {
+    const payload = {
+      attributionPublicId: input.attributionPublicId,
+      reason: input.reason,
+      workPublicId: input.workPublicId,
+    };
+    return this.database.sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      const replay = await this.createReplay(sql, input.idempotencyKey, payload);
+      if (replay !== null) return replay;
+      if (!(await this.consumeRateLimit(sql, input.now, 'source', input.sourceKeyHash))) {
+        return { outcome: 'rate_limited' };
+      }
+      const targets = await sql<RemovalRow[]>`
+        select work.id as work_id, work.public_id as work_public_id,
+          revision.id as revision_id, revision.public_id as revision_public_id,
+          attribution.attribution_public_id, attribution.attribution_name,
+          attribution.person_id, attribution.kind
+        from public.works as work
+        join private.work_revisions as revision on revision.id = work.published_revision_id
+        join private.work_revision_attributions as attribution
+          on attribution.revision_id = revision.id
+        where work.public_id = ${input.workPublicId}
+          and work.activity_state = 'active' and work.publication_state = 'published'
+          and revision.status = 'approved'
+          and attribution.attribution_public_id = ${input.attributionPublicId}
+          and attribution.kind in ('account', 'external')
+        limit 1
+      `;
+      const target = targets[0];
+      if (target === undefined) return { outcome: 'not_found' };
+      if (!(await this.consumeRateLimit(sql, input.now, 'target', input.targetKeyHash))) {
+        return { outcome: 'rate_limited' };
+      }
+      const existing = await sql<
+        Array<{ id: string; state: 'accepted' | 'declined' | 'pending'; version: string }>
+      >`
+        select id, state, version from private.attribution_removal_requests
+        where attribution_public_id = ${input.attributionPublicId} limit 1
+      `;
+      let existingRequest = existing[0];
+      let requestId = existingRequest?.id;
+      if (requestId === undefined) {
+        const inserted = await sql<Array<{ id: string }>>`
           insert into private.attribution_removal_requests (
-            invitation_id, work_id, revision_id, reason, created_at
+            invitation_id, attribution_public_id, work_id, revision_id, reason, created_at
           ) values (
-            ${target.invitation_id}, ${target.work_id}, ${target.revision_id}, ${input.reason}, ${input.now}
-          ) returning id, public_id, invitation_id, work_id, revision_id, state, reason,
-            version, created_at, ${target.person_id}::uuid as person_id,
-            ${target.attribution_name}::text as attribution_name,
-            ${target.work_public_id}::uuid as work_public_id,
-            ${target.revision_public_id}::uuid as revision_public_id,
-            null::uuid as correction_revision_public_id
+            null, ${input.attributionPublicId}, ${target.work_id}, ${target.revision_id},
+            ${input.reason}, ${input.now}
+          ) returning id
         `;
-        const request = this.required(inserted[0]);
-        await this.operation(
-          sql,
-          request.id,
-          null,
-          input.idempotencyKey,
-          'created',
-          payload,
-          'pending',
-          1,
-          input.now,
-        );
-        return { outcome: 'created', request: this.map(request) };
+        requestId = this.required(inserted[0]).id;
+        existingRequest = { id: requestId, state: 'pending', version: '1' };
+      }
+      await this.operation(sql, {
+        actorAccountId: null,
+        idempotencyKey: input.idempotencyKey,
+        now: input.now,
+        operation: 'created',
+        payload,
+        requestId,
+        resultingState: this.required(existingRequest).state,
+        resultingVersion: Number(this.required(existingRequest).version),
       });
-    } catch (error: unknown) {
-      if (!this.isUnique(error)) throw error;
-      return (
-        (await this.replay(this.database.sql, input.idempotencyKey, null, 'created', payload)) ?? {
-          outcome: 'request_state_conflict',
-        }
-      );
-    }
+      return { outcome: 'created' };
+    });
   }
 
-  findCurrent(invitationSessionHash: string, now: Date) {
-    return this.rows(
+  async listPending(
+    input: Parameters<AttributionRemovalRepository['listPending']>[0],
+  ): ReturnType<AttributionRemovalRepository['listPending']> {
+    const cursor = this.decodeCursor(input.cursor);
+    if (cursor === 'invalid') return { outcome: 'invalid_cursor' };
+    const rows = await this.rows(
       this.database.sql,
       this.database.sql`
-      request.state = 'pending' and exists (
-        select 1 from private.attribution_invitation_sessions as session
-        where session.invitation_id = request.invitation_id
-          and session.session_hash = ${invitationSessionHash}
-          and session.revoked_at is null and session.expires_at > ${now}
-      )
-    `,
-    ).then((rows) => (rows[0] === undefined ? null : this.map(rows[0])));
-  }
-
-  listPending(limit: number) {
-    return this.rows(this.database.sql, this.database.sql`request.state = 'pending'`, limit).then(
-      (rows) => rows.map((row) => this.map(row)),
+        request.state = 'pending' and (
+          ${cursor?.createdAt ?? null}::timestamptz is null
+          or (request.created_at, request.id) > (
+            ${cursor?.createdAt ?? null}::timestamptz, ${cursor?.id ?? null}::uuid
+          )
+        )
+      `,
+      input.limit + 1,
     );
-  }
-
-  async decide(
-    input: Parameters<AttributionRemovalRepository['decide']>[0],
-  ): Promise<AttributionRemovalResult> {
-    const operation = input.decision === 'accept' ? 'accepted' : 'declined';
-    const payload = {
-      decision: input.decision,
-      decisionReason: input.decisionReason,
-      expectedVersion: input.expectedVersion,
-    };
-    try {
-      return await this.database.sql.begin(async (sql) => {
-        const replay = await this.replay(
-          sql,
-          input.idempotencyKey,
-          input.actorAccountId,
-          operation,
-          payload,
-        );
-        if (replay !== null) return replay;
-        const rows = await this.rows(sql, sql`request.public_id = ${input.requestPublicId}`, 1);
-        const candidate = rows[0];
-        if (candidate === undefined) return { outcome: 'not_found' };
-        const work = await sql<
-          Array<{
-            activity_state: string;
-            publication_state: string;
-            published_revision_id: string | null;
-            submitter_account_id: string;
-            title: string;
-          }>
-        >`
-          select work.activity_state, work.publication_state, work.published_revision_id,
-            account.id as submitter_account_id, revision.title
-          from public.works as work
-          join public.accounts as account on account.person_id = work.submitter_person_id
-          join private.work_revisions as revision on revision.id = ${candidate.revision_id}
-          where work.id = ${candidate.work_id} for update of work
-        `;
-        const current = work[0];
-        if (current === undefined) return { outcome: 'not_found' };
-        const lockedRows = await this.rows(
-          sql,
-          sql`request.public_id = ${input.requestPublicId}`,
-          1,
-          true,
-        );
-        const request = lockedRows[0];
-        if (request === undefined) return { outcome: 'not_found' };
-        if (Number(request.version) !== input.expectedVersion)
-          return { outcome: 'version_conflict' };
-        if (request.state !== 'pending') return { outcome: 'request_state_conflict' };
-
-        let correctionRevisionId: string | null = null;
-        let correctionRevisionPublicId: string | null = null;
-        if (input.decision === 'accept') {
-          if (
-            current.activity_state !== 'active' ||
-            current.publication_state !== 'published' ||
-            current.published_revision_id !== request.revision_id
-          ) {
-            return { outcome: 'work_state_conflict' };
-          }
-          const pending = await sql<Array<{ exists: boolean }>>`
-            select exists(select 1 from private.work_revisions where work_id = ${request.work_id} and status = 'pending_review') as exists
-          `;
-          if (this.required(pending[0]).exists) return { outcome: 'pending_revision_exists' };
-          const revisions = await sql<Array<{ id: string; public_id: string }>>`
-            insert into private.work_revisions (
-              work_id, revision_number, status, base_published_revision_id, draft_version,
-              author_kind, title, summary, description, category, academic_year, semester, submitted_at
-            ) select revision.work_id,
-              (select max(other.revision_number) + 1 from private.work_revisions as other where other.work_id = revision.work_id),
-              'pending_review', revision.id, null, 'admin_correction', revision.title,
-              revision.summary, revision.description, revision.category, revision.academic_year,
-              revision.semester, ${input.now}
-            from private.work_revisions as revision where revision.id = ${request.revision_id}
-            returning id, public_id
-          `;
-          const correction = this.required(revisions[0]);
-          correctionRevisionId = correction.id;
-          correctionRevisionPublicId = correction.public_id;
-          await this.copySnapshot(sql, request.revision_id, correction.id, request.person_id);
-          await sql`
-            insert into private.admin_correction_audits (
-              idempotency_key, actor_account_id, work_id, base_revision_id, revision_id,
-              reason, diff_metadata, request_fingerprint, occurred_at
-            ) values (
-              ${input.idempotencyKey}, ${input.actorAccountId}, ${request.work_id},
-              ${request.revision_id}, ${correction.id}, ${request.reason},
-              ${sql.json({ categories: ['attribution'], fields: ['attributions'] })},
-              ${createHash('sha256').update(JSON.stringify(payload)).digest('hex')}, ${input.now}
+    const visible = rows.slice(0, input.limit);
+    const last = visible.at(-1);
+    return {
+      items: visible.map((row) => this.map(row)),
+      nextCursor:
+        rows.length > input.limit && last !== undefined
+          ? Buffer.from(JSON.stringify([last.created_at.toISOString(), last.id])).toString(
+              'base64url',
             )
-          `;
-          await sql`
-            insert into private.outbox_events (aggregate_type, aggregate_id, event_type, payload, occurred_at)
-            values ('attribution_removal_request', ${request.public_id}, 'attribution_removal_correction_created',
-              ${sql.json({ audience: 'student', parameters: { title: current.title }, recipientAccountIds: [current.submitter_account_id], target: { kind: 'work', workPublicId: request.work_public_id }, type: 'attribution_removal_correction_created' })}, ${input.now})
-          `;
-        }
-        const updated = await sql<RemovalRow[]>`
-          update private.attribution_removal_requests set state = ${operation},
-            decision_reason = ${input.decisionReason}, decided_by_account_id = ${input.actorAccountId},
-            correction_revision_id = ${correctionRevisionId}, resolved_at = ${input.now}, version = version + 1
-          where id = ${request.id}
-          returning id, public_id, invitation_id, work_id, revision_id, state, reason,
-            version, created_at, ${request.person_id}::uuid as person_id,
-            ${request.attribution_name}::text as attribution_name,
-            ${request.work_public_id}::uuid as work_public_id,
-            ${request.revision_public_id}::uuid as revision_public_id,
-            ${correctionRevisionPublicId}::uuid as correction_revision_public_id
-        `;
-        const resolved = this.required(updated[0]);
-        await this.operation(
-          sql,
-          request.id,
-          input.actorAccountId,
-          input.idempotencyKey,
-          operation,
-          payload,
-          operation,
-          Number(resolved.version),
-          input.now,
-        );
-        return { outcome: 'resolved', request: this.map(resolved) };
-      });
-    } catch (error: unknown) {
-      if (!this.isUnique(error)) throw error;
-      return (
-        (await this.replay(
-          this.database.sql,
-          input.idempotencyKey,
-          input.actorAccountId,
-          operation,
-          payload,
-        )) ?? { outcome: 'idempotency_conflict' }
-      );
-    }
+          : null,
+    };
   }
 
-  private rows(
-    sql: Sql,
-    condition: postgres.PendingQuery<postgres.Row[]>,
-    limit = 20,
-    isLocked = false,
-  ) {
-    return sql<RemovalRow[]>`
-      select request.id, request.public_id, request.invitation_id, request.work_id,
-        request.revision_id, request.state, request.reason, request.version, request.created_at,
-        invitation.accepted_person_id as person_id, attribution.attribution_name,
-        work.public_id as work_public_id, revision.public_id as revision_public_id,
-        correction.public_id as correction_revision_public_id
-      from private.attribution_removal_requests as request
-      join private.attribution_invitations as invitation on invitation.id = request.invitation_id
-      join public.works as work on work.id = request.work_id
-      join private.work_revisions as revision on revision.id = request.revision_id
-      join private.work_revision_attributions as attribution on attribution.revision_id = revision.id and attribution.person_id = invitation.accepted_person_id
-      left join private.work_revisions as correction on correction.id = request.correction_revision_id
-      where ${condition}
-      order by request.created_at, request.id limit ${limit}
-      ${isLocked ? sql`for update of request` : sql``}
-    `;
+  decline(
+    input: Parameters<AttributionRemovalRepository['decline']>[0],
+  ): Promise<AttributionRemovalDecisionResult> {
+    const payload = {
+      decisionReason: input.decisionReason,
+      expectedRequestVersion: input.expectedRequestVersion,
+    };
+    return this.database.sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      const replay = await this.decisionReplay(sql, input, 'declined', payload);
+      if (replay !== null) return replay;
+      const request = await this.lockRequest(sql, input.requestPublicId);
+      if (request === null) return { outcome: 'not_found' };
+      if (Number(request.version) !== input.expectedRequestVersion) {
+        return { outcome: 'version_conflict' };
+      }
+      if (request.state !== 'pending') return { outcome: 'request_state_conflict' };
+      const updated = await sql<RemovalRow[]>`
+        update private.attribution_removal_requests as request
+        set state = 'declined', decision_reason = ${input.decisionReason},
+          decided_by_account_id = ${input.actorAccountId}, resolved_at = ${input.now},
+          version = version + 1
+        where request.id = ${request.id}
+        returning ${this.returning(sql, request)}
+      `;
+      const resolved = this.required(updated[0]);
+      await this.operation(sql, {
+        actorAccountId: input.actorAccountId,
+        idempotencyKey: input.idempotencyKey,
+        now: input.now,
+        operation: 'declined',
+        payload,
+        requestId: request.id,
+        resultingState: 'declined',
+        resultingVersion: Number(resolved.version),
+      });
+      return { outcome: 'resolved', request: this.map(resolved) };
+    });
+  }
+
+  approveAndPublish(
+    input: Parameters<AttributionRemovalRepository['approveAndPublish']>[0],
+  ): Promise<AttributionRemovalDecisionResult> {
+    const payload = {
+      expectedPublishedRevisionPublicId: input.expectedPublishedRevisionPublicId,
+      expectedPublishedRevisionVersion: input.expectedPublishedRevisionVersion,
+      expectedRequestVersion: input.expectedRequestVersion,
+    };
+    return this.database.sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      const replay = await this.decisionReplay(sql, input, 'accepted', payload);
+      if (replay !== null) return replay;
+      const request = await this.lockRequest(sql, input.requestPublicId);
+      if (request === null) return { outcome: 'not_found' };
+      if (Number(request.version) !== input.expectedRequestVersion) {
+        return { outcome: 'version_conflict' };
+      }
+      if (request.state !== 'pending') return { outcome: 'request_state_conflict' };
+      const works = await sql<
+        Array<{
+          activity_state: string;
+          publication_state: string;
+          published_revision_id: string | null;
+          revision_public_id: string;
+          revision_version: string;
+          submitter_account_id: string;
+          title: string;
+          work_version: string;
+        }>
+      >`
+        select work.activity_state, work.publication_state, work.published_revision_id,
+          work.version as work_version, revision.public_id as revision_public_id,
+          revision.version as revision_version, revision.title,
+          account.id as submitter_account_id
+        from public.works as work
+        join private.work_revisions as revision on revision.id = work.published_revision_id
+        join public.accounts as account on account.person_id = work.submitter_person_id
+        where work.id = ${request.work_id}
+        for update of work, revision
+      `;
+      const work = works[0];
+      if (
+        work === undefined ||
+        work.activity_state !== 'active' ||
+        work.publication_state !== 'published'
+      )
+        return { outcome: 'work_state_conflict' };
+      if (
+        work.published_revision_id !== request.revision_id ||
+        work.revision_public_id !== input.expectedPublishedRevisionPublicId ||
+        Number(work.revision_version) !== input.expectedPublishedRevisionVersion
+      )
+        return { outcome: 'pointer_conflict' };
+      const pending = await sql<Array<{ exists: boolean }>>`
+        select exists(select 1 from private.work_revisions
+          where work_id = ${request.work_id} and status = 'pending_review') as exists
+      `;
+      if (this.required(pending[0]).exists) return { outcome: 'pending_revision_exists' };
+
+      const revisionRows = await sql<
+        Array<{ id: string; public_id: string; revision_number: string }>
+      >`
+        insert into private.work_revisions (
+          work_id, revision_number, status, base_published_revision_id, draft_version,
+          author_kind, title, summary, description, category, academic_year, semester,
+          version, submitted_at
+        ) select base.work_id,
+          (select coalesce(max(other.revision_number), 0) + 1 from private.work_revisions as other
+            where other.work_id = base.work_id),
+          'approved', base.id, null, 'admin_correction', base.title, base.summary,
+          base.description, base.category, base.academic_year, base.semester, 2, ${input.now}
+        from private.work_revisions as base where base.id = ${request.revision_id}
+        returning id, public_id, revision_number
+      `;
+      const correction = this.required(revisionRows[0]);
+      await this.copySnapshot(sql, request, correction.id);
+      await sql`
+        insert into private.reviews (
+          revision_id, actor_account_id, decision, reason, feedback,
+          expected_revision_version, resulting_revision_version, idempotency_key,
+          request_payload, reviewed_at
+        ) values (
+          ${correction.id}, ${input.actorAccountId}, 'approved', null, null,
+          1, 2, ${input.idempotencyKey}, ${sql.json(payload)}, ${input.now}
+        )
+      `;
+      await sql`
+        insert into private.admin_correction_audits (
+          idempotency_key, actor_account_id, work_id, base_revision_id, revision_id,
+          reason, diff_metadata, request_fingerprint, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${request.work_id},
+          ${request.revision_id}, ${correction.id}, ${request.reason},
+          ${sql.json({ categories: ['attribution'], fields: ['attributions'], removedAttributionPublicId: request.attribution_public_id })},
+          ${createHash('sha256').update(JSON.stringify(payload)).digest('hex')}, ${input.now}
+        )
+      `;
+      await sql`
+        update public.works set published_revision_id = ${correction.id},
+          publication_state = 'published', version = version + 1, updated_at = ${input.now}
+        where id = ${request.work_id}
+      `;
+      const updated = await sql<RemovalRow[]>`
+        update private.attribution_removal_requests as target_request
+        set state = 'accepted', decided_by_account_id = ${input.actorAccountId},
+          correction_revision_id = ${correction.id}, resolved_at = ${input.now}, version = version + 1
+        where target_request.id = ${request.id}
+        returning ${this.returning(sql, {
+          ...request,
+          correction_revision_public_id: correction.public_id,
+          current_published_revision_public_id: correction.public_id,
+          current_published_revision_version: '2',
+        })}
+      `;
+      const resolved = this.required(updated[0]);
+      await this.operation(sql, {
+        actorAccountId: input.actorAccountId,
+        idempotencyKey: input.idempotencyKey,
+        now: input.now,
+        operation: 'accepted',
+        payload,
+        requestId: request.id,
+        resultingState: 'accepted',
+        resultingVersion: Number(resolved.version),
+      });
+      await refreshPublicWorkCatalog(sql, request.work_id, input.now);
+      await this.emitPublicationEvents(sql, request, correction, work, input.now);
+      return { outcome: 'resolved', request: this.map(resolved) };
+    });
   }
 
   private async copySnapshot(
     sql: postgres.TransactionSql,
-    baseId: string,
-    revisionId: string,
-    removedPersonId: string,
+    request: RemovalRow,
+    correctionId: string,
   ) {
-    await sql`insert into private.work_revision_links select ${revisionId}, position, label, url from private.work_revision_links where revision_id = ${baseId}`;
-    await sql`insert into private.work_revision_tags select ${revisionId}, position, display_label, normalized_identity from private.work_revision_tags where revision_id = ${baseId}`;
-    await sql`insert into private.work_revision_video_links select ${revisionId}, position, provider, provider_video_id, url from private.work_revision_video_links where revision_id = ${baseId}`;
-    await sql`insert into private.work_revision_media select ${revisionId}, media_kind, position, asset_id from private.work_revision_media where revision_id = ${baseId}`;
-    await sql`insert into private.work_revision_attributions
-      select ${revisionId}, position, kind, person_id, attribution_name, study_year, contribution_role, affiliation
-      from private.work_revision_attributions where revision_id = ${baseId} and person_id <> ${removedPersonId}`;
+    await sql`insert into private.work_revision_links
+      select ${correctionId}, position, label, url from private.work_revision_links
+      where revision_id = ${request.revision_id}`;
+    await sql`insert into private.work_revision_tags
+      select ${correctionId}, position, display_label, normalized_identity
+      from private.work_revision_tags where revision_id = ${request.revision_id}`;
+    await sql`insert into private.work_revision_video_links
+      select ${correctionId}, position, provider, provider_video_id, url
+      from private.work_revision_video_links where revision_id = ${request.revision_id}`;
+    await sql`insert into private.work_revision_media
+      select ${correctionId}, media_kind, position, asset_id
+      from private.work_revision_media where revision_id = ${request.revision_id}`;
+    await sql`insert into private.work_revision_attributions (
+      revision_id, position, kind, person_id, attribution_name, study_year,
+      contribution_role, affiliation, attribution_model_version
+    ) select ${correctionId}, position, kind, person_id, attribution_name, study_year,
+      contribution_role, affiliation, attribution_model_version
+      from private.work_revision_attributions
+      where revision_id = ${request.revision_id}
+        and attribution_public_id <> ${request.attribution_public_id}`;
+    await sql`insert into private.published_revision_tags (revision_id, tag_id, position)
+      select ${correctionId}, tag_id, position from private.published_revision_tags
+      where revision_id = ${request.revision_id}`;
   }
 
-  private async operation(
+  private async emitPublicationEvents(
     sql: postgres.TransactionSql,
-    requestId: string,
-    actorId: string | null,
-    key: string,
-    operation: string,
-    payload: postgres.JSONValue,
-    state: string,
-    version: number,
+    request: RemovalRow,
+    correction: { public_id: string; revision_number: string },
+    work: { submitter_account_id: string; title: string },
     now: Date,
   ) {
-    await sql`insert into private.attribution_removal_operations
-      (idempotency_key, request_id, actor_account_id, operation, request_payload, resulting_state, resulting_version, occurred_at)
-      values (${key}, ${requestId}, ${actorId}, ${operation}, ${sql.json(payload)}, ${state}, ${version}, ${now})`;
+    const recipients = await sql<Array<{ account_id: string }>>`
+      select account.id as account_id from private.work_revision_attributions as attribution
+      join public.accounts as account on account.person_id = attribution.person_id
+      join private.work_revisions as revision on revision.id = attribution.revision_id
+      where revision.public_id = ${correction.public_id}
+        and attribution.kind in ('submitter', 'account') order by attribution.position
+    `;
+    await sql`insert into private.outbox_events (
+      aggregate_type, aggregate_id, event_type, payload, occurred_at
+    ) values (
+      'work_revision', ${correction.public_id}, 'work_revision_published',
+      ${sql.json({
+        audience: 'student',
+        cacheTargets: { workPublicId: request.work_public_id },
+        parameters: { revisionNumber: Number(correction.revision_number), title: work.title },
+        recipientAccountIds: recipients.map((recipient) => recipient.account_id),
+        revisionPublicId: correction.public_id,
+        target: { kind: 'work', workPublicId: request.work_public_id },
+        type: 'work_published',
+      })}, ${now}
+    )`;
+    if (request.kind === 'account') {
+      const removedAccounts = await sql<Array<{ id: string }>>`
+        select id from public.accounts where person_id = ${request.person_id} limit 1
+      `;
+      const removed = removedAccounts[0];
+      if (removed !== undefined) {
+        await sql`insert into private.outbox_events (
+          aggregate_type, aggregate_id, event_type, payload, occurred_at
+        ) values (
+          'attribution_removal_request', ${request.public_id}, 'work_attribution_removed',
+          ${sql.json({
+            audience: 'student',
+            parameters: { title: work.title },
+            recipientAccountIds: [removed.id],
+            target: { kind: 'work', workPublicId: request.work_public_id },
+            type: 'work_attribution_removed',
+          })}, ${now}
+        )`;
+      }
+    }
   }
 
-  private async replay(
-    sql: Sql,
-    key: string,
-    actorId: string | null,
-    operation: string,
-    payload: postgres.JSONValue,
-  ): Promise<AttributionRemovalResult | null> {
-    const operations = await sql<Array<{ equivalent: boolean; request_id: string }>>`
-      select request_id, (actor_account_id is not distinct from ${actorId} and operation = ${operation} and request_payload = ${sql.json(payload)}) as equivalent
+  private rows(sql: Sql, condition: postgres.PendingQuery<postgres.Row[]>, limit = 20) {
+    return sql<RemovalRow[]>`
+      select request.id, request.public_id, request.work_id, request.revision_id,
+        request.state, request.reason, request.version, request.created_at,
+        request.attribution_public_id, attribution.attribution_name,
+        attribution.person_id, attribution.kind, work.public_id as work_public_id,
+        revision.public_id as revision_public_id,
+        revision.title as work_title,
+        correction.public_id as correction_revision_public_id,
+        current_revision.public_id as current_published_revision_public_id,
+        current_revision.version as current_published_revision_version
+      from private.attribution_removal_requests as request
+      join private.work_revision_attributions as attribution
+        on attribution.attribution_public_id = request.attribution_public_id
+      join public.works as work on work.id = request.work_id
+      join private.work_revisions as revision on revision.id = request.revision_id
+      left join private.work_revisions as correction on correction.id = request.correction_revision_id
+      left join private.work_revisions as current_revision on current_revision.id = work.published_revision_id
+      where ${condition}
+      order by request.created_at, request.id limit ${limit}
+    `;
+  }
+
+  private async lockRequest(sql: postgres.TransactionSql, publicId: string) {
+    const locked = await sql<Array<{ id: string }>>`
+      select id from private.attribution_removal_requests
+      where public_id = ${publicId} for update`;
+    if (locked[0] === undefined) return null;
+    const rows = await this.rows(sql, sql`request.public_id = ${publicId}`, 1);
+    return this.required(rows[0]);
+  }
+
+  private returning(sql: Sql, context: RemovalRow) {
+    return sql`
+      id, public_id, work_id, revision_id, state, reason, version, created_at,
+      attribution_public_id, ${context.attribution_name}::text as attribution_name,
+      ${context.person_id}::uuid as person_id, ${context.kind}::text as kind,
+      ${context.work_public_id}::uuid as work_public_id,
+      ${context.revision_public_id}::uuid as revision_public_id,
+      ${context.work_title}::text as work_title,
+      ${context.correction_revision_public_id}::uuid as correction_revision_public_id,
+      ${context.current_published_revision_public_id}::uuid as current_published_revision_public_id,
+      ${context.current_published_revision_version}::bigint as current_published_revision_version
+    `;
+  }
+
+  private map(row: RemovalRow): AttributionRemovalRequestView {
+    return {
+      attributionName: row.attribution_name,
+      attributionPublicId: row.attribution_public_id,
+      correctionRevisionPublicId: row.correction_revision_public_id,
+      createdAt: row.created_at.toISOString(),
+      currentPublishedRevisionPublicId: row.current_published_revision_public_id,
+      currentPublishedRevisionVersion:
+        row.current_published_revision_version === null
+          ? null
+          : Number(row.current_published_revision_version),
+      publicId: row.public_id,
+      reason: row.reason,
+      revisionPublicId: row.revision_public_id,
+      state: row.state,
+      version: Number(row.version),
+      workPublicId: row.work_public_id,
+      workTitle: row.work_title,
+    };
+  }
+
+  private async createReplay(sql: Sql, key: string, payload: postgres.JSONValue) {
+    const rows = await sql<Array<{ equivalent: boolean }>>`
+      select (actor_account_id is null and operation = 'created'
+        and request_payload = ${sql.json(payload)}) as equivalent
       from private.attribution_removal_operations where idempotency_key = ${key}
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : { outcome: row.equivalent ? ('replayed' as const) : ('idempotency_conflict' as const) };
+  }
+
+  private async decisionReplay(
+    sql: Sql,
+    input: { actorAccountId: string; idempotencyKey: string },
+    operation: 'accepted' | 'declined',
+    payload: postgres.JSONValue,
+  ): Promise<AttributionRemovalDecisionResult | null> {
+    const operations = await sql<Array<{ equivalent: boolean; request_id: string }>>`
+      select request_id, (actor_account_id = ${input.actorAccountId}
+        and operation = ${operation} and request_payload = ${sql.json(payload)}) as equivalent
+      from private.attribution_removal_operations where idempotency_key = ${input.idempotencyKey}
     `;
     const found = operations[0];
     if (found === undefined) return null;
@@ -329,25 +488,74 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
       : { outcome: 'replayed', request: this.map(rows[0]) };
   }
 
-  private map(row: RemovalRow): AttributionRemovalRequestView {
-    return {
-      attributionName: row.attribution_name,
-      correctionRevisionPublicId: row.correction_revision_public_id,
-      createdAt: row.created_at.toISOString(),
-      publicId: row.public_id,
-      reason: row.reason,
-      revisionPublicId: row.revision_public_id,
-      state: row.state,
-      version: Number(row.version),
-      workPublicId: row.work_public_id,
-    };
+  private async operation(
+    sql: postgres.TransactionSql,
+    input: {
+      actorAccountId: string | null;
+      idempotencyKey: string;
+      now: Date;
+      operation: 'accepted' | 'created' | 'declined';
+      payload: postgres.JSONValue;
+      requestId: string;
+      resultingState: 'accepted' | 'declined' | 'pending';
+      resultingVersion: number;
+    },
+  ) {
+    await sql`insert into private.attribution_removal_operations (
+      idempotency_key, request_id, actor_account_id, operation, request_payload,
+      resulting_state, resulting_version, occurred_at
+    ) values (
+      ${input.idempotencyKey}, ${input.requestId}, ${input.actorAccountId}, ${input.operation},
+      ${sql.json(input.payload)}, ${input.resultingState}, ${input.resultingVersion}, ${input.now}
+    )`;
+  }
+
+  private async consumeRateLimit(
+    sql: postgres.TransactionSql,
+    now: Date,
+    dimension: 'source' | 'target',
+    key: string,
+  ) {
+    const start = new Date(now.getTime() - RATE_WINDOW_MILLISECONDS);
+    const rows = await sql<Array<{ attempt_count: number }>>`
+      insert into private.attribution_removal_rate_limits (
+        dimension, key_hash, window_started_at, attempt_count
+      ) values (${dimension}, ${key}, ${now}, 1)
+      on conflict (dimension, key_hash) do update set
+        window_started_at = case when attribution_removal_rate_limits.window_started_at <= ${start}
+          then ${now} else attribution_removal_rate_limits.window_started_at end,
+        attempt_count = case when attribution_removal_rate_limits.window_started_at <= ${start}
+          then 1 else attribution_removal_rate_limits.attempt_count + 1 end
+      returning attempt_count
+    `;
+    return this.required(rows[0]).attempt_count <= RATE_LIMIT;
+  }
+
+  private decodeCursor(
+    cursor: string | undefined,
+  ): { createdAt: Date; id: string } | 'invalid' | null {
+    if (cursor === undefined) return null;
+    try {
+      const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as unknown;
+      if (
+        !Array.isArray(value) ||
+        value.length !== 2 ||
+        typeof value[0] !== 'string' ||
+        typeof value[1] !== 'string' ||
+        !/^[0-9a-f-]{36}$/iu.test(value[1])
+      )
+        return 'invalid';
+      const createdAt = new Date(value[0]);
+      if (Number.isNaN(createdAt.getTime()) || createdAt.toISOString() !== value[0])
+        return 'invalid';
+      return { createdAt, id: value[1] };
+    } catch {
+      return 'invalid';
+    }
   }
 
   private required<T>(value: T | undefined): T {
-    if (value === undefined) throw new Error('ATTRIBUTION_REMOVAL_READ_FAILED');
+    if (value === undefined) throw new Error('ATTRIBUTION_REMOVAL_PERSISTENCE_INVARIANT');
     return value;
-  }
-  private isUnique(error: unknown) {
-    return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
   }
 }
