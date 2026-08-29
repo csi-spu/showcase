@@ -142,6 +142,52 @@ export class AccountControlsService {
     return this.toStudentResult(result.student);
   }
 
+  async correctStudentName(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    firstNameTh: string;
+    idempotencyKey: string;
+    lastNameTh: string;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<StudentAccountControlsResult> {
+    const firstNameTh = input.firstNameTh.trim().normalize('NFC');
+    const lastNameTh = input.lastNameTh.trim().normalize('NFC');
+    const reason = input.reason.trim();
+    if (
+      firstNameTh.length === 0 ||
+      firstNameTh.length > 100 ||
+      lastNameTh.length === 0 ||
+      lastNameTh.length > 100 ||
+      `${firstNameTh} ${lastNameTh}`.length > 100
+    ) {
+      throw new AccountControlsError('STUDENT_NAME_INVALID', 422);
+    }
+    if (reason.length === 0 || reason.length > 2_000) {
+      throw new AccountControlsError('STUDENT_NAME_REASON_INVALID', 422);
+    }
+    const result = await this.repository.correctStudentName({
+      ...input,
+      firstNameTh,
+      lastNameTh,
+      now: this.clock.now(),
+      reason,
+    });
+    if (result.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (result.outcome === 'not_found') {
+      throw new AccountControlsError('STUDENT_ACCOUNT_NOT_FOUND', 404);
+    }
+    if (result.outcome === 'version_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_VERSION_CONFLICT', 409);
+    }
+    if (!('student' in result)) {
+      throw new AccountControlsError('ACCOUNT_CONTROLS_SERVICE_UNAVAILABLE', 503);
+    }
+    return this.toStudentResult(result.student);
+  }
+
   async updateAcademicYear(input: {
     actorAccountId: string;
     currentAcademicYear: number;

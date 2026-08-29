@@ -32,8 +32,9 @@ class E2eCatalogRepository implements CatalogRepository {
         {
           item: {
             bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
-            displayName: 'ณัฐดนัย',
             entryYear: 2566,
+            firstName: 'ณัฐดนัย',
+            lastName: 'สุขใจ',
             photo: null,
             publicId: PROFILE_PUBLIC_ID,
             publishedWorkCount: 1,

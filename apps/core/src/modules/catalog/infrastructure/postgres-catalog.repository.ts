@@ -32,9 +32,10 @@ interface WorkCatalogRow {
 
 interface PeopleCatalogRow {
   bio: string | null;
-  display_name: string;
   entry_year: number;
-  normalized_display_name: string;
+  first_name_th: string;
+  last_name_th: string;
+  normalized_name: string;
   photo_height: number | null;
   photo_object_key: string | null;
   photo_width: number | null;
@@ -170,18 +171,18 @@ export class PostgresCatalogRepository implements CatalogRepository {
         where (${after === null}
           or rank < ${positionNumber(after, 'rank')}
           or (rank = ${positionNumber(after, 'rank')}
-            and (normalized_display_name, public_id) >
+            and (normalized_name, public_id) >
               (${positionString(after, 'name')}, ${positionString(after, 'publicId')}::uuid)))
-        order by rank desc, normalized_display_name, public_id
+        order by rank desc, normalized_name, public_id
         limit ${fetchLimit}
       `;
     } else {
       rows = await this.database.sql<PeopleCatalogRow[]>`
         ${this.peopleCandidates(pattern, query)}
         select * from candidate
-        where (${after === null} or (normalized_display_name, public_id) >
+        where (${after === null} or (normalized_name, public_id) >
           (${positionString(after, 'name')}, ${positionString(after, 'publicId')}::uuid))
-        order by normalized_display_name, public_id
+        order by normalized_name, public_id
         limit ${fetchLimit}
       `;
     }
@@ -189,7 +190,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
       entries: rows.map((row) => ({
         item: this.mapPerson(row),
         position: {
-          name: row.normalized_display_name,
+          name: row.normalized_name,
           publicId: row.public_id,
           ...(query.sort === 'relevance' ? { rank: row.rank } : {}),
         },
@@ -397,25 +398,37 @@ export class PostgresCatalogRepository implements CatalogRepository {
 
   private peopleCandidates(pattern: string | null, query: PeopleCatalogQuery) {
     return this.database.sql`
-      with candidate as (
-        select profile.public_id, profile.display_name, profile.normalized_display_name, profile.bio,
+      with profile_source as (
+        select profile.person_id, profile.public_id, profile.bio,
+          name.first_name_th, name.last_name_th,
+          lower(regexp_replace(
+            normalize(btrim(name.first_name_th || ' ' || name.last_name_th), NFKC),
+            '[[:space:]]+', ' ', 'g'
+          )) as normalized_name,
           student.entry_year, photo.sanitized_object_key as photo_object_key,
           photo.width as photo_width, photo.height as photo_height,
-          (select count(distinct catalog.work_id)::integer
-            from private.public_work_catalog as catalog
-            join private.work_revision_attributions as attribution
-              on attribution.revision_id = catalog.revision_id
-            where attribution.person_id = profile.person_id) as published_work_count,
-          case when ${pattern}::text is null then 0
-            when profile.normalized_display_name = ${query.query} then 2 else 1 end as rank
+          photo.id as photo_id
         from public.public_profiles as profile
         join public.students as student on student.person_id = profile.person_id
+        join private.person_names as name on name.person_id = profile.person_id
         join public.profile_consents as consent
           on consent.person_id = profile.person_id and consent.withdrawn_at is null
         left join private.profile_photo_assets as photo
           on photo.id = profile.photo_id and photo.status = 'ready'
-        where (${pattern}::text is null or profile.normalized_display_name like ${pattern} escape '\\')
-          and (${query.entryYear}::integer is null or student.entry_year = ${query.entryYear})
+      ), candidate as (
+        select source.public_id, source.bio, source.first_name_th, source.last_name_th,
+          source.normalized_name, source.entry_year, source.photo_object_key,
+          source.photo_width, source.photo_height,
+          (select count(distinct catalog.work_id)::integer
+            from private.public_work_catalog as catalog
+            join private.work_revision_attributions as attribution
+              on attribution.revision_id = catalog.revision_id
+            where attribution.person_id = source.person_id) as published_work_count,
+          case when ${pattern}::text is null then 0
+            when source.normalized_name = ${query.query} then 2 else 1 end as rank
+        from profile_source as source
+        where (${pattern}::text is null or source.normalized_name like ${pattern} escape '\\')
+          and (${query.entryYear}::integer is null or source.entry_year = ${query.entryYear})
       )
     `;
   }
@@ -455,8 +468,9 @@ export class PostgresCatalogRepository implements CatalogRepository {
   private mapPerson(row: PeopleCatalogRow): PeopleCatalogCard {
     return {
       bio: row.bio,
-      displayName: row.display_name,
       entryYear: row.entry_year,
+      firstName: row.first_name_th,
+      lastName: row.last_name_th,
       photo:
         row.photo_object_key === null || row.photo_width === null || row.photo_height === null
           ? null

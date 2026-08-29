@@ -614,7 +614,8 @@ export class PostgresWorkRevisionsRepository
         work.published_revision_id,
         draft.title, draft.summary, draft.description, draft.category, draft.academic_year,
         draft.semester, draft.version, student.entry_year, settings.current_academic_year,
-        profile.display_name as submitter_attribution_name
+        concat_ws(' ', submitter_name.first_name_th, submitter_name.last_name_th)
+          as submitter_attribution_name
       from public.works as work
       join public.accounts as account on account.person_id = work.submitter_person_id
       join public.students as student on student.person_id = account.person_id
@@ -622,7 +623,8 @@ export class PostgresWorkRevisionsRepository
       join public.academic_settings as settings on settings.singleton = true
       join private.work_drafts as draft
         on draft.work_id = work.id and draft.lifecycle_state = 'active'
-      left join public.public_profiles as profile on profile.person_id = work.submitter_person_id
+      join private.person_names as submitter_name
+        on submitter_name.person_id = work.submitter_person_id
       where account.id = ${actorAccountId} and work.public_id = ${workPublicId}
         and account.status = 'active' and account.credential_state = 'set'
         and work.activity_state = 'active'

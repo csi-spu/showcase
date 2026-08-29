@@ -60,11 +60,15 @@ describe('PostgresPublicationRepository integration', () => {
           (${ADMIN_ACCOUNT_ID}, 'admin')
       `;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th) values
+          (${STUDENT_PERSON_ID}, 'ผู้ส่ง', 'ผลงาน'),
+          (${CONTRIBUTOR_PERSON_ID}, 'ผู้ร่วม', 'ผลงาน')
+      `;
+      await transaction`
         insert into public.public_profiles (
-          person_id, public_id, display_name, version, created_at, updated_at
+          person_id, public_id, version, created_at, updated_at
         ) values (
-          ${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, 'ชื่อโปรไฟล์ส่วนตัว',
-          1, ${NOW}, ${NOW}
+          ${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, 1, ${NOW}, ${NOW}
         )
       `;
       await transaction`

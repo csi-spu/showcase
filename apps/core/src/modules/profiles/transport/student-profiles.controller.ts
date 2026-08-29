@@ -40,9 +40,18 @@ export class StudentProfilesController {
   @Header('Cache-Control', 'no-store')
   async getProfile(@Headers('authorization') authorization: string | undefined) {
     const actor = await this.auth.authorizeProfileAccess(this.requireSessionToken(authorization));
+    const state = await this.profiles.getPrivateProfile(actor.accountId);
     return {
       canEditProfile: actor.canEditProfile,
-      profile: await this.profiles.getPrivateProfile(actor.accountId),
+      person:
+        state === null
+          ? null
+          : {
+              entryYear: state.entryYear,
+              firstName: state.firstName,
+              lastName: state.lastName,
+            },
+      profile: state?.profile ?? null,
     };
   }
 

@@ -52,8 +52,14 @@ describe('PostgresWorkRevisionsRepository integration', () => {
           (${OTHER_ACCOUNT_ID}, 'student')
       `;
       await transaction`
-        insert into public.public_profiles (person_id, display_name, created_at, updated_at)
-        values (${PERSON_ID}, 'ชื่อผู้ส่ง', ${NOW}, ${NOW})
+        insert into private.person_names (person_id, first_name_th, last_name_th) values
+          (${PERSON_ID}, 'ชื่อ', 'ผู้ส่ง'),
+          (${CONTRIBUTOR_PERSON_ID}, 'ชื่อ', 'ผู้ร่วม'),
+          (${OTHER_PERSON_ID}, 'ชื่อ', 'บุคคลอื่น')
+      `;
+      await transaction`
+        insert into public.public_profiles (person_id, created_at, updated_at)
+        values (${PERSON_ID}, ${NOW}, ${NOW})
       `;
       await transaction`
         update public.academic_settings set current_academic_year = 2569, updated_at = ${NOW}
@@ -106,7 +112,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       revision: {
         attributions: [
           {
-            attributionName: 'ชื่อผู้ส่ง',
+            attributionName: 'ชื่อ ผู้ส่ง',
             kind: 'submitter',
             studyYear: 2,
           },

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type postgres from 'postgres';
 import type {
+  PrivateProfileState,
   PrivatePublicProfile,
   ProfileMutationResult,
   ProfilePhotoView,
@@ -10,14 +11,14 @@ import type {
 } from '../application/profiles.ports';
 import type { PublicProfileDraftInput } from '../domain/public-profile-policy';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
-import { normalizeCatalogSearchText } from '../../catalog/domain/catalog-query-policy';
 
 interface ProfileRow {
   bio: string | null;
   consent_granted_at: Date | null;
   consent_text_version: string | null;
-  display_name: string;
   entry_year: number;
+  first_name_th: string;
+  last_name_th: string;
   photo_height: number | null;
   photo_id: string | null;
   photo_object_key: string | null;
@@ -27,9 +28,31 @@ interface ProfileRow {
   version: string;
 }
 
+interface PrivateProfileRow {
+  bio: string | null;
+  consent_granted_at: Date | null;
+  consent_text_version: string | null;
+  entry_year: number;
+  first_name_th: string;
+  last_name_th: string;
+  photo_height: number | null;
+  photo_id: string | null;
+  photo_object_key: string | null;
+  photo_width: number | null;
+  profile_links: LinkRow[];
+  public_id: string | null;
+  version: string | null;
+}
+
 interface LinkRow {
   label: string;
   url: string;
+}
+
+interface PhotoRow {
+  photo_height: number | null;
+  photo_object_key: string | null;
+  photo_width: number | null;
 }
 
 interface PersonRow {
@@ -55,15 +78,16 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     this.publicMediaOrigin = config.get<string>('PUBLIC_MEDIA_ORIGIN') ?? 'https://media.invalid';
   }
 
-  async findPrivateProfile(accountId: string): Promise<PrivatePublicProfile | null> {
-    const rows = await this.database.sql<ProfileRow[]>`
+  async findPrivateProfile(accountId: string): Promise<PrivateProfileState | null> {
+    const rows = await this.database.sql<PrivateProfileRow[]>`
       select
         profile.public_id,
-        profile.display_name,
         profile.bio,
         profile.version,
         profile.photo_id,
         student.entry_year,
+        name.first_name_th,
+        name.last_name_th,
         consent.consent_text_version,
         consent.granted_at as consent_granted_at,
         photo.sanitized_object_key as photo_object_key,
@@ -79,7 +103,8 @@ export class PostgresProfilesRepository implements ProfilesRepository {
         ), '[]'::jsonb) as profile_links
       from public.accounts as account
       join public.students as student on student.person_id = account.person_id
-      join public.public_profiles as profile on profile.person_id = account.person_id
+      join private.person_names as name on name.person_id = account.person_id
+      left join public.public_profiles as profile on profile.person_id = account.person_id
       left join public.profile_consents as consent
         on consent.person_id = profile.person_id and consent.withdrawn_at is null
       left join private.profile_photo_assets as photo
@@ -87,18 +112,26 @@ export class PostgresProfilesRepository implements ProfilesRepository {
       where account.id = ${accountId}
       limit 1
     `;
-    return this.mapPrivateProfile(rows[0]);
+    const row = rows[0];
+    if (row === undefined) return null;
+    return {
+      entryYear: row.entry_year,
+      firstName: row.first_name_th,
+      lastName: row.last_name_th,
+      profile: this.mapPrivateProfile(row),
+    };
   }
 
   async findPublicProfile(publicId: string): Promise<PublicProfileView | null> {
     const rows = await this.database.sql<ProfileRow[]>`
       select
         profile.public_id,
-        profile.display_name,
         profile.bio,
         profile.version,
         profile.photo_id,
         student.entry_year,
+        name.first_name_th,
+        name.last_name_th,
         consent.consent_text_version,
         consent.granted_at as consent_granted_at,
         photo.sanitized_object_key as photo_object_key,
@@ -114,6 +147,7 @@ export class PostgresProfilesRepository implements ProfilesRepository {
         ), '[]'::jsonb) as profile_links
       from public.public_profiles as profile
       join public.students as student on student.person_id = profile.person_id
+      join private.person_names as name on name.person_id = profile.person_id
       join public.profile_consents as consent
         on consent.person_id = profile.person_id and consent.withdrawn_at is null
       left join private.profile_photo_assets as photo
@@ -127,8 +161,9 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     }
     return {
       bio: row.bio,
-      displayName: row.display_name,
       entryYear: row.entry_year,
+      firstName: row.first_name_th,
+      lastName: row.last_name_th,
       links: row.profile_links,
       photo: this.mapPhoto(row),
       publicId: row.public_id,
@@ -147,7 +182,6 @@ export class PostgresProfilesRepository implements ProfilesRepository {
         expectedVersion: input.expectedVersion,
         profile: {
           bio: input.profile.bio,
-          displayName: input.profile.displayName,
           links: input.profile.links.map((link) => ({ label: link.label, url: link.url })),
           photoId: input.profile.photoId,
         },
@@ -186,12 +220,10 @@ export class PostgresProfilesRepository implements ProfilesRepository {
       if (current === null) {
         const inserted = await transaction<VersionRow[]>`
           insert into public.public_profiles (
-            person_id, display_name, normalized_display_name, bio, photo_id,
+            person_id, bio, photo_id,
             version, created_at, updated_at
           ) values (
             ${person.person_id},
-            ${input.profile.displayName},
-            ${normalizeCatalogSearchText(input.profile.displayName)},
             ${input.profile.bio},
             ${input.profile.photoId},
             ${resultingVersion},
@@ -208,9 +240,7 @@ export class PostgresProfilesRepository implements ProfilesRepository {
       } else {
         await transaction`
           update public.public_profiles
-          set display_name = ${input.profile.displayName},
-              normalized_display_name = ${normalizeCatalogSearchText(input.profile.displayName)},
-              bio = ${input.profile.bio},
+          set bio = ${input.profile.bio},
               photo_id = ${input.profile.photoId},
               version = ${resultingVersion},
               updated_at = ${input.now}
@@ -543,8 +573,8 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     `;
   }
 
-  private mapPrivateProfile(row: ProfileRow | undefined): PrivatePublicProfile | null {
-    if (row === undefined) {
+  private mapPrivateProfile(row: PrivateProfileRow): PrivatePublicProfile | null {
+    if (row.public_id === null || row.version === null) {
       return null;
     }
     return {
@@ -556,8 +586,6 @@ export class PostgresProfilesRepository implements ProfilesRepository {
               consentTextVersion: row.consent_text_version,
               grantedAt: row.consent_granted_at.toISOString(),
             },
-      displayName: row.display_name,
-      entryYear: row.entry_year,
       links: row.profile_links,
       photo: this.mapPhoto(row),
       photoId: row.photo_id,
@@ -566,7 +594,7 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     };
   }
 
-  private mapPhoto(row: ProfileRow): ProfilePhotoView | null {
+  private mapPhoto(row: PhotoRow): ProfilePhotoView | null {
     if (row.photo_object_key === null || row.photo_width === null || row.photo_height === null) {
       return null;
     }

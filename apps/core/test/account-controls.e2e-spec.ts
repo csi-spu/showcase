@@ -32,6 +32,12 @@ describe('Admin Account Controls API (e2e)', () => {
     return Promise.resolve({ accountId: ACTOR_ACCOUNT_ID });
   });
   const controls = {
+    correctStudentName: jest.fn().mockResolvedValue({
+      ...STUDENT,
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นใจ',
+      version: 3,
+    }),
     extendStudentAccess: jest.fn().mockResolvedValue({
       ...STUDENT,
       accessEndsAcademicYear: 2578,
@@ -155,6 +161,38 @@ describe('Admin Account Controls API (e2e)', () => {
       actorAccountId: ACTOR_ACCOUNT_ID,
       expectedVersion: 2,
       idempotencyKey: IDEMPOTENCY_KEY,
+      studentAccountId: STUDENT_ACCOUNT_ID,
+    });
+  });
+
+  it('corrects Roster Name through an audited Admin-only mutation', async () => {
+    const response = await authorized(
+      request(app.getHttpServer()).put(
+        `/v1/internal/admin/account-controls/students/${STUDENT_ACCOUNT_ID}/name`,
+      ),
+    )
+      .send({
+        expectedVersion: 2,
+        firstNameTh: 'สมหญิง',
+        idempotencyKey: IDEMPOTENCY_KEY,
+        lastNameTh: 'มั่นใจ',
+        reason: 'แก้ไขตามหลักฐานทะเบียน',
+      })
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+
+    expect(response.body).toMatchObject({
+      firstNameTh: 'สมหญิง',
+      lastNameTh: 'มั่นใจ',
+      version: 3,
+    });
+    expect(controls.correctStudentName).toHaveBeenCalledWith({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      expectedVersion: 2,
+      firstNameTh: 'สมหญิง',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      lastNameTh: 'มั่นใจ',
+      reason: 'แก้ไขตามหลักฐานทะเบียน',
       studentAccountId: STUDENT_ACCOUNT_ID,
     });
   });

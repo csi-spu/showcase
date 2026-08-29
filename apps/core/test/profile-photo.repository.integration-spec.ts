@@ -24,6 +24,10 @@ describe('PostgresProfilePhotoRepository integration', () => {
     await database.sql.begin(async (transaction) => {
       await transaction`insert into public.people (id) values (${PERSON_ID}), (${OTHER_PERSON_ID})`;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th) values
+          (${PERSON_ID}, 'เจ้าของ', 'รูป'), (${OTHER_PERSON_ID}, 'บุคคล', 'อื่น')
+      `;
+      await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year)
         values (${PERSON_ID}, 2569, 2576), (${OTHER_PERSON_ID}, 2569, 2576)
       `;
@@ -93,7 +97,6 @@ describe('PostgresProfilePhotoRepository integration', () => {
         now: new Date('2026-08-25T08:07:00.000Z'),
         profile: {
           bio: null,
-          displayName: 'เจ้าของรูป',
           links: [],
           photoId: UPLOAD_ID,
         },
@@ -107,7 +110,9 @@ describe('PostgresProfilePhotoRepository integration', () => {
       now: new Date('2026-08-25T08:08:00.000Z'),
     });
     const privateProfile = await profiles.findPrivateProfile(ACCOUNT_ID);
-    await expect(profiles.findPublicProfile(privateProfile!.publicId)).resolves.toMatchObject({
+    await expect(
+      profiles.findPublicProfile(privateProfile!.profile!.publicId),
+    ).resolves.toMatchObject({
       photo: {
         height: 512,
         url: `https://media.example.com/profile-media/${UPLOAD_ID}.webp`,

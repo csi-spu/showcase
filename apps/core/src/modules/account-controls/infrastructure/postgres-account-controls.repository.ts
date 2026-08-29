@@ -6,6 +6,7 @@ import type {
   AcademicYearSettings,
   BeginPasswordResetResult,
   CompletePasswordResetResult,
+  CorrectStudentNameResult,
   ExtendStudentAccessResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
@@ -53,6 +54,16 @@ interface PasswordResetOperationRow {
   attempt_number: number;
   expected_version: number;
   status: 'completed' | 'pending' | 'provider_failed';
+  student_account_id: string;
+}
+
+interface PersonNameCorrectionAuditRow {
+  actor_account_id: string;
+  expected_version: number;
+  first_name_th: string;
+  last_name_th: string;
+  reason: string;
+  resulting_version: number;
   student_account_id: string;
 }
 
@@ -318,6 +329,124 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     });
   }
 
+  async correctStudentName(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    firstNameTh: string;
+    idempotencyKey: string;
+    lastNameTh: string;
+    now: Date;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<CorrectStudentNameResult> {
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const audits = await transaction<PersonNameCorrectionAuditRow[]>`
+        select actor_account_id, expected_version, first_name_th, last_name_th,
+          reason, resulting_version, student_account_id
+        from private.person_name_correction_audit_events
+        where idempotency_key = ${input.idempotencyKey}
+        limit 1
+      `;
+      const audit = audits[0];
+      if (audit !== undefined) {
+        if (
+          audit.actor_account_id !== input.actorAccountId ||
+          audit.expected_version !== input.expectedVersion ||
+          audit.first_name_th !== input.firstNameTh ||
+          audit.last_name_th !== input.lastNameTh ||
+          audit.reason !== input.reason ||
+          audit.student_account_id !== input.studentAccountId
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayed = await this.findStudentByAccount(transaction, input.studentAccountId);
+        return replayed === null
+          ? { outcome: 'not_found' }
+          : {
+              outcome: 'replayed',
+              student: {
+                ...replayed,
+                firstNameTh: audit.first_name_th,
+                lastNameTh: audit.last_name_th,
+                version: audit.resulting_version,
+              },
+            };
+      }
+
+      const student = await this.findStudentByAccount(transaction, input.studentAccountId, true);
+      if (student === null) return { outcome: 'not_found' };
+      if (student.version !== input.expectedVersion) return { outcome: 'version_conflict' };
+
+      const isUnchanged =
+        student.firstNameTh === input.firstNameTh && student.lastNameTh === input.lastNameTh;
+      const resultingVersion = isUnchanged ? student.version : student.version + 1;
+      if (!isUnchanged) {
+        await transaction`
+          update private.person_names as name
+          set first_name_th = ${input.firstNameTh},
+              last_name_th = ${input.lastNameTh},
+              updated_at = ${input.now}
+          from public.accounts as account
+          where account.id = ${input.studentAccountId}
+            and name.person_id = account.person_id
+        `;
+        await transaction`
+          update public.accounts
+          set control_version = ${resultingVersion}, updated_at = ${input.now}
+          where id = ${input.studentAccountId}
+        `;
+      }
+      await transaction`
+        insert into private.person_name_correction_audit_events (
+          idempotency_key, actor_account_id, student_account_id,
+          previous_first_name_th, previous_last_name_th, first_name_th, last_name_th,
+          reason, expected_version, resulting_version, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${input.studentAccountId},
+          ${student.firstNameTh}, ${student.lastNameTh}, ${input.firstNameTh},
+          ${input.lastNameTh}, ${input.reason}, ${input.expectedVersion},
+          ${resultingVersion}, ${input.now}
+        )
+      `;
+
+      if (!isUnchanged) {
+        const profiles = await transaction<{ public_id: string }[]>`
+          select profile.public_id
+          from public.accounts as account
+          join public.public_profiles as profile on profile.person_id = account.person_id
+          join public.profile_consents as consent
+            on consent.person_id = profile.person_id and consent.withdrawn_at is null
+          where account.id = ${input.studentAccountId}
+          limit 1
+        `;
+        const profile = profiles[0];
+        if (profile !== undefined) {
+          await transaction`
+            insert into private.outbox_events (
+              aggregate_type, aggregate_id, event_type, payload, occurred_at
+            ) values (
+              'public_profile', ${input.idempotencyKey},
+              'public_profile_cache_invalidated',
+              ${transaction.json({ publicId: profile.public_id })}, ${input.now}
+            )
+            on conflict (aggregate_type, aggregate_id, event_type) do nothing
+          `;
+        }
+      }
+
+      return {
+        outcome: isUnchanged ? 'unchanged' : 'updated',
+        student: {
+          ...student,
+          firstNameTh: input.firstNameTh,
+          lastNameTh: input.lastNameTh,
+          version: resultingVersion,
+        },
+      };
+    });
+  }
+
   async beginPasswordReset(input: {
     actorAccountId: string;
     expectedVersion: number;
@@ -520,7 +649,7 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
           join private.person_names as person_name on person_name.person_id = account.person_id
           left join public.academic_settings as settings on settings.singleton = true
           where account.id = ${accountId}
-          for update of account, student
+          for update of account, student, person_name
         `
       : await transaction<StudentAccountRow[]>`
           select

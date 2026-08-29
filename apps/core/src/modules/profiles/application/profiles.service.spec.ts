@@ -1,5 +1,5 @@
 import type {
-  PrivatePublicProfile,
+  PrivateProfileState,
   ProfileMutationResult,
   ProfilesRepository,
   PublicProfileView,
@@ -12,14 +12,14 @@ const PUBLIC_ID = '20000000-0000-4000-8000-000000000002';
 const IDEMPOTENCY_KEY = '30000000-0000-4000-8000-000000000003';
 
 class FakeProfilesRepository implements ProfilesRepository {
-  profile: PrivatePublicProfile | null = null;
+  profile: PrivateProfileState | null = null;
   publicProfile: PublicProfileView | null = null;
   updateResult: ProfileMutationResult = { outcome: 'updated' };
   grantResult: ProfileMutationResult = { outcome: 'updated' };
   withdrawResult: ProfileMutationResult = { outcome: 'updated' };
   lastUpdate: Parameters<ProfilesRepository['updateProfile']>[0] | undefined;
 
-  findPrivateProfile(): Promise<PrivatePublicProfile | null> {
+  findPrivateProfile(): Promise<PrivateProfileState | null> {
     return Promise.resolve(this.profile);
   }
 
@@ -58,7 +58,6 @@ describe('ProfilesService', () => {
         actorAccountId: ACCOUNT_ID,
         bio: '  สนใจระบบเว็บ  ',
         canEditProfile: true,
-        displayName: '  ณัฐดนัย สุขใจ  ',
         expectedVersion: 0,
         idempotencyKey: IDEMPOTENCY_KEY,
         links: [{ label: ' เว็บไซต์ ', url: 'https://example.com' }],
@@ -73,7 +72,6 @@ describe('ProfilesService', () => {
       now: NOW,
       profile: {
         bio: 'สนใจระบบเว็บ',
-        displayName: 'ณัฐดนัย สุขใจ',
         links: [{ label: 'เว็บไซต์', url: 'https://example.com/' }],
         photoId: null,
       },
@@ -86,7 +84,6 @@ describe('ProfilesService', () => {
         actorAccountId: ACCOUNT_ID,
         bio: null,
         canEditProfile: false,
-        displayName: 'ณัฐดนัย',
         expectedVersion: 1,
         idempotencyKey: IDEMPOTENCY_KEY,
         links: [],
@@ -136,8 +133,9 @@ describe('ProfilesService', () => {
 
     repository.publicProfile = {
       bio: null,
-      displayName: 'ณัฐดนัย',
       entryYear: 2569,
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
       links: [],
       photo: null,
       publicId: PUBLIC_ID,
@@ -146,16 +144,19 @@ describe('ProfilesService', () => {
   });
 });
 
-function privateProfile(): PrivatePublicProfile {
+function privateProfile(): PrivateProfileState {
   return {
-    bio: null,
-    consent: null,
-    displayName: 'ณัฐดนัย',
     entryYear: 2569,
-    links: [],
-    photo: null,
-    photoId: null,
-    publicId: PUBLIC_ID,
-    version: 1,
+    firstName: 'ณัฐดนัย',
+    lastName: 'สุขใจ',
+    profile: {
+      bio: null,
+      consent: null,
+      links: [],
+      photo: null,
+      photoId: null,
+      publicId: PUBLIC_ID,
+      version: 1,
+    },
   };
 }

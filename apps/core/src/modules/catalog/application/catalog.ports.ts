@@ -29,8 +29,9 @@ export interface WorkCatalogCard {
 
 export interface PeopleCatalogCard {
   bio: string | null;
-  displayName: string;
   entryYear: number;
+  firstName: string;
+  lastName: string;
   photo: { height: number; url: string; width: number } | null;
   publicId: string;
   publishedWorkCount: number;

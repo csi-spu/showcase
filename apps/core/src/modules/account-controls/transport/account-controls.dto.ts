@@ -47,3 +47,27 @@ export class ResetStudentPasswordDto {
   @IsUUID('4')
   idempotencyKey!: string;
 }
+
+export class CorrectStudentNameDto {
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  firstNameTh!: string;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  lastNameTh!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2_000)
+  reason!: string;
+}

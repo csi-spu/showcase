@@ -16,6 +16,10 @@ const ADMIN_PROVIDER_USER_ID = '51000000-0000-4000-8000-000000000003';
 const STUDENT_PERSON_ID = '52000000-0000-4000-8000-000000000001';
 const STUDENT_ACCOUNT_ID = '52000000-0000-4000-8000-000000000002';
 const STUDENT_PROVIDER_USER_ID = '52000000-0000-4000-8000-000000000003';
+const NAME_STUDENT_PERSON_ID = '52000000-0000-4000-8000-000000000011';
+const NAME_STUDENT_ACCOUNT_ID = '52000000-0000-4000-8000-000000000012';
+const NAME_STUDENT_PROVIDER_USER_ID = '52000000-0000-4000-8000-000000000013';
+const NAME_PROFILE_PUBLIC_ID = '52000000-0000-4000-8000-000000000014';
 const STUDENT_ID_HASH = '7'.repeat(64);
 const SESSION_ID_HASH = '8'.repeat(64);
 const YEAR_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000001';
@@ -24,6 +28,8 @@ const RESET_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000003';
 const CONCURRENT_YEAR_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000004';
 const STUDENT_FLOW_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000005';
 const PARALLEL_RESET_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000006';
+const NAME_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000007';
+const SECOND_NAME_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000008';
 const NOW = new Date('2026-08-25T06:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -55,26 +61,38 @@ describe('PostgresAccountControlsRepository integration', () => {
     await cleanup();
     await database.sql.begin(async (transaction) => {
       await transaction`
-        insert into public.people (id) values (${ADMIN_PERSON_ID}), (${STUDENT_PERSON_ID})
+        insert into public.people (id)
+        values (${ADMIN_PERSON_ID}), (${STUDENT_PERSON_ID}), (${NAME_STUDENT_PERSON_ID})
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year)
-        values (${STUDENT_PERSON_ID}, 2560, 2567)
+        values (${STUDENT_PERSON_ID}, 2560, 2567), (${NAME_STUDENT_PERSON_ID}, 2569, 2576)
       `;
       await transaction`
         insert into public.accounts (
           id, person_id, provider_user_id, credential_state, created_at, updated_at
         ) values
           (${ADMIN_ACCOUNT_ID}, ${ADMIN_PERSON_ID}, ${ADMIN_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
-          (${STUDENT_ACCOUNT_ID}, ${STUDENT_PERSON_ID}, ${STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW})
+          (${STUDENT_ACCOUNT_ID}, ${STUDENT_PERSON_ID}, ${STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
+          (${NAME_STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_PERSON_ID}, ${NAME_STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW})
       `;
       await transaction`
         insert into public.account_roles (account_id, role)
-        values (${ADMIN_ACCOUNT_ID}, 'admin'), (${STUDENT_ACCOUNT_ID}, 'student')
+        values (${ADMIN_ACCOUNT_ID}, 'admin'), (${STUDENT_ACCOUNT_ID}, 'student'),
+          (${NAME_STUDENT_ACCOUNT_ID}, 'student')
       `;
       await transaction`
         insert into private.person_names (person_id, first_name_th, last_name_th)
-        values (${STUDENT_PERSON_ID}, 'สมชาย', 'ใจดี')
+        values (${STUDENT_PERSON_ID}, 'สมชาย', 'ใจดี'),
+          (${NAME_STUDENT_PERSON_ID}, 'สมชาย', 'เดิมดี')
+      `;
+      await transaction`
+        insert into public.public_profiles (person_id, public_id, bio, version)
+        values (${NAME_STUDENT_PERSON_ID}, ${NAME_PROFILE_PUBLIC_ID}, null, 1)
+      `;
+      await transaction`
+        insert into public.profile_consents (person_id, consent_text_version, granted_at)
+        values (${NAME_STUDENT_PERSON_ID}, 'phase-1-v1', ${NOW})
       `;
       await transaction`
         insert into private.student_auth_identities (
@@ -234,6 +252,89 @@ describe('PostgresAccountControlsRepository integration', () => {
       currentAcademicYear: 2571,
       updatedAt: NOW,
       version: 12,
+    });
+  });
+
+  it('corrects Roster Name idempotently with audit and public cache invalidation', async () => {
+    const input = {
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      expectedVersion: 1,
+      firstNameTh: 'สมหญิง',
+      idempotencyKey: NAME_IDEMPOTENCY_KEY,
+      lastNameTh: 'มั่นใจ',
+      now: NOW,
+      reason: 'แก้ไขตามหลักฐานทะเบียน',
+      studentAccountId: NAME_STUDENT_ACCOUNT_ID,
+    };
+
+    await expect(repository.correctStudentName(input)).resolves.toMatchObject({
+      outcome: 'updated',
+      student: { firstNameTh: 'สมหญิง', lastNameTh: 'มั่นใจ', version: 2 },
+    });
+    await expect(repository.correctStudentName(input)).resolves.toMatchObject({
+      outcome: 'replayed',
+      student: { firstNameTh: 'สมหญิง', lastNameTh: 'มั่นใจ', version: 2 },
+    });
+    await expect(repository.correctStudentName({ ...input, firstNameTh: 'สมพร' })).resolves.toEqual(
+      { outcome: 'idempotency_conflict' },
+    );
+
+    const [names, audits, outbox] = await Promise.all([
+      database.sql<{ first_name_th: string; last_name_th: string }[]>`
+        select first_name_th, last_name_th
+        from private.person_names
+        where person_id = ${NAME_STUDENT_PERSON_ID}
+      `,
+      database.sql<
+        {
+          first_name_th: string;
+          last_name_th: string;
+          previous_first_name_th: string;
+          previous_last_name_th: string;
+          reason: string;
+          resulting_version: number;
+        }[]
+      >`
+        select previous_first_name_th, previous_last_name_th, first_name_th, last_name_th,
+          reason, resulting_version
+        from private.person_name_correction_audit_events
+        where idempotency_key = ${NAME_IDEMPOTENCY_KEY}
+      `,
+      database.sql<{ event_type: string; payload: { publicId: string } }[]>`
+        select event_type, payload
+        from private.outbox_events
+        where aggregate_id = ${NAME_IDEMPOTENCY_KEY}
+      `,
+    ]);
+    expect(names).toEqual([{ first_name_th: 'สมหญิง', last_name_th: 'มั่นใจ' }]);
+    expect(audits).toEqual([
+      {
+        first_name_th: 'สมหญิง',
+        last_name_th: 'มั่นใจ',
+        previous_first_name_th: 'สมชาย',
+        previous_last_name_th: 'เดิมดี',
+        reason: 'แก้ไขตามหลักฐานทะเบียน',
+        resulting_version: 2,
+      },
+    ]);
+    expect(outbox).toEqual([
+      {
+        event_type: 'public_profile_cache_invalidated',
+        payload: { publicId: NAME_PROFILE_PUBLIC_ID },
+      },
+    ]);
+
+    await expect(
+      repository.correctStudentName({
+        ...input,
+        expectedVersion: 2,
+        firstNameTh: 'สมพร',
+        idempotencyKey: SECOND_NAME_IDEMPOTENCY_KEY,
+      }),
+    ).resolves.toMatchObject({ outcome: 'updated', student: { firstNameTh: 'สมพร', version: 3 } });
+    await expect(repository.correctStudentName(input)).resolves.toMatchObject({
+      outcome: 'replayed',
+      student: { firstNameTh: 'สมหญิง', lastNameTh: 'มั่นใจ', version: 2 },
     });
   });
 
@@ -417,8 +518,14 @@ describe('PostgresAccountControlsRepository integration', () => {
           ${YEAR_IDEMPOTENCY_KEY},
           ${EXTENSION_IDEMPOTENCY_KEY},
           ${RESET_IDEMPOTENCY_KEY},
-          ${CONCURRENT_YEAR_IDEMPOTENCY_KEY}
+          ${CONCURRENT_YEAR_IDEMPOTENCY_KEY},
+          ${NAME_IDEMPOTENCY_KEY},
+          ${SECOND_NAME_IDEMPOTENCY_KEY}
         )
+      `;
+      await transaction`
+        delete from private.person_name_correction_audit_events
+        where student_account_id = ${NAME_STUDENT_ACCOUNT_ID}
       `;
       await transaction`
         delete from private.student_password_reset_operations
@@ -448,11 +555,18 @@ describe('PostgresAccountControlsRepository integration', () => {
         delete from private.student_auth_identities where account_id = ${STUDENT_ACCOUNT_ID}
       `;
       await transaction`
-        delete from private.person_names where person_id = ${STUDENT_PERSON_ID}
+        delete from public.profile_consents where person_id = ${NAME_STUDENT_PERSON_ID}
+      `;
+      await transaction`
+        delete from public.public_profiles where person_id = ${NAME_STUDENT_PERSON_ID}
+      `;
+      await transaction`
+        delete from private.person_names
+        where person_id in (${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
       `;
       await transaction`
         delete from public.account_roles
-        where account_id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
+        where account_id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID})
       `;
       await transaction`
         update public.academic_settings
@@ -460,11 +574,15 @@ describe('PostgresAccountControlsRepository integration', () => {
         where updated_by_account_id = ${ADMIN_ACCOUNT_ID}
       `;
       await transaction`
-        delete from public.accounts where id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
+        delete from public.accounts
+        where id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID})
       `;
-      await transaction`delete from public.students where person_id = ${STUDENT_PERSON_ID}`;
       await transaction`
-        delete from public.people where id in (${ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID})
+        delete from public.students where person_id in (${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
+      `;
+      await transaction`
+        delete from public.people
+        where id in (${ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
       `;
     });
   }

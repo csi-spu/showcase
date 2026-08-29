@@ -114,7 +114,8 @@ describe('PostgresCatalogRepository integration', () => {
     expect(people.entries).toHaveLength(1);
     expect(people.entries[0]?.item).toMatchObject({
       bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
-      displayName: 'ณัฐดนัย',
+      firstName: 'ณัฐดนัย',
+      lastName: 'สุขใจ',
       publicId: IDS.consentedProfile,
       publishedWorkCount: 2,
     });
@@ -236,8 +237,11 @@ describe('PostgresCatalogRepository integration', () => {
         order by normalized_title, work_public_id limit 25
       `),
       explain(database.sql`
-        select public_id from public.public_profiles
-        order by normalized_display_name, public_id limit 25
+        select person_id from private.person_names
+        order by lower(regexp_replace(
+          normalize(btrim(first_name_th || ' ' || last_name_th), NFKC),
+          '[[:space:]]+', ' ', 'g'
+        )), person_id limit 25
       `),
       explain(database.sql`
         select public_id from public.tags where active_work_count > 0
@@ -249,7 +253,7 @@ describe('PostgresCatalogRepository integration', () => {
     expect(recent).toContain('public_work_catalog_category_recent_idx');
     expect(period).toContain('public_work_catalog_period_recent_idx');
     expect(title).toContain('public_work_catalog_title_idx');
-    expect(people).toContain('public_profiles_display_name_browse_idx');
+    expect(people).toContain('person_names_public_catalog_browse_idx');
     expect(tags).toContain('tags_public_popularity_idx');
   });
 
@@ -265,18 +269,25 @@ describe('PostgresCatalogRepository integration', () => {
         (${IDS.hiddenPerson}, 2499, 2506),
         (${IDS.secondConsentedPerson}, 2565, 2572),
         (${IDS.thirdConsentedPerson}, 2564, 2571)`;
+      await transaction`insert into private.person_names (
+        person_id, first_name_th, last_name_th
+      ) values
+        (${IDS.consentedPerson}, 'ณัฐดนัย', 'สุขใจ'),
+        (${IDS.hiddenPerson}, 'ณัฐที่ซ่อนอยู่', 'ข้อมูลลับ'),
+        (${IDS.secondConsentedPerson}, 'ณัฐกร', 'ใจดี'),
+        (${IDS.thirdConsentedPerson}, 'ณัฐวุฒิ', 'มั่นใจ')`;
       await transaction`insert into public.accounts (
         id, person_id, provider_user_id, credential_state
       ) values (${IDS.adminAccount}, ${IDS.adminPerson}, ${IDS.adminProvider}, 'set')`;
       await transaction`insert into public.account_roles (account_id, role)
         values (${IDS.adminAccount}, 'admin')`;
       await transaction`insert into public.public_profiles (
-        person_id, public_id, display_name, bio, version, created_at, updated_at
+        person_id, public_id, bio, version, created_at, updated_at
       ) values
-        (${IDS.consentedPerson}, ${IDS.consentedProfile}, 'ณัฐดนัย', 'สนใจระบบเว็บที่ใช้งานง่าย', 1, ${NOW}, ${NOW}),
-        (${IDS.hiddenPerson}, ${IDS.hiddenProfile}, 'ณัฐที่ซ่อนอยู่', 'ข้อมูลที่ห้ามเผยแพร่', 1, ${NOW}, ${NOW}),
-        (${IDS.secondConsentedPerson}, ${IDS.secondConsentedProfile}, 'ณัฐกร', null, 1, ${NOW}, ${NOW}),
-        (${IDS.thirdConsentedPerson}, ${IDS.thirdConsentedProfile}, 'ณัฐวุฒิ', null, 1, ${NOW}, ${NOW})`;
+        (${IDS.consentedPerson}, ${IDS.consentedProfile}, 'สนใจระบบเว็บที่ใช้งานง่าย', 1, ${NOW}, ${NOW}),
+        (${IDS.hiddenPerson}, ${IDS.hiddenProfile}, 'ข้อมูลที่ห้ามเผยแพร่', 1, ${NOW}, ${NOW}),
+        (${IDS.secondConsentedPerson}, ${IDS.secondConsentedProfile}, null, 1, ${NOW}, ${NOW}),
+        (${IDS.thirdConsentedPerson}, ${IDS.thirdConsentedProfile}, null, 1, ${NOW}, ${NOW})`;
       await transaction`insert into public.profile_consents (
         person_id, consent_text_version, granted_at
       ) values

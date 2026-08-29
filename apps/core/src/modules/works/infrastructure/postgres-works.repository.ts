@@ -978,7 +978,8 @@ export class PostgresWorksRepository implements WorksRepository {
         draft.version,
         draft.updated_at as saved_at,
         draft.submitter_study_year,
-        profile.display_name as submitter_attribution_name,
+        concat_ws(' ', submitter_name.first_name_th, submitter_name.last_name_th)
+          as submitter_attribution_name,
         exists (
           select 1 from private.work_draft_media as poster_reference
           join private.work_media_assets as poster on poster.id = poster_reference.asset_id
@@ -1042,7 +1043,8 @@ export class PostgresWorksRepository implements WorksRepository {
       join public.accounts as account on account.person_id = work.submitter_person_id
       join private.work_drafts as draft
         on draft.work_id = work.id and draft.lifecycle_state = 'active'
-      left join public.public_profiles as profile on profile.person_id = work.submitter_person_id
+      join private.person_names as submitter_name
+        on submitter_name.person_id = work.submitter_person_id
       where account.id = ${accountId}
         and ${identifierFragment} = ${value}
         and work.activity_state = 'active'

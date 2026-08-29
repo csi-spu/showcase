@@ -479,6 +479,14 @@ export class PostgresRosterRepository implements RosterRepository {
 
       if (input.resolution === 'accept_incoming_name') {
         await transaction`
+          update public.accounts
+          set control_version = control_version + 1,
+              updated_at = ${input.now}
+          where person_id = (
+            select person_id from private.roster_conflicts where id = ${input.conflictId}
+          )
+        `;
+        await transaction`
           update private.person_names
           set
             first_name_th = ${conflict.incoming_first_name_th},
@@ -488,6 +496,28 @@ export class PostgresRosterRepository implements RosterRepository {
             select person_id from private.roster_conflicts where id = ${input.conflictId}
           )
         `;
+        const profiles = await transaction<{ public_id: string }[]>`
+          select profile.public_id
+          from private.roster_conflicts as roster_conflict
+          join public.public_profiles as profile on profile.person_id = roster_conflict.person_id
+          join public.profile_consents as consent
+            on consent.person_id = profile.person_id and consent.withdrawn_at is null
+          where roster_conflict.id = ${input.conflictId}
+          limit 1
+        `;
+        const profile = profiles[0];
+        if (profile !== undefined) {
+          await transaction`
+            insert into private.outbox_events (
+              aggregate_type, aggregate_id, event_type, payload, occurred_at
+            ) values (
+              'public_profile', ${input.idempotencyKey},
+              'public_profile_cache_invalidated',
+              ${transaction.json({ publicId: profile.public_id })}, ${input.now}
+            )
+            on conflict (aggregate_type, aggregate_id, event_type) do nothing
+          `;
+        }
       }
       const resolved = await transaction<RosterConflictRecord[]>`
         update private.roster_conflicts

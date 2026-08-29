@@ -27,6 +27,10 @@ export type ExtendStudentAccessResult =
     }
   | { outcome: 'replayed' | 'unchanged' | 'updated'; student: StudentAccountControls };
 
+export type CorrectStudentNameResult =
+  | { outcome: 'idempotency_conflict' | 'not_found' | 'version_conflict' }
+  | { outcome: 'replayed' | 'unchanged' | 'updated'; student: StudentAccountControls };
+
 export type BeginPasswordResetResult =
   | {
       outcome:
@@ -42,6 +46,16 @@ export type CompletePasswordResetResult =
   { outcome: 'completed'; student: StudentAccountControls } | { outcome: 'not_pending' };
 
 export interface AccountControlsRepository {
+  correctStudentName(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    firstNameTh: string;
+    idempotencyKey: string;
+    lastNameTh: string;
+    now: Date;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<CorrectStudentNameResult>;
   beginPasswordReset(input: {
     actorAccountId: string;
     expectedVersion: number;
