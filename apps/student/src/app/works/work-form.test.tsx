@@ -1,10 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 
 const mocks = vi.hoisted(() => ({
-  autosave: vi.fn(),
+  saveDraft: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
   suggest: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: mocks.replace }),
 }));
 vi.mock('./work.actions', () => ({
-  autosaveWorkAction: mocks.autosave,
+  saveWorkDraftAction: mocks.saveDraft,
   submitLatestWorkAction: mocks.submit,
   suggestWorkTagsAction: mocks.suggest,
 }));
@@ -24,6 +24,10 @@ vi.mock('./work-media-upload', () => ({ WorkMediaUpload: () => <div>media-upload
 import { WorkForm } from './work-form';
 
 describe('five-step Work authoring', () => {
+  beforeEach(() => {
+    mocks.saveDraft.mockResolvedValue(savedWorkResult());
+  });
+
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
@@ -34,14 +38,15 @@ describe('five-step Work authoring', () => {
     vi.useFakeTimers();
     renderForm();
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    expect(screen.getByRole('button', { name: /1 ข้อมูลผลงาน/ })).toBeTruthy();
+    expect(screen.getAllByText('1 ข้อมูลผลงาน')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /1 ข้อมูลผลงาน/ })).toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(2_000));
-    expect(mocks.autosave).not.toHaveBeenCalled();
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
   });
 
-  it('creates an incomplete private Draft after the first meaningful change and one-second debounce', async () => {
+  it('creates an incomplete private Draft only after the Student presses Next', async () => {
     vi.useFakeTimers();
-    mocks.autosave.mockResolvedValue({
+    mocks.saveDraft.mockResolvedValue({
       outcome: 'saved',
       publicId: '64000000-0000-4000-8000-000000000001',
       savedAt: '2026-08-29T00:00:00.000Z',
@@ -74,8 +79,13 @@ describe('five-step Work authoring', () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: '  ผลงานใหม่  ' } });
     expect(screen.getByText('ยังไม่ได้บันทึกข้อมูลล่าสุด')).toBeTruthy();
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    expect(mocks.autosave).toHaveBeenCalledWith(
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
+    expect(screen.getAllByText('media-upload')).toHaveLength(2);
+    expect(mocks.saveDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedVersion: null,
         patch: { title: 'ผลงานใหม่' },
@@ -87,29 +97,55 @@ describe('five-step Work authoring', () => {
     });
   });
 
-  it('retries an ambiguous first autosave with the same payload and idempotency key', async () => {
+  it('stays on the current step when saving on Next fails', async () => {
+    mocks.saveDraft.mockResolvedValue({ error: 'unavailable', outcome: 'error' });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    expect(await screen.findByText('เชื่อมต่อระบบไม่ได้')).toBeTruthy();
+    expect(screen.getByLabelText('ชื่อผลงาน')).toBeTruthy();
+    expect(screen.queryByText('media-upload')).toBeNull();
+  });
+
+  it('keeps a version conflict actionable after more local edits', async () => {
+    mocks.saveDraft.mockResolvedValue({ error: 'conflict', outcome: 'error' });
+    renderForm(savedWorkResult().work);
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'แก้ไขครั้งแรก' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    expect(await screen.findByText('พบการแก้ไขจากอีกหน้าหรืออุปกรณ์')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'แก้ไขอีกครั้ง' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    expect(screen.getByText('พบการแก้ไขจากอีกหน้าหรืออุปกรณ์')).toBeTruthy();
+    expect(mocks.saveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an ambiguous save only after another Next press with the same payload and key', async () => {
     vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    mocks.autosave
+    mocks.saveDraft
       .mockResolvedValueOnce({ error: 'unavailable', outcome: 'error' })
       .mockResolvedValueOnce(savedWorkResult());
     renderForm();
 
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    expect(mocks.autosave).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(800));
-    await act(() => vi.runOnlyPendingTimersAsync());
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
+    expect(mocks.saveDraft).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(mocks.saveDraft).toHaveBeenCalledTimes(1);
 
-    expect(mocks.autosave).toHaveBeenCalledTimes(2);
-    expect(mocks.autosave.mock.calls[1]?.[0]).toEqual(mocks.autosave.mock.calls[0]?.[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
+
+    expect(mocks.saveDraft).toHaveBeenCalledTimes(2);
+    expect(mocks.saveDraft.mock.calls[1]?.[0]).toEqual(mocks.saveDraft.mock.calls[0]?.[0]);
   });
 
-  it('queues newer local values until the ambiguous autosave is confirmed', async () => {
-    vi.useFakeTimers();
-    vi.spyOn(Math, 'random').mockReturnValue(0);
-    mocks.autosave
+  it('keeps newer values unsaved until Next is pressed after an ambiguous save is confirmed', async () => {
+    mocks.saveDraft
       .mockResolvedValueOnce({ error: 'unavailable', outcome: 'error' })
       .mockResolvedValueOnce(savedWorkResult())
       .mockResolvedValueOnce({
@@ -124,34 +160,48 @@ describe('five-step Work authoring', () => {
     renderForm();
 
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานล่าสุด' } });
-    await act(() => vi.advanceTimersByTimeAsync(800));
-    await act(() => vi.runOnlyPendingTimersAsync());
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
 
-    expect(mocks.autosave.mock.calls[1]?.[0]).toEqual(mocks.autosave.mock.calls[0]?.[0]);
-    expect(mocks.autosave.mock.calls[2]?.[0]).toMatchObject({
+    expect(mocks.saveDraft.mock.calls[1]?.[0]).toEqual(mocks.saveDraft.mock.calls[0]?.[0]);
+    expect(mocks.saveDraft).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
+    expect(mocks.saveDraft.mock.calls[2]?.[0]).toMatchObject({
       expectedVersion: 1,
       patch: { title: 'ผลงานล่าสุด' },
       publicId: '64000000-0000-4000-8000-000000000001',
     });
   });
 
-  it('keeps Contributor assignment inside the attribution step', () => {
+  it('keeps Contributor assignment inside the attribution step', async () => {
     renderForm(savedWorkResult().work);
-    fireEvent.click(screen.getByRole('button', { name: /3 การแสดงชื่อ/ }));
+    await advanceSteps(2);
     expect(screen.getByText('contributor-editor')).toBeTruthy();
   });
 
-  it('maps invalid optional discovery data back to step four and reviews every field group', () => {
-    vi.useFakeTimers();
-    renderForm();
-    fireEvent.click(screen.getByRole('button', { name: /4 การค้นพบ/ }));
+  it('preserves local values without saving when the Student presses Previous', async () => {
+    renderForm(savedWorkResult().work);
+    await advanceSteps(2);
+    fireEvent.change(screen.getByLabelText('ชั้นปีเมื่อทำผลงาน'), { target: { value: '2' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ย้อนกลับ' }));
+
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
+    expect(screen.getAllByText('media-upload')).toHaveLength(2);
+  });
+
+  it('maps invalid optional discovery data back to step four and reviews every field group', async () => {
+    renderForm(savedWorkResult().work);
+    await advanceSteps(3);
     fireEvent.change(screen.getByLabelText('GitHub'), {
       target: { value: 'https://example.com/not-github' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /5 ตรวจสอบและส่ง/ }));
+    await advanceSteps(1);
 
     expect(screen.getByRole('button', { name: 'กลับไปแก้ไขขั้นที่ 4' })).toBeTruthy();
     for (const label of [
@@ -178,13 +228,26 @@ describe('five-step Work authoring', () => {
     expect(screen.queryByRole('option', { name: '2570' })).toBeNull();
   });
 
+  it('uses prototype-like field proportions and groups classification controls', () => {
+    renderForm();
+
+    expect(screen.getByLabelText('สรุปผลงาน').getAttribute('rows')).toBe('3');
+    expect(screen.getByLabelText('รายละเอียดผลงาน').getAttribute('rows')).toBe('6');
+    const classification = screen.getByRole('group', {
+      name: 'ประเภทและช่วงเวลาของผลงาน',
+    });
+    expect(within(classification).getByLabelText('ประเภทผลงาน')).toBeTruthy();
+    expect(within(classification).getByLabelText('ปีการศึกษา')).toBeTruthy();
+    expect(within(classification).getByLabelText('ภาคการศึกษา')).toBeTruthy();
+  });
+
   it('reuses the final submission idempotency key after an unavailable result', async () => {
     mocks.submit.mockResolvedValueOnce({ error: 'unavailable' }).mockResolvedValueOnce({
       outcome: 'submitted',
       revisionPublicId: '64000000-0000-4000-8000-000000000009',
     });
     renderForm(completeWork());
-    fireEvent.click(screen.getByRole('button', { name: /5 ตรวจสอบและส่ง/ }));
+    await advanceSteps(4);
     const submit = screen.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' });
 
     fireEvent.click(submit);
@@ -213,6 +276,13 @@ function renderForm(initialWork: Parameters<typeof WorkForm>[0]['initialWork'] =
       />
     </NextIntlClientProvider>,
   );
+}
+
+async function advanceSteps(count: number) {
+  for (let current = 0; current < count; current += 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+    await act(async () => Promise.resolve());
+  }
 }
 
 function completeWork(): NonNullable<Parameters<typeof WorkForm>[0]['initialWork']> {

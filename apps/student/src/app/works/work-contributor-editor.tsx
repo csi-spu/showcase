@@ -1,13 +1,21 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
-import { LockKeyholeIcon, UserRoundIcon, XIcon } from 'lucide-react';
+import { LockKeyholeIcon, UserPlusIcon, UserRoundIcon, XIcon } from 'lucide-react';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import type { ContributorCandidate, WorkContributor } from '@/lib/student-works-core';
 import {
   addAccountContributorAction,
@@ -34,6 +42,7 @@ export function WorkContributorEditor({
   const t = useTranslations('Work');
   const listboxId = useId();
   const requestSequenceRef = useRef(0);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<ContributorCandidate | null>(null);
@@ -43,7 +52,7 @@ export function WorkContributorEditor({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (selectedCandidate !== null) return;
+    if (!isEditorOpen || selectedCandidate !== null) return;
     const query = name.trim();
     const isNumeric = /^[0-9]+$/u.test(query);
     const canSearch = isNumeric ? /^[0-9]{8}$/u.test(query) : [...query].length >= 2;
@@ -68,7 +77,26 @@ export function WorkContributorEditor({
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [name, publicId, selectedCandidate, t]);
+  }, [isEditorOpen, name, publicId, selectedCandidate, t]);
+
+  const resetEditor = () => {
+    requestSequenceRef.current += 1;
+    setName('');
+    setRole('');
+    setSelectedCandidate(null);
+    setCandidates([]);
+    setMessage(null);
+  };
+
+  const closeEditor = () => {
+    setIsEditorOpen(false);
+    resetEditor();
+  };
+
+  const openEditor = () => {
+    resetEditor();
+    setIsEditorOpen(true);
+  };
 
   const selectCandidate = (candidate: ContributorCandidate) => {
     requestSequenceRef.current += 1;
@@ -99,12 +127,27 @@ export function WorkContributorEditor({
     if (result.contributors === undefined || result.version === undefined) return false;
     onContributors(result.contributors);
     onVersion(result.version);
-    setName('');
-    setRole('');
-    setSelectedCandidate(null);
-    setCandidates([]);
-    setMessage(null);
+    closeEditor();
     return true;
+  };
+
+  const addContributor = () => {
+    startTransition(async () => {
+      const common = {
+        contributionRole: role,
+        expectedVersion: version,
+        idempotencyKey: crypto.randomUUID(),
+        publicId,
+      };
+      const result =
+        selectedCandidate !== null
+          ? await addAccountContributorAction({
+              ...common,
+              candidateReference: selectedCandidate.candidateReference,
+            })
+          : await addExternalContributorAction({ ...common, attributionName: name });
+      applyMutation(result);
+    });
   };
 
   return (
@@ -153,152 +196,213 @@ export function WorkContributorEditor({
         ))}
       </ul>
 
-      <div className="grid gap-3 rounded-control border p-4">
-        {selectedCandidate === null ? (
-          <>
-            <div className="relative grid gap-2">
-              <label className="font-medium" htmlFor={`${listboxId}-input`}>
-                {t('attribution.candidateInput')}
-              </label>
-              <Input
-                aria-activedescendant={
-                  candidates.length === 0 ? undefined : `${listboxId}-option-${activeIndex}`
-                }
-                aria-autocomplete="list"
-                aria-controls={listboxId}
-                aria-expanded={candidates.length > 0}
-                autoComplete="off"
-                id={`${listboxId}-input`}
-                maxLength={100}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setCandidates([]);
-                  setMessage(null);
-                }}
-                onKeyDown={(event) => {
-                  if (candidates.length === 0) return;
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    setActiveIndex((current) => (current + 1) % candidates.length);
-                  } else if (event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    setActiveIndex(
-                      (current) => (current - 1 + candidates.length) % candidates.length,
-                    );
-                  } else if (event.key === 'Enter') {
-                    event.preventDefault();
-                    selectCandidate(candidates[activeIndex]!);
-                  } else if (event.key === 'Escape') {
-                    event.preventDefault();
-                    setCandidates([]);
-                  }
-                }}
-                role="combobox"
-                value={name}
-              />
-              <p className="text-sm text-muted-foreground">{t('attribution.candidateHelp')}</p>
-              {candidates.length === 0 ? null : (
-                <ul
-                  aria-label={t('attribution.suggestions')}
-                  className="absolute top-full z-20 mt-1 max-h-72 w-full overflow-auto rounded-control border bg-popover p-1 shadow-lg"
-                  id={listboxId}
-                  role="listbox"
-                >
-                  {candidates.map((candidate, index) => {
-                    const fullName = `${candidate.firstName} ${candidate.lastName}`;
-                    return (
-                      <li
-                        aria-selected={index === activeIndex}
-                        className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2.5 aria-selected:bg-accent"
-                        id={`${listboxId}-option-${index}`}
-                        key={candidate.candidateReference}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          selectCandidate(candidate);
-                        }}
-                        role="option"
-                      >
-                        <ContributorAvatar candidate={candidate} fullName={fullName} />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{fullName}</span>
-                          <span className="block text-sm text-muted-foreground">
-                            {candidateMetadata(candidate, t)}
-                          </span>
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <RoleField onRole={setRole} role={role} t={t} />
-          </>
-        ) : (
-          <div
-            className="grid gap-4 rounded-control border border-primary/30 bg-primary/5 p-4"
-            data-testid="selected-contributor-card"
-          >
-            <div className="flex items-start gap-3">
-              <ContributorAvatar
-                candidate={selectedCandidate}
-                fullName={`${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
-                size="large"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate font-semibold">
-                    {selectedCandidate.firstName} {selectedCandidate.lastName}
-                  </p>
-                  <Badge variant="secondary">
-                    <LockKeyholeIcon aria-hidden="true" data-icon="inline-start" />
-                    {t('attribution.selected')}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {candidateMetadata(selectedCandidate, t)}
-                </p>
-              </div>
-              <Button
-                aria-label={t('attribution.removeSelection')}
-                disabled={isPending}
-                onClick={clearSelectedCandidate}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <XIcon aria-hidden="true" />
-              </Button>
-            </div>
-            <RoleField onRole={setRole} role={role} t={t} />
-            <p className="text-sm text-muted-foreground">{t('attribution.selectedAccount')}</p>
-          </div>
-        )}
-        {message === null ? null : <FieldError aria-live="polite">{message}</FieldError>}
-        <Button
-          disabled={isPending || name.trim() === '' || role.trim() === ''}
-          onClick={() =>
-            startTransition(async () => {
-              const common = {
-                contributionRole: role,
-                expectedVersion: version,
-                idempotencyKey: crypto.randomUUID(),
-                publicId,
-              };
-              const result =
-                selectedCandidate === null
-                  ? await addExternalContributorAction({ ...common, attributionName: name })
-                  : await addAccountContributorAction({
-                      ...common,
-                      candidateReference: selectedCandidate.candidateReference,
-                    });
-              applyMutation(result);
-            })
-          }
-          type="button"
-        >
+      <div>
+        <Button disabled={isPending} onClick={openEditor} type="button">
+          <UserPlusIcon aria-hidden="true" data-icon="inline-start" />
           {t('attribution.add')}
         </Button>
       </div>
+
+      <Sheet
+        onOpenChange={(isOpen) => {
+          if (!isOpen) closeEditor();
+        }}
+        open={isEditorOpen}
+      >
+        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+          <SheetHeader className="border-b border-border p-5 pr-14">
+            <SheetTitle>{t('attribution.dialogTitle')}</SheetTitle>
+            <SheetDescription>{t('attribution.dialogHelp')}</SheetDescription>
+          </SheetHeader>
+          <div className="grid gap-5 p-5">
+            {selectedCandidate === null ? (
+              <ContributorCandidateSearch
+                activeIndex={activeIndex}
+                candidates={candidates}
+                listboxId={listboxId}
+                name={name}
+                onActiveIndex={setActiveIndex}
+                onCandidates={setCandidates}
+                onMessage={setMessage}
+                onName={setName}
+                onSelect={selectCandidate}
+                t={t}
+              />
+            ) : (
+              <SelectedCandidateCard
+                candidate={selectedCandidate}
+                isPending={isPending}
+                onClear={clearSelectedCandidate}
+                t={t}
+              />
+            )}
+            <RoleField onRole={setRole} role={role} t={t} />
+            {message === null ? null : <FieldError aria-live="polite">{message}</FieldError>}
+          </div>
+          <SheetFooter className="mt-auto flex-row justify-end border-t border-border p-5">
+            <Button disabled={isPending} onClick={closeEditor} type="button" variant="outline">
+              {t('attribution.cancel')}
+            </Button>
+            <Button
+              disabled={isPending || role.trim() === '' || name.trim() === ''}
+              onClick={addContributor}
+              type="button"
+            >
+              {t('attribution.add')}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function ContributorCandidateSearch({
+  activeIndex,
+  candidates,
+  listboxId,
+  name,
+  onActiveIndex,
+  onCandidates,
+  onMessage,
+  onName,
+  onSelect,
+  t,
+}: {
+  activeIndex: number;
+  candidates: ContributorCandidate[];
+  listboxId: string;
+  name: string;
+  onActiveIndex: (index: number | ((current: number) => number)) => void;
+  onCandidates: (candidates: ContributorCandidate[]) => void;
+  onMessage: (message: string | null) => void;
+  onName: (name: string) => void;
+  onSelect: (candidate: ContributorCandidate) => void;
+  t: Translation;
+}) {
+  return (
+    <div className="relative grid gap-2">
+      <label className="font-medium" htmlFor={`${listboxId}-input`}>
+        {t('attribution.candidateInput')}
+      </label>
+      <Input
+        aria-activedescendant={
+          candidates.length === 0 ? undefined : `${listboxId}-option-${activeIndex}`
+        }
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-expanded={candidates.length > 0}
+        autoComplete="off"
+        id={`${listboxId}-input`}
+        maxLength={100}
+        onChange={(event) => {
+          onName(event.target.value);
+          onCandidates([]);
+          onMessage(null);
+        }}
+        onKeyDown={(event) => {
+          if (candidates.length === 0) return;
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            onActiveIndex((current) => (current + 1) % candidates.length);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            onActiveIndex((current) => (current - 1 + candidates.length) % candidates.length);
+          } else if (event.key === 'Enter') {
+            event.preventDefault();
+            onSelect(candidates[activeIndex]!);
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            onCandidates([]);
+          }
+        }}
+        role="combobox"
+        value={name}
+      />
+      <p className="text-sm text-muted-foreground">{t('attribution.candidateHelp')}</p>
+      {candidates.length === 0 ? null : (
+        <ul
+          aria-label={t('attribution.suggestions')}
+          className="absolute top-full z-20 mt-1 max-h-72 w-full overflow-auto rounded-control border bg-popover p-1 shadow-lg"
+          id={listboxId}
+          role="listbox"
+        >
+          {candidates.map((candidate, index) => {
+            const fullName = `${candidate.firstName} ${candidate.lastName}`;
+            return (
+              <li
+                aria-selected={index === activeIndex}
+                className="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2.5 aria-selected:bg-accent"
+                id={`${listboxId}-option-${index}`}
+                key={candidate.candidateReference}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelect(candidate);
+                }}
+                role="option"
+              >
+                <ContributorAvatar candidate={candidate} fullName={fullName} />
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{fullName}</span>
+                  <span className="block text-sm text-muted-foreground">
+                    {candidateMetadata(candidate, t)}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SelectedCandidateCard({
+  candidate,
+  isPending,
+  onClear,
+  t,
+}: {
+  candidate: ContributorCandidate;
+  isPending: boolean;
+  onClear: () => void;
+  t: Translation;
+}) {
+  return (
+    <div
+      className="grid gap-4 rounded-control border border-primary/30 bg-primary/5 p-4"
+      data-testid="selected-contributor-card"
+    >
+      <div className="flex items-start gap-3">
+        <ContributorAvatar
+          candidate={candidate}
+          fullName={`${candidate.firstName} ${candidate.lastName}`}
+          size="large"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate font-semibold">
+              {candidate.firstName} {candidate.lastName}
+            </p>
+            <Badge variant="secondary">
+              <LockKeyholeIcon aria-hidden="true" data-icon="inline-start" />
+              {t('attribution.selected')}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">{candidateMetadata(candidate, t)}</p>
+        </div>
+        <Button
+          aria-label={t('attribution.removeSelection')}
+          disabled={isPending}
+          onClick={onClear}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      </div>
+      <p className="text-sm text-muted-foreground">{t('attribution.selectedAccount')}</p>
     </div>
   );
 }
