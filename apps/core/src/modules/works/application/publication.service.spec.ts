@@ -11,7 +11,7 @@ const ASSET_ID = '82000000-0000-4000-8000-000000000005';
 class FakePublicationRepository implements PublicationRepository {
   result: PublicationResult = { outcome: 'published', publication: publication() };
   publicWork: PublicWorkView | null = publicWork();
-  mediaUrl: string | null = 'https://media.example.test/work-media/asset/480.webp';
+  mediaUrl: string | null = 'work-media/asset/480.webp';
   lastApproval: Parameters<PublicationRepository['approveAndPublish']>[0] | undefined;
 
   approveAndPublish(input: Parameters<PublicationRepository['approveAndPublish']>[0]) {
@@ -19,7 +19,7 @@ class FakePublicationRepository implements PublicationRepository {
     return Promise.resolve(this.result);
   }
 
-  findPublicMediaUrl(): Promise<string | null> {
+  findPublicMediaObjectKey(): Promise<string | null> {
     return Promise.resolve(this.mediaUrl);
   }
 
@@ -30,11 +30,13 @@ class FakePublicationRepository implements PublicationRepository {
 
 describe('PublicationService', () => {
   let repository: FakePublicationRepository;
+  let mediaStorage: FakePublicMediaStorage;
   let service: PublicationService;
 
   beforeEach(() => {
     repository = new FakePublicationRepository();
-    service = new PublicationService(repository, { now: () => NOW });
+    mediaStorage = new FakePublicMediaStorage();
+    service = new PublicationService(repository, { now: () => NOW }, mediaStorage);
   });
 
   it('approves and publishes through one optimistic idempotent repository operation', async () => {
@@ -76,7 +78,11 @@ describe('PublicationService', () => {
   it('returns only repository-authorized public Work and media', async () => {
     await expect(service.getPublicWork(WORK_PUBLIC_ID)).resolves.toEqual(publicWork());
     await expect(service.getPublicMedia(WORK_PUBLIC_ID, ASSET_ID, 480)).resolves.toEqual({
-      url: 'https://media.example.test/work-media/asset/480.webp',
+      url: 'https://r2.example.test/presigned-work-media',
+    });
+    expect(mediaStorage.lastInput).toEqual({
+      expiresInSeconds: 60,
+      key: 'work-media/asset/480.webp',
     });
 
     repository.publicWork = null;
@@ -90,7 +96,28 @@ describe('PublicationService', () => {
       status: 404,
     });
   });
+
+  it('maps public media signing failure without exposing provider details', async () => {
+    mediaStorage.isUnavailable = true;
+
+    await expect(service.getPublicMedia(WORK_PUBLIC_ID, ASSET_ID, 480)).rejects.toMatchObject({
+      code: 'WORK_MEDIA_SERVICE_UNAVAILABLE',
+      message: 'WORK_MEDIA_SERVICE_UNAVAILABLE',
+      status: 503,
+    });
+  });
 });
+
+class FakePublicMediaStorage {
+  isUnavailable = false;
+  lastInput: { expiresInSeconds: number; key: string } | undefined;
+
+  createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
+    this.lastInput = input;
+    if (this.isUnavailable) return Promise.reject(new Error('provider detail'));
+    return Promise.resolve('https://r2.example.test/presigned-work-media');
+  }
+}
 
 function publication() {
   return {

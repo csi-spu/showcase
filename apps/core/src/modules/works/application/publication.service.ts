@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { WORKS_CLOCK, type WorksClock } from './works.ports';
+import { WORK_MEDIA_STORAGE, type WorkMediaStorage } from './work-media.ports';
 import {
   PUBLICATION_REPOSITORY,
   type PublicationFailureOutcome,
@@ -11,6 +12,7 @@ type PublicationErrorCode =
   | 'PUBLIC_WORK_NOT_FOUND'
   | 'WORK_IDEMPOTENCY_CONFLICT'
   | 'WORK_PUBLICATION_STATE_CONFLICT'
+  | 'WORK_MEDIA_SERVICE_UNAVAILABLE'
   | 'WORK_REVISION_NOT_FOUND'
   | 'WORK_REVISION_STATE_CONFLICT'
   | 'WORK_REVISION_VERSION_CONFLICT';
@@ -30,6 +32,8 @@ export class PublicationService {
   constructor(
     @Inject(PUBLICATION_REPOSITORY) private readonly repository: PublicationRepository,
     @Inject(WORKS_CLOCK) private readonly clock: WorksClock,
+    @Inject(WORK_MEDIA_STORAGE)
+    private readonly mediaStorage: Pick<WorkMediaStorage, 'createPresignedGet'>,
   ) {}
 
   async approveAndPublish(input: {
@@ -58,8 +62,14 @@ export class PublicationService {
   }
 
   async getPublicMedia(workPublicId: string, assetId: string, width: number) {
-    const url = await this.repository.findPublicMediaUrl(workPublicId, assetId, width);
-    if (url === null) throw new PublicationError('PUBLIC_WORK_NOT_FOUND', 404);
-    return { url };
+    const objectKey = await this.repository.findPublicMediaObjectKey(workPublicId, assetId, width);
+    if (objectKey === null) throw new PublicationError('PUBLIC_WORK_NOT_FOUND', 404);
+    try {
+      return {
+        url: await this.mediaStorage.createPresignedGet({ expiresInSeconds: 60, key: objectKey }),
+      };
+    } catch {
+      throw new PublicationError('WORK_MEDIA_SERVICE_UNAVAILABLE', 503);
+    }
   }
 }

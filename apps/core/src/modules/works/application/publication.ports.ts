@@ -64,6 +64,10 @@ export interface PublicationRepository {
     now: Date;
     revisionPublicId: string;
   }): Promise<PublicationResult>;
-  findPublicMediaUrl(workPublicId: string, assetId: string, width: number): Promise<string | null>;
+  findPublicMediaObjectKey(
+    workPublicId: string,
+    assetId: string,
+    width: number,
+  ): Promise<string | null>;
   findPublicWork(workPublicId: string): Promise<PublicWorkView | null>;
 }

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import type {
@@ -59,14 +58,7 @@ type ReplayResolution =
 
 @Injectable()
 export class PostgresPublicationRepository implements PublicationRepository {
-  private readonly publicMediaOrigin: string;
-
-  constructor(
-    private readonly database: DatabaseClient,
-    config: ConfigService,
-  ) {
-    this.publicMediaOrigin = config.get<string>('PUBLIC_MEDIA_ORIGIN') ?? 'https://media.invalid';
-  }
+  constructor(private readonly database: DatabaseClient) {}
 
   async approveAndPublish(
     input: Parameters<PublicationRepository['approveAndPublish']>[0],
@@ -295,7 +287,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
         };
   }
 
-  async findPublicMediaUrl(
+  async findPublicMediaObjectKey(
     workPublicId: string,
     assetId: string,
     width: number,
@@ -316,10 +308,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
         and asset.id = ${assetId}
       limit 1
     `;
-    const objectKey = rows[0]?.object_key;
-    return objectKey === undefined
-      ? null
-      : new URL(objectKey, `${this.publicMediaOrigin}/`).toString();
+    return rows[0]?.object_key ?? null;
   }
 
   private async replacePublishedTags(

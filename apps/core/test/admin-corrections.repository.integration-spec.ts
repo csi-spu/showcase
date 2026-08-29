@@ -26,10 +26,7 @@ const DATABASE_URL =
 describe('Postgres Admin corrections integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
   const revisions = new PostgresWorkRevisionsRepository(database);
-  const publication = new PostgresPublicationRepository(
-    database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.test' }),
-  );
+  const publication = new PostgresPublicationRepository(database);
 
   beforeEach(async () => {
     await cleanup();

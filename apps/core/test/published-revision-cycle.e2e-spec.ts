@@ -162,7 +162,7 @@ class LifecyclePublicationRepository implements PublicationRepository {
     });
   }
 
-  findPublicMediaUrl(): Promise<string | null> {
+  findPublicMediaObjectKey(): Promise<string | null> {
     return Promise.resolve(null);
   }
 

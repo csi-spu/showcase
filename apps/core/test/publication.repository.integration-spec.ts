@@ -34,10 +34,7 @@ const DATABASE_URL =
 
 describe('PostgresPublicationRepository integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
-  const repository = new PostgresPublicationRepository(
-    database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.test' }),
-  );
+  const repository = new PostgresPublicationRepository(database);
   const reviews = new PostgresReviewsRepository(database);
 
   beforeAll(async () => {
@@ -149,7 +146,9 @@ describe('PostgresPublicationRepository integration', () => {
 
   it('keeps the first Revision and its media absent from public reads before approval', async () => {
     await expect(repository.findPublicWork(WORK_PUBLIC_ID)).resolves.toBeNull();
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480),
+    ).resolves.toBeNull();
     await expect(
       database.sql`
         insert into private.reviews (
@@ -244,10 +243,12 @@ describe('PostgresPublicationRepository integration', () => {
     expect(JSON.stringify(work)).not.toMatch(
       /studentId|accountId|personId|provider|ชื่อโปรไฟล์ส่วนตัว/i,
     );
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBe(
-      `https://media.example.test/media/${POSTER_ID}/480.webp`,
+    await expect(repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBe(
+      `media/${POSTER_ID}/480.webp`,
     );
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 999)).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 999),
+    ).resolves.toBeNull();
 
     const state = await database.sql<
       Array<{
@@ -394,7 +395,7 @@ describe('PostgresPublicationRepository integration', () => {
       title: 'ระบบแนะนำผลงาน',
     });
     await expect(
-      repository.findPublicMediaUrl(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
     ).resolves.toBeNull();
 
     const attempts = await Promise.all([
@@ -424,10 +425,12 @@ describe('PostgresPublicationRepository integration', () => {
       tags: [{ displayLabel: 'Vue' }],
       title: 'ผลงานฉบับใหม่',
     });
-    await expect(repository.findPublicMediaUrl(WORK_PUBLIC_ID, POSTER_ID, 480)).resolves.toBeNull();
     await expect(
-      repository.findPublicMediaUrl(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
-    ).resolves.toBe(`https://media.example.test/media/${SECOND_POSTER_ID}/480.webp`);
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, POSTER_ID, 480),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findPublicMediaObjectKey(WORK_PUBLIC_ID, SECOND_POSTER_ID, 480),
+    ).resolves.toBe(`media/${SECOND_POSTER_ID}/480.webp`);
 
     const state = await database.sql<
       Array<{

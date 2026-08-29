@@ -35,10 +35,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
   const repository = new PostgresWorkRecoveryRepository(database);
   const attributionRemoval = new PostgresAttributionRemovalRepository(database);
-  const publication = new PostgresPublicationRepository(
-    database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.test' }),
-  );
+  const publication = new PostgresPublicationRepository(database);
 
   beforeEach(async () => {
     await cleanup();
