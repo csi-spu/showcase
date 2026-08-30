@@ -77,6 +77,7 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
       now,
       rowId: row.rowId,
       studentIdHash: row.studentIdHash,
+      studentIdPrefixHashes: row.studentIdPrefixHashes,
     });
     if (existingOutcome !== 'missing') return;
 
@@ -101,6 +102,7 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
         providerUserId: row.providerUserId,
         rowId: row.rowId,
         studentIdHash: row.studentIdHash,
+        studentIdPrefixHashes: row.studentIdPrefixHashes,
         syntheticIdentity: row.syntheticIdentity,
       });
     } catch {

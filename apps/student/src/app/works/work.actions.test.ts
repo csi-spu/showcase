@@ -27,12 +27,12 @@ vi.mock('@/lib/student-works-core', () => ({
   },
 }));
 import {
-  autosaveWorkAction,
+  saveWorkDraftAction,
   searchContributorCandidatesAction,
   suggestWorkTagsAction,
 } from './work.actions';
 
-describe('autosaveWorkAction', () => {
+describe('saveWorkDraftAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dependencies.readToken.mockResolvedValue('session');
@@ -46,7 +46,7 @@ describe('autosaveWorkAction', () => {
   });
   it('accepts one partial field and derives actor outside the browser payload', async () => {
     await expect(
-      autosaveWorkAction({
+      saveWorkDraftAction({
         expectedVersion: null,
         idempotencyKey: '64000000-0000-4000-8000-000000000002',
         patch: { title: 'ผลงาน' },
@@ -60,7 +60,7 @@ describe('autosaveWorkAction', () => {
   });
   it('rejects unknown fields before Core', async () => {
     await expect(
-      autosaveWorkAction({
+      saveWorkDraftAction({
         expectedVersion: null,
         idempotencyKey: '64000000-0000-4000-8000-000000000002',
         patch: { studentId: '12345678' },
@@ -99,7 +99,20 @@ describe('searchContributorCandidatesAction', () => {
     );
   });
 
-  it('rejects a one-character query before Core', async () => {
+  it('forwards a Student ID prefix from its first digit', async () => {
+    await searchContributorCandidatesAction({
+      publicId: '64000000-0000-4000-8000-000000000001',
+      query: '6',
+    });
+
+    expect(dependencies.searchContributorCandidates).toHaveBeenCalledWith(
+      'session',
+      '64000000-0000-4000-8000-000000000001',
+      '6',
+    );
+  });
+
+  it('rejects a one-character name query before Core', async () => {
     await expect(
       searchContributorCandidatesAction({
         publicId: '64000000-0000-4000-8000-000000000001',

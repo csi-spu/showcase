@@ -3,9 +3,9 @@
 import { Button } from '@showcase/ui/button';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type {
@@ -14,7 +14,7 @@ import type {
   WorkDraft,
   WorkDraftPatch,
 } from '@/lib/student-works-core';
-import { autosaveWorkAction, submitLatestWorkAction } from './work.actions';
+import { saveWorkDraftAction, submitLatestWorkAction } from './work.actions';
 import { WorkContributorEditor } from './work-contributor-editor';
 import { WorkMediaUpload } from './work-media-upload';
 import { WorkTagInput } from './work-tag-input';
@@ -55,14 +55,16 @@ type SaveAttempt = {
 
 export function WorkForm({
   context,
+  initialStep = 0,
   initialWork,
 }: {
   context: WorkAuthoringContext;
+  initialStep?: number;
   initialWork: WorkDraft | null;
 }) {
   const t = useTranslations('Work');
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep);
   const [values, setValues] = useState(() => valuesFromWork(initialWork));
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<
@@ -72,107 +74,77 @@ export function WorkForm({
   const [version, setVersion] = useState(initialWork?.version ?? null);
   const [contributors, setContributors] = useState(initialWork?.contributors ?? []);
   const [serverWork, setServerWork] = useState(initialWork);
-  const [saveTick, setSaveTick] = useState(0);
+  const [isSaving, startSaving] = useTransition();
   const [isSubmitting, startSubmission] = useTransition();
   const valuesRef = useRef(values);
-  const workPublicIdRef = useRef(workPublicId);
-  const versionRef = useRef(version);
   const lastSavedRef = useRef(values);
-  const retryAttemptRef = useRef(0);
+  const hasCanonicalWorkRouteRef = useRef(initialWork !== null);
   const conflictRef = useRef(false);
-  const savingRef = useRef(false);
-  const needsSaveRef = useRef(false);
   const pendingAttemptRef = useRef<SaveAttempt | null>(null);
-  const retryNowRef = useRef(false);
   const submissionIdempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     valuesRef.current = values;
-    workPublicIdRef.current = workPublicId;
-    versionRef.current = version;
-  }, [values, version, workPublicId]);
+  }, [values]);
 
-  const save = useCallback(async () => {
-    if (conflictRef.current) return;
-    if (savingRef.current) {
-      needsSaveRef.current = true;
-      return;
-    }
+  const saveDraft = async (targetStep: number): Promise<boolean> => {
+    if (conflictRef.current) return false;
     const snapshot = valuesRef.current;
-    const currentPublicId = workPublicIdRef.current;
+    const currentPublicId = workPublicId;
     const patch = createPatch(lastSavedRef.current, snapshot, currentPublicId !== null);
-    if (
-      pendingAttemptRef.current === null &&
-      (patch === null || (currentPublicId === null && !hasMeaningfulValue(snapshot)))
-    ) {
+    if (pendingAttemptRef.current === null && patch === null) {
+      if (currentPublicId === null && !hasMeaningfulValue(snapshot)) {
+        setError('invalid');
+        setSaveState('unsynced');
+        return false;
+      }
       setSaveState('saved');
-      return;
+      return true;
     }
     const attempt = pendingAttemptRef.current ?? {
-      expectedVersion: versionRef.current,
+      expectedVersion: version,
       idempotencyKey: crypto.randomUUID(),
       patch: patch!,
       publicId: currentPublicId,
       snapshot,
     };
     pendingAttemptRef.current = attempt;
-    retryNowRef.current = false;
     setSaveState('saving');
     setError(null);
-    savingRef.current = true;
-    const result = await autosaveWorkAction({
+    const result = await saveWorkDraftAction({
       expectedVersion: attempt.expectedVersion,
       idempotencyKey: attempt.idempotencyKey,
       patch: attempt.patch,
       publicId: attempt.publicId,
     });
-    savingRef.current = false;
     if (result.outcome === 'saved') {
-      retryAttemptRef.current = 0;
       pendingAttemptRef.current = null;
       lastSavedRef.current = attempt.snapshot;
-      versionRef.current = result.version;
       setVersion(result.version);
       setServerWork(result.work);
       setContributors(result.work.contributors);
-      setSaveState(valuesRef.current === attempt.snapshot ? 'saved' : 'unsynced');
       if (attempt.publicId === null) {
-        workPublicIdRef.current = result.publicId;
         setWorkPublicId(result.publicId);
-        router.replace(`/works/${result.publicId}`, { scroll: false });
       }
-      if (needsSaveRef.current || valuesRef.current !== attempt.snapshot) {
-        needsSaveRef.current = false;
-        setSaveTick((value) => value + 1);
+      const isCurrent = valuesRef.current === attempt.snapshot;
+      if (isCurrent && !hasCanonicalWorkRouteRef.current) {
+        hasCanonicalWorkRouteRef.current = true;
+        router.replace(`/works/${result.publicId}?step=${targetStep + 1}`, { scroll: false });
       }
-      return;
+      setSaveState(isCurrent ? 'saved' : 'unsynced');
+      return isCurrent;
     }
     setError(result.error);
     setSaveState('unsynced');
     if (result.error === 'conflict') {
       conflictRef.current = true;
-      return;
+      return false;
     }
     if (result.error !== 'unavailable') {
       pendingAttemptRef.current = null;
-      return;
     }
-    const base = Math.min(1_000 * 2 ** retryAttemptRef.current++, 30_000);
-    window.setTimeout(
-      () => {
-        retryNowRef.current = true;
-        setSaveTick((value) => value + 1);
-      },
-      Math.round(base * (0.8 + Math.random() * 0.4)),
-    );
-  }, [router]);
-
-  useEffect(() => {
-    if (values === lastSavedRef.current) return;
-    setSaveState('unsynced');
-    const timer = window.setTimeout(() => void save(), retryNowRef.current ? 0 : 1_000);
-    return () => window.clearTimeout(timer);
-  }, [save, saveTick, values]);
+    return false;
+  };
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -181,7 +153,7 @@ export function WorkForm({
     const guardLinks = (event: MouseEvent) => {
       if (saveState === 'saved') return;
       const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
-      if (target !== null && !window.confirm(t('autosave.leaveWarning'))) event.preventDefault();
+      if (target !== null && !window.confirm(t('draftSave.leaveWarning'))) event.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     document.addEventListener('click', guardLinks, true);
@@ -193,6 +165,8 @@ export function WorkForm({
 
   const update = <K extends keyof DraftValues>(key: K, value: DraftValues[K]) => {
     submissionIdempotencyKeyRef.current = null;
+    setError((current) => (current === 'conflict' ? current : null));
+    setSaveState('unsynced');
     setValues((current) => ({ ...current, [key]: value }));
   };
   const applyMutationVersion = (nextVersion: number) => {
@@ -258,31 +232,42 @@ export function WorkForm({
     });
   };
 
+  const goNext = () => {
+    if (isSaving) return;
+    startSaving(async () => {
+      const targetStep = Math.min(step + 1, STEP_COUNT - 1);
+      if (await saveDraft(targetStep)) {
+        setStep(targetStep);
+      }
+    });
+  };
+
   return (
-    <div className="grid gap-6">
+    <div className="mx-auto grid w-full max-w-4xl gap-6">
       <ol aria-label={t('wizard.label')} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {Array.from({ length: STEP_COUNT }, (_, index) => (
           <li key={index}>
-            <Button
+            <span
               aria-current={step === index ? 'step' : undefined}
-              className="w-full"
-              onClick={() => setStep(index)}
-              type="button"
-              variant={step === index ? 'default' : 'outline'}
+              className={`flex min-h-11 w-full items-center justify-center rounded-control border px-3 text-center text-sm font-medium ${
+                step === index
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-card text-muted-foreground'
+              }`}
             >
               {t(`wizard.step${index + 1}`)}
-            </Button>
+            </span>
           </li>
         ))}
       </ol>
       <p aria-live="polite" className="text-sm text-muted-foreground">
-        {t(`autosave.${saveState}`)}
+        {t(`draftSave.${saveState}`)}
       </p>
       {error === null ? null : (
         <Alert variant="destructive">
-          <AlertTitle>{t(`autosave.errors.${error}.title`)}</AlertTitle>
+          <AlertTitle>{t(`draftSave.errors.${error}.title`)}</AlertTitle>
           <AlertDescription>
-            {t(`autosave.errors.${error}.description`)}
+            {t(`draftSave.errors.${error}.description`)}
             {error === 'conflict' ? (
               <Button
                 className="mt-3"
@@ -290,73 +275,73 @@ export function WorkForm({
                 type="button"
                 variant="outline"
               >
-                {t('autosave.loadLatest')}
+                {t('draftSave.loadLatest')}
               </Button>
             ) : null}
           </AlertDescription>
         </Alert>
       )}
-      <section className="grid gap-5 rounded-surface border border-border bg-card p-5 sm:p-8">
-        {step === 0 ? (
-          <DetailsStep context={context} t={t} update={update} values={values} />
-        ) : null}
-        {step === 1 ? (
-          <MediaStep
-            onVersion={(next) => {
-              applyMutationVersion(next);
-              setSaveState('saved');
-            }}
-            publicId={workPublicId}
-            t={t}
-            version={version}
-          />
-        ) : null}
-        {step === 2 ? (
-          <AttributionStep
-            attributionName={effectiveWork?.submitterAttributionName ?? null}
-            contributors={contributors}
-            onContributors={setContributors}
-            onVersion={applyMutationVersion}
-            publicId={workPublicId}
-            studyYear={values.studyYear}
-            t={t}
-            updateStudyYear={(next) => update('studyYear', next)}
-            version={version}
-          />
-        ) : null}
-        {step === 3 ? <DiscoveryStep t={t} update={update} values={values} /> : null}
-        {step === 4 ? (
-          <ReviewStep
-            attributionName={effectiveWork?.submitterAttributionName ?? null}
-            canSubmit={canSubmit}
-            contributors={contributors}
-            incompleteSteps={incompleteSteps}
-            media={effectiveWork?.media ?? []}
-            onEdit={setStep}
-            onSubmit={submit}
-            t={t}
-            values={values}
-          />
-        ) : null}
-      </section>
-      <div className="flex justify-between gap-3">
-        <Button
-          disabled={step === 0}
-          onClick={() => setStep((value) => value - 1)}
-          type="button"
-          variant="outline"
-        >
-          {t('wizard.previous')}
-        </Button>
-        {step === STEP_COUNT - 1 ? null : (
+      <section className="grid gap-6 rounded-surface border border-border bg-card p-5 shadow-sm sm:p-8">
+        <div className="grid gap-6">
+          {step === 0 ? (
+            <DetailsStep context={context} t={t} update={update} values={values} />
+          ) : null}
+          <div hidden={step !== 1}>
+            <MediaStep
+              media={effectiveWork?.media ?? []}
+              onVersion={(next) => {
+                applyMutationVersion(next);
+                setSaveState('saved');
+              }}
+              publicId={workPublicId}
+              t={t}
+              version={version}
+            />
+          </div>
+          {step === 2 ? (
+            <AttributionStep
+              attributionName={effectiveWork?.submitterAttributionName ?? null}
+              contributors={contributors}
+              onContributors={setContributors}
+              onVersion={applyMutationVersion}
+              publicId={workPublicId}
+              studyYear={values.studyYear}
+              t={t}
+              updateStudyYear={(next) => update('studyYear', next)}
+              version={version}
+            />
+          ) : null}
+          {step === 3 ? <DiscoveryStep t={t} update={update} values={values} /> : null}
+          {step === 4 ? (
+            <ReviewStep
+              attributionName={effectiveWork?.submitterAttributionName ?? null}
+              canSubmit={canSubmit}
+              contributors={contributors}
+              incompleteSteps={incompleteSteps}
+              media={effectiveWork?.media ?? []}
+              onEdit={setStep}
+              onSubmit={submit}
+              t={t}
+              values={values}
+            />
+          ) : null}
+        </div>
+        <div className="flex justify-between gap-3 border-t border-border pt-5">
           <Button
-            onClick={() => setStep((value) => Math.min(value + 1, STEP_COUNT - 1))}
+            disabled={step === 0}
+            onClick={() => setStep((value) => value - 1)}
             type="button"
+            variant="outline"
           >
-            {t('wizard.next')}
+            {t('wizard.previous')}
           </Button>
-        )}
-      </div>
+          {step === STEP_COUNT - 1 ? null : (
+            <Button disabled={isSaving} onClick={goNext} type="button">
+              {isSaving ? t('draftSave.saving') : t('wizard.next')}
+            </Button>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -382,6 +367,7 @@ function DetailsStep({
         label={t('title')}
         maxLength={150}
         onChange={(value) => update('title', value)}
+        placeholder={t('placeholders.title')}
         required
         value={values.title}
       />
@@ -389,81 +375,93 @@ function DetailsStep({
         label={t('summary')}
         maxLength={300}
         onChange={(value) => update('summary', value)}
+        placeholder={t('placeholders.summary')}
+        rows={3}
         value={values.summary}
       />
       <TextAreaField
         label={t('description')}
         maxLength={10_000}
         onChange={(value) => update('description', value)}
+        placeholder={t('placeholders.description')}
+        rows={6}
         value={values.description}
       />
-      <Field>
-        <FieldLabel htmlFor="work-category">{t('category')}</FieldLabel>
-        <select
-          className="h-10 rounded-control border bg-background px-3"
-          id="work-category"
-          onChange={(event) => update('category', event.target.value as DraftValues['category'])}
-          value={values.category}
-        >
-          <option value="">{t('select')}</option>
-          <option value="course_work">{t('categories.course_work')}</option>
-          <option value="competition_entry">{t('categories.competition_entry')}</option>
-          <option value="academic_article">{t('categories.academic_article')}</option>
-        </select>
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
-          <FieldLabel htmlFor="work-year">{t('academicYear')}</FieldLabel>
-          <select
-            className="h-10 rounded-control border bg-background px-3"
-            id="work-year"
-            onChange={(event) =>
-              update('academicPeriod', { ...values.academicPeriod, year: event.target.value })
-            }
-            value={values.academicPeriod.year}
-          >
-            <option value="">{t('select')}</option>
-            {Array.from(
-              { length: context.currentAcademicYear - ACADEMIC_YEAR_MINIMUM + 1 },
-              (_, index) => context.currentAcademicYear - index,
-            ).map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-          <FieldDescription>{t('academicYearHelp')}</FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="work-semester">{t('semester')}</FieldLabel>
-          <select
-            className="h-10 rounded-control border bg-background px-3"
-            id="work-semester"
-            onChange={(event) =>
-              update('academicPeriod', {
-                ...values.academicPeriod,
-                semester: event.target.value as DraftValues['academicPeriod']['semester'],
-              })
-            }
-            value={values.academicPeriod.semester}
-          >
-            <option value="">{t('select')}</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="summer">{t('summer')}</option>
-          </select>
-        </Field>
-      </div>
+      <FieldSet className="border-t border-border pt-6">
+        <FieldLegend>{t('sections.classification')}</FieldLegend>
+        <FieldDescription>{t('sections.classificationHelp')}</FieldDescription>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field>
+            <FieldLabel htmlFor="work-category">{t('category')}</FieldLabel>
+            <select
+              className="h-11 w-full rounded-control border bg-background px-3"
+              id="work-category"
+              onChange={(event) =>
+                update('category', event.target.value as DraftValues['category'])
+              }
+              value={values.category}
+            >
+              <option value="">{t('select')}</option>
+              <option value="course_work">{t('categories.course_work')}</option>
+              <option value="competition_entry">{t('categories.competition_entry')}</option>
+              <option value="academic_article">{t('categories.academic_article')}</option>
+            </select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="work-year">{t('academicYear')}</FieldLabel>
+            <select
+              className="h-11 w-full rounded-control border bg-background px-3"
+              id="work-year"
+              onChange={(event) =>
+                update('academicPeriod', { ...values.academicPeriod, year: event.target.value })
+              }
+              value={values.academicPeriod.year}
+            >
+              <option value="">{t('select')}</option>
+              {Array.from(
+                { length: context.currentAcademicYear - ACADEMIC_YEAR_MINIMUM + 1 },
+                (_, index) => context.currentAcademicYear - index,
+              ).map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <FieldDescription>{t('academicYearHelp')}</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="work-semester">{t('semester')}</FieldLabel>
+            <select
+              className="h-11 w-full rounded-control border bg-background px-3"
+              id="work-semester"
+              onChange={(event) =>
+                update('academicPeriod', {
+                  ...values.academicPeriod,
+                  semester: event.target.value as DraftValues['academicPeriod']['semester'],
+                })
+              }
+              value={values.academicPeriod.semester}
+            >
+              <option value="">{t('select')}</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="summer">{t('summer')}</option>
+            </select>
+          </Field>
+        </div>
+      </FieldSet>
     </>
   );
 }
 
 function MediaStep({
+  media,
   onVersion,
   publicId,
   t,
   version,
 }: {
+  media: WorkDraft['media'];
   onVersion: (version: number) => void;
   publicId: string | null;
   t: Translation;
@@ -473,18 +471,25 @@ function MediaStep({
   return (
     <>
       <h2 className="text-2xl font-semibold">{t('wizard.step2')}</h2>
-      <WorkMediaUpload
-        expectedVersion={version}
-        mediaKind="poster"
-        onVersion={onVersion}
-        publicId={publicId}
-      />
-      <WorkMediaUpload
-        expectedVersion={version}
-        mediaKind="gallery"
-        onVersion={onVersion}
-        publicId={publicId}
-      />
+      <div
+        className="grid gap-5 lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,1.2fr)] lg:items-start"
+        data-slot="work-media-layout"
+      >
+        <WorkMediaUpload
+          expectedVersion={version}
+          media={media.filter((item) => item.kind === 'poster')}
+          mediaKind="poster"
+          onVersion={onVersion}
+          publicId={publicId}
+        />
+        <WorkMediaUpload
+          expectedVersion={version}
+          media={media.filter((item) => item.kind === 'gallery')}
+          mediaKind="gallery"
+          onVersion={onVersion}
+          publicId={publicId}
+        />
+      </div>
     </>
   );
 }
@@ -513,26 +518,28 @@ function AttributionStep({
   return (
     <>
       <h2 className="text-2xl font-semibold">{t('wizard.step3')}</h2>
-      <Field>
-        <FieldLabel>{t('attribution.submitter')}</FieldLabel>
-        <Input readOnly value={attributionName ?? t('attribution.rosterNameUnavailable')} />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="study-year">{t('attribution.studyYear')}</FieldLabel>
-        <select
-          className="h-10 rounded-control border bg-background px-3"
-          id="study-year"
-          onChange={(event) => updateStudyYear(event.target.value as DraftValues['studyYear'])}
-          value={studyYear}
-        >
-          <option value="">{t('select')}</option>
-          {[1, 2, 3, 4].map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field>
+          <FieldLabel>{t('attribution.submitter')}</FieldLabel>
+          <Input readOnly value={attributionName ?? t('attribution.rosterNameUnavailable')} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="study-year">{t('attribution.studyYear')}</FieldLabel>
+          <select
+            className="h-11 w-full rounded-control border bg-background px-3"
+            id="study-year"
+            onChange={(event) => updateStudyYear(event.target.value as DraftValues['studyYear'])}
+            value={studyYear}
+          >
+            <option value="">{t('select')}</option>
+            {[1, 2, 3, 4].map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
       {publicId === null || version === null ? (
         <p>{t('attribution.saveFirst')}</p>
       ) : (
@@ -564,6 +571,7 @@ function DiscoveryStep({
         label="GitHub"
         maxLength={2_048}
         onChange={(value) => update('githubUrl', value)}
+        placeholder="https://github.com/..."
         value={values.githubUrl}
       />
       <FieldDescription>{t('discovery.githubHelp')}</FieldDescription>
@@ -580,6 +588,7 @@ function DiscoveryStep({
                 ),
               )
             }
+            placeholder={t('placeholders.linkLabel')}
             value={link.label}
           />
           <TextField
@@ -593,6 +602,7 @@ function DiscoveryStep({
                 ),
               )
             }
+            placeholder={t('placeholders.linkUrl')}
             value={link.url}
           />
         </div>
@@ -611,6 +621,8 @@ function DiscoveryStep({
         label={t('videoLinks')}
         maxLength={6_200}
         onChange={(value) => update('videoLinks', value)}
+        placeholder={t('placeholders.videoLink')}
+        rows={4}
         value={values.videoLinks}
       />
     </>
@@ -743,12 +755,14 @@ function TextField({
   label,
   maxLength,
   onChange,
+  placeholder,
   required = false,
   value,
 }: {
   label: string;
   maxLength: number;
   onChange: (value: string) => void;
+  placeholder?: string;
   required?: boolean;
   value: string;
 }) {
@@ -760,6 +774,7 @@ function TextField({
         id={id}
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
         required={required}
         value={value}
       />
@@ -770,11 +785,15 @@ function TextAreaField({
   label,
   maxLength,
   onChange,
+  placeholder,
+  rows,
   value,
 }: {
   label: string;
   maxLength: number;
   onChange: (value: string) => void;
+  placeholder?: string;
+  rows: number;
   value: string;
 }) {
   const id = useId();
@@ -782,9 +801,12 @@ function TextAreaField({
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Textarea
+        className="field-sizing-fixed resize-y"
         id={id}
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={rows}
         value={value}
       />
     </Field>

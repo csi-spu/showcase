@@ -53,13 +53,24 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
       const draft = await this.findOwnedDraft(sql, input.actorAccountId, input.workPublicId);
       if (draft === null) return { outcome: 'not_found' };
       let candidates: CandidateRow[];
-      if (input.studentIdHash === null) {
+      if (input.studentIdPrefixHash === null) {
         if (input.nameQuery === null) {
           throw new Error('WORK_CONTRIBUTOR_SEARCH_QUERY_INVARIANT');
         }
         candidates = await this.searchCandidatesByName(sql, draft.work_id, input.nameQuery);
       } else {
-        candidates = await this.searchCandidateByStudentId(sql, draft.work_id, input.studentIdHash);
+        if (input.studentIdPrefixLength === null) {
+          throw new Error('WORK_CONTRIBUTOR_SEARCH_QUERY_INVARIANT');
+        }
+        candidates =
+          input.studentIdPrefixLength === 8
+            ? await this.searchCandidateByStudentId(sql, draft.work_id, input.studentIdPrefixHash)
+            : await this.searchCandidatesByStudentIdPrefix(
+                sql,
+                draft.work_id,
+                input.studentIdPrefixHash,
+                input.studentIdPrefixLength,
+              );
       }
       if (candidates.length === 0) return { outcome: 'no_match' };
       await this.deleteExpiredCandidates(sql, input.now);
@@ -139,6 +150,47 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
           )
         limit 1
       `;
+  }
+
+  private searchCandidatesByStudentIdPrefix(
+    sql: postgres.TransactionSql,
+    workId: string,
+    studentIdPrefixHash: string,
+    studentIdPrefixLength: number,
+  ): Promise<CandidateRow[]> {
+    return sql<CandidateRow[]>`
+      select name.first_name_th as first_name, name.last_name_th as last_name,
+        account.person_id,
+        case when consent.id is null then null else profile.public_id end as public_profile_id,
+        case when consent.id is null then null else student.entry_year end as public_entry_year,
+        consent.id is not null and photo.id is not null as has_public_photo
+      from private.student_id_search_prefixes as prefix
+      join public.accounts as account on account.id = prefix.account_id
+      join public.account_roles as role
+        on role.account_id = account.id and role.role = 'student'
+      join public.students as student on student.person_id = account.person_id
+      join private.person_names as name on name.person_id = account.person_id
+      left join public.public_profiles as profile on profile.person_id = account.person_id
+      left join public.profile_consents as consent
+        on consent.person_id = profile.person_id and consent.withdrawn_at is null
+      left join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
+      where prefix.prefix_hash = ${studentIdPrefixHash}
+        and prefix.prefix_length = ${studentIdPrefixLength}
+        and account.status = 'active'
+        and name.first_name_th is not null and name.last_name_th is not null
+        and account.person_id <> (
+          select submitter_person_id from public.works where id = ${workId}
+        )
+        and not exists (
+          select 1 from private.work_draft_contributors as contributor
+          where contributor.work_id = ${workId}
+            and contributor.person_id = account.person_id
+            and contributor.kind = 'account' and contributor.removed_at is null
+        )
+      order by prefix.account_id
+      limit ${CANDIDATE_RESULT_LIMIT}
+    `;
   }
 
   private searchCandidatesByName(

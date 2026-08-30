@@ -17,6 +17,7 @@ class FakeWorkRevisionRepository implements WorkRevisionRepository {
   page: ReviewQueuePage | { outcome: 'invalid_cursor' } = { items: [], nextCursor: null };
   detail: WorkRevisionView | null = revision();
   pending: WorkRevisionView | null = null;
+  published: WorkRevisionView | null = null;
   lastSubmit: Parameters<WorkRevisionRepository['submitRevision']>[0] | undefined;
   lastWithdraw: Parameters<WorkRevisionRepository['withdrawRevision']>[0] | undefined;
   lastList: Parameters<WorkRevisionRepository['listReviewQueue']>[0] | undefined;
@@ -31,6 +32,10 @@ class FakeWorkRevisionRepository implements WorkRevisionRepository {
 
   findPendingRevision(): Promise<WorkRevisionView | null> {
     return Promise.resolve(this.pending);
+  }
+
+  findPublishedRevision(): Promise<WorkRevisionView | null> {
+    return Promise.resolve(this.published);
   }
 
   listReviewQueue(input: Parameters<WorkRevisionRepository['listReviewQueue']>[0]) {
@@ -156,6 +161,17 @@ describe('WorkRevisionsService', () => {
       code: 'WORK_REVISION_NOT_FOUND',
       status: 404,
     });
+  });
+
+  it('returns the current Published Revision only through the owner-scoped repository', async () => {
+    repository.published = { ...revision(), status: 'approved' };
+
+    await expect(service.getPublishedRevision(ACCOUNT_ID, WORK_PUBLIC_ID)).resolves.toEqual({
+      ...revision(),
+      status: 'approved',
+    });
+    repository.published = null;
+    await expect(service.getPublishedRevision(ACCOUNT_ID, WORK_PUBLIC_ID)).resolves.toBeNull();
   });
 
   it('uses stable application errors', () => {

@@ -89,6 +89,41 @@ describe('StudentWorksCoreClient', () => {
     );
   });
 
+  it('requests the current Published Revision through the private Student contract', async () => {
+    const publishedRevision = {
+      authorKind: 'student_submission',
+      attributions: [],
+      content: {
+        academicPeriod: { semester: '1', year: 2569 },
+        category: 'course_work',
+        description: 'รายละเอียด',
+        links: [],
+        summary: 'สรุป',
+        tags: [],
+        title: 'ชื่อผลงาน',
+        videoLinks: [],
+      },
+      media: [],
+      number: 2,
+      publicId: '64000000-0000-4000-8000-000000000005',
+      status: 'approved',
+      submittedAt: '2026-08-25T15:00:00.000Z',
+      version: 3,
+      withdrawnAt: null,
+      workPublicId: PUBLIC_ID,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ revision: publishedRevision }));
+
+    await expect(client(fetchMock).getPublishedRevision(SESSION, PUBLIC_ID)).resolves.toEqual(
+      publishedRevision,
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/student/works/${PUBLIC_ID}/revisions/published`,
+    );
+  });
+
   it('requests bounded Published Tag suggestions through Core', async () => {
     const response = [
       {

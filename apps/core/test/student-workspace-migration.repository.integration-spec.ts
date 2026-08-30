@@ -238,7 +238,8 @@ describe('issue #56 Phase A migration integration', () => {
         nameQuery: null,
         now: NOW,
         sourceKeyHash: '1'.repeat(64),
-        studentIdHash: '2'.repeat(64),
+        studentIdPrefixHash: '2'.repeat(64),
+        studentIdPrefixLength: 1,
         workPublicId: WORK_PUBLIC_ID,
       }),
     ).resolves.toEqual({ outcome: 'cutover_unavailable' });
@@ -391,7 +392,8 @@ describe('issue #56 Phase A migration integration', () => {
           nameQuery: 'คน ปฏิเสธ',
           now: NOW,
           sourceKeyHash: '3'.repeat(64),
-          studentIdHash: null,
+          studentIdPrefixHash: null,
+          studentIdPrefixLength: null,
           workPublicId: WORK_PUBLIC_ID,
         });
       } finally {

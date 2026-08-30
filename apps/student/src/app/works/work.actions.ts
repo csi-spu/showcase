@@ -22,6 +22,11 @@ import type { WorkRemovalActionError, WorkRemovalActionState } from './work-remo
 const categorySchema = z.enum(['course_work', 'competition_entry', 'academic_article']);
 const semesterSchema = z.enum(['1', '2', 'summer']);
 const linkSchema = z.object({ label: z.string().max(50), url: z.string().max(2_048) }).strict();
+const contributorSearchQuerySchema = z
+  .string()
+  .trim()
+  .max(100)
+  .refine((query) => /^[0-9]{1,8}$/u.test(query) || [...query].length >= 2);
 const draftPatchSchema = z
   .object({
     academicPeriod: z
@@ -53,7 +58,7 @@ const completeDraftSchema = z
   })
   .strict();
 
-export type AutosaveActionResult =
+export type SaveWorkDraftActionResult =
   | {
       outcome: 'saved';
       publicId: string;
@@ -66,7 +71,7 @@ export type AutosaveActionResult =
       outcome: 'error';
     };
 
-export async function autosaveWorkAction(input: unknown): Promise<AutosaveActionResult> {
+export async function saveWorkDraftAction(input: unknown): Promise<SaveWorkDraftActionResult> {
   const parsed = z
     .object({
       expectedVersion: z.number().int().positive().nullable(),
@@ -108,13 +113,13 @@ export async function autosaveWorkAction(input: unknown): Promise<AutosaveAction
       work: result.work,
     };
   } catch (error: unknown) {
-    return actionError(mapAutosaveError(error));
+    return actionError(mapMutationError(error));
   }
 }
 
 export async function searchContributorCandidatesAction(input: unknown) {
   const parsed = z
-    .object({ publicId: z.uuid(), query: z.string().trim().min(2).max(100) })
+    .object({ publicId: z.uuid(), query: contributorSearchQuerySchema })
     .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
@@ -224,7 +229,7 @@ export async function uploadWorkMediaAction(input: unknown) {
     const { publicId, ...authorization } = parsed.data;
     return await client().authorizeMediaUpload(token, publicId, authorization);
   } catch (error: unknown) {
-    return { error: mapAutosaveError(error) };
+    return { error: mapMutationError(error) };
   }
 }
 
@@ -244,7 +249,7 @@ export async function attachWorkMediaAction(input: unknown) {
     const { publicId, ...body } = parsed.data;
     return await client().attachMedia(await sessionToken(), publicId, body);
   } catch (error: unknown) {
-    return { error: mapAutosaveError(error) };
+    return { error: mapMutationError(error) };
   }
 }
 
@@ -258,7 +263,7 @@ export async function finalizeWorkMediaAction(input: unknown) {
       parsed.data.assetId,
     );
   } catch (error: unknown) {
-    return { error: mapAutosaveError(error) };
+    return { error: mapMutationError(error) };
   }
 }
 
@@ -272,7 +277,7 @@ export async function getWorkMediaStatusAction(input: unknown) {
       parsed.data.assetId,
     );
   } catch (error: unknown) {
-    return { error: mapAutosaveError(error) };
+    return { error: mapMutationError(error) };
   }
 }
 
@@ -513,13 +518,13 @@ async function sessionToken(): Promise<string> {
   return token;
 }
 
-function actionError(error: Exclude<AutosaveActionResult, { outcome: 'saved' }>['error']) {
+function actionError(error: Exclude<SaveWorkDraftActionResult, { outcome: 'saved' }>['error']) {
   return { error, outcome: 'error' as const };
 }
 
-function mapAutosaveError(
+function mapMutationError(
   error: unknown,
-): Exclude<AutosaveActionResult, { outcome: 'saved' }>['error'] {
+): Exclude<SaveWorkDraftActionResult, { outcome: 'saved' }>['error'] {
   if (!(error instanceof StudentWorksCoreError)) return 'unavailable';
   if (['WORK_IDEMPOTENCY_CONFLICT', 'WORK_VERSION_CONFLICT'].includes(error.code)) {
     return 'conflict';

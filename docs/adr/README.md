@@ -16,5 +16,6 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0010](0010-search-roster-names-for-contributor-candidates.md)               | Search Roster names for Contributor Candidates          |
 | [0011](0011-use-roster-name-as-the-only-account-backed-person-name.md)       | Use Roster Name as the only Account-backed Person name  |
 | [0012](0012-enrich-contributor-candidates-with-consented-profile-summary.md) | Enrich Contributor Candidates with profile context      |
+| [0013](0013-search-contributor-candidates-by-student-id-prefix.md)           | Search Contributor Candidates by Student ID prefix      |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

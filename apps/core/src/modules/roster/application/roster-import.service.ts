@@ -168,6 +168,9 @@ export class RosterImportService {
       ...row,
       providerUserId: providerUserIdFromStudentIdHash(studentIdHash),
       studentIdHash,
+      studentIdPrefixHashes: Array.from({ length: 7 }, (_, index) =>
+        this.identityProtector.hashStudentId(row.studentId.slice(0, index + 1)),
+      ),
       syntheticIdentity: this.identityProtector.toSyntheticIdentity(row.studentId),
     };
   }

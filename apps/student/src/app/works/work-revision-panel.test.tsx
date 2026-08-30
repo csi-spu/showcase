@@ -46,6 +46,7 @@ describe('Work Revision panels', () => {
       <WorkPublishedRevisionPanel
         action={vi.fn()}
         idempotencyKey={IDEMPOTENCY_KEY}
+        publicHref={`https://showcase.example.test/works/${WORK_PUBLIC_ID}`}
         publishedRevisionId={REVISION_PUBLIC_ID}
       />,
     );
@@ -53,6 +54,24 @@ describe('Work Revision panels', () => {
     expect(screen.getByText('ผลงานเผยแพร่แล้ว')).toBeTruthy();
     expect(screen.getByText(/ผลงานปัจจุบันจะยังแสดงอยู่/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'สร้างร่างใหม่' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'ดูหน้าที่เผยแพร่' }).getAttribute('href')).toBe(
+      `https://showcase.example.test/works/${WORK_PUBLIC_ID}`,
+    );
+  });
+
+  it('labels an unpublished Revision without implying that it remains public', () => {
+    renderPanel(
+      <WorkPublishedRevisionPanel
+        action={vi.fn()}
+        idempotencyKey={IDEMPOTENCY_KEY}
+        publicationState="unpublished"
+        publishedRevisionId={REVISION_PUBLIC_ID}
+      />,
+    );
+
+    expect(screen.getByText('ฉบับที่หยุดเผยแพร่')).toBeTruthy();
+    expect(screen.getByText('ผลงานยังไม่เผยแพร่')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'ดูหน้าที่เผยแพร่' })).toBeNull();
   });
 
   it('requires explicit rebase for a stale Draft and explains that local content is retained', () => {

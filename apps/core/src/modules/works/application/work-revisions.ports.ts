@@ -83,6 +83,10 @@ export interface WorkRevisionRepository {
     actorAccountId: string,
     workPublicId: string,
   ): Promise<WorkRevisionView | null>;
+  findPublishedRevision(
+    actorAccountId: string,
+    workPublicId: string,
+  ): Promise<WorkRevisionView | null>;
   findRevisionForReview(revisionPublicId: string): Promise<WorkRevisionView | null>;
   listReviewQueue(input: {
     cursor: string | undefined;

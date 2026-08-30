@@ -113,6 +113,10 @@ export class WorkRevisionsService {
     return this.repository.findPendingRevision(actorAccountId, workPublicId);
   }
 
+  getPublishedRevision(actorAccountId: string, workPublicId: string) {
+    return this.repository.findPublishedRevision(actorAccountId, workPublicId);
+  }
+
   private requireSuccess(result: WorkRevisionResult): WorkRevisionResult {
     if ('revision' in result) return result;
     const mapping: Record<WorkRevisionFailureOutcome, [WorkRevisionErrorCode, number]> = {

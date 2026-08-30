@@ -14,17 +14,19 @@ export function normalizeContributionRole(value: string): string | null {
 
 export function normalizeContributorSearchQuery(
   value: string,
-): { kind: 'name'; nameQuery: string } | { kind: 'student_id'; studentId: string } | null {
+):
+  | { kind: 'name'; nameQuery: string }
+  | { kind: 'student_id_prefix'; studentIdPrefix: string }
+  | null {
   const query = normalizeHumanName(value);
   const length = Array.from(query).length;
-  if (
-    length < CONTRIBUTOR_SEARCH_QUERY_MIN_LENGTH ||
-    length > CONTRIBUTOR_SEARCH_QUERY_MAX_LENGTH
-  ) {
-    return null;
+  if (length > CONTRIBUTOR_SEARCH_QUERY_MAX_LENGTH) return null;
+  if (/^[0-9]+$/u.test(query)) {
+    return length >= 1 && length <= 8
+      ? { kind: 'student_id_prefix', studentIdPrefix: query }
+      : null;
   }
-  if (validateExactStudentId(query)) return { kind: 'student_id', studentId: query };
-  if (/^[0-9]+$/u.test(query)) return null;
+  if (length < CONTRIBUTOR_SEARCH_QUERY_MIN_LENGTH) return null;
   return { kind: 'name', nameQuery: query.toLocaleLowerCase('th') };
 }
 

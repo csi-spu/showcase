@@ -30,6 +30,7 @@ export interface PreparedRosterRow {
   rowNumber: number;
   studentId: string;
   studentIdHash: string;
+  studentIdPrefixHashes: string[];
   syntheticIdentity: string;
 }
 
@@ -107,6 +108,7 @@ export interface RosterRepository {
     providerUserId: string;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes: string[];
     syntheticIdentity: string;
   }): Promise<'conflict' | 'created' | 'unchanged'>;
   createBatch(input: CreateRosterBatchInput): Promise<RosterBatch>;
@@ -147,6 +149,7 @@ export interface RosterRepository {
     now: Date;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes: string[];
   }): Promise<'conflict' | 'missing' | 'unchanged'>;
 }
 

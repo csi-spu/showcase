@@ -182,6 +182,37 @@ describe('PostgresWorkRevisionsRepository integration', () => {
         )
       `,
     ).rejects.toMatchObject({ code: '23514' });
+
+    await expect(repository.findPublishedRevision(ACCOUNT_ID, WORK_PUBLIC_ID)).resolves.toBeNull();
+    await database.sql.begin(async (transaction) => {
+      await transaction`set local session_replication_role = replica`;
+      await transaction`
+        update private.work_revisions set status = 'approved'
+        where public_id = ${created.revision.publicId}
+      `;
+      await transaction`
+        update public.works set publication_state = 'published', published_revision_id = (
+          select id from private.work_revisions where public_id = ${created.revision.publicId}
+        ) where id = ${WORK_ID}
+      `;
+    });
+    await expect(
+      repository.findPublishedRevision(ACCOUNT_ID, WORK_PUBLIC_ID),
+    ).resolves.toMatchObject({ publicId: created.revision.publicId, status: 'approved' });
+    await expect(
+      repository.findPublishedRevision(OTHER_ACCOUNT_ID, WORK_PUBLIC_ID),
+    ).resolves.toBeNull();
+    await database.sql.begin(async (transaction) => {
+      await transaction`set local session_replication_role = replica`;
+      await transaction`
+        update public.works set publication_state = 'never_published', published_revision_id = null
+        where id = ${WORK_ID}
+      `;
+      await transaction`
+        update private.work_revisions set status = 'pending_review'
+        where public_id = ${created.revision.publicId}
+      `;
+    });
   });
 
   it('withdraws only pending state, retains history, and seeds a new private Draft idempotently', async () => {

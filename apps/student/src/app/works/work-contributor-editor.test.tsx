@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
@@ -53,19 +53,39 @@ describe('WorkContributorEditor', () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it('does not send a partial Student ID or create split name fields', async () => {
+  it('opens one Contributor flow for both roster candidates and entered external names', () => {
+    renderEditor();
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByRole('button', { name: 'เพิ่มผู้ร่วมผลงาน' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'เพิ่มนักศึกษาหรือศิษย์เก่า' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'เพิ่มบุคคลภายนอก' })).toBeNull();
+
+    openContributorEditor();
+
+    expect(screen.getByRole('dialog', { name: 'เพิ่มผู้ร่วมผลงาน' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'ชื่อ นามสกุล หรือรหัสนักศึกษา' })).toBeTruthy();
+    expect(screen.getByText(/รหัสนักศึกษาตั้งแต่หลักแรก/u)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ยกเลิก' })).toBeTruthy();
+  });
+
+  it('searches Contributor Candidates from the first Student ID digit', async () => {
     vi.useFakeTimers();
     renderEditor();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '1234567' } });
-    await vi.advanceTimersByTimeAsync(1_000);
+    openContributorEditor();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '1' } });
 
-    expect(mocks.search).not.toHaveBeenCalled();
+    expect(screen.getByRole('status').textContent).toContain('กำลังค้นหา');
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(mocks.search).toHaveBeenCalledWith({ publicId: PUBLIC_ID, query: '1' });
     expect(screen.queryByLabelText('ชื่อ')).toBeNull();
     expect(screen.queryByLabelText('นามสกุล')).toBeNull();
   });
 
   it('shows consented profile context and a fallback avatar in the suggestion dropdown', async () => {
     renderEditor();
+    openContributorEditor();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'สม' } });
 
     const suggestions = await screen.findByRole('listbox', {
@@ -82,8 +102,75 @@ describe('WorkContributorEditor', () => {
     expect(suggestions.textContent).not.toMatch(/[0-9]{8}/u);
   });
 
+  it('keeps an in-flight Contributor Candidate search across a translation rerender', async () => {
+    vi.useFakeTimers();
+    const searchResult = {
+      candidates: [
+        {
+          candidateReference: CANDIDATE_REFERENCE,
+          firstName: 'นักศึกษา',
+          lastName: 'ทดสอบ',
+          publicProfile: null,
+        },
+      ],
+    };
+    const pendingSearch = deferred<typeof searchResult>();
+    mocks.search.mockReturnValueOnce(pendingSearch.promise);
+    const view = renderEditor();
+    openContributorEditor();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'นักศึกษ' } });
+    await act(async () => vi.advanceTimersByTimeAsync(300));
+
+    expect(mocks.search).toHaveBeenCalledTimes(1);
+    view.rerender(editor({ ...messages }));
+    await act(async () => pendingSearch.resolve(searchResult));
+
+    expect(screen.getByRole('option', { name: /นักศึกษา ทดสอบ/u })).toBeTruthy();
+    expect(mocks.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces Contributor Candidate search progress and the External Contributor fallback', async () => {
+    vi.useFakeTimers();
+    const pendingSearch = deferred<{ candidates: [] }>();
+    mocks.search.mockReturnValueOnce(pendingSearch.promise);
+    renderEditor();
+    openContributorEditor();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'นักศึกษา' } });
+
+    expect(screen.getByRole('status').textContent).toContain('กำลังค้นหา');
+    await vi.advanceTimersByTimeAsync(300);
+    await act(async () => pendingSearch.resolve({ candidates: [] }));
+
+    expect(screen.getByRole('status').textContent).toContain('ไม่พบรายชื่อที่ตรงกัน');
+    expect(screen.getByRole('status').textContent).toContain('ระบบจะเพิ่มชื่อนี้เป็นบุคคลภายนอก');
+  });
+
+  it.each(['1', '12345678'])(
+    'does not offer to turn an unmatched Student ID query %s into an External Contributor',
+    async (query) => {
+      vi.useFakeTimers();
+      mocks.search.mockResolvedValueOnce({ candidates: [] });
+      renderEditor();
+      openContributorEditor();
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: query } });
+      await act(async () => vi.advanceTimersByTimeAsync(300));
+
+      expect(screen.getByRole('status').textContent).toContain(
+        'ไม่พบรายชื่อที่ตรงกับรหัสนักศึกษานี้',
+      );
+      expect(screen.getByRole('status').textContent).not.toContain('บุคคลภายนอก');
+      fireEvent.change(screen.getByLabelText('บทบาทที่มีต่อผลงาน'), {
+        target: { value: 'พัฒนาระบบ' },
+      });
+      expect(
+        (screen.getByRole('button', { name: 'เพิ่มผู้ร่วมผลงาน' }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    },
+  );
+
   it('locks a selected suggestion into a removable card and adds its opaque reference', async () => {
     renderEditor();
+    openContributorEditor();
     const name = screen.getByRole('combobox', { name: 'ชื่อ นามสกุล หรือรหัสนักศึกษา' });
     fireEvent.change(name, { target: { value: 'สมชาย' } });
     fireEvent.mouseDown(await screen.findByRole('option', { name: /สมชาย ใจดี/u }));
@@ -97,29 +184,39 @@ describe('WorkContributorEditor', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'เพิ่มผู้ร่วมผลงาน' }));
 
-    expect(mocks.addAccount).toHaveBeenCalledWith(
-      expect.objectContaining({ candidateReference: CANDIDATE_REFERENCE }),
+    await waitFor(() =>
+      expect(mocks.addAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ candidateReference: CANDIDATE_REFERENCE }),
+      ),
     );
     expect(mocks.addExternal).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('creates an External Contributor when a full name has no selected reference', async () => {
-    mocks.search.mockResolvedValue({ candidates: [] });
+  it('creates an External Contributor from an entered name in the same flow', async () => {
     renderEditor();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Alex Example' } });
+    openContributorEditor();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'Alex Example' },
+    });
     fireEvent.change(screen.getByLabelText('บทบาทที่มีต่อผลงาน'), {
       target: { value: 'ออกแบบ' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'เพิ่มผู้ร่วมผลงาน' }));
 
-    expect(mocks.addExternal).toHaveBeenCalledWith(
-      expect.objectContaining({ attributionName: 'Alex Example', contributionRole: 'ออกแบบ' }),
+    await waitFor(() =>
+      expect(mocks.addExternal).toHaveBeenCalledWith(
+        expect.objectContaining({ attributionName: 'Alex Example', contributionRole: 'ออกแบบ' }),
+      ),
     );
+    expect(mocks.search).not.toHaveBeenCalled();
     expect(mocks.addAccount).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('removes a selected candidate card and returns to search', async () => {
     renderEditor();
+    openContributorEditor();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'สมชาย' } });
     fireEvent.mouseDown(await screen.findByRole('option', { name: /สมชาย ใจดี/u }));
     fireEvent.change(screen.getByLabelText('บทบาทที่มีต่อผลงาน'), {
@@ -136,8 +233,12 @@ describe('WorkContributorEditor', () => {
 });
 
 function renderEditor() {
-  return render(
-    <NextIntlClientProvider locale="th" messages={messages}>
+  return render(editor(messages));
+}
+
+function editor(translations: typeof messages) {
+  return (
+    <NextIntlClientProvider locale="th" messages={translations}>
       <WorkContributorEditor
         contributors={[]}
         onContributors={vi.fn()}
@@ -145,6 +246,18 @@ function renderEditor() {
         publicId={PUBLIC_ID}
         version={1}
       />
-    </NextIntlClientProvider>,
+    </NextIntlClientProvider>
   );
+}
+
+function openContributorEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'เพิ่มผู้ร่วมผลงาน' }));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((fulfill) => {
+    resolve = fulfill;
+  });
+  return { promise, resolve };
 }
