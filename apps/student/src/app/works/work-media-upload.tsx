@@ -377,7 +377,9 @@ export function WorkMediaUpload({
           description={t(
             mediaKind === 'poster' ? 'cropPosterDescription' : 'cropGalleryDescription',
           )}
+          errorLabel={t('cropLoadFailed')}
           file={cropCandidate}
+          loadingLabel={t('cropLoading')}
           onCancel={() => setCropCandidate(null)}
           onCrop={uploadCroppedMedia}
           title={t(mediaKind === 'poster' ? 'cropPosterTitle' : 'cropGalleryTitle')}

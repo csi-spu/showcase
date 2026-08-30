@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Cropper, { type ReactCropperElement } from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
 import { Button } from '@showcase/ui/button';
@@ -24,7 +24,9 @@ export function WorkMediaCropper({
   cancelLabel,
   confirmLabel,
   description,
+  errorLabel,
   file,
+  loadingLabel,
   onCancel,
   onCrop,
   title,
@@ -33,7 +35,9 @@ export function WorkMediaCropper({
   cancelLabel: string;
   confirmLabel: string;
   description: string;
+  errorLabel: string;
   file: File;
+  loadingLabel: string;
   onCancel: () => void;
   onCrop: (result: WorkMediaCropResult) => Promise<void>;
   title: string;
@@ -41,11 +45,33 @@ export function WorkMediaCropper({
   const cropperRef = useRef<ReactCropperElement>(null);
   const [isCropping, setIsCropping] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [sourceUrl] = useState(() => URL.createObjectURL(file));
+  const [isReady, setIsReady] = useState(false);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(sourceUrl);
-  }, [sourceUrl]);
+    const reader = new FileReader();
+
+    const handleLoad = () => {
+      if (typeof reader.result === 'string') {
+        setSourceUrl(reader.result);
+        return;
+      }
+      setHasError(true);
+    };
+    const handleError = () => setHasError(true);
+
+    reader.addEventListener('load', handleLoad);
+    reader.addEventListener('error', handleError);
+    reader.readAsDataURL(file);
+
+    return () => {
+      reader.removeEventListener('load', handleLoad);
+      reader.removeEventListener('error', handleError);
+      if (reader.readyState === FileReader.LOADING) reader.abort();
+    };
+  }, [file]);
+
+  const handleReady = useCallback(() => setIsReady(true), []);
 
   const confirm = async () => {
     const canvas = cropperRef.current?.cropper.getCroppedCanvas({
@@ -88,25 +114,34 @@ export function WorkMediaCropper({
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 px-4">
-          <Cropper
-            {...(aspectRatio === undefined ? {} : { aspectRatio })}
-            autoCropArea={1}
-            background={false}
-            className="h-[min(60svh,36rem)] w-full overflow-hidden rounded-media bg-muted"
-            dragMode="move"
-            guides
-            ref={cropperRef}
-            responsive
-            src={sourceUrl}
-            viewMode={1}
-          />
-          {hasError ? <p className="mt-3 text-sm text-destructive">{description}</p> : null}
+          {sourceUrl === null ? (
+            <div className="flex h-[min(60svh,36rem)] items-center justify-center rounded-media bg-muted px-6 text-center text-sm text-muted-foreground">
+              {hasError ? errorLabel : loadingLabel}
+            </div>
+          ) : (
+            <Cropper
+              {...(aspectRatio === undefined ? {} : { aspectRatio })}
+              autoCropArea={1}
+              background={false}
+              className="h-[min(60svh,36rem)] w-full overflow-hidden rounded-media bg-muted"
+              dragMode="move"
+              guides
+              ready={handleReady}
+              ref={cropperRef}
+              responsive
+              src={sourceUrl}
+              viewMode={1}
+            />
+          )}
+          {hasError && sourceUrl !== null ? (
+            <p className="mt-3 text-sm text-destructive">{errorLabel}</p>
+          ) : null}
         </div>
         <SheetFooter>
           <Button disabled={isCropping} onClick={onCancel} type="button" variant="outline">
             {cancelLabel}
           </Button>
-          <Button disabled={isCropping} onClick={confirm} type="button">
+          <Button disabled={isCropping || !isReady} onClick={confirm} type="button">
             {confirmLabel}
           </Button>
         </SheetFooter>

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 
@@ -22,11 +22,14 @@ vi.mock('./work.actions', () => ({
 }));
 vi.mock('react-cropper', () => ({
   default: forwardRef(function CropperMock(
-    { aspectRatio }: { aspectRatio: number },
+    { aspectRatio, ready, src }: { aspectRatio: number; ready: () => void; src: string },
     ref: React.ForwardedRef<unknown>,
   ) {
     useImperativeHandle(ref, () => ({ cropper: { getCroppedCanvas: cropper.getCroppedCanvas } }));
-    return <div aria-label="เครื่องมือครอป" data-aspect-ratio={aspectRatio} />;
+    useEffect(() => ready(), [ready, src]);
+    return (
+      <div aria-label="เครื่องมือครอป" data-aspect-ratio={aspectRatio} data-source={src} />
+    );
   }),
 }));
 
@@ -234,9 +237,16 @@ describe('WorkMediaUpload', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'ครอปโปสเตอร์' })).toBeTruthy();
-    expect(screen.getByLabelText('เครื่องมือครอป').getAttribute('data-aspect-ratio')).toBe('0.75');
+    const cropperEditor = await screen.findByLabelText('เครื่องมือครอป');
+    expect(cropperEditor.getAttribute('data-aspect-ratio')).toBe('0.75');
+    expect(cropperEditor.getAttribute('data-source')).toMatch(/^data:image\/png;base64,/);
     expect(actions.authorize).not.toHaveBeenCalled();
 
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'ครอปและอัปโหลด' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'ครอปและอัปโหลด' }));
 
     await waitFor(() => expect(actions.authorize).toHaveBeenCalledOnce());
