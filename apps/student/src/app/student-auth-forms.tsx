@@ -1,13 +1,17 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
+import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useState, type ChangeEventHandler } from 'react';
 import { useFormStatus } from 'react-dom';
+import { PasswordStrength } from '@/components/password-strength';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { evaluateStudentPassword } from '@/lib/student-password-policy';
 import type { AuthAction, AuthErrorMessage } from './student-auth-action-state';
 import { INITIAL_AUTH_ACTION_STATE } from './student-auth-action-state';
 
@@ -33,13 +37,11 @@ export function LoginForm({ action }: { action: AuthAction }) {
           </Field>
           <Field>
             <FieldLabel htmlFor="password">{t('login.password')}</FieldLabel>
-            <Input
+            <PasswordInput
               autoComplete="current-password"
               id="password"
-              maxLength={128}
+              label={t('login.password')}
               name="password"
-              required
-              type="password"
             />
           </Field>
         </FieldGroup>
@@ -50,9 +52,27 @@ export function LoginForm({ action }: { action: AuthAction }) {
   );
 }
 
-export function ChangePasswordForm({ action }: { action: AuthAction }) {
+export function ChangePasswordForm({
+  action,
+  submitLabel,
+}: {
+  action: AuthAction;
+  submitLabel?: string | undefined;
+}) {
   const t = useTranslations('Auth');
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const passwordEvaluation = evaluateStudentPassword(newPassword);
+  const isSameAsCurrent = newPassword.length > 0 && newPassword === currentPassword;
+  const isConfirmationEntered = confirmPassword.length > 0;
+  const isConfirmationMatching = isConfirmationEntered && confirmPassword === newPassword;
+  const canSubmit =
+    currentPassword.length > 0 &&
+    passwordEvaluation.isValid &&
+    !isSameAsCurrent &&
+    isConfirmationMatching;
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
@@ -63,24 +83,45 @@ export function ChangePasswordForm({ action }: { action: AuthAction }) {
             id="current-password"
             label={t('change.currentPassword')}
             name="currentPassword"
+            onChange={(event) => setCurrentPassword(event.currentTarget.value)}
           />
           <PasswordField
+            ariaDescribedBy="new-password-strength"
             autoComplete="new-password"
+            description={isSameAsCurrent ? t('change.sameAsCurrent') : undefined}
+            descriptionId="new-password-description"
             id="new-password"
+            isInvalid={isSameAsCurrent || (newPassword.length >= 12 && !passwordEvaluation.isValid)}
             label={t('change.newPassword')}
             name="newPassword"
+            onChange={(event) => setNewPassword(event.currentTarget.value)}
           />
+          <PasswordStrength password={newPassword} />
           <PasswordField
             autoComplete="new-password"
+            description={
+              !isConfirmationEntered
+                ? undefined
+                : isConfirmationMatching
+                  ? t('change.confirmationMatch')
+                  : t('errors.passwordMismatch')
+            }
+            descriptionId="confirm-password-description"
+            descriptionTone={isConfirmationMatching ? 'success' : 'default'}
             id="confirm-password"
+            isInvalid={isConfirmationEntered && !isConfirmationMatching}
             label={t('change.confirmPassword')}
             name="confirmPassword"
+            onChange={(event) => setConfirmPassword(event.currentTarget.value)}
           />
-          <FieldDescription>{t('change.requirements')}</FieldDescription>
         </FieldGroup>
       </FieldSet>
       <ActionError error={state.error} />
-      <SubmitButton label={t('change.submit')} pendingLabel={t('submitting')} />
+      <SubmitButton
+        isDisabled={!canSubmit}
+        label={submitLabel ?? t('change.submit')}
+        pendingLabel={t('submitting')}
+      />
     </form>
   );
 }
@@ -99,28 +140,110 @@ export function LogoutForm({ action }: { action: AuthAction }) {
 
 function PasswordField({
   autoComplete,
+  ariaDescribedBy,
+  description,
+  descriptionId,
+  descriptionTone = 'default',
   id,
+  isInvalid = false,
   label,
   name,
+  onChange,
 }: {
   autoComplete: 'current-password' | 'new-password';
+  ariaDescribedBy?: string;
+  description?: string | undefined;
+  descriptionId?: string;
+  descriptionTone?: 'default' | 'success';
   id: string;
+  isInvalid?: boolean;
   label: string;
   name: string;
+  onChange?: ChangeEventHandler<HTMLInputElement>;
 }) {
   return (
-    <Field>
+    <Field data-invalid={isInvalid || undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
+      <PasswordInput
+        ariaDescribedBy={
+          description ? [ariaDescribedBy, descriptionId].filter(Boolean).join(' ') : ariaDescribedBy
+        }
         autoComplete={autoComplete}
         id={id}
-        maxLength={128}
+        isInvalid={isInvalid}
+        label={label}
         minLength={name === 'currentPassword' ? undefined : 12}
         name={name}
-        required
-        type="password"
+        onChange={onChange}
       />
+      {description ? (
+        <FieldDescription
+          className={cn(
+            isInvalid && 'text-destructive',
+            descriptionTone === 'success' && 'text-success',
+          )}
+          id={descriptionId}
+        >
+          {description}
+        </FieldDescription>
+      ) : null}
     </Field>
+  );
+}
+
+function PasswordInput({
+  ariaDescribedBy,
+  autoComplete,
+  id,
+  isInvalid = false,
+  label,
+  minLength,
+  name,
+  onChange,
+}: {
+  ariaDescribedBy?: string | undefined;
+  autoComplete: 'current-password' | 'new-password';
+  id: string;
+  isInvalid?: boolean;
+  label: string;
+  minLength?: number | undefined;
+  name: string;
+  onChange?: ChangeEventHandler<HTMLInputElement> | undefined;
+}) {
+  const t = useTranslations('Auth.passwordVisibility');
+  const [isVisible, setIsVisible] = useState(false);
+  const visibilityLabel = t(isVisible ? 'hide' : 'show', { field: label });
+
+  return (
+    <div className="relative">
+      <Input
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={isInvalid || undefined}
+        autoComplete={autoComplete}
+        className="pr-14"
+        id={id}
+        maxLength={128}
+        minLength={minLength}
+        name={name}
+        onChange={onChange}
+        required
+        spellCheck={false}
+        type={isVisible ? 'text' : 'password'}
+      />
+      <Button
+        aria-controls={id}
+        aria-label={visibilityLabel}
+        aria-pressed={isVisible}
+        className="absolute inset-y-0 right-0 z-10 h-full w-12 rounded-l-none text-muted-foreground hover:text-foreground"
+        onClick={() => setIsVisible((current) => !current)}
+        size="icon-sm"
+        title={visibilityLabel}
+        type="button"
+        variant="ghost"
+      >
+        {isVisible ? <EyeOffIcon aria-hidden="true" /> : <EyeIcon aria-hidden="true" />}
+      </Button>
+    </div>
   );
 }
 
@@ -134,17 +257,25 @@ function ActionError({ error }: { error: AuthErrorMessage | null }) {
 }
 
 function SubmitButton({
+  isDisabled = false,
   label,
   pendingLabel,
   variant = 'default',
 }: {
+  isDisabled?: boolean;
   label: string;
   pendingLabel: string;
   variant?: 'default' | 'outline';
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button className="w-full" disabled={pending} size="lg" type="submit" variant={variant}>
+    <Button
+      className="w-full"
+      disabled={pending || isDisabled}
+      size="lg"
+      type="submit"
+      variant={variant}
+    >
       {pending ? <Spinner aria-label={pendingLabel} /> : null}
       {pending ? pendingLabel : label}
     </Button>

@@ -19,9 +19,15 @@ import {
   ProfileOverviewEditLink,
   ProfilePhotoButton,
 } from './profile-form';
+import { ProfileSecurityPanel } from './profile-security-panel';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
 
-export default async function ProfilePage() {
+interface ProfilePageProps {
+  searchParams: Promise<{ passwordChanged?: string }>;
+}
+
+export default async function ProfilePage({ searchParams }: ProfilePageProps) {
+  const { passwordChanged } = await searchParams;
   const state = await getStudentAuthPageState();
   if (state.kind !== 'active') redirect('/');
   const sessionToken = await readStudentSessionToken();
@@ -77,7 +83,6 @@ export default async function ProfilePage() {
   return (
     <StudentWorkspaceShell
       activePage="edit-profile"
-      canCreateWork={state.session.canUseStudentCapabilities}
       profile={
         response.person === null
           ? null
@@ -159,21 +164,31 @@ export default async function ProfilePage() {
             <ConsentPanel
               grantAction={grantConsentAction}
               idempotencyKey={consentIdempotencyKey}
+              key={response.profile?.version ?? 0}
               profile={response.profile}
               publicProfileUrl={publicProfileUrl}
               withdrawAction={withdrawConsentAction}
             />
           </aside>
 
-          <ProfileForm
-            canEditProfile={response.canEditProfile}
-            createPhotoUpload={createPhotoUploadAction}
-            finalizePhotoUpload={finalizePhotoUploadAction}
-            idempotencyKey={updateIdempotencyKey}
-            photoIdempotencyKey={photoIdempotencyKey}
-            profile={response.profile}
-            updateAction={updateProfileAction}
-          />
+          <div className="grid min-w-0 gap-6" id="profile-editor-column">
+            <ProfileForm
+              canEditProfile={response.canEditProfile}
+              createPhotoUpload={createPhotoUploadAction}
+              finalizePhotoUpload={finalizePhotoUploadAction}
+              idempotencyKey={updateIdempotencyKey}
+              photoIdempotencyKey={photoIdempotencyKey}
+              profile={response.profile}
+              updateAction={updateProfileAction}
+            />
+            <ProfileSecurityPanel
+              actionLabel={t('security.action')}
+              description={t('security.description')}
+              heading={t('security.heading')}
+              isPasswordChanged={passwordChanged === '1'}
+              successMessage={t('security.success')}
+            />
+          </div>
         </div>
       </main>
     </StudentWorkspaceShell>

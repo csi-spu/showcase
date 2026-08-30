@@ -13,7 +13,6 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/animate-ui/components/radix/sidebar';
-import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
@@ -39,12 +38,10 @@ interface StudentSidebarProfile {
 
 export async function StudentWorkspaceShell({
   activePage,
-  canCreateWork,
   children,
   profile,
 }: {
   activePage: StudentWorkspacePage;
-  canCreateWork: boolean;
   children: ReactNode;
   profile?: StudentSidebarProfile | null;
 }) {
@@ -75,7 +72,6 @@ export async function StudentWorkspaceShell({
   const activeLabel = groups
     .flatMap((group) => group.items)
     .find((item) => item.page === activePage)?.label;
-  const statusLabel = canCreateWork ? t('status.active') : t('status.readOnly');
   const rosterName = sidebarProfile
     ? `${sidebarProfile.firstName} ${sidebarProfile.lastName}`
     : t('profile.fallback');
@@ -126,14 +122,6 @@ export async function StudentWorkspaceShell({
               ) : null}
             </span>
           </Link>
-          <div className="flex flex-wrap items-center gap-2 group-data-[collapsible=icon]:hidden">
-            <Badge className="w-fit" variant="secondary">
-              {statusLabel}
-            </Badge>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {t('department')}
-            </span>
-          </div>
           <div className="group-data-[collapsible=icon]:hidden">
             <LogoutForm action={logoutAction} />
           </div>

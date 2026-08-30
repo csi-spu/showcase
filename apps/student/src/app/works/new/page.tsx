@@ -24,7 +24,7 @@ export default async function NewWorkPage() {
   const t = await getTranslations('WorkPage');
 
   return (
-    <StudentWorkspaceShell activePage="add-work" canCreateWork>
+    <StudentWorkspaceShell activePage="add-work">
       <div>
         <h1 className="sr-only">{t('createHeading')}</h1>
         <WorkForm context={context} initialWork={null} />

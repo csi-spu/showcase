@@ -3,6 +3,8 @@
 @source '../components/**/*.tsx';
 
 .student-canvas {
+  --auth-visual-background: #ead8e6;
+
   background:
     radial-gradient(
       circle at 85% 8%,

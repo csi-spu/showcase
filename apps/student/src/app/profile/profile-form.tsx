@@ -580,9 +580,27 @@ export function ConsentPanel({
   withdrawAction: ProfileAction;
 }) {
   const t = useTranslations('Profile');
-  const isGranted = profile !== null && profile.consent !== null;
-  const action = isGranted ? withdrawAction : grantAction;
-  const [state, formAction] = useActionState(action, INITIAL_PROFILE_ACTION_STATE);
+  const router = useRouter();
+  const isServerGranted = profile !== null && profile.consent !== null;
+  const [isGranted, setIsGranted] = useState(isServerGranted);
+  const consentFormRef = useRef<HTMLFormElement>(null);
+  const consentIntentRef = useRef<HTMLInputElement>(null);
+  const [state, formAction, isPending] = useActionState(
+    async (previousState: ProfileActionState, formData: FormData) => {
+      const nextIsGranted = formData.get('isGranted') === 'true';
+      const nextState = await (nextIsGranted ? grantAction : withdrawAction)(
+        previousState,
+        formData,
+      );
+      if (!nextState.success) {
+        setIsGranted(isServerGranted);
+        return nextState;
+      }
+      router.refresh();
+      return nextState;
+    },
+    INITIAL_PROFILE_ACTION_STATE,
+  );
 
   return (
     <section className="grid gap-5 rounded-surface border border-border/80 bg-card p-5 shadow-[0_1rem_2rem_-2rem_rgba(50,20,45,0.18)] sm:p-6">
@@ -590,13 +608,29 @@ export function ConsentPanel({
         <h2 className="text-lg font-semibold tracking-tight">{t('consent.heading')}</h2>
         <p className="text-sm text-pretty text-muted-foreground">{t('consent.help')}</p>
       </header>
-      <form action={formAction} className="grid gap-3 border-y border-border/80 py-4">
-        <input name="expectedVersion" type="hidden" value={profile?.version ?? 0} />
-        <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
+      <div className="grid gap-3 border-y border-border/80 py-4">
+        <form action={formAction} className="hidden" ref={consentFormRef}>
+          <input name="expectedVersion" type="hidden" value={profile?.version ?? 0} />
+          <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
+          <input
+            defaultValue={String(isGranted)}
+            name="isGranted"
+            ref={consentIntentRef}
+            type="hidden"
+          />
+        </form>
         <ConsentCheckbox
           checked={isGranted}
           disabled={profile === null}
+          isPending={isPending}
           label={t('consent.grant')}
+          onCheckedChange={(isChecked) => {
+            setIsGranted(isChecked);
+            if (consentIntentRef.current !== null) {
+              consentIntentRef.current.value = String(isChecked);
+            }
+            consentFormRef.current?.requestSubmit();
+          }}
           pendingLabel={t('saving')}
         />
         <p className="text-xs leading-relaxed text-muted-foreground">
@@ -607,7 +641,7 @@ export function ConsentPanel({
               : t('consent.private')}
         </p>
         <ActionFeedback error={state.error} success={state.success} />
-      </form>
+      </div>
       {isGranted && publicProfileUrl ? (
         <a
           className="inline-flex w-fit items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
@@ -624,29 +658,32 @@ export function ConsentPanel({
 function ConsentCheckbox({
   checked,
   disabled,
+  isPending,
   label,
+  onCheckedChange,
   pendingLabel,
 }: {
   checked: boolean;
   disabled: boolean;
+  isPending: boolean;
   label: string;
+  onCheckedChange: (isChecked: boolean) => void;
   pendingLabel: string;
 }) {
-  const { pending } = useFormStatus();
   return (
     <label className="flex cursor-pointer items-center justify-between gap-4 text-sm font-medium has-[:disabled]:cursor-not-allowed">
       <span>{label}</span>
       <input
         checked={checked}
         className="peer sr-only"
-        disabled={disabled || pending}
+        disabled={disabled || isPending}
         onChange={(event) => {
-          event.currentTarget.form?.requestSubmit();
+          onCheckedChange(event.currentTarget.checked);
         }}
         type="checkbox"
       />
       <span className="relative h-7 w-12 rounded-full border border-input bg-muted transition-colors peer-checked:border-primary peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background peer-disabled:cursor-not-allowed peer-disabled:opacity-50 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-background after:shadow-sm after:transition-transform peer-checked:after:translate-x-5">
-        {pending ? (
+        {isPending ? (
           <Spinner
             aria-label={pendingLabel}
             className="absolute top-1/2 left-1/2 size-4 -translate-x-1/2 -translate-y-1/2"
