@@ -12,18 +12,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export type WorkListCategory =
-  | 'academic_article'
-  | 'all'
-  | 'competition_entry'
-  | 'course_work';
+export type WorkListCategory = 'academic_article' | 'all' | 'competition_entry' | 'course_work';
 export type WorkListSort = 'updated_asc' | 'updated_desc';
-export type WorkListStatus =
-  | 'all'
-  | 'changes_requested'
-  | 'draft'
-  | 'pending_review'
-  | 'published';
+export type WorkListStatus = 'all' | 'changes_requested' | 'draft' | 'pending_review' | 'published';
 
 interface WorkListControlValue {
   category: WorkListCategory;
@@ -95,14 +86,14 @@ export function WorkListControls({
     if (normalizedQuery === value.query) return;
     const timeout = window.setTimeout(() => {
       submittedQuery.current = normalizedQuery;
-      startTransition(() => router.replace(buildHref(value, { query: localQuery }), { scroll: false }));
+      startTransition(() =>
+        router.replace(buildHref(value, { query: localQuery }), { scroll: false }),
+      );
     }, 250);
     return () => window.clearTimeout(timeout);
   }, [localQuery, router, value]);
 
-  const update = (
-    patch: Partial<Pick<WorkListControlValue, 'category' | 'sort' | 'status'>>,
-  ) =>
+  const update = (patch: Partial<Pick<WorkListControlValue, 'category' | 'sort' | 'status'>>) =>
     startTransition(() =>
       router.replace(buildHref({ ...value, query: localQuery }, patch), { scroll: false }),
     );

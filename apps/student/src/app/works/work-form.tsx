@@ -3,15 +3,7 @@
 import { Button } from '@showcase/ui/button';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  type ReactNode,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import Image from 'next/image';
 import {
   ExternalLinkIcon,
@@ -274,19 +266,19 @@ export function WorkForm({
         {Array.from({ length: STEP_COUNT }, (_, index) => {
           const StepIcon = STEP_ICONS[index]!;
           return (
-          <li className="h-full" key={index}>
-            <span
-              aria-current={step === index ? 'step' : undefined}
-              className={`grid min-h-20 w-full content-center justify-items-center gap-2 rounded-control border px-3 py-3 text-center text-sm font-medium ${
-                step === index
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-card text-muted-foreground'
-              }`}
-            >
-              <StepIcon aria-hidden="true" className="size-5" />
-              <span className="leading-tight">{t(`wizard.step${index + 1}`)}</span>
-            </span>
-          </li>
+            <li className="h-full" key={index}>
+              <span
+                aria-current={step === index ? 'step' : undefined}
+                className={`grid min-h-20 w-full content-center justify-items-center gap-2 rounded-control border px-3 py-3 text-center text-sm font-medium ${
+                  step === index
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <StepIcon aria-hidden="true" className="size-5" />
+                <span className="leading-tight">{t(`wizard.step${index + 1}`)}</span>
+              </span>
+            </li>
           );
         })}
       </ol>
@@ -502,10 +494,7 @@ function MediaStep({
   return (
     <>
       <StepHeading icon={ImagesIcon}>{t('wizard.step2')}</StepHeading>
-      <div
-        className="grid items-stretch gap-5 lg:grid-cols-2"
-        data-slot="work-media-layout"
-      >
+      <div className="grid items-stretch gap-5 lg:grid-cols-2" data-slot="work-media-layout">
         <WorkMediaUpload
           expectedVersion={version}
           media={media.filter((item) => item.kind === 'poster')}
@@ -720,7 +709,9 @@ function ReviewStep({
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{t('review.gallery')}</p>
-                <Badge variant="outline">{t('review.galleryCount', { count: gallery.length })}</Badge>
+                <Badge variant="outline">
+                  {t('review.galleryCount', { count: gallery.length })}
+                </Badge>
               </div>
               {gallery.length === 0 || publicId === null ? (
                 <div className="grid min-h-24 place-items-center rounded-media border border-dashed text-muted-foreground">
@@ -773,11 +764,18 @@ function ReviewStep({
               <ReviewRow label={t('summary')} value={values.summary} />
               <ReviewRow label={t('description')} value={values.description} multiline />
               <dl className="grid gap-3 rounded-control bg-muted p-4 sm:grid-cols-3">
-                <ReviewRow label={t('category')} value={values.category === '' ? '' : t(`categories.${values.category}`)} />
+                <ReviewRow
+                  label={t('category')}
+                  value={values.category === '' ? '' : t(`categories.${values.category}`)}
+                />
                 <ReviewRow label={t('academicYear')} value={values.academicPeriod.year} />
                 <ReviewRow
                   label={t('semester')}
-                  value={values.academicPeriod.semester === 'summer' ? t('summer') : values.academicPeriod.semester}
+                  value={
+                    values.academicPeriod.semester === 'summer'
+                      ? t('summer')
+                      : values.academicPeriod.semester
+                  }
                 />
               </dl>
             </CardContent>
@@ -799,7 +797,10 @@ function ReviewStep({
             <ReviewSection icon={ExternalLinkIcon} title={t('review.discoveryTitle')}>
               <dl className="grid gap-4">
                 <ReviewRow label={t('discovery.links')} value={links.join(', ')} />
-                <ReviewRow label={t('tags')} value={values.tags.map((tag) => `#${tag}`).join(' · ')} />
+                <ReviewRow
+                  label={t('tags')}
+                  value={values.tags.map((tag) => `#${tag}`).join(' · ')}
+                />
                 <ReviewRow label={t('videoLinks')} value={values.videoLinks} multiline />
               </dl>
             </ReviewSection>
@@ -916,7 +917,9 @@ function ReviewRow({
   return (
     <div className="min-w-0">
       <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className={multiline ? 'mt-1 whitespace-pre-wrap' : 'mt-1 break-words'}>{value || '—'}</dd>
+      <dd className={multiline ? 'mt-1 whitespace-pre-wrap' : 'mt-1 break-words'}>
+        {value || '—'}
+      </dd>
     </div>
   );
 }

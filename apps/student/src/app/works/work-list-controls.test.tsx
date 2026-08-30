@@ -77,9 +77,7 @@ describe('WorkListControls', () => {
     const input = screen.getByRole('searchbox', { name: 'ค้นหาผลงาน' });
     input.focus();
 
-    view.rerender(
-      <WorkListControls labels={labels} value={{ ...value, query: 'ผลงานเว็บ' }} />,
-    );
+    view.rerender(<WorkListControls labels={labels} value={{ ...value, query: 'ผลงานเว็บ' }} />);
 
     expect(screen.getByRole('searchbox', { name: 'ค้นหาผลงาน' })).toBe(input);
     expect((input as HTMLInputElement).value).toBe('ผลงานเว็บ');

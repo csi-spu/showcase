@@ -58,9 +58,7 @@ export default async function Home({ searchParams }: HomeProps) {
   let description: string;
   if (state.kind === 'active') {
     heading = t('active.heading');
-    description = state.session.canUseStudentCapabilities
-      ? ''
-      : t('active.readOnlyDescription');
+    description = state.session.canUseStudentCapabilities ? '' : t('active.readOnlyDescription');
   } else if (state.kind === 'expired') {
     heading = t('expired.heading');
     description = t('expired.description');

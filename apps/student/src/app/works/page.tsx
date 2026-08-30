@@ -158,7 +158,11 @@ export default async function StudentWorksPage({
                 <span className="grid size-12 place-items-center rounded-full bg-primary-soft text-primary">
                   <FolderSearchIcon aria-hidden="true" className="size-6" />
                 </span>
-                <p>{searchQuery !== '' || category !== 'all' || status !== 'all' ? t('emptyFiltered') : t(view === 'saved' ? 'emptySaved' : 'empty')}</p>
+                <p>
+                  {searchQuery !== '' || category !== 'all' || status !== 'all'
+                    ? t('emptyFiltered')
+                    : t(view === 'saved' ? 'emptySaved' : 'empty')}
+                </p>
               </div>
             </div>
           ) : (
