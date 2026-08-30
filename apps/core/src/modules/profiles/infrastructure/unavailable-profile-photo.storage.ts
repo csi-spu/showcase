@@ -1,6 +1,10 @@
 import type { ProfilePhotoStorage } from '../application/profile-photo.ports';
 
 export class UnavailableProfilePhotoStorage implements ProfilePhotoStorage {
+  createPresignedGet(): Promise<string> {
+    return Promise.reject(new Error('PROFILE_PHOTO_STORAGE_NOT_CONFIGURED'));
+  }
+
   createPresignedPut(): Promise<string> {
     return Promise.reject(new Error('PROFILE_PHOTO_STORAGE_NOT_CONFIGURED'));
   }

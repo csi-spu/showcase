@@ -17,6 +17,10 @@ interface UploadRow {
   status: 'pending_upload' | 'processing' | 'ready';
 }
 
+interface ObjectKeyRow {
+  sanitized_object_key: string;
+}
+
 @Injectable()
 export class PostgresProfilePhotoRepository implements ProfilePhotoRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -116,6 +120,33 @@ export class PostgresProfilePhotoRepository implements ProfilePhotoRepository {
         uploadId: row.id,
       };
     });
+  }
+
+  async findPrivatePhotoObjectKey(actorAccountId: string): Promise<string | null> {
+    const rows = await this.database.sql<ObjectKeyRow[]>`
+      select photo.sanitized_object_key
+      from public.accounts as account
+      join public.public_profiles as profile on profile.person_id = account.person_id
+      join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
+      where account.id = ${actorAccountId}
+      limit 1
+    `;
+    return rows[0]?.sanitized_object_key ?? null;
+  }
+
+  async findPublicPhotoObjectKey(publicId: string): Promise<string | null> {
+    const rows = await this.database.sql<ObjectKeyRow[]>`
+      select photo.sanitized_object_key
+      from public.public_profiles as profile
+      join public.profile_consents as consent
+        on consent.person_id = profile.person_id and consent.withdrawn_at is null
+      join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
+      where profile.public_id = ${publicId}
+      limit 1
+    `;
+    return rows[0]?.sanitized_object_key ?? null;
   }
 
   async completeUpload(input: {

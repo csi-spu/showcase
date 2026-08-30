@@ -85,6 +85,7 @@ describe('StudentWorkspaceShell', () => {
           firstName: 'ณัฐดนัย',
           lastName: 'สุขใจ',
           photo: { height: 512, url: 'https://media.example.test/private.webp', width: 512 },
+          photoVersion: 3,
         },
       }),
     );
@@ -103,7 +104,7 @@ describe('StudentWorkspaceShell', () => {
     expect(within(sidebar).getByText('ปีที่เข้าศึกษา 2569')).toBeTruthy();
     expect(
       within(sidebar).getByRole('img', { name: 'รูปโปรไฟล์ของ ณัฐดนัย สุขใจ' }).getAttribute('src'),
-    ).toBe('/profile/photo');
+    ).toBe('/profile/photo?v=3');
     expect(sidebar.innerHTML).not.toContain('private.webp');
     expect(screen.getByRole('button', { name: 'เปิดเมนู' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'สร้างผลงาน' })).toBeNull();

@@ -1,6 +1,29 @@
 import { R2ProfilePhotoStorage } from './r2-profile-photo.storage';
 
 describe('R2ProfilePhotoStorage', () => {
+  it('presigns one short-lived GET for the exact sanitized object key', async () => {
+    const storage = new R2ProfilePhotoStorage({
+      accessKeyId: 'test-access-key',
+      bucket: 'test-profile-media',
+      endpoint: 'https://example.r2.cloudflarestorage.com',
+      secretAccessKey: 'test-secret-key',
+      timeoutMilliseconds: 5_000,
+    });
+
+    const signed = new URL(
+      await storage.createPresignedGet({
+        expiresInSeconds: 60,
+        key: 'profile-media/61000000-0000-4000-8000-000000000003.webp',
+      }),
+    );
+
+    expect(decodeURIComponent(signed.pathname)).toBe(
+      '/test-profile-media/profile-media/61000000-0000-4000-8000-000000000003.webp',
+    );
+    expect(signed.searchParams.get('X-Amz-Expires')).toBe('60');
+    expect(signed.toString()).not.toContain('test-secret-key');
+  });
+
   it('presigns one short-lived PUT for the exact random quarantine key and content type', async () => {
     const storage = new R2ProfilePhotoStorage({
       accessKeyId: 'test-access-key',

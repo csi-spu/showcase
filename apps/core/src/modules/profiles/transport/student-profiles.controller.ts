@@ -55,6 +55,13 @@ export class StudentProfilesController {
     };
   }
 
+  @Get('photo')
+  @Header('Cache-Control', 'no-store')
+  async getPhoto(@Headers('authorization') authorization: string | undefined) {
+    const actor = await this.auth.authorizeProfileAccess(this.requireSessionToken(authorization));
+    return this.photos.getPrivatePhotoUrl(actor.accountId);
+  }
+
   @Post('photo-uploads')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')

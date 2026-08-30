@@ -37,6 +37,31 @@ describe('PublicProfileCoreClient', () => {
     await expect(client.getProfile(PUBLIC_ID)).resolves.toBeNull();
   });
 
+  it('requests a consent-checked signed Public Profile photo URL', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ url: 'https://r2.example.test/signed-profile-photo' }));
+    const client = new PublicProfileCoreClient('https://core.example.test', fetchMock);
+
+    await expect(client.getPhotoUrl(PUBLIC_ID)).resolves.toBe(
+      'https://r2.example.test/signed-profile-photo',
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/public/profiles/${PUBLIC_ID}/photo`,
+    );
+  });
+
+  it('maps an ineligible Public Profile photo to null', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ error: { code: 'PROFILE_PHOTO_NOT_FOUND' } }, { status: 404 }),
+      );
+    const client = new PublicProfileCoreClient('https://core.example.test', fetchMock);
+
+    await expect(client.getPhotoUrl(PUBLIC_ID)).resolves.toBeNull();
+  });
+
   it('rejects accidental Account or private draft fields from Core', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({

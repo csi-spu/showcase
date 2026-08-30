@@ -17,6 +17,13 @@ const photoUploadSchema = z.object({
   byteSize: z.number().int().positive().max(2_097_152),
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
 });
+const finalizePhotoUploadSchema = z
+  .object({
+    expectedVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    idempotencyKey: z.uuid(),
+    uploadId: z.uuid(),
+  })
+  .strict();
 
 export async function updateProfileAction(
   _previousState: ProfileActionState,
@@ -77,12 +84,25 @@ export async function createPhotoUploadAction(input: unknown) {
   }
 }
 
-export async function finalizePhotoUploadAction(uploadId: unknown) {
-  const parsed = z.uuid().safeParse(uploadId);
+export async function finalizePhotoUploadAction(input: unknown) {
+  const parsed = finalizePhotoUploadSchema.safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
   try {
-    const photo = await client().finalizePhotoUpload(await sessionToken(), parsed.data);
-    return { data: photo };
+    const token = await sessionToken();
+    const profileClient = client();
+    const photo = await profileClient.finalizePhotoUpload(token, parsed.data.uploadId);
+    const current = await profileClient.getProfile(token);
+    await profileClient.updateProfile(token, {
+      bio: current.profile?.bio ?? null,
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+      links: current.profile?.links ?? [],
+      photoId: photo.photoId,
+    });
+    revalidatePath('/profile');
+    return {
+      data: { ...photo, version: parsed.data.expectedVersion + 1 },
+    };
   } catch (error: unknown) {
     return { error: mapError(error) };
   }

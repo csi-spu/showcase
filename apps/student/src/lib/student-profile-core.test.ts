@@ -63,6 +63,20 @@ describe('StudentProfileCoreClient', () => {
     expect(body).not.toMatch(/studentId|account/i);
   });
 
+  it('requests a signed URL for the authenticated Student current photo', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ url: 'https://r2.example.test/signed-profile-photo' }));
+    const client = createClient(fetchMock);
+
+    await expect(client.getPhotoUrl(SESSION)).resolves.toBe(
+      'https://r2.example.test/signed-profile-photo',
+    );
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://core.example.test/v1/internal/student/profile/photo');
+    expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${SESSION}`);
+  });
+
   function createClient(fetchImpl: typeof fetch) {
     return new StudentProfileCoreClient(
       { coreUrl: 'https://core.example.test', studentBffSecret: 'server-secret' },

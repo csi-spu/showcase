@@ -25,19 +25,19 @@ describe('GET /profile/photo', () => {
 
   it('does not load profile media without an authenticated Student session', async () => {
     routeDependencies.readSessionToken.mockResolvedValue(null);
-    const getProfile = vi.spyOn(StudentProfileCoreClient.prototype, 'getProfile');
+    const getPhotoUrl = vi.spyOn(StudentProfileCoreClient.prototype, 'getPhotoUrl');
     const fetchMock = vi.spyOn(globalThis, 'fetch');
 
     const response = await GET(new Request('http://localhost/profile/photo'));
 
     expect(response.status).toBe(401);
-    expect(getProfile).not.toHaveBeenCalled();
+    expect(getPhotoUrl).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('serves only the current Student profile photo as private sanitized WebP', async () => {
     routeDependencies.readSessionToken.mockResolvedValue('session-token');
-    mockProfilePhoto();
+    mockProfilePhotoUrl();
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), {
         headers: { 'Content-Type': 'image/webp' },
@@ -65,7 +65,7 @@ describe('GET /profile/photo', () => {
     ],
   ])('rejects %s', async (_scenario, headers) => {
     routeDependencies.readSessionToken.mockResolvedValue('session-token');
-    mockProfilePhoto();
+    mockProfilePhotoUrl();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), { headers }),
     );
@@ -77,7 +77,7 @@ describe('GET /profile/photo', () => {
 
   it('stops reading an undeclared payload that exceeds the private media limit', async () => {
     routeDependencies.readSessionToken.mockResolvedValue('session-token');
-    mockProfilePhoto();
+    mockProfilePhotoUrl();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(new Uint8Array(8 * 1_024 * 1_024 + 1), {
         headers: { 'Content-Type': 'image/webp' },
@@ -91,7 +91,7 @@ describe('GET /profile/photo', () => {
 
   it('returns unauthenticated when the Core session expires before profile lookup', async () => {
     routeDependencies.readSessionToken.mockResolvedValue('expired-session-token');
-    vi.spyOn(StudentProfileCoreClient.prototype, 'getProfile').mockRejectedValue(
+    vi.spyOn(StudentProfileCoreClient.prototype, 'getPhotoUrl').mockRejectedValue(
       new StudentProfileCoreError('SESSION_EXPIRED', 401),
     );
 
@@ -100,28 +100,24 @@ describe('GET /profile/photo', () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: { code: 'UNAUTHENTICATED' } });
   });
+
+  it('returns not found when no current profile photo is attached', async () => {
+    routeDependencies.readSessionToken.mockResolvedValue('session-token');
+    vi.spyOn(StudentProfileCoreClient.prototype, 'getPhotoUrl').mockRejectedValue(
+      new StudentProfileCoreError('PROFILE_PHOTO_NOT_FOUND', 404),
+    );
+
+    const response = await GET(new Request('http://localhost/profile/photo'));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'PROFILE_PHOTO_NOT_FOUND' },
+    });
+  });
 });
 
-function mockProfilePhoto() {
-  return vi.spyOn(StudentProfileCoreClient.prototype, 'getProfile').mockResolvedValue({
-    canEditProfile: true,
-    person: {
-      entryYear: 2569,
-      firstName: 'ณัฐดนัย',
-      lastName: 'สุขใจ',
-    },
-    profile: {
-      bio: null,
-      consent: null,
-      links: [],
-      photo: {
-        height: 512,
-        url: 'https://media.example.test/profile-media/photo.webp',
-        width: 512,
-      },
-      photoId: '82000000-0000-4000-8000-000000000001',
-      publicId: '82000000-0000-4000-8000-000000000002',
-      version: 1,
-    },
-  });
+function mockProfilePhotoUrl() {
+  return vi
+    .spyOn(StudentProfileCoreClient.prototype, 'getPhotoUrl')
+    .mockResolvedValue('https://media.example.test/profile-media/photo.webp');
 }

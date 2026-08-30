@@ -38,6 +38,14 @@ export class R2ProfilePhotoStorage implements ProfilePhotoStorage {
     });
   }
 
+  createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: input.key }),
+      { expiresIn: input.expiresInSeconds },
+    );
+  }
+
   createPresignedPut(input: {
     contentType: ProfilePhotoContentType;
     expiresInSeconds: number;
