@@ -149,7 +149,7 @@
     "unread": "ยังไม่ได้อ่าน"
   },
   "Correction": {
-    "back": "กลับคิวตรวจ",
+    "back": "กลับไปผลงานที่เผยแพร่",
     "categories": {
       "academic_article": "บทความวิชาการ",
       "competition_entry": "ผลงานประกวด",
@@ -261,6 +261,69 @@
     "description": "ระบบตรวจสอบและจัดการผลงานนักศึกษา",
     "title": "ผู้ดูแลระบบ | Student Showcase"
   },
+  "WorkManagement": {
+    "actions": {
+      "edit": "สร้างฉบับแก้ไข",
+      "manageVisibility": "จัดการการเผยแพร่และกู้คืน",
+      "review": "เปิดตรวจผลงาน",
+      "viewRequest": "เปิดสถานะผลงาน"
+    },
+    "columns": {
+      "actions": "ดำเนินการ",
+      "details": "ข้อมูลที่เกี่ยวข้อง",
+      "status": "สถานะ",
+      "updatedAt": "วันที่ดำเนินการ",
+      "work": "ผลงาน"
+    },
+    "categories": {
+      "academic_article": "บทความวิชาการ",
+      "competition_entry": "ผลงานประกวด",
+      "course_work": "ผลงานรายวิชา"
+    },
+    "description": "ตรวจ อนุมัติ แก้ไข และจัดการการเผยแพร่จากตารางเดียว เลือกประเภทงานเพื่อดูเฉพาะรายการที่ต้องดำเนินการ",
+    "empty": {
+      "attributions": "ไม่มีคำขอนำชื่อผู้ร่วมผลงานออกที่รอดำเนินการ",
+      "published": "ไม่พบผลงานที่เผยแพร่ตามคำค้น",
+      "removals": "ไม่มีคำขอนำผลงานออกที่รอดำเนินการ",
+      "reviews": "ยังไม่มีฉบับรอตรวจ"
+    },
+    "filterLabel": "กรองประเภทงาน",
+    "kicker": "ศูนย์จัดการผลงาน",
+    "navigation": "จัดการผลงาน",
+    "next": "หน้าถัดไป",
+    "published": {
+      "academicPeriod": "{semester} / {year}"
+    },
+    "review": {
+      "adminCorrection": "แก้ไขโดยผู้ดูแล",
+      "revision": "ฉบับที่ {number}",
+      "submittedBy": "ส่งโดย {name}"
+    },
+    "search": {
+      "label": "ค้นหาผลงานที่เผยแพร่",
+      "placeholder": "ค้นหาชื่อผลงาน ผู้สร้าง หรือแท็ก",
+      "submit": "ค้นหา"
+    },
+    "semesters": {
+      "1": "ภาค 1",
+      "2": "ภาค 2",
+      "summer": "ภาคฤดูร้อน"
+    },
+    "statuses": {
+      "pendingAttribution": "รอตรวจคำขอนำชื่อออก",
+      "pendingRemoval": "รอตรวจคำขอนำผลงานออก",
+      "pendingReview": "รอตรวจ",
+      "published": "เผยแพร่อยู่"
+    },
+    "tableLabel": "ตารางจัดการผลงาน",
+    "title": "จัดการผลงาน",
+    "views": {
+      "attributions": "คำขอนำชื่อออก",
+      "published": "ผลงานที่เผยแพร่",
+      "removals": "คำขอนำผลงานออก",
+      "reviews": "รอตรวจ"
+    }
+  },
   "Workspace": {
     "department": "วิทยาการคอมพิวเตอร์และนวัตกรรมการพัฒนาซอฟต์แวร์",
     "groups": {
@@ -304,7 +367,7 @@
     "confirmDecline": "ยืนยันไม่อนุมัติคำขอ",
     "decisionReason": "เหตุผลที่ไม่อนุมัติ",
     "declineRequest": "ไม่อนุมัติคำขอ",
-    "back": "กลับรายการคำขอ",
+    "back": "กลับไปคำขอจัดการผลงาน",
     "description": "พิจารณาคำขอนำผลงานหรือชื่อออก และควบคุมการเผยแพร่แบบกู้คืนได้ โดยระบบเก็บประวัติการดำเนินการ",
     "detailKicker": "ควบคุมผลงานรายรายการ",
     "empty": "ยังไม่มีคำขอนำผลงานออกรอพิจารณา",
@@ -400,7 +463,7 @@
       "academicPeriod": "ปีการศึกษา {year} ภาค {semester}",
       "adminCorrection": "ฉบับแก้ไขโดยผู้ดูแล",
       "attributions": "การแสดงชื่อ",
-      "back": "กลับคิวตรวจ",
+      "back": "กลับไปผลงานที่รอตรวจ",
       "category": "ประเภท",
       "content": "เนื้อหาฉบับนี้",
       "description": "รายละเอียด",

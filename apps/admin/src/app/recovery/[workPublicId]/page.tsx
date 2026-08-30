@@ -36,10 +36,10 @@ export default async function WorkRecoveryPage({
     throw error;
   }
   return (
-    <AdminWorkspaceShell activePage="recovery">
+    <AdminWorkspaceShell activePage="works">
       <AdminWorkspacePage
         actions={
-          <Link className={buttonVariants({ variant: 'outline' })} href="/recovery">
+          <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=removals">
             {t('back')}
           </Link>
         }

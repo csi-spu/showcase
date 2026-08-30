@@ -21,10 +21,8 @@ vi.mock('next-intl/server', () => ({
     }
     if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
     if (namespace === 'AccountControls' && key === 'year.navigation') return 'ปีการศึกษาปัจจุบัน';
-    if (namespace === 'Correction' && key === 'navigation') return 'แก้ไขผลงานที่เผยแพร่';
     if (namespace === 'Notifications' && key === 'navigation') return 'การแจ้งเตือน';
-    if (namespace === 'Recovery' && key === 'navigation') return 'การมองเห็นและการกู้คืน';
-    if (namespace === 'Review' && key === 'navigation') return 'คิวตรวจผลงาน';
+    if (namespace === 'WorkManagement' && key === 'navigation') return 'จัดการผลงาน';
     return 'ทะเบียนนักศึกษา';
   }),
 }));
@@ -69,15 +67,10 @@ describe('AdminWorkspaceShell', () => {
     expect(screen.getByRole('link', { name: 'ปีการศึกษาปัจจุบัน' }).getAttribute('href')).toBe(
       '/settings/academic-year',
     );
-    const reviewLink = screen.getByRole('link', { name: 'คิวตรวจผลงาน' });
-    expect(reviewLink.getAttribute('href')).toBe('/reviews');
-    expect(reviewLink.getAttribute('aria-current')).toBeNull();
-    const correctionLink = screen.getByRole('link', { name: 'แก้ไขผลงานที่เผยแพร่' });
-    expect(correctionLink.getAttribute('href')).toBe('/corrections');
-    expect(correctionLink.getAttribute('aria-current')).toBeNull();
-    expect(screen.getByRole('link', { name: 'การมองเห็นและการกู้คืน' }).getAttribute('href')).toBe(
-      '/recovery',
-    );
+    const workManagementLink = screen.getByRole('link', { name: 'จัดการผลงาน' });
+    expect(workManagementLink.getAttribute('href')).toBe('/works');
+    expect(workManagementLink.getAttribute('aria-current')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'คิวตรวจผลงาน' })).toBeNull();
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
 
     await user.click(within(sidebar).getByRole('button', { name: 'ย่อเมนู' }));

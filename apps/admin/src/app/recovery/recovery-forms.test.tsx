@@ -50,6 +50,28 @@ describe('Admin recovery forms', () => {
     expect(screen.getByRole('button', { name: 'ยืนยันไม่อนุมัติคำขอ' })).toBeTruthy();
   });
 
+  it('renders compact table actions as labelled icons and expands decline details on demand', async () => {
+    const user = userEvent.setup();
+    renderForm(
+      <RecoveryDecisionForm
+        action={vi.fn()}
+        iconOnly
+        idempotencyKey={id(13)}
+        request={request()}
+      />,
+    );
+
+    const approve = screen.getByRole('button', { name: 'อนุมัติและระงับการเผยแพร่' });
+    const decline = screen.getByRole('button', { name: 'ไม่อนุมัติคำขอ' });
+    expect(approve.textContent).toBe('');
+    expect(decline.textContent).toBe('');
+    expect(screen.queryByText(request().reason)).toBeNull();
+
+    await user.click(decline);
+    expect(screen.getByLabelText('เหตุผลที่ไม่อนุมัติ')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ยืนยันไม่อนุมัติคำขอ' }).textContent).toBe('');
+  });
+
   it('explains that attribution removal creates a reviewed correction', () => {
     const attributionRequest: AdminAttributionRemovalRequest = {
       attributionName: 'Alex Example',

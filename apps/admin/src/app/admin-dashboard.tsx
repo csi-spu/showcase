@@ -40,14 +40,14 @@ export function AdminDashboard({ labels }: { labels: AdminDashboardLabels }) {
         <DashboardAction
           className="xl:col-span-7"
           description={labels.reviewDescription}
-          href="/reviews"
+          href="/works?view=reviews"
           icon={ClipboardCheckIcon}
           title={labels.reviewTitle}
         />
         <DashboardAction
           className="xl:col-span-5"
           description={labels.recoveryDescription}
-          href="/recovery"
+          href="/works?view=removals"
           icon={RotateCcwIcon}
           title={labels.recoveryTitle}
         />

@@ -43,11 +43,11 @@ export default async function AdminCorrectionPage({
   }
 
   return (
-    <AdminWorkspaceShell activePage="corrections">
+    <AdminWorkspaceShell activePage="works">
       <AdminWorkspacePage
         actions={
           <>
-            <Link className={buttonVariants({ variant: 'outline' })} href="/corrections">
+            <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=published">
               {t('back')}
             </Link>
             <Link

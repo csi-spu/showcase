@@ -5,13 +5,11 @@ import { cn } from '@showcase/ui/cn';
 import {
   BellIcon,
   CalendarClockIcon,
-  ClipboardCheckIcon,
-  FilePenLineIcon,
   FileSpreadsheetIcon,
+  FolderKanbanIcon,
   LayoutDashboardIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
-  RotateCcwIcon,
   UserRoundCogIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -23,14 +21,7 @@ import { AdminBrand, AdminBrandMark } from './admin-brand';
 import { AdminMobileNavigation } from './admin-mobile-navigation';
 
 export type AdminWorkspacePage =
-  | 'account-controls'
-  | 'academic-year'
-  | 'corrections'
-  | 'dashboard'
-  | 'notifications'
-  | 'recovery'
-  | 'reviews'
-  | 'roster';
+  'account-controls' | 'academic-year' | 'dashboard' | 'notifications' | 'roster' | 'works';
 
 export interface AdminNavigationGroup {
   items: Array<{ href: string; label: string; page: AdminWorkspacePage }>;
@@ -40,12 +31,10 @@ export interface AdminNavigationGroup {
 const PAGE_ICONS: Record<AdminWorkspacePage, LucideIcon> = {
   'account-controls': UserRoundCogIcon,
   'academic-year': CalendarClockIcon,
-  corrections: FilePenLineIcon,
   dashboard: LayoutDashboardIcon,
   notifications: BellIcon,
-  recovery: RotateCcwIcon,
-  reviews: ClipboardCheckIcon,
   roster: FileSpreadsheetIcon,
+  works: FolderKanbanIcon,
 };
 
 export function AdminWorkspaceFrame({

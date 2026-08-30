@@ -42,6 +42,7 @@ export async function transitionWorkRecoveryAction(
     return failed(previousState, mapError(error));
   }
   revalidatePath('/recovery');
+  revalidatePath('/works');
   revalidatePath(`/recovery/${parsed.data.workPublicId}`);
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
@@ -90,6 +91,7 @@ export async function decideRemovalRequestAction(
     return failed(previousState, mapError(error));
   }
   revalidatePath('/recovery');
+  revalidatePath('/works');
   revalidatePath(`/recovery/${parsed.data.workPublicId}`);
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
@@ -150,6 +152,7 @@ export async function decideAttributionRemovalRequestAction(
     return failed(previousState, mapError(error));
   }
   revalidatePath('/recovery');
+  revalidatePath('/works');
   return { error: null, idempotencyKey: randomUUID(), success: true };
 }
 

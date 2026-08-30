@@ -28,10 +28,10 @@ describe('AdminDashboard', () => {
       screen.getByRole('heading', { level: 1, name: 'จัดการงานสำคัญจากที่เดียว' }),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: /ผลงานที่รอตรวจ/ }).getAttribute('href')).toBe(
-      '/reviews',
+      '/works?view=reviews',
     );
     expect(screen.getByRole('link', { name: /คำขอจัดการผลงาน/ }).getAttribute('href')).toBe(
-      '/recovery',
+      '/works?view=removals',
     );
     expect(screen.getByRole('link', { name: /ทะเบียนนักศึกษา/ }).getAttribute('href')).toBe(
       '/roster',

@@ -41,10 +41,10 @@ export default async function ReviewDetailPage({
   }
 
   return (
-    <AdminWorkspaceShell activePage="reviews">
+    <AdminWorkspaceShell activePage="works">
       <AdminWorkspacePage
         actions={
-          <Link className={buttonVariants({ variant: 'outline' })} href="/reviews">
+          <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=reviews">
             {t('detail.back')}
           </Link>
         }
