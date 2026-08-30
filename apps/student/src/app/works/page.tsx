@@ -100,7 +100,7 @@ export default async function StudentWorksPage({
     view,
   };
   return (
-    <StudentWorkspaceShell activePage="works" canCreateWork={canEdit}>
+    <StudentWorkspaceShell activePage="works">
       <WorkspacePage
         description={t('description')}
         eyebrow={t('eyebrow')}

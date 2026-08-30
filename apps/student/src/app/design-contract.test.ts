@@ -12,11 +12,24 @@ describe('Student visual contract', () => {
     expect(layout).not.toContain('Noto_Sans_Thai');
   });
 
-  it('does not use Primary as the large auth background', async () => {
+  it('uses a restrained auth surface instead of Primary as the large background', async () => {
     const page = await readFile(resolve(process.cwd(), 'src/app/page.tsx'), 'utf8');
 
     expect(page).not.toMatch(/<aside className="[^"]*\bbg-primary\b/);
-    expect(page).toMatch(/<aside className="[^"]*\bbg-background\b/);
+    expect(page).toMatch(/<aside className="[^"]*\bbg-\[var\(--auth-visual-background\)\]/);
+  });
+
+  it('uses a colored Magic UI backdrop with compact non-overlapping auth content', async () => {
+    const page = await readFile(resolve(process.cwd(), 'src/app/page.tsx'), 'utf8');
+    const globals = await readFile(resolve(process.cwd(), 'src/app/globals.css'), 'utf8');
+
+    expect(page).toContain("import { GridPattern } from '@/components/ui/grid-pattern';");
+    expect(page).toContain('<GridPattern');
+    expect(page).toContain('bg-[var(--auth-visual-background)]');
+    expect(globals).toContain('--auth-visual-background:');
+    expect(page).not.toMatch(/<aside className="[^"]*\bjustify-between\b/);
+    expect(page).not.toMatch(/<Card className="[^"]*\bmin-h-\[32rem\]\b/);
+    expect(page).not.toMatch(/<Card className="[^"]*\bcontent-between\b/);
   });
 
   it('does not force the Student surface wider than the mobile viewport', async () => {
@@ -89,5 +102,15 @@ describe('Student visual contract', () => {
     expect(page).toContain('<ProfilePhotoButton');
     expect(profileForm).toContain('href="#profile-bio"');
     expect(page).not.toContain('PencilIcon');
+  });
+
+  it('keeps account security with editable profile controls instead of the sticky summary', async () => {
+    const page = await readFile(resolve(process.cwd(), 'src/app/profile/page.tsx'), 'utf8');
+    const profileFormIndex = page.indexOf('<ProfileForm');
+    const securityPanelIndex = page.indexOf('<ProfileSecurityPanel');
+
+    expect(page).toContain('id="profile-editor-column"');
+    expect(profileFormIndex).toBeGreaterThan(-1);
+    expect(securityPanelIndex).toBeGreaterThan(profileFormIndex);
   });
 });

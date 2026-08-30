@@ -19,6 +19,7 @@ import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
+import { GridPattern } from '@/components/ui/grid-pattern';
 import {
   Card,
   CardContent,
@@ -38,6 +39,7 @@ import {
   loginAction,
   logoutAction,
 } from './student-auth.actions';
+import { AuthHeroCopy } from './auth-hero-copy';
 import { ChangePasswordForm, LoginForm, LogoutForm } from './student-auth-forms';
 import { StudentWorkspaceShell } from './student-workspace-shell';
 import { StudentBrand } from './student-brand';
@@ -78,7 +80,7 @@ export default async function Home({ searchParams }: HomeProps) {
     ).getWorkspaceSummary(sessionToken);
     const canMutate = state.session.canUseStudentCapabilities && summary.canMutate;
     return (
-      <StudentWorkspaceShell activePage="dashboard" canCreateWork={canMutate}>
+      <StudentWorkspaceShell activePage="dashboard">
         <header className="relative isolate grid min-h-72 overflow-hidden rounded-surface border border-border/80 bg-card p-6 shadow-sm sm:p-8 lg:grid-cols-12 lg:items-center lg:p-10">
           <div className="relative z-10 grid gap-3 lg:col-span-7">
             <Badge variant="secondary">{dashboardT('eyebrow')}</Badge>
@@ -207,15 +209,23 @@ export default async function Home({ searchParams }: HomeProps) {
 
   return (
     <main className="student-canvas mx-auto grid min-h-svh w-full max-w-[1600px] overflow-hidden bg-background lg:grid-cols-[minmax(28rem,1.08fr)_minmax(28rem,0.92fr)]">
-      <aside className="relative isolate flex min-h-64 flex-col justify-between overflow-hidden border-b border-border bg-background p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
-        <StudentBrand className="relative z-10" showSit />
-        <div className="relative z-10 hidden max-w-sm gap-4 lg:grid">
-          <p className="text-[clamp(2rem,4vw,4.5rem)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance">
-            Student Showcase
-          </p>
-          <p className="max-w-[36ch] text-muted-foreground">จัดการโปรไฟล์และผลงานของนักศึกษา CSI</p>
-        </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[78%]">
+      <aside className="relative isolate flex min-h-64 flex-col overflow-hidden border-b border-primary/15 bg-[var(--auth-visual-background)] p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
+        <GridPattern
+          className="fill-primary/10 stroke-primary/20 [mask-image:linear-gradient(to_bottom_right,black,black_55%,transparent_92%)]"
+          height={42}
+          squares={[
+            [2, 2],
+            [5, 1],
+            [8, 3],
+            [3, 7],
+            [10, 8],
+          ]}
+          width={42}
+        />
+        <div className="pointer-events-none absolute -top-24 right-[-10%] size-[28rem] rounded-full bg-white/45 blur-3xl" />
+        <StudentBrand className="relative z-20" showSit />
+        <AuthHeroCopy />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[78%] lg:left-[16%] lg:right-0 lg:h-[54%]">
           <div className="absolute inset-10 rounded-full bg-primary/12 blur-3xl" />
           <Image
             alt=""
@@ -230,7 +240,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
       <section className="flex items-center justify-center p-4 sm:p-8 lg:p-10 xl:p-14">
         <BlurFade className="w-full max-w-[38rem]" offset={10}>
-          <Card className="grid min-h-[32rem] w-full content-between shadow-[0_1.5rem_4rem_-2rem_rgba(50,20,45,0.28)]">
+          <Card className="w-full border-white/80 bg-card/95 shadow-[0_1.5rem_4rem_-2rem_rgba(50,20,45,0.28)] backdrop-blur-sm">
             <CardHeader className="gap-3">
               <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
               <CardTitle>

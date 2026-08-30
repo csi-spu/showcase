@@ -62,7 +62,7 @@ export default async function EditWorkPage({
         : t('archivedDescription');
 
   return (
-    <StudentWorkspaceShell activePage="works" canCreateWork={canMutate}>
+    <StudentWorkspaceShell activePage="works">
       <WorkspacePage
         description={description}
         eyebrow={

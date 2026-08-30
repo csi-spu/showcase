@@ -211,8 +211,12 @@ describe('Student Public Profile UI', () => {
     ).toBe(false);
   });
 
-  it('updates Profile Consent from a compact checkbox', async () => {
+  it('keeps Client and Server Profile Consent in sync with one click per change', async () => {
     const grantAction = vi.fn(async (): Promise<ProfileActionState> => ({
+      error: null,
+      success: true,
+    }));
+    const withdrawAction = vi.fn(async (): Promise<ProfileActionState> => ({
       error: null,
       success: true,
     }));
@@ -230,14 +234,28 @@ describe('Student Public Profile UI', () => {
         grantAction={grantAction}
         idempotencyKey="71000000-0000-4000-8000-000000000003"
         profile={profile}
-        withdrawAction={action}
+        withdrawAction={withdrawAction}
       />,
     );
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'ยินยอมให้เผยแพร่โปรไฟล์' }));
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'ยินยอมให้เผยแพร่โปรไฟล์',
+    }) as HTMLInputElement;
+    await userEvent.click(checkbox);
 
     await waitFor(() => {
       expect(grantAction).toHaveBeenCalledTimes(1);
+      expect(checkbox.checked).toBe(true);
+      expect(screen.getByText('โปรไฟล์นี้เผยแพร่แล้ว')).toBeTruthy();
+    });
+
+    await userEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(withdrawAction).toHaveBeenCalledTimes(1);
+      expect(checkbox.checked).toBe(false);
+      expect(screen.getByText('โปรไฟล์นี้ยังไม่เผยแพร่')).toBeTruthy();
+      expect(navigation.refresh).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -273,6 +291,41 @@ describe('Student Public Profile UI', () => {
 
     await waitFor(() => {
       expect(withdrawAction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('rolls Profile Consent back when the Server change fails', async () => {
+    const grantAction = vi.fn(async (): Promise<ProfileActionState> => ({
+      error: 'network',
+      success: false,
+    }));
+    const profile = {
+      bio: null,
+      consent: null,
+      links: [],
+      photo: null,
+      photoId: null,
+      publicId: '71000000-0000-4000-8000-000000000001',
+      version: 1,
+    };
+    renderProfile(
+      <ConsentPanel
+        grantAction={grantAction}
+        idempotencyKey="71000000-0000-4000-8000-000000000006"
+        profile={profile}
+        withdrawAction={action}
+      />,
+    );
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'ยินยอมให้เผยแพร่โปรไฟล์',
+    }) as HTMLInputElement;
+    await userEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(grantAction).toHaveBeenCalledTimes(1);
+      expect(checkbox.checked).toBe(false);
+      expect(screen.getByText('โปรไฟล์นี้ยังไม่เผยแพร่')).toBeTruthy();
     });
   });
 

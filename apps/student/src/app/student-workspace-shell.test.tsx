@@ -34,6 +34,7 @@ vi.mock('@/lib/student-profile-core', () => ({
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async () => (key: string, values?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
+      department: 'วิทยาการคอมพิวเตอร์',
       'navigation.addWork': 'เพิ่มผลงาน',
       'navigation.allWorks': 'ผลงานทั้งหมด',
       'navigation.dashboard': 'แดชบอร์ด',
@@ -78,7 +79,6 @@ describe('StudentWorkspaceShell', () => {
     render(
       await StudentWorkspaceShell({
         activePage: 'edit-profile',
-        canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: {
           entryYear: 2569,
@@ -99,7 +99,8 @@ describe('StudentWorkspaceShell', () => {
         .getAttribute('href'),
     ).toBe('/profile');
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
-    expect(within(sidebar).getByText('อ่านข้อมูลได้เท่านั้น')).toBeTruthy();
+    expect(within(sidebar).queryByText('อ่านข้อมูลได้เท่านั้น')).toBeNull();
+    expect(within(sidebar).queryByText('วิทยาการคอมพิวเตอร์')).toBeNull();
     expect(within(sidebar).getByText('ณัฐดนัย สุขใจ')).toBeTruthy();
     expect(within(sidebar).getByText('ปีที่เข้าศึกษา 2569')).toBeTruthy();
     expect(
@@ -134,7 +135,6 @@ describe('StudentWorkspaceShell', () => {
     render(
       await StudentWorkspaceShell({
         activePage: 'edit-profile',
-        canCreateWork: false,
         children: <h1>โปรไฟล์สาธารณะ</h1>,
         profile: null,
       }),
@@ -183,7 +183,6 @@ describe('StudentWorkspaceShell', () => {
     render(
       await StudentWorkspaceShell({
         activePage: 'dashboard',
-        canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),
     );
@@ -202,7 +201,6 @@ describe('StudentWorkspaceShell', () => {
     render(
       await StudentWorkspaceShell({
         activePage: 'dashboard',
-        canCreateWork: true,
         children: <h1>ภาพรวม</h1>,
       }),
     );

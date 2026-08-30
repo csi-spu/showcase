@@ -37,19 +37,84 @@ describe('Student authentication forms', () => {
     expect(screen.getByRole('group', { name: 'ข้อมูลเข้าสู่ระบบ' })).not.toBeNull();
   });
 
-  it('renders shadcn field errors returned by the password-change action', async () => {
-    const action = vi.fn<AuthAction>().mockResolvedValue({ error: 'passwordMismatch' });
+  it('shows and hides the login password without clearing its value', async () => {
+    const user = userEvent.setup();
+    renderWithMessages(<LoginForm action={vi.fn<AuthAction>()} />);
+    const password = screen.getByLabelText('รหัสผ่าน') as HTMLInputElement;
+
+    await user.type(password, 'SecretPassword1!');
+    await user.click(screen.getByRole('button', { name: 'แสดงรหัสผ่าน' }));
+
+    expect(password.type).toBe('text');
+    expect(password.value).toBe('SecretPassword1!');
+    const hidePassword = screen.getByRole('button', { name: 'ซ่อนรหัสผ่าน' });
+    expect(hidePassword.getAttribute('aria-pressed')).toBe('true');
+    expect(hidePassword.classList.contains('inset-y-0')).toBe(true);
+    expect(hidePassword.classList.contains('w-12')).toBe(true);
+    expect(hidePassword.classList.contains('z-10')).toBe(true);
+
+    await user.click(hidePassword);
+    expect(password.type).toBe('password');
+  });
+
+  it('unlocks password change only after every strength requirement and confirmation pass', async () => {
+    const action = vi.fn<AuthAction>().mockResolvedValue({ error: null });
     const user = userEvent.setup();
     renderWithMessages(<ChangePasswordForm action={action} />);
 
-    await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'initial-password');
-    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'correct horse battery staple');
-    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'different password value');
-    await user.click(screen.getByRole('button', { name: 'ตั้งรหัสผ่าน' }));
+    const submit = screen.getByRole('button', { name: 'ตั้งรหัสผ่าน' });
+    expect(submit.hasAttribute('disabled')).toBe(true);
 
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน',
+    await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'temporary-password');
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'StrongPassword1!');
+
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+    expect(
+      screen
+        .getAllByRole('listitem')
+        .every((requirement) => requirement.getAttribute('data-satisfied') === 'true'),
+    ).toBe(true);
+    expect(submit.hasAttribute('disabled')).toBe(true);
+
+    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'StrongPassword1!');
+    expect(submit.hasAttribute('disabled')).toBe(false);
+
+    await user.click(submit);
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it('controls password visibility independently for every password-change field', async () => {
+    const user = userEvent.setup();
+    renderWithMessages(<ChangePasswordForm action={vi.fn<AuthAction>()} />);
+    const currentPassword = screen.getByLabelText('รหัสผ่านปัจจุบัน') as HTMLInputElement;
+    const newPassword = screen.getByLabelText('รหัสผ่านใหม่') as HTMLInputElement;
+    const confirmPassword = screen.getByLabelText('ยืนยันรหัสผ่านใหม่') as HTMLInputElement;
+
+    expect(screen.getByRole('button', { name: 'แสดงรหัสผ่านปัจจุบัน' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'แสดงรหัสผ่านใหม่' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'แสดงยืนยันรหัสผ่านใหม่' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'แสดงรหัสผ่านใหม่' }));
+
+    expect(newPassword.type).toBe('text');
+    expect(currentPassword.type).toBe('password');
+    expect(confirmPassword.type).toBe('password');
+  });
+
+  it('highlights a confirmation mismatch and prevents password-change submission', async () => {
+    const action = vi.fn<AuthAction>().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    renderWithMessages(<ChangePasswordForm action={action} />);
+
+    await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'temporary-password');
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'StrongPassword1!');
+    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'DifferentPassword2!');
+
+    expect(screen.getByText('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).hasAttribute('disabled')).toBe(
+      true,
     );
+    expect(action).not.toHaveBeenCalled();
   });
 
   it('uses a form action for logout without client-side fetch', async () => {

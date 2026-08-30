@@ -1,5 +1,6 @@
 export type AuthErrorMessage =
   | 'credentials'
+  | 'currentPassword'
   | 'network'
   | 'passwordMismatch'
   | 'passwordPolicy'

@@ -50,10 +50,7 @@ export default async function StudentNotificationsPage({
   ) as Record<(typeof notificationTypeSchema.options)[number], string>;
 
   return (
-    <StudentWorkspaceShell
-      activePage="notifications"
-      canCreateWork={auth.session.canUseStudentCapabilities}
-    >
+    <StudentWorkspaceShell activePage="notifications">
       <WorkspacePage
         decoration={
           <div className="relative mt-3 hidden aspect-[4/3] max-h-80 w-full overflow-hidden rounded-surface border border-border/70 bg-card lg:block">

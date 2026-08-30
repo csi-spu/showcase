@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AuthErrorMessage } from '../app/student-auth-action-state';
+import { evaluateStudentPassword } from './student-password-policy';
 
 const loginSchema = z.object({
   password: z.string().min(1).max(128),
@@ -36,7 +37,11 @@ export function validatePasswordChange(formData: FormData): PasswordChangeInput 
     currentPassword: formData.get('currentPassword'),
     newPassword: formData.get('newPassword'),
   });
-  if (!result.success || result.data.newPassword === result.data.currentPassword) {
+  if (
+    !result.success ||
+    result.data.newPassword === result.data.currentPassword ||
+    !evaluateStudentPassword(result.data.newPassword).isValid
+  ) {
     return 'passwordPolicy';
   }
   if (result.data.newPassword !== result.data.confirmPassword) {

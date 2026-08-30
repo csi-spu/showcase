@@ -35,8 +35,23 @@ export async function loginAction(
 }
 
 export async function changePasswordAction(
+  previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  return changePasswordAndRedirect(previousState, formData, '/');
+}
+
+export async function changePasswordFromProfileAction(
+  previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  return changePasswordAndRedirect(previousState, formData, '/profile?passwordChanged=1');
+}
+
+async function changePasswordAndRedirect(
   _previousState: AuthActionState,
   formData: FormData,
+  successPath: string,
 ): Promise<AuthActionState> {
   const input = validatePasswordChange(formData);
   if (typeof input === 'string') {
@@ -59,13 +74,13 @@ export async function changePasswordAction(
     redirect('/?expired=1');
   }
   if (failure !== undefined) {
-    return { error: mapCoreError(failure) };
+    return { error: mapPasswordChangeCoreError(failure) };
   }
   if (result === undefined) {
     return { error: 'unavailable' };
   }
   await setStudentSessionToken(result.sessionToken);
-  redirect('/');
+  redirect(successPath);
 }
 
 export async function logoutAction(): Promise<AuthActionState> {
@@ -124,4 +139,10 @@ function mapCoreError(error: unknown): AuthErrorMessage {
     return 'sessionExpired';
   }
   return error.code === 'AUTH_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
+}
+
+function mapPasswordChangeCoreError(error: unknown): AuthErrorMessage {
+  return error instanceof StudentAuthCoreError && error.code === 'INVALID_CREDENTIALS'
+    ? 'currentPassword'
+    : mapCoreError(error);
 }
