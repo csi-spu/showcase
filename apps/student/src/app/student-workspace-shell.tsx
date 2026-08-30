@@ -20,7 +20,7 @@ import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student-profile-core';
 import { logoutAction } from './student-auth.actions';
 import { LogoutForm } from './student-auth-forms';
-import { StudentBrand } from './student-brand';
+import { StudentBrand, StudentBrandMark } from './student-brand';
 import {
   StudentSidebarNavigation,
   type StudentSidebarGroup,
@@ -90,9 +90,7 @@ export async function StudentWorkspaceShell({
       >
         <SidebarHeader className="gap-3 p-5 group-data-[collapsible=icon]:p-2">
           <StudentBrand className="group-data-[collapsible=icon]:hidden" />
-          <div className="hidden size-8 place-items-center rounded-control bg-primary text-xs font-semibold text-primary-foreground group-data-[collapsible=icon]:grid">
-            CSI
-          </div>
+          <StudentBrandMark className="hidden group-data-[collapsible=icon]:block" />
           <p className="text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
             {t('workspace')}
           </p>

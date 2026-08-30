@@ -19,6 +19,12 @@ describe('Student visual contract', () => {
     expect(page).toMatch(/<aside className="[^"]*\bbg-background\b/);
   });
 
+  it('does not force the Student surface wider than the mobile viewport', async () => {
+    const globals = await readFile(resolve(process.cwd(), 'src/app/globals.css'), 'utf8');
+
+    expect(globals).not.toMatch(/body\s*{[^}]*min-width/);
+  });
+
   it('uses the official CSI and SIT brand assets', async () => {
     const brand = await readFile(resolve(process.cwd(), 'src/app/student-brand.tsx'), 'utf8');
     const csiAsset = await readFile(

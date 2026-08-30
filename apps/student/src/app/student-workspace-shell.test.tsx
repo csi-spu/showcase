@@ -111,6 +111,16 @@ describe('StudentWorkspaceShell', () => {
     expect(
       within(navigation).getByRole('link', { name: 'ผลงานทั้งหมด' }).getAttribute('href'),
     ).toBe('/works');
+    const dashboardLink = within(navigation).getByRole('link', { name: 'แดชบอร์ด' });
+    expect(dashboardLink.getAttribute('aria-label')).toBe('แดชบอร์ด');
+    expect(dashboardLink.classList.contains('group-data-[collapsible=icon]:justify-center')).toBe(
+      true,
+    );
+    expect(
+      within(dashboardLink)
+        .getByText('แดชบอร์ด')
+        .classList.contains('group-data-[collapsible=icon]:hidden'),
+    ).toBe(true);
     expect(within(navigation).queryByRole('link', { name: 'ความยินยอมโปรไฟล์' })).toBeNull();
     const workspaceHeader = screen.getByRole('banner');
     expect(workspaceHeader.classList.contains('z-30')).toBe(true);

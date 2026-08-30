@@ -2,10 +2,6 @@
 
 @source '../components/**/*.tsx';
 
-body {
-  min-width: 20rem;
-}
-
 .student-canvas {
   background:
     radial-gradient(

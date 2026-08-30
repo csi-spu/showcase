@@ -62,8 +62,15 @@ export function StudentSidebarNavigation({
                 const isActive = activePage === page;
                 return (
                   <SidebarMenuItem key={page}>
-                    <SidebarMenuButton asChild isActive={isActive} size="lg" tooltip={label}>
+                    <SidebarMenuButton
+                      asChild
+                      className="group-data-[collapsible=icon]:justify-center"
+                      isActive={isActive}
+                      size="lg"
+                      tooltip={label}
+                    >
                       <Link
+                        aria-label={label}
                         aria-current={isActive ? 'page' : undefined}
                         href={href}
                         onClick={() => {
@@ -71,7 +78,7 @@ export function StudentSidebarNavigation({
                         }}
                       >
                         <Icon aria-hidden="true" />
-                        <span>{label}</span>
+                        <span className="group-data-[collapsible=icon]:hidden">{label}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
