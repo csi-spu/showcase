@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { CheckCircle2Icon } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
@@ -58,7 +59,8 @@ export function AdminCorrectionForm({
 
   if (state.revisionPublicId !== null) {
     return (
-      <Alert className="border-success/30 bg-success-background text-success">
+      <Alert variant="success">
+        <CheckCircle2Icon aria-hidden="true" />
         <AlertTitle>{t('success')}</AlertTitle>
         <AlertDescription className="grid gap-3">
           <span>{t('successHelp')}</span>
@@ -101,7 +103,7 @@ export function AdminCorrectionForm({
       <input name="expectedPublishedRevisionId" type="hidden" value={base.publicId} />
       <input name="expectedRevisionVersion" type="hidden" value={base.version} />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-      <details className="group rounded-card border border-border bg-card p-4">
+      <details className="group rounded-surface border border-border bg-card p-4">
         <summary className="cursor-pointer font-medium marker:text-primary">
           {t('editContent')}
         </summary>
@@ -192,7 +194,7 @@ export function AdminCorrectionForm({
           </div>
         </div>
       </details>
-      <details className="group rounded-card border border-border bg-card p-4">
+      <details className="group rounded-surface border border-border bg-card p-4">
         <summary className="cursor-pointer font-medium marker:text-primary">
           {t('editReferences')}
         </summary>
@@ -342,7 +344,7 @@ export function AdminCorrectionForm({
       </details>
       <section
         aria-label={t('changesHeading')}
-        className="rounded-card border border-border bg-muted p-4"
+        className="rounded-surface border border-border bg-muted p-4"
         role="status"
       >
         <h3 className="font-medium">{t('changesHeading')}</h3>

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { buttonVariants } from '@showcase/ui/button';
+import { ArrowLeftIcon, ShieldCheckIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { z } from 'zod';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { readAdminSessionToken } from '@/lib/admin-auth-session';
 import { AdminReviewsCoreClient, AdminReviewsCoreError } from '@/lib/admin-reviews-core';
@@ -45,6 +47,7 @@ export default async function ReviewDetailPage({
       <AdminWorkspacePage
         actions={
           <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=reviews">
+            <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
             {t('detail.back')}
           </Link>
         }
@@ -54,9 +57,9 @@ export default async function ReviewDetailPage({
         title={revision.content.title}
       >
         {revision.authorKind === 'admin_correction' ? (
-          <p className="mb-6 w-fit rounded-full bg-information-background px-3 py-1 text-sm font-medium text-information">
+          <StatusBadge className="mb-6" icon={ShieldCheckIcon} tone="information">
             {t('detail.adminCorrection')}
-          </p>
+          </StatusBadge>
         ) : null}
         <div className="grid gap-8 xl:grid-cols-12">
           <RevisionSnapshot

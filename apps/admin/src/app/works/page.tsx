@@ -1,14 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
-import { EyeIcon, FilePenLineIcon, FilterIcon, RotateCcwIcon, SearchIcon } from 'lucide-react';
+import {
+  ArrowRightIcon,
+  EyeIcon,
+  FilePenLineIcon,
+  FilterIcon,
+  RotateCcwIcon,
+  SearchIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
+import { ActionGroup } from '@/components/ui/action-group';
 import { ActionTooltip } from '@/components/ui/action-tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { StatusBadge } from '@/components/ui/status-badge';
 import {
   Table,
   TableBody,
@@ -174,17 +183,17 @@ export default async function WorkManagementPage({
                     <time dateTime={item.submittedAt}>{formatBangkokDate(item.submittedAt)}</time>
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-warning-background text-warning" variant="secondary">
-                      {t('statuses.pendingReview')}
-                    </Badge>
+                    <StatusBadge tone="warning">{t('statuses.pendingReview')}</StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <IconActionLink
-                      href={`/reviews/${item.revisionPublicId}`}
-                      label={t('actions.review')}
-                    >
-                      <EyeIcon aria-hidden="true" />
-                    </IconActionLink>
+                    <ActionGroup>
+                      <IconActionLink
+                        href={`/reviews/${item.revisionPublicId}`}
+                        label={t('actions.review')}
+                      >
+                        <EyeIcon aria-hidden="true" />
+                      </IconActionLink>
+                    </ActionGroup>
                   </TableCell>
                 </TableRow>
               ))}
@@ -200,9 +209,7 @@ export default async function WorkManagementPage({
                     <time dateTime={request.createdAt}>{formatBangkokDate(request.createdAt)}</time>
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-warning-background text-warning" variant="secondary">
-                      {t('statuses.pendingRemoval')}
-                    </Badge>
+                    <StatusBadge tone="warning">{t('statuses.pendingRemoval')}</StatusBadge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-start justify-end gap-2">
@@ -239,9 +246,7 @@ export default async function WorkManagementPage({
                     <time dateTime={request.createdAt}>{formatBangkokDate(request.createdAt)}</time>
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-warning-background text-warning" variant="secondary">
-                      {t('statuses.pendingAttribution')}
-                    </Badge>
+                    <StatusBadge tone="warning">{t('statuses.pendingAttribution')}</StatusBadge>
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end">
@@ -276,12 +281,10 @@ export default async function WorkManagementPage({
                     <time dateTime={work.publishedAt}>{formatBangkokDate(work.publishedAt)}</time>
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-success-background text-success" variant="secondary">
-                      {t('statuses.published')}
-                    </Badge>
+                    <StatusBadge tone="success">{t('statuses.published')}</StatusBadge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-2">
+                    <ActionGroup>
                       <IconActionLink
                         href={`/corrections/${work.workPublicId}`}
                         label={t('actions.edit')}
@@ -294,7 +297,7 @@ export default async function WorkManagementPage({
                       >
                         <RotateCcwIcon aria-hidden="true" />
                       </IconActionLink>
-                    </div>
+                    </ActionGroup>
                   </TableCell>
                 </TableRow>
               ))}
@@ -310,6 +313,7 @@ export default async function WorkManagementPage({
               })}
             >
               {t('next')}
+              <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
             </Link>
           )}
         </div>

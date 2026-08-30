@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -48,12 +49,14 @@ export default async function AdminCorrectionPage({
         actions={
           <>
             <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=published">
+              <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
               {t('back')}
             </Link>
             <Link
               className={buttonVariants({ variant: 'outline' })}
               href={`/recovery/${base.workPublicId}`}
             >
+              <RotateCcwIcon aria-hidden="true" data-icon="inline-start" />
               {t('openRecovery')}
             </Link>
           </>

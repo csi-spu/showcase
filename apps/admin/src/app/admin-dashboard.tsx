@@ -84,9 +84,14 @@ function DashboardAction({
   title: string;
 }) {
   return (
-    <Card className={cn('min-h-52 justify-between', className)}>
+    <Card
+      className={cn(
+        'group min-h-52 justify-between transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+        className,
+      )}
+    >
       <CardHeader className="h-full content-between gap-6 p-6 sm:p-7">
-        <span className="grid size-11 place-items-center rounded-control bg-primary-soft text-primary">
+        <span className="grid size-11 place-items-center rounded-control bg-primary-soft text-primary transition-transform duration-200 group-hover:scale-105 motion-reduce:transition-none">
           <Icon aria-hidden="true" className="size-5" />
         </span>
         <div className="grid gap-2">
@@ -97,7 +102,11 @@ function DashboardAction({
         </div>
         <Link className={buttonVariants({ className: 'w-fit', variant: 'outline' })} href={href}>
           {title}
-          <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
+          <ArrowRightIcon
+            aria-hidden="true"
+            className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
+            data-icon="inline-end"
+          />
         </Link>
       </CardHeader>
     </Card>

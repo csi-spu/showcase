@@ -68,7 +68,7 @@ export function RosterBatchStatusView({
       : 'bg-information-background text-information';
   return (
     <section aria-labelledby="roster-status-title" className="flex flex-col gap-6">
-      <div className={`flex items-start gap-3 rounded-card p-4 ${statusClass}`}>
+      <div className={`flex items-start gap-3 rounded-surface p-4 ${statusClass}`}>
         <StatusIcon aria-hidden="true" className="mt-0.5 size-5" />
         <div>
           <h3 className="font-semibold" id="roster-status-title">
@@ -93,7 +93,7 @@ export function RosterBatchStatusView({
         />
       </div>
 
-      <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-surface border border-border bg-border sm:grid-cols-3">
         <Count label={labels.created} value={batch.createdCount} />
         <Count label={labels.unchanged} value={batch.unchangedCount} />
         <Count label={labels.failed} value={batch.failedCount} />

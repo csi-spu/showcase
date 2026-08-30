@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { PulseDot } from '@/components/ui/status-badge';
 import { AdminBrand, AdminBrandMark } from './admin-brand';
 import { AdminMobileNavigation } from './admin-mobile-navigation';
 
@@ -109,7 +110,8 @@ export function AdminWorkspaceFrame({
           ) : (
             <>
               <Separator />
-              <Badge className="w-fit" variant="secondary">
+              <Badge className="w-fit gap-1.5" variant="secondary">
+                <PulseDot tone="success" />
                 {status}
               </Badge>
               <p className="text-xs leading-5 text-muted-foreground">{department}</p>
@@ -164,7 +166,10 @@ export function AdminWorkspaceFrame({
             </span>
             <span className="truncate font-medium">{activeLabel}</span>
           </div>
-          <Badge variant="outline">{status}</Badge>
+          <Badge className="gap-1.5" variant="outline">
+            <PulseDot tone="success" />
+            {status}
+          </Badge>
         </header>
         <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">{children}</section>
       </div>
@@ -208,15 +213,24 @@ function WorkspaceNavigation({
                         aria-describedby={showsCollapsedTooltips ? tooltipId : undefined}
                         aria-label={itemLabel}
                         className={cn(
-                          'relative flex min-h-10 items-center rounded-control text-sm font-medium transition-colors duration-150 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full motion-reduce:transition-none',
+                          'group relative flex min-h-10 items-center rounded-control text-sm font-medium transition-all duration-150 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full motion-reduce:transition-none',
                           isCollapsed ? 'justify-center px-2' : 'gap-3 px-3',
                           isActive
                             ? 'bg-sidebar-accent text-sidebar-accent-foreground before:bg-primary'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                            : 'text-muted-foreground before:bg-transparent hover:bg-muted hover:text-foreground',
                         )}
                         href={href}
                       >
-                        <Icon aria-hidden="true" className="size-[1.125rem] shrink-0" />
+                        <span
+                          className={cn(
+                            'grid size-7 shrink-0 place-items-center rounded-control transition-colors duration-150',
+                            isActive
+                              ? 'bg-primary text-primary-foreground shadow-sm'
+                              : 'text-muted-foreground group-hover:text-foreground',
+                          )}
+                        >
+                          <Icon aria-hidden="true" className="size-[1.05rem]" />
+                        </span>
                         {isCollapsed ? null : <span className="truncate">{itemLabel}</span>}
                       </Link>
                       {showsCollapsedTooltips ? (

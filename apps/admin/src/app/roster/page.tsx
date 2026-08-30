@@ -1,5 +1,11 @@
 import { buttonVariants } from '@showcase/ui/button';
-import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon, UserPlusIcon } from 'lucide-react';
+import {
+  ArrowLeftIcon,
+  CheckCircle2Icon,
+  FileSpreadsheetIcon,
+  ListChecksIcon,
+  UserPlusIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
@@ -40,6 +46,7 @@ export default async function RosterPage({
         actions={
           mode === 'result' ? (
             <Link className={buttonVariants({ variant: 'outline' })} href="/roster">
+              <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
               {t('batchResult.back')}
             </Link>
           ) : undefined
@@ -52,7 +59,7 @@ export default async function RosterPage({
         {mode === 'result' ? (
           <div className="grid max-w-5xl gap-6">
             {resolved === '1' ? (
-              <Alert className="border-success/30 bg-success-background text-success">
+              <Alert variant="success">
                 <CheckCircle2Icon aria-hidden="true" />
                 <AlertTitle>{t('conflicts.resolvedSuccess')}</AlertTitle>
               </Alert>

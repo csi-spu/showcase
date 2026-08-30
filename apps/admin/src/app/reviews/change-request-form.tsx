@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { CheckCircle2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -45,7 +46,8 @@ export function ChangeRequestForm({
 
   if (state.isComplete) {
     return (
-      <Alert className="border-success/30 bg-success-background text-success">
+      <Alert variant="success">
+        <CheckCircle2Icon aria-hidden="true" />
         <AlertTitle>{t('form.success')}</AlertTitle>
         <AlertDescription>{t('form.successHelp')}</AlertDescription>
       </Alert>

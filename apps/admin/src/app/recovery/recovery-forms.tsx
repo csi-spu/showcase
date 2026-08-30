@@ -4,6 +4,7 @@ import { Button } from '@showcase/ui/button';
 import { ArrowLeftIcon, CheckIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState } from 'react';
+import { ActionGroup } from '@/components/ui/action-group';
 import { ActionTooltip } from '@/components/ui/action-tooltip';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -105,104 +106,102 @@ export function RecoveryDecisionForm({
         </div>
       ) : null}
       {iconOnly && !state.success && state.error === null ? null : <Feedback state={state} />}
-      <div className="flex flex-wrap justify-end gap-2">
-        {isDeclining ? (
-          iconOnly ? (
-            <>
-              <ActionTooltip label={t('cancelDecision')}>
-                <Button
-                  aria-label={t('cancelDecision')}
-                  disabled={pending}
-                  onClick={() => setIsDeclining(false)}
-                  size="icon-sm"
-                  title={t('cancelDecision')}
-                  type="button"
-                  variant="ghost"
-                >
-                  <ArrowLeftIcon aria-hidden="true" />
-                </Button>
-              </ActionTooltip>
-              <ActionTooltip label={t('confirmDecline')}>
-                <Button
-                  aria-label={t('confirmDecline')}
-                  disabled={pending}
-                  name="decision"
-                  size="icon-sm"
-                  title={t('confirmDecline')}
-                  type="submit"
-                  value="decline"
-                  variant="destructive"
-                >
-                  <XIcon aria-hidden="true" />
-                </Button>
-              </ActionTooltip>
-            </>
-          ) : (
-            <>
+      {isDeclining ? (
+        iconOnly ? (
+          <ActionGroup>
+            <ActionTooltip label={t('cancelDecision')}>
               <Button
+                aria-label={t('cancelDecision')}
                 disabled={pending}
                 onClick={() => setIsDeclining(false)}
+                size="icon-sm"
+                title={t('cancelDecision')}
                 type="button"
                 variant="ghost"
               >
-                {t('cancelDecision')}
-              </Button>
-              <Button
-                disabled={pending}
-                name="decision"
-                type="submit"
-                value="decline"
-                variant="outline"
-              >
-                {t('confirmDecline')}
-              </Button>
-            </>
-          )
-        ) : iconOnly ? (
-          <>
-            <ActionTooltip label={t('approveRequest')}>
-              <Button
-                aria-label={t('approveRequest')}
-                disabled={pending}
-                name="decision"
-                size="icon-sm"
-                title={t('approveRequest')}
-                type="submit"
-                value="approve"
-              >
-                <CheckIcon aria-hidden="true" />
+                <ArrowLeftIcon aria-hidden="true" />
               </Button>
             </ActionTooltip>
-            <ActionTooltip label={t('declineRequest')}>
+            <ActionTooltip label={t('confirmDecline')}>
               <Button
-                aria-label={t('declineRequest')}
+                aria-label={t('confirmDecline')}
                 disabled={pending}
-                onClick={() => setIsDeclining(true)}
+                name="decision"
                 size="icon-sm"
-                title={t('declineRequest')}
-                type="button"
-                variant="outline"
+                title={t('confirmDecline')}
+                type="submit"
+                value="decline"
+                variant="destructive"
               >
                 <XIcon aria-hidden="true" />
               </Button>
             </ActionTooltip>
-          </>
+          </ActionGroup>
         ) : (
-          <>
-            <Button disabled={pending} name="decision" type="submit" value="approve">
-              {t('approveRequest')}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
             </Button>
             <Button
               disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </div>
+        )
+      ) : iconOnly ? (
+        <ActionGroup>
+          <ActionTooltip label={t('approveRequest')}>
+            <Button
+              aria-label={t('approveRequest')}
+              disabled={pending}
+              name="decision"
+              size="icon-sm"
+              title={t('approveRequest')}
+              type="submit"
+              value="approve"
+            >
+              <CheckIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip label={t('declineRequest')}>
+            <Button
+              aria-label={t('declineRequest')}
+              disabled={pending}
               onClick={() => setIsDeclining(true)}
+              size="icon-sm"
+              title={t('declineRequest')}
               type="button"
               variant="outline"
             >
-              {t('declineRequest')}
+              <XIcon aria-hidden="true" />
             </Button>
-          </>
-        )}
-      </div>
+          </ActionTooltip>
+        </ActionGroup>
+      ) : (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button disabled={pending} name="decision" type="submit" value="approve">
+            {t('approveRequest')}
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={() => setIsDeclining(true)}
+            type="button"
+            variant="outline"
+          >
+            {t('declineRequest')}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
@@ -271,104 +270,102 @@ export function AttributionRemovalDecisionForm({
         </div>
       ) : null}
       {iconOnly && !state.success && state.error === null ? null : <Feedback state={state} />}
-      <div className="flex flex-wrap justify-end gap-2">
-        {isDeclining ? (
-          iconOnly ? (
-            <>
-              <ActionTooltip label={t('cancelDecision')}>
-                <Button
-                  aria-label={t('cancelDecision')}
-                  disabled={pending}
-                  onClick={() => setIsDeclining(false)}
-                  size="icon-sm"
-                  title={t('cancelDecision')}
-                  type="button"
-                  variant="ghost"
-                >
-                  <ArrowLeftIcon aria-hidden="true" />
-                </Button>
-              </ActionTooltip>
-              <ActionTooltip label={t('confirmDecline')}>
-                <Button
-                  aria-label={t('confirmDecline')}
-                  disabled={pending}
-                  name="decision"
-                  size="icon-sm"
-                  title={t('confirmDecline')}
-                  type="submit"
-                  value="decline"
-                  variant="destructive"
-                >
-                  <XIcon aria-hidden="true" />
-                </Button>
-              </ActionTooltip>
-            </>
-          ) : (
-            <>
+      {isDeclining ? (
+        iconOnly ? (
+          <ActionGroup>
+            <ActionTooltip label={t('cancelDecision')}>
               <Button
+                aria-label={t('cancelDecision')}
                 disabled={pending}
                 onClick={() => setIsDeclining(false)}
+                size="icon-sm"
+                title={t('cancelDecision')}
                 type="button"
                 variant="ghost"
               >
-                {t('cancelDecision')}
-              </Button>
-              <Button
-                disabled={pending}
-                name="decision"
-                type="submit"
-                value="decline"
-                variant="outline"
-              >
-                {t('confirmDecline')}
-              </Button>
-            </>
-          )
-        ) : iconOnly ? (
-          <>
-            <ActionTooltip label={t('attribution.approve')}>
-              <Button
-                aria-label={t('attribution.approve')}
-                disabled={pending}
-                name="decision"
-                size="icon-sm"
-                title={t('attribution.approve')}
-                type="submit"
-                value="approve"
-              >
-                <CheckIcon aria-hidden="true" />
+                <ArrowLeftIcon aria-hidden="true" />
               </Button>
             </ActionTooltip>
-            <ActionTooltip label={t('attribution.decline')}>
+            <ActionTooltip label={t('confirmDecline')}>
               <Button
-                aria-label={t('attribution.decline')}
+                aria-label={t('confirmDecline')}
                 disabled={pending}
-                onClick={() => setIsDeclining(true)}
+                name="decision"
                 size="icon-sm"
-                title={t('attribution.decline')}
-                type="button"
-                variant="outline"
+                title={t('confirmDecline')}
+                type="submit"
+                value="decline"
+                variant="destructive"
               >
                 <XIcon aria-hidden="true" />
               </Button>
             </ActionTooltip>
-          </>
+          </ActionGroup>
         ) : (
-          <>
-            <Button disabled={pending} name="decision" type="submit" value="approve">
-              {t('attribution.approve')}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
             </Button>
             <Button
               disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </div>
+        )
+      ) : iconOnly ? (
+        <ActionGroup>
+          <ActionTooltip label={t('attribution.approve')}>
+            <Button
+              aria-label={t('attribution.approve')}
+              disabled={pending}
+              name="decision"
+              size="icon-sm"
+              title={t('attribution.approve')}
+              type="submit"
+              value="approve"
+            >
+              <CheckIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip label={t('attribution.decline')}>
+            <Button
+              aria-label={t('attribution.decline')}
+              disabled={pending}
               onClick={() => setIsDeclining(true)}
+              size="icon-sm"
+              title={t('attribution.decline')}
               type="button"
               variant="outline"
             >
-              {t('attribution.decline')}
+              <XIcon aria-hidden="true" />
             </Button>
-          </>
-        )}
-      </div>
+          </ActionTooltip>
+        </ActionGroup>
+      ) : (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button disabled={pending} name="decision" type="submit" value="approve">
+            {t('attribution.approve')}
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={() => setIsDeclining(true)}
+            type="button"
+            variant="outline"
+          >
+            {t('attribution.decline')}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

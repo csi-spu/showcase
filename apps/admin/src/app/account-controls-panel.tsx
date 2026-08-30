@@ -2,7 +2,13 @@
 
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
-import { CalendarClockIcon, KeyRoundIcon, SearchIcon, UserRoundCogIcon } from 'lucide-react';
+import {
+  CalendarClockIcon,
+  CheckCircle2Icon,
+  KeyRoundIcon,
+  SearchIcon,
+  UserRoundCogIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -11,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldDescription, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import type {
   AcademicYearAction,
@@ -62,7 +69,9 @@ export function AccountControlsPanel({
         {mode === 'student' ? null : (
           <Card className={cn(mode === 'all' && 'xl:col-span-5')}>
             <CardHeader>
-              <CalendarClockIcon aria-hidden="true" className="size-6 text-primary" />
+              <span className="grid size-10 place-items-center rounded-control bg-primary-soft text-primary">
+                <CalendarClockIcon aria-hidden="true" className="size-5" />
+              </span>
               <CardTitle>
                 <h2>{t('year.title')}</h2>
               </CardTitle>
@@ -70,7 +79,7 @@ export function AccountControlsPanel({
             </CardHeader>
             <CardContent>
               <form action={yearFormAction} className="flex flex-col gap-5">
-                <div className="rounded-card border border-border bg-muted p-4">
+                <div className="rounded-surface border border-border bg-muted p-4">
                   <p className="text-sm text-muted-foreground">{t('year.current')}</p>
                   <p className="mt-1 text-2xl font-semibold">
                     {yearState.settings?.currentAcademicYear ?? t('year.missing')}
@@ -105,7 +114,8 @@ export function AccountControlsPanel({
                 </Field>
                 <ActionFeedback error={yearState.error} />
                 {yearState.error === null && yearState.settings !== academicYear ? (
-                  <Alert className="border-success/30 bg-success-background text-success">
+                  <Alert variant="success">
+                    <CheckCircle2Icon aria-hidden="true" />
                     <AlertDescription>{t('year.success')}</AlertDescription>
                   </Alert>
                 ) : null}
@@ -118,7 +128,9 @@ export function AccountControlsPanel({
         {mode === 'academic-year' ? null : (
           <Card className={cn(mode === 'all' && 'xl:col-span-7')}>
             <CardHeader>
-              <UserRoundCogIcon aria-hidden="true" className="size-6 text-primary" />
+              <span className="grid size-10 place-items-center rounded-control bg-primary-soft text-primary">
+                <UserRoundCogIcon aria-hidden="true" className="size-5" />
+              </span>
               <CardTitle>
                 <h2>{t('student.title')}</h2>
               </CardTitle>
@@ -187,11 +199,9 @@ function StudentControls({
             {t('student.entryYear', { year: student.entryYear })}
           </p>
         </div>
-        <span className="rounded-full bg-warning-background px-3 py-1 text-sm font-medium text-warning">
-          {t(`student.state.${student.state}`)}
-        </span>
+        <StatusBadge tone="warning">{t(`student.state.${student.state}`)}</StatusBadge>
       </div>
-      <dl className="grid gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-2">
+      <dl className="grid gap-px overflow-hidden rounded-surface border border-border bg-border sm:grid-cols-2">
         <PeriodValue label={t('student.accessEnds')} value={student.accessEndsAcademicYear} />
         <PeriodValue
           label={t('student.currentYear')}
@@ -200,7 +210,8 @@ function StudentControls({
       </dl>
       <ActionFeedback error={error} />
       {temporaryPassword === null ? null : (
-        <Alert className="border-success/30 bg-success-background text-success">
+        <Alert variant="success">
+          <CheckCircle2Icon aria-hidden="true" />
           <AlertTitle>{t('reset.success')}</AlertTitle>
           <AlertDescription>
             <p>{t('reset.once')}</p>
@@ -226,7 +237,7 @@ function StudentControls({
         <FieldSet aria-label={t('name.title')}>
           <form
             action={action}
-            className="flex flex-col gap-4 rounded-card border border-border p-4"
+            className="flex flex-col gap-4 rounded-surface border border-border p-4"
             key={student.version}
           >
             <input name="operation" type="hidden" value="correctName" />
@@ -276,7 +287,7 @@ function StudentControls({
         <FieldSet aria-label={t('extension.title')}>
           <form
             action={action}
-            className="flex flex-col gap-4 rounded-card border border-border p-4"
+            className="flex flex-col gap-4 rounded-surface border border-border p-4"
           >
             <input name="operation" type="hidden" value="extend" />
             <MutationFields
@@ -314,7 +325,7 @@ function StudentControls({
       {activeControl === 'reset' ? (
         <form
           action={action}
-          className="flex flex-col gap-3 rounded-card border border-warning/30 bg-warning-background p-4"
+          className="flex flex-col gap-3 rounded-surface border border-warning/30 bg-warning-background p-4"
         >
           <input name="operation" type="hidden" value="reset" />
           <MutationFields

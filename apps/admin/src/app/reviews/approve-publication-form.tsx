@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { CheckCircle2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useActionState, useEffect, useRef } from 'react';
@@ -40,7 +41,8 @@ export function ApprovePublicationForm({
 
   if (state.publication !== null) {
     return (
-      <Alert className="border-success/30 bg-success-background text-success">
+      <Alert variant="success">
+        <CheckCircle2Icon aria-hidden="true" />
         <AlertTitle>{t('approval.success')}</AlertTitle>
         <AlertDescription>
           {t('approval.successHelp')} <code>/works/{state.publication.workPublicId}</code>

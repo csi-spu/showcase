@@ -1,4 +1,5 @@
 import { Button } from '@showcase/ui/button';
+import { ShieldCheckIcon } from 'lucide-react';
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -10,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { GridPattern } from '@/components/ui/grid-pattern';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { AdminBrand } from './admin-brand';
 import { AdminDashboard } from './admin-dashboard';
@@ -60,11 +62,15 @@ export default async function Home({ searchParams }: HomeProps) {
   return (
     <main className="admin-canvas mx-auto grid min-h-svh w-full max-w-[1600px] overflow-hidden bg-background lg:grid-cols-[minmax(28rem,1.08fr)_minmax(28rem,0.92fr)]">
       <aside className="relative isolate flex min-h-64 flex-col justify-between overflow-hidden border-b border-primary/15 bg-primary-soft p-6 lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
+        <GridPattern className="[mask-image:radial-gradient(60rem_40rem_at_10%_0%,black,transparent)]" />
         <div className="absolute -top-24 right-[-10%] size-[30rem] rounded-full bg-white/55 blur-3xl" />
         <div className="absolute bottom-[-12rem] left-[-8rem] size-[32rem] rounded-full border-[5rem] border-primary/5" />
         <AdminBrand className="relative z-10" />
-        <div className="relative z-10 hidden max-w-xl gap-4 lg:grid">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">{authT('kicker')}</p>
+        <div className="relative z-10 hidden max-w-xl gap-5 lg:grid">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-white/60 px-3 py-1 text-sm font-semibold tracking-[0.16em] text-primary backdrop-blur-sm">
+            <ShieldCheckIcon aria-hidden="true" className="size-4" />
+            {authT('kicker')}
+          </span>
           <h2 className="text-[clamp(2.25rem,5vw,4.5rem)] leading-[1.05] font-semibold tracking-[-0.045em] text-balance">
             {homeT('title')}
           </h2>

@@ -1,9 +1,10 @@
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
-import { CheckCircle2Icon, TriangleAlertIcon } from 'lucide-react';
+import { ArrowRightIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { randomUUID } from 'node:crypto';
+import { StatusBadge } from '@/components/ui/status-badge';
 import type { AdminRosterConflictPage } from '@/lib/admin-roster-core';
 import type { RosterConflictAction } from './roster-conflict-state';
 import { RosterConflictResolutionForm } from './roster-conflict-resolution-form';
@@ -30,28 +31,16 @@ export async function RosterConflictList({
       <ol className="flex flex-col gap-4">
         {page.conflicts.map((conflict) => (
           <li
-            className="rounded-card border border-border bg-card p-4 sm:p-6"
+            className="rounded-surface border border-border bg-card p-4 sm:p-6"
             key={conflict.conflictId}
           >
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <p className="font-medium">{t('row', { value: conflict.rowNumber })}</p>
-              <span
-                className={cn(
-                  'inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium',
-                  conflict.status === 'pending'
-                    ? 'bg-warning-background text-warning'
-                    : 'bg-success-background text-success',
-                )}
-              >
-                {conflict.status === 'pending' ? (
-                  <TriangleAlertIcon aria-hidden="true" className="size-4" />
-                ) : (
-                  <CheckCircle2Icon aria-hidden="true" className="size-4" />
-                )}
+              <StatusBadge tone={conflict.status === 'pending' ? 'warning' : 'success'}>
                 {t(`status.${conflict.status}`)}
-              </span>
+              </StatusBadge>
             </div>
-            <dl className="grid gap-px overflow-hidden rounded-card border border-border bg-border md:grid-cols-2">
+            <dl className="grid gap-px overflow-hidden rounded-surface border border-border bg-border md:grid-cols-2">
               <NameComparison
                 firstName={conflict.existingFirstNameTh}
                 label={t('existingName')}
@@ -94,6 +83,7 @@ export async function RosterConflictList({
           href={`/roster?batchId=${batchId}&conflictAfter=${page.nextAfterRowNumber}`}
         >
           {t('nextPage')}
+          <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
         </Link>
       )}
     </section>

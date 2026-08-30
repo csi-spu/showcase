@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { buttonVariants } from '@showcase/ui/button';
+import { ArrowLeftIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -40,6 +41,7 @@ export default async function WorkRecoveryPage({
       <AdminWorkspacePage
         actions={
           <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=removals">
+            <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
             {t('back')}
           </Link>
         }

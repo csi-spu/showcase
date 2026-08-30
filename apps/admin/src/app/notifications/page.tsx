@@ -1,5 +1,6 @@
 import { Button, buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { ArrowRightIcon, BellIcon, CheckCheckIcon, InboxIcon } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -58,6 +59,7 @@ export default async function AdminNotificationsPage({
             className={cn(buttonVariants({ variant: view === 'all' ? 'default' : 'outline' }))}
             href="/notifications"
           >
+            <InboxIcon aria-hidden="true" data-icon="inline-start" />
             {t('filters.all')}
           </Link>
           <Link
@@ -65,11 +67,13 @@ export default async function AdminNotificationsPage({
             className={cn(buttonVariants({ variant: view === 'unread' ? 'default' : 'outline' }))}
             href="/notifications?view=unread"
           >
+            <BellIcon aria-hidden="true" data-icon="inline-start" />
             {t('filters.unread')}
           </Link>
           {unread.count > 0 ? (
-            <form action={markAllAdminNotificationsReadAction}>
+            <form action={markAllAdminNotificationsReadAction} className="ml-auto">
               <Button type="submit" variant="outline">
+                <CheckCheckIcon aria-hidden="true" data-icon="inline-start" />
                 {t('markAllRead')}
               </Button>
             </form>
@@ -98,6 +102,7 @@ export default async function AdminNotificationsPage({
             href={`/notifications?view=${view}&cursor=${encodeURIComponent(page.nextCursor)}`}
           >
             {t('next')}
+            <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
           </Link>
         )}
       </AdminWorkspacePage>
