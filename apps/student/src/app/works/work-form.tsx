@@ -294,6 +294,7 @@ export function WorkForm({
           ) : null}
           <div hidden={step !== 1}>
             <MediaStep
+              media={effectiveWork?.media ?? []}
               onVersion={(next) => {
                 applyMutationVersion(next);
                 setSaveState('saved');
@@ -460,11 +461,13 @@ function DetailsStep({
 }
 
 function MediaStep({
+  media,
   onVersion,
   publicId,
   t,
   version,
 }: {
+  media: WorkDraft['media'];
   onVersion: (version: number) => void;
   publicId: string | null;
   t: Translation;
@@ -480,12 +483,14 @@ function MediaStep({
       >
         <WorkMediaUpload
           expectedVersion={version}
+          media={media.filter((item) => item.kind === 'poster')}
           mediaKind="poster"
           onVersion={onVersion}
           publicId={publicId}
         />
         <WorkMediaUpload
           expectedVersion={version}
+          media={media.filter((item) => item.kind === 'gallery')}
           mediaKind="gallery"
           onVersion={onVersion}
           publicId={publicId}
