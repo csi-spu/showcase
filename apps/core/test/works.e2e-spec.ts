@@ -31,7 +31,9 @@ class E2eWorksRepository implements WorksRepository {
   mutationResult: WorkMutationResult = { outcome: 'updated', work: workDraft() };
   lastRebase: Parameters<WorksRepository['rebaseDraft']>[0] | undefined;
   lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
+  lastList: Parameters<WorksRepository['listOwnedWorks']>[0] | undefined;
   listPage: WorkListPage = {
+    currentPage: 1,
     items: [
       {
         activityState: 'active',
@@ -55,7 +57,10 @@ class E2eWorksRepository implements WorksRepository {
     hasNextPage: false,
     hasPreviousPage: false,
     nextCursor: null,
+    pageSize: 12,
     previousCursor: null,
+    totalItems: 1,
+    totalPages: 1,
   };
 
   archiveSavedDraft(): ReturnType<WorksRepository['archiveSavedDraft']> {
@@ -84,7 +89,8 @@ class E2eWorksRepository implements WorksRepository {
     });
   }
 
-  listOwnedWorks(): Promise<WorkListPage> {
+  listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]): Promise<WorkListPage> {
+    this.lastList = input;
     return Promise.resolve(this.listPage);
   }
 
@@ -227,7 +233,10 @@ describe('private Work Draft authoring (e2e)', () => {
   });
 
   it('reads only the Submitter-owned private Draft and exposes no Visitor route', async () => {
-    const listResponse = await studentRequest('get', '/v1/internal/student/works').expect(200);
+    const listResponse = await studentRequest(
+      'get',
+      '/v1/internal/student/works?query=%E0%B8%81&category=course_work&status=draft&sort=updated_asc&page=3',
+    ).expect(200);
     expect(listResponse.headers['cache-control']).toBe('private, no-store');
     expect(listResponse.body).toEqual({
       items: [
@@ -237,12 +246,27 @@ describe('private Work Draft authoring (e2e)', () => {
           updatedAt: '2026-08-25T10:00:00.000Z',
         }),
       ],
+      currentPage: 1,
       hasNextPage: false,
       hasPreviousPage: false,
       nextCursor: null,
+      pageSize: 12,
       previousCursor: null,
+      totalItems: 1,
+      totalPages: 1,
     });
     expect(JSON.stringify(listResponse.body)).not.toMatch(/studentId|accountId|personId|workId/i);
+    expect(repository.lastList).toMatchObject({
+      accountId: ACCOUNT_ID,
+      category: 'course_work',
+      page: 3,
+      query: 'ก',
+      sort: 'updated_asc',
+      status: 'draft',
+      view: 'current',
+    });
+
+    await studentRequest('get', '/v1/internal/student/works?status=invalid').expect(400);
 
     await studentRequest('get', '/v1/internal/student/works/authoring-context')
       .expect(200)

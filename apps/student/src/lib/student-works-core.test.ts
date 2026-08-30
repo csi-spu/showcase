@@ -21,18 +21,29 @@ describe('StudentWorksCoreClient', () => {
     );
   });
 
-  it('binds the exact-12 Work page cursor to the selected view', async () => {
+  it('sends one-character search, filter, sort, and page state to Core', async () => {
     const response = {
+      currentPage: 3,
       hasNextPage: false,
       hasPreviousPage: false,
       items: [],
       nextCursor: null,
+      pageSize: 12,
       previousCursor: null,
+      totalItems: 0,
+      totalPages: 0,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
-    await client(fetchMock).listWorks(SESSION, { cursor: 'signed.cursor', view: 'saved' });
+    await client(fetchMock).listWorks(SESSION, {
+      category: 'course_work',
+      page: 3,
+      query: 'ก',
+      sort: 'updated_asc',
+      status: 'draft',
+      view: 'saved',
+    });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'https://core.example.test/v1/internal/student/works?view=saved&cursor=signed.cursor',
+      'https://core.example.test/v1/internal/student/works?view=saved&query=%E0%B8%81&category=course_work&status=draft&sort=updated_asc&page=3',
     );
   });
 

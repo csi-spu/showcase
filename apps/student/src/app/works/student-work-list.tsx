@@ -4,6 +4,7 @@ import { Button, buttonVariants } from '@showcase/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useTransition } from 'react';
+import { ArrowUpRightIcon, Clock3Icon, EllipsisIcon, ImageOffIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkListItem } from '@/lib/student-works-core';
@@ -23,24 +24,33 @@ export function StudentWorkList({
   return (
     <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((work) => (
-        <li aria-label={work.title ?? labels.placeholder} key={work.publicId}>
-          <Card className="h-full overflow-hidden">
-            {work.poster === null ? (
-              <div className="aspect-[3/4] bg-muted" aria-label={labels.posterFallback} />
-            ) : (
-              <Image
-                alt=""
-                className="aspect-[3/4] w-full object-cover"
-                height={work.poster.height}
-                loading="lazy"
-                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
-                unoptimized
-                width={work.poster.width}
-              />
-            )}
-            <CardHeader>
-              <div className="flex flex-wrap gap-2">
+        <li className="h-full" aria-label={work.title ?? labels.placeholder} key={work.publicId}>
+          <Card className="grid h-full grid-rows-[auto_auto_1fr_auto] overflow-visible">
+            <div className="relative aspect-[3/4] overflow-hidden rounded-t-surface bg-muted">
+              {work.poster === null ? (
+                <div
+                  className="grid h-full place-items-center text-muted-foreground"
+                  aria-label={labels.posterFallback}
+                >
+                  <span className="grid justify-items-center gap-2 text-sm">
+                    <ImageOffIcon aria-hidden="true" className="size-8" />
+                    {labels.posterFallback}
+                  </span>
+                </div>
+              ) : (
+                <Image
+                  alt=""
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover/card:scale-[1.02] motion-reduce:transition-none"
+                  fill
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                  src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
+                  unoptimized
+                />
+              )}
+            </div>
+            <CardHeader className="grid min-h-36 content-start gap-3">
+              <div className="flex min-h-14 content-start flex-wrap gap-2">
                 <Badge>{labels[`source.${work.displayedSource}`]}</Badge>
                 <Badge variant="outline">{labels[`activity.${work.activityState}`]}</Badge>
                 <Badge variant="outline">{labels[`publication.${work.publicationState}`]}</Badge>
@@ -53,18 +63,21 @@ export function StudentWorkList({
                 </Badge>
               </div>
               <CardTitle>
-                <h2>{work.title ?? labels.placeholder}</h2>
+                <h2 className="line-clamp-2 min-h-[2.75rem] text-lg" title={work.title ?? undefined}>
+                  {work.title ?? labels.placeholder}
+                </h2>
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-2">
-              <p className="line-clamp-3 text-sm text-muted-foreground">
+            <CardContent className="grid content-between gap-4 pb-4">
+              <p className="line-clamp-3 min-h-[3.75rem] text-sm text-muted-foreground">
                 {work.summary ?? labels.placeholder}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock3Icon aria-hidden="true" className="size-3.5" />
                 {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
               </p>
             </CardContent>
-            <CardFooter className="flex flex-wrap gap-2">
+            <CardFooter className="relative flex min-h-20 flex-wrap content-center gap-2">
               {primaryAction(work, canEdit, labels, visitorUrl)}
               {canEdit ? <SecondaryActions labels={labels} work={work} /> : null}
             </CardFooter>
@@ -93,6 +106,7 @@ function primaryAction(
   return (
     <Link className={buttonVariants()} href={href}>
       {labels[`actions.${work.primaryAction}`]}
+      <ArrowUpRightIcon aria-hidden="true" data-icon="inline-end" />
     </Link>
   );
 }
@@ -107,9 +121,12 @@ function SecondaryActions({
   const [pending, start] = useTransition();
   if (work.secondaryActions.length === 0 && work.primaryAction !== 'return_to_editing') return null;
   return (
-    <details>
-      <summary className={buttonVariants({ variant: 'outline' })}>{labels.more}</summary>
-      <div className="mt-2 grid gap-2 rounded-control border bg-card p-2">
+    <details className="relative">
+      <summary className={buttonVariants({ className: 'list-none', variant: 'outline' })}>
+        <EllipsisIcon aria-hidden="true" />
+        {labels.more}
+      </summary>
+      <div className="absolute right-0 bottom-[calc(100%+0.5rem)] z-20 grid min-w-56 gap-2 rounded-control border bg-card p-2 shadow-lg">
         {work.primaryAction === 'return_to_editing' ? (
           <Button
             disabled={pending}

@@ -29,11 +29,15 @@ class FakeWorksRepository implements WorksRepository {
   lastSeed: Parameters<WorksRepository['seedDraft']>[0] | undefined;
   lastUpdate: Parameters<WorksRepository['updateDraft']>[0] | undefined;
   listPage: WorkListPage = {
+    currentPage: 1,
     hasNextPage: false,
     hasPreviousPage: false,
     items: [],
     nextCursor: null,
+    pageSize: 12,
     previousCursor: null,
+    totalItems: 0,
+    totalPages: 0,
   };
   lastList: Parameters<WorksRepository['listOwnedWorks']>[0] | undefined;
 
@@ -203,8 +207,9 @@ describe('WorksService', () => {
     });
   });
 
-  it('lists a bounded page of Submitter-owned Works using an opaque keyset cursor', async () => {
+  it('lists a bounded filtered page of Submitter-owned Works using an opaque keyset cursor', async () => {
     repository.listPage = {
+      currentPage: 1,
       hasNextPage: true,
       hasPreviousPage: false,
       items: [
@@ -232,15 +237,30 @@ describe('WorksService', () => {
         publicId: PUBLIC_ID,
         updatedAt: new Date('2026-08-25T09:00:00.000Z'),
       },
+      pageSize: 12,
       previousCursor: null,
+      totalItems: 13,
+      totalPages: 2,
     };
 
-    const page = await service.listOwnedWorks({ accountId: ACCOUNT_ID, view: 'current' });
+    const page = await service.listOwnedWorks({
+      accountId: ACCOUNT_ID,
+      category: 'course_work',
+      query: '  ก  ',
+      sort: 'updated_asc',
+      status: 'draft',
+      view: 'current',
+    });
 
     expect(repository.lastList).toEqual({
       accountId: ACCOUNT_ID,
+      category: 'course_work',
       cursor: null,
       limit: 12,
+      page: 1,
+      query: 'ก',
+      sort: 'updated_asc',
+      status: 'draft',
       view: 'current',
     });
     expect(page.items).toEqual([
@@ -251,6 +271,7 @@ describe('WorksService', () => {
       }),
     ]);
     expect(typeof page.nextCursor).toBe('string');
+    expect(page).toMatchObject({ pageSize: 12, totalItems: 13, totalPages: 2 });
   });
 
   it('rejects a malformed owned Work cursor without querying the repository', async () => {
@@ -266,6 +287,7 @@ describe('WorksService', () => {
 
   it('binds a cursor to actor and Current/Saved view', async () => {
     repository.listPage = {
+      currentPage: 1,
       hasNextPage: true,
       hasPreviousPage: false,
       items: [],
@@ -274,7 +296,10 @@ describe('WorksService', () => {
         publicId: PUBLIC_ID,
         updatedAt: NOW,
       },
+      pageSize: 12,
       previousCursor: null,
+      totalItems: 13,
+      totalPages: 2,
     };
     const current = await service.listOwnedWorks({ accountId: ACCOUNT_ID, view: 'current' });
     await expect(

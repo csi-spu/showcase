@@ -71,6 +71,10 @@ export interface WorkListCursor {
 }
 
 export type WorkManagementView = 'current' | 'saved';
+export type WorkManagementCategory = WorkCategory | 'all';
+export type WorkManagementSort = 'updated_asc' | 'updated_desc';
+export type WorkManagementStatus =
+  'all' | 'changes_requested' | 'draft' | 'pending_review' | 'published';
 
 export type WorkCardPrimaryAction =
   'continue_editing' | 'return_to_editing' | 'view_details' | 'view_public_work';
@@ -105,11 +109,15 @@ export interface WorkListItem {
 }
 
 export interface WorkListPage {
+  currentPage: number;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
   items: WorkListItem[];
   nextCursor: WorkListCursor | null;
+  pageSize: number;
   previousCursor: WorkListCursor | null;
+  totalItems: number;
+  totalPages: number;
 }
 
 export interface StudentWorkspaceSummary {
@@ -181,8 +189,13 @@ export interface WorksRepository {
   findOwnedWorkState(accountId: string, publicId: string): Promise<WorkAuthoringState | null>;
   listOwnedWorks(input: {
     accountId: string;
+    category: WorkManagementCategory;
     cursor: WorkListCursor | null;
     limit: 12;
+    page: number;
+    query: string;
+    sort: WorkManagementSort;
+    status: WorkManagementStatus;
     view: WorkManagementView;
   }): Promise<WorkListPage>;
   getWorkspaceSummary(accountId: string): Promise<StudentWorkspaceSummary | null>;

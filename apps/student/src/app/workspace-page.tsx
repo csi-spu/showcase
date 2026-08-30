@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 
 export function WorkspacePage({
   children,
+  decoration,
   description,
   eyebrow,
   layout = 'overview',
@@ -10,6 +11,7 @@ export function WorkspacePage({
   title,
 }: {
   children: ReactNode;
+  decoration?: ReactNode;
   description: ReactNode;
   eyebrow: string;
   layout?: 'authoring' | 'overview';
@@ -47,6 +49,7 @@ export function WorkspacePage({
             {title}
           </h1>
           <div className="max-w-[62ch] text-pretty text-muted-foreground">{description}</div>
+          {decoration}
         </div>
         {meta ? (
           <div className="text-sm whitespace-nowrap text-muted-foreground">{meta}</div>

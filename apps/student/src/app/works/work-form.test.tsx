@@ -7,6 +7,7 @@ import messages from '../../../messages/th.json';
 const mocks = vi.hoisted(() => ({
   onReplace: undefined as ((href: string) => void) | undefined,
   saveDraft: vi.fn(),
+  status: vi.fn(),
   replace: vi.fn(),
   submit: vi.fn(),
   suggest: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 vi.mock('./work.actions', () => ({
+  getWorkMediaStatusAction: mocks.status,
   saveWorkDraftAction: mocks.saveDraft,
   submitLatestWorkAction: mocks.submit,
   suggestWorkTagsAction: mocks.suggest,
@@ -43,6 +45,18 @@ describe('five-step Work authoring', () => {
   beforeEach(() => {
     mocks.onReplace = undefined;
     mocks.saveDraft.mockResolvedValue(savedWorkResult());
+    mocks.status.mockResolvedValue({
+      assetId: '64000000-0000-4000-8000-000000000008',
+      preview: {
+        expiresAt: '2026-08-29T00:05:00.000Z',
+        height: 1800,
+        url: 'https://media.example.test/preview.webp',
+        width: 1200,
+      },
+      rejectionCode: null,
+      status: 'ready',
+      warnings: [],
+    });
     window.history.replaceState(null, '', '/works/new');
   });
 
@@ -306,16 +320,24 @@ describe('five-step Work authoring', () => {
     expect(within(classification).getByLabelText('ภาคการศึกษา')).toBeTruthy();
   });
 
-  it('uses a compact asymmetric layout for Poster and Gallery controls', async () => {
+  it('keeps Poster and Gallery controls on equal-width stretched cards', async () => {
     renderForm(savedWorkResult().work);
     await advanceSteps(1);
 
     const mediaLayout = document.querySelector('[data-slot="work-media-layout"]');
     expect(mediaLayout).not.toBeNull();
-    expect((mediaLayout as HTMLElement).className).toContain(
-      'lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,1.2fr)]',
-    );
-    expect((mediaLayout as HTMLElement).className).toContain('lg:items-start');
+    expect((mediaLayout as HTMLElement).className).toContain('lg:grid-cols-2');
+    expect((mediaLayout as HTMLElement).className).toContain('items-stretch');
+  });
+
+  it('renders the ready Poster and grouped preview cards before submission', async () => {
+    renderForm(completeWork());
+    await advanceSteps(4);
+
+    expect(screen.getByText('ตัวอย่างสื่อก่อนส่งตรวจ')).toBeTruthy();
+    expect(await screen.findByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeTruthy();
+    expect(screen.getByText('การแสดงชื่อและผู้ร่วมผลงาน')).toBeTruthy();
+    expect(screen.getByText('การค้นพบและลิงก์')).toBeTruthy();
   });
 
   it('reuses the final submission idempotency key after an unavailable result', async () => {

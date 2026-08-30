@@ -1,5 +1,6 @@
 import { Button, buttonVariants } from '@showcase/ui/button';
 import Link from 'next/link';
+import { BellRingIcon, CheckIcon, ExternalLinkIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { StudentNotification } from '@/lib/student-notifications-core';
 
@@ -17,29 +18,38 @@ export function StudentNotificationList({
   visitorUrl: string;
 }) {
   return (
-    <ul className="grid gap-px overflow-hidden rounded-surface border border-border bg-border">
+    <ul className="grid auto-rows-fr gap-4 sm:grid-cols-2">
       {items.map((item) => {
         const targetPath = studentTargetPath(item, visitorUrl);
         return (
           <li
-            className="grid gap-4 bg-card p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+            className="grid min-h-48 gap-4 rounded-surface border border-border/80 bg-card p-5 shadow-sm sm:grid-rows-[1fr_auto]"
             key={item.publicId}
           >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">{messages[item.type]}</p>
-                {item.readAt === null ? <Badge>{labels.unread}</Badge> : null}
+            <div className="grid min-w-0 content-start gap-3">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
+                  {item.readAt === null ? (
+                    <BellRingIcon aria-hidden="true" className="size-4" />
+                  ) : (
+                    <CheckIcon aria-hidden="true" className="size-4" />
+                  )}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <p className="font-medium">{messages[item.type]}</p>
+                  {item.readAt === null ? <Badge>{labels.unread}</Badge> : null}
+                </div>
               </div>
               {typeof item.parameters.title === 'string' ? (
-                <p className="mt-1 truncate text-sm text-muted-foreground">
+                <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
                   {item.parameters.title}
                 </p>
               ) : null}
-              <time className="mt-2 block text-sm text-muted-foreground" dateTime={item.createdAt}>
+              <time className="block text-sm text-muted-foreground" dateTime={item.createdAt}>
                 {formatBangkokDate(item.createdAt)}
               </time>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex min-h-11 flex-wrap items-end gap-2 border-t border-border/70 pt-4">
               {targetPath === null ? (
                 <span className="inline-flex min-h-11 items-center text-sm text-muted-foreground">
                   {labels.unavailable}
@@ -47,6 +57,7 @@ export function StudentNotificationList({
               ) : (
                 <Link className={buttonVariants({ variant: 'outline' })} href={targetPath}>
                   {labels.open}
+                  <ExternalLinkIcon aria-hidden="true" />
                 </Link>
               )}
               {item.readAt === null ? (

@@ -52,7 +52,12 @@ export class StudentWorksController {
     const actor = await this.auth.authorizeStudentRead(this.requireSessionToken(authorization));
     return this.works.listOwnedWorks({
       accountId: actor.accountId,
+      category: query.category,
       ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+      page: query.page,
+      query: query.query,
+      sort: query.sort,
+      status: query.status,
       view: query.view,
     });
   }

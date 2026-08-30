@@ -16,6 +16,9 @@ import {
   WORKS_REPOSITORY,
   type WorkDraftView,
   type WorkListCursor,
+  type WorkManagementCategory,
+  type WorkManagementSort,
+  type WorkManagementStatus,
   type WorkMutationResult,
   type WorksClock,
   type WorksRepository,
@@ -75,7 +78,12 @@ interface RebaseDraftInput extends SeedPublishedDraftInput {
 
 interface ListOwnedWorksInput {
   accountId: string;
+  category?: WorkManagementCategory;
   cursor?: string;
+  page?: number;
+  query?: string;
+  sort?: WorkManagementSort;
+  status?: WorkManagementStatus;
   view: 'current' | 'saved';
 }
 
@@ -176,25 +184,42 @@ export class WorksService {
   }
 
   async listOwnedWorks(input: ListOwnedWorksInput) {
+    const category = input.category ?? 'all';
+    const query = input.query?.trim() ?? '';
+    const pageNumber = input.cursor === undefined ? (input.page ?? 1) : 1;
+    const sort = input.sort ?? 'updated_desc';
+    const status = input.status ?? 'all';
     const state = {
       accountId: input.accountId,
+      category,
       pageSize: 12,
-      sort: 'updated_desc' as const,
+      query,
+      sort,
+      status,
       view: input.view,
     };
     const page = await this.repository.listOwnedWorks({
       accountId: input.accountId,
+      category,
       cursor: this.decodeListCursor(state, input.cursor),
       limit: 12,
+      page: pageNumber,
+      query,
+      sort,
+      status,
       view: input.view,
     });
     return {
+      currentPage: page.currentPage,
       hasNextPage: page.hasNextPage,
       hasPreviousPage: page.hasPreviousPage,
       items: page.items.map((work) => ({ ...work, updatedAt: work.updatedAt.toISOString() })),
       nextCursor: page.nextCursor === null ? null : this.encodeListCursor(state, page.nextCursor),
+      pageSize: page.pageSize,
       previousCursor:
         page.previousCursor === null ? null : this.encodeListCursor(state, page.previousCursor),
+      totalItems: page.totalItems,
+      totalPages: page.totalPages,
     };
   }
 

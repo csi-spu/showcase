@@ -131,11 +131,15 @@ const workListItemSchema = z
   .strict();
 const workListPageSchema = z
   .object({
+    currentPage: z.number().int().positive(),
     hasNextPage: z.boolean(),
     hasPreviousPage: z.boolean(),
     items: z.array(workListItemSchema).max(12),
     nextCursor: z.string().nullable(),
+    pageSize: z.literal(12),
     previousCursor: z.string().nullable(),
+    totalItems: z.number().int().nonnegative(),
+    totalPages: z.number().int().nonnegative(),
   })
   .strict();
 const workspaceSummarySchema = z
@@ -351,8 +355,24 @@ export class StudentWorksCoreClient {
     );
   }
 
-  listWorks(sessionToken: string, input: { cursor?: string; view: 'current' | 'saved' }) {
+  listWorks(
+    sessionToken: string,
+    input: {
+      category: 'academic_article' | 'all' | 'competition_entry' | 'course_work';
+      cursor?: string;
+      page: number;
+      query: string;
+      sort: 'updated_asc' | 'updated_desc';
+      status: 'all' | 'changes_requested' | 'draft' | 'pending_review' | 'published';
+      view: 'current' | 'saved';
+    },
+  ) {
     const query = new URLSearchParams({ view: input.view });
+    if (input.query !== '') query.set('query', input.query);
+    if (input.category !== 'all') query.set('category', input.category);
+    if (input.status !== 'all') query.set('status', input.status);
+    if (input.sort !== 'updated_desc') query.set('sort', input.sort);
+    if (input.page > 1) query.set('page', String(input.page));
     if (input.cursor !== undefined) query.set('cursor', input.cursor);
     return this.get(
       `/v1/internal/student/works?${query.toString()}`,

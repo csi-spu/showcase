@@ -74,6 +74,10 @@ interface WorkListRow {
   version: string;
 }
 
+interface WorkListTotalRow {
+  total_items: number;
+}
+
 interface OperationRow {
   is_equivalent: boolean;
   work_id: string;
@@ -81,6 +85,10 @@ interface OperationRow {
 
 type ReplayResolution =
   { outcome: 'conflict' } | { outcome: 'none' } | { outcome: 'replay'; workId: string };
+
+function escapeLikePattern(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+}
 
 @Injectable()
 export class PostgresWorksRepository implements WorksRepository {
@@ -228,6 +236,61 @@ export class PostgresWorksRepository implements WorksRepository {
   async listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]) {
     const cursor = input.cursor;
     const isPrevious = cursor?.direction === 'previous';
+    const isDescending = input.sort === 'updated_desc';
+    const isQueryDescending = isPrevious ? !isDescending : isDescending;
+    const searchPattern = `%${escapeLikePattern(input.query)}%`;
+    const totalRows = await this.database.sql<WorkListTotalRow[]>`
+      select count(*)::integer as total_items
+      from public.works as work
+      join public.accounts as account
+        on account.id = ${input.accountId}
+        and account.person_id = work.submitter_person_id
+      left join private.work_drafts as draft
+        on draft.work_id = work.id and draft.lifecycle_state = 'active'
+      left join private.work_revisions as pending_revision
+        on pending_revision.work_id = work.id and pending_revision.status = 'pending_review'
+      left join private.work_revisions as published_revision
+        on published_revision.id = work.published_revision_id
+      left join lateral (
+        select revision.status
+        from private.work_revisions as revision
+        where revision.work_id = work.id
+        order by revision.revision_number desc
+        limit 1
+      ) as latest_revision on true
+      where (
+        (${input.view} = 'current' and (
+          work.activity_state = 'active'
+          or (work.activity_state = 'archived' and work.archive_source = 'admin')
+        ))
+        or (${input.view} = 'saved' and work.activity_state = 'archived'
+          and work.archive_source = 'submitter'
+          and work.publication_state = 'never_published')
+      )
+      and (
+        ${input.query} = ''
+        or coalesce(draft.title, pending_revision.title, published_revision.title, '')
+          ilike ${searchPattern} escape '\'
+        or coalesce(draft.summary, pending_revision.summary, published_revision.summary, '')
+          ilike ${searchPattern} escape '\'
+      )
+      and (
+        ${input.category} = 'all'
+        or coalesce(draft.category, pending_revision.category, published_revision.category)::text
+          = ${input.category}
+      )
+      and (
+        ${input.status} = 'all'
+        or (${input.status} = 'draft' and draft.work_id is not null)
+        or (${input.status} = 'pending_review' and latest_revision.status = 'pending_review')
+        or (${input.status} = 'changes_requested' and latest_revision.status = 'changes_requested')
+        or (${input.status} = 'published' and work.publication_state = 'published')
+      )
+    `;
+    const totalItems = Number(totalRows[0]?.total_items ?? 0);
+    const totalPages = Math.ceil(totalItems / input.limit);
+    const currentPage = totalPages === 0 ? 1 : Math.min(input.page, totalPages);
+    const pageOffset = cursor === null ? (currentPage - 1) * input.limit : 0;
     const rows = await this.database.sql<WorkListRow[]>`
       select work.public_id, work.activity_state, work.archive_source, work.publication_state, work.updated_at,
         work.version,
@@ -328,26 +391,51 @@ export class PostgresWorksRepository implements WorksRepository {
           and work.publication_state = 'never_published')
       )
       and (
+        ${input.query} = ''
+        or coalesce(draft.title, pending_revision.title, published_revision.title, '')
+          ilike ${searchPattern} escape '\'
+        or coalesce(draft.summary, pending_revision.summary, published_revision.summary, '')
+          ilike ${searchPattern} escape '\'
+      )
+      and (
+        ${input.category} = 'all'
+        or coalesce(draft.category, pending_revision.category, published_revision.category)::text
+          = ${input.category}
+      )
+      and (
+        ${input.status} = 'all'
+        or (${input.status} = 'draft' and draft.work_id is not null)
+        or (${input.status} = 'pending_review' and latest_revision.status = 'pending_review')
+        or (${input.status} = 'changes_requested' and latest_revision.status = 'changes_requested')
+        or (${input.status} = 'published' and work.publication_state = 'published')
+      )
+      and (
         ${cursor?.updatedAt ?? null}::timestamptz is null
-        or (${isPrevious} and (work.updated_at, work.public_id) > (
+        or (${isQueryDescending} and (work.updated_at, work.public_id) < (
           ${cursor?.updatedAt ?? null}::timestamptz, ${cursor?.publicId ?? null}::uuid
         ))
-        or (not ${isPrevious} and (work.updated_at, work.public_id) < (
+        or (not ${isQueryDescending} and (work.updated_at, work.public_id) > (
           ${cursor?.updatedAt ?? null}::timestamptz, ${cursor?.publicId ?? null}::uuid
         ))
       )
       order by
-        case when ${isPrevious} then work.updated_at end asc,
-        case when ${isPrevious} then work.public_id end asc,
-        case when not ${isPrevious} then work.updated_at end desc,
-        case when not ${isPrevious} then work.public_id end desc
+        case when ${isQueryDescending} then work.updated_at end desc,
+        case when ${isQueryDescending} then work.public_id end desc,
+        case when not ${isQueryDescending} then work.updated_at end asc,
+        case when not ${isQueryDescending} then work.public_id end asc
       limit ${input.limit + 1}
+      offset ${pageOffset}
     `;
     const visible = rows.slice(0, input.limit);
     if (isPrevious) visible.reverse();
     const first = visible[0];
     const last = visible.at(-1);
+    const hasNextPage =
+      cursor === null ? currentPage < totalPages : isPrevious ? true : rows.length > input.limit;
+    const hasPreviousPage =
+      cursor === null ? currentPage > 1 : isPrevious ? rows.length > input.limit : true;
     return {
+      currentPage,
       items: visible.map((row) => ({
         activityState: row.activity_state,
         academicPeriod:
@@ -369,20 +457,23 @@ export class PostgresWorksRepository implements WorksRepository {
         updatedAt: row.updated_at,
         version: Number(row.version),
       })),
-      hasNextPage: isPrevious ? cursor !== null : rows.length > input.limit,
-      hasPreviousPage: isPrevious ? rows.length > input.limit : cursor !== null,
+      hasNextPage,
+      hasPreviousPage,
       nextCursor:
-        (isPrevious ? cursor !== null : rows.length > input.limit) && last !== undefined
+        hasNextPage && last !== undefined
           ? { direction: 'next' as const, publicId: last.public_id, updatedAt: last.updated_at }
           : null,
+      pageSize: input.limit,
       previousCursor:
-        (isPrevious ? rows.length > input.limit : cursor !== null) && first !== undefined
+        hasPreviousPage && first !== undefined
           ? {
               direction: 'previous' as const,
               publicId: first.public_id,
               updatedAt: first.updated_at,
             }
           : null,
+      totalItems,
+      totalPages,
     };
   }
 

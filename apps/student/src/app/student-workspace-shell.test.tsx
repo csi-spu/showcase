@@ -49,7 +49,7 @@ vi.mock('next-intl/server', () => ({
       'profile.entryYear': 'ปีที่เข้าศึกษา {year}',
       'profile.fallback': 'ยังไม่ได้ตั้งค่าโปรไฟล์',
       'profile.photoAlt': 'รูปโปรไฟล์ของ {name}',
-      'status.active': 'พร้อมสร้างและส่งผลงาน',
+      'status.active': 'สิทธิ์ใช้งานปกติ',
       'status.readOnly': 'อ่านข้อมูลได้เท่านั้น',
       workspace: 'พื้นที่นักศึกษา',
     };
