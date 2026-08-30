@@ -41,6 +41,8 @@ export interface ProfilePhotoRepository {
     quarantineObjectKey: string;
     uploadId: string;
   }): Promise<boolean>;
+  findPrivatePhotoObjectKey(actorAccountId: string): Promise<string | null>;
+  findPublicPhotoObjectKey(publicId: string): Promise<string | null>;
   rejectUpload(input: {
     now: Date;
     rejectionCode: 'invalid_profile_photo';
@@ -50,6 +52,7 @@ export interface ProfilePhotoRepository {
 }
 
 export interface ProfilePhotoStorage {
+  createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string>;
   createPresignedPut(input: {
     contentType: ProfilePhotoContentType;
     expiresInSeconds: number;

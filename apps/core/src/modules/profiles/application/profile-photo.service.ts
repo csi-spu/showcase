@@ -14,7 +14,8 @@ import {
 } from './profile-photo.ports';
 
 const MAX_PROFILE_PHOTO_BYTES = 2 * 1_024 * 1_024;
-const PRESIGN_SECONDS = 10 * 60;
+const READ_PRESIGN_SECONDS = 60;
+const UPLOAD_PRESIGN_SECONDS = 10 * 60;
 const UPLOAD_RETENTION_MILLISECONDS = 24 * 60 * 60 * 1_000;
 const CONTENT_TYPES = new Set<ProfilePhotoContentType>(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -83,14 +84,14 @@ export class ProfilePhotoService {
     try {
       uploadUrl = await this.storage.createPresignedPut({
         contentType,
-        expiresInSeconds: PRESIGN_SECONDS,
+        expiresInSeconds: UPLOAD_PRESIGN_SECONDS,
         key: quarantineObjectKey,
       });
     } catch {
       throw new ProfilePhotoError('PROFILE_PHOTO_SERVICE_UNAVAILABLE', 503);
     }
     return {
-      expiresAt: new Date(now.getTime() + PRESIGN_SECONDS * 1_000).toISOString(),
+      expiresAt: new Date(now.getTime() + UPLOAD_PRESIGN_SECONDS * 1_000).toISOString(),
       headers: { 'content-type': contentType },
       uploadId,
       uploadUrl,
@@ -158,9 +159,33 @@ export class ProfilePhotoService {
     }
   }
 
+  async getPrivatePhotoUrl(actorAccountId: string) {
+    return this.getPhotoUrl(await this.repository.findPrivatePhotoObjectKey(actorAccountId));
+  }
+
+  async getPublicPhotoUrl(publicId: string) {
+    return this.getPhotoUrl(await this.repository.findPublicPhotoObjectKey(publicId));
+  }
+
   private requireEditAccess(canEditProfile: boolean): void {
     if (!canEditProfile) {
       throw new ProfilePhotoError('PROFILE_EDIT_FORBIDDEN', 403);
+    }
+  }
+
+  private async getPhotoUrl(objectKey: string | null) {
+    if (objectKey === null) {
+      throw new ProfilePhotoError('PROFILE_PHOTO_NOT_FOUND', 404);
+    }
+    try {
+      return {
+        url: await this.storage.createPresignedGet({
+          expiresInSeconds: READ_PRESIGN_SECONDS,
+          key: objectKey,
+        }),
+      };
+    } catch {
+      throw new ProfilePhotoError('PROFILE_PHOTO_SERVICE_UNAVAILABLE', 503);
     }
   }
 

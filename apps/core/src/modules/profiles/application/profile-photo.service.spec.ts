@@ -13,12 +13,22 @@ const NOW = new Date('2026-08-25T08:00:00.000Z');
 
 class FakePhotoRepository implements ProfilePhotoRepository {
   upload: ProfilePhotoUpload | null = null;
+  privateObjectKey: string | null = `profile-media/${UPLOAD_ID}.webp`;
+  publicObjectKey: string | null = `profile-media/${UPLOAD_ID}.webp`;
   completed: Parameters<ProfilePhotoRepository['completeUpload']>[0] | undefined;
   rejected: Parameters<ProfilePhotoRepository['rejectUpload']>[0] | undefined;
 
   createUpload(input: Parameters<ProfilePhotoRepository['createUpload']>[0]) {
     this.upload = { ...input, personId: PERSON_ID, status: 'pending_upload' };
     return Promise.resolve(true);
+  }
+
+  findPrivatePhotoObjectKey(): Promise<string | null> {
+    return Promise.resolve(this.privateObjectKey);
+  }
+
+  findPublicPhotoObjectKey(): Promise<string | null> {
+    return Promise.resolve(this.publicObjectKey);
   }
 
   claimUpload(): Promise<ProfilePhotoUpload | null> {
@@ -46,6 +56,12 @@ class FakePhotoRepository implements ProfilePhotoRepository {
 class FakePhotoStorage implements ProfilePhotoStorage {
   bytes = Buffer.from('image');
   deletedKeys: string[] = [];
+  lastPresignedGet: { expiresInSeconds: number; key: string } | undefined;
+
+  createPresignedGet(input: { expiresInSeconds: number; key: string }) {
+    this.lastPresignedGet = input;
+    return Promise.resolve('https://example.r2.cloudflarestorage.com/presigned-get');
+  }
 
   createPresignedPut() {
     return Promise.resolve('https://example.r2.cloudflarestorage.com/presigned');
@@ -195,5 +211,33 @@ describe('ProfilePhotoService', () => {
       }),
     ).resolves.toEqual({ photoId: UPLOAD_ID, status: 'ready' });
     expect(getObject).not.toHaveBeenCalled();
+  });
+
+  it('issues a short-lived GET only for the authenticated Student current photo', async () => {
+    await expect(service.getPrivatePhotoUrl(ACCOUNT_ID)).resolves.toEqual({
+      url: 'https://example.r2.cloudflarestorage.com/presigned-get',
+    });
+    expect(storage.lastPresignedGet).toEqual({
+      expiresInSeconds: 60,
+      key: `profile-media/${UPLOAD_ID}.webp`,
+    });
+
+    repository.privateObjectKey = null;
+    await expect(service.getPrivatePhotoUrl(ACCOUNT_ID)).rejects.toMatchObject({
+      code: 'PROFILE_PHOTO_NOT_FOUND',
+      status: 404,
+    });
+  });
+
+  it('issues a short-lived GET only for a consented Public Profile photo', async () => {
+    await expect(service.getPublicPhotoUrl(PERSON_ID)).resolves.toEqual({
+      url: 'https://example.r2.cloudflarestorage.com/presigned-get',
+    });
+
+    repository.publicObjectKey = null;
+    await expect(service.getPublicPhotoUrl(PERSON_ID)).rejects.toMatchObject({
+      code: 'PROFILE_PHOTO_NOT_FOUND',
+      status: 404,
+    });
   });
 });

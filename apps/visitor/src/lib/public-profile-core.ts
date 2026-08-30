@@ -19,6 +19,7 @@ const publicProfileSchema = z
     publicId: z.uuid(),
   })
   .strict();
+const publicPhotoUrlSchema = z.object({ url: z.url() }).strict();
 
 export type PublicProfile = z.infer<typeof publicProfileSchema>;
 
@@ -43,6 +44,19 @@ export class PublicProfileCoreClient {
     if (response.status === 404) return null;
     if (!response.ok) throw new Error('PUBLIC_PROFILE_SERVICE_UNAVAILABLE');
     return publicProfileSchema.parse(await response.json());
+  }
+
+  async getPhotoUrl(publicId: string): Promise<string | null> {
+    const path = `/v1/public/profiles/${encodeURIComponent(publicId)}/photo`;
+    const response = await this.fetchImpl(new URL(path, this.coreOrigin).toString(), {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error('PUBLIC_PROFILE_PHOTO_SERVICE_UNAVAILABLE');
+    return publicPhotoUrlSchema.parse(await response.json()).url;
   }
 }
 

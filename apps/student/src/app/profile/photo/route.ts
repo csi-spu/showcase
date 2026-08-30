@@ -1,11 +1,7 @@
 import { createHash } from 'node:crypto';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
-import {
-  StudentProfileCoreClient,
-  StudentProfileCoreError,
-  type PrivatePublicProfile,
-} from '@/lib/student-profile-core';
+import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student-profile-core';
 
 const MAX_SANITIZED_PHOTO_BYTES = 8 * 1_024 * 1_024;
 const PRIVATE_CACHE_CONTROL = 'private, max-age=0, must-revalidate';
@@ -14,11 +10,11 @@ export async function GET(request: Request): Promise<Response> {
   const sessionToken = await readStudentSessionToken();
   if (sessionToken === null) return unauthenticated();
 
-  let profile: PrivatePublicProfile | null;
+  let photoUrl: string;
   try {
-    ({ profile } = await new StudentProfileCoreClient(getStudentServerEnvironment()).getProfile(
+    photoUrl = await new StudentProfileCoreClient(getStudentServerEnvironment()).getPhotoUrl(
       sessionToken,
-    ));
+    );
   } catch (error: unknown) {
     if (
       error instanceof StudentProfileCoreError &&
@@ -26,11 +22,13 @@ export async function GET(request: Request): Promise<Response> {
     ) {
       return unauthenticated();
     }
+    if (error instanceof StudentProfileCoreError && error.code === 'PROFILE_PHOTO_NOT_FOUND') {
+      return notFound();
+    }
     throw error;
   }
-  if (profile === null || profile.photo === null) return notFound();
 
-  const upstream = await fetch(profile.photo.url, {
+  const upstream = await fetch(photoUrl, {
     cache: 'no-store',
     credentials: 'omit',
     headers: { accept: 'image/webp' },

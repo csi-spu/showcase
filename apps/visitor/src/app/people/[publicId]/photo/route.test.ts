@@ -8,8 +8,8 @@ describe('public profile photo route', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('does not load media when consent eligibility is absent', async () => {
-    const getProfile = vi
-      .spyOn(PublicProfileCoreClient.prototype, 'getProfile')
+    const getPhotoUrl = vi
+      .spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl')
       .mockResolvedValue(null);
     const fetchMock = vi.spyOn(globalThis, 'fetch');
 
@@ -18,24 +18,14 @@ describe('public profile photo route', () => {
     });
 
     expect(response.status).toBe(404);
-    expect(getProfile).toHaveBeenCalledWith(PUBLIC_ID);
+    expect(getPhotoUrl).toHaveBeenCalledWith(PUBLIC_ID);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('serves only bounded sanitized WebP after rechecking consent', async () => {
-    vi.spyOn(PublicProfileCoreClient.prototype, 'getProfile').mockResolvedValue({
-      bio: null,
-      entryYear: 2569,
-      firstName: 'ณัฐดนัย',
-      lastName: 'สุขใจ',
-      links: [],
-      photo: {
-        height: 512,
-        url: 'https://media.example.test/profile-media/photo.webp',
-        width: 512,
-      },
-      publicId: PUBLIC_ID,
-    });
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
+      'https://media.example.test/profile-media/photo.webp',
+    );
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), {
         headers: { 'Content-Type': 'image/webp' },

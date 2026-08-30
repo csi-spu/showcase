@@ -67,4 +67,21 @@ describe('Student visual contract', () => {
 
     expect(page).toContain('layout="authoring"');
   });
+
+  it('uses the large profile photo for photo editing and identity for bio editing', async () => {
+    const page = await readFile(resolve(process.cwd(), 'src/app/profile/page.tsx'), 'utf8');
+    const profileForm = await readFile(
+      resolve(process.cwd(), 'src/app/profile/profile-form.tsx'),
+      'utf8',
+    );
+    const globals = await readFile(resolve(process.cwd(), 'src/app/globals.css'), 'utf8');
+
+    expect(page).not.toContain('<nav');
+    expect(page).not.toContain('profile-cover');
+    expect(globals).not.toContain('.profile-cover');
+    expect(page).toContain('ProfileOverviewEditLink');
+    expect(page).toContain('<ProfilePhotoButton');
+    expect(profileForm).toContain('href="#profile-bio"');
+    expect(page).not.toContain('PencilIcon');
+  });
 });

@@ -34,6 +34,7 @@ interface StudentSidebarProfile {
   firstName: string;
   lastName: string;
   photo: { height: number; url: string; width: number } | null;
+  photoVersion: number;
 }
 
 export async function StudentWorkspaceShell({
@@ -111,7 +112,7 @@ export async function StudentWorkspaceShell({
                   className="object-cover"
                   fill
                   sizes="40px"
-                  src="/profile/photo"
+                  src={`/profile/photo?v=${sidebarProfile.photoVersion}`}
                   unoptimized
                 />
               ) : (
@@ -180,7 +181,11 @@ async function loadStudentSidebarProfile(): Promise<StudentSidebarProfile | null
     );
     return response.person === null
       ? null
-      : { ...response.person, photo: response.profile?.photo ?? null };
+      : {
+          ...response.person,
+          photo: response.profile?.photo ?? null,
+          photoVersion: response.profile?.version ?? 0,
+        };
   } catch (error: unknown) {
     if (
       error instanceof StudentProfileCoreError &&

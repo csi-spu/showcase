@@ -10,10 +10,10 @@ export async function GET(
 ): Promise<Response> {
   const { publicId } = await params;
   if (!z.uuid().safeParse(publicId).success) return notFound();
-  const profile = await new PublicProfileCoreClient(getVisitorCoreUrl()).getProfile(publicId);
-  if (profile === null || profile.photo === null) return notFound();
+  const photoUrl = await new PublicProfileCoreClient(getVisitorCoreUrl()).getPhotoUrl(publicId);
+  if (photoUrl === null) return notFound();
 
-  const upstream = await fetch(profile.photo.url, {
+  const upstream = await fetch(photoUrl, {
     cache: 'no-store',
     credentials: 'omit',
     headers: { accept: 'image/webp' },

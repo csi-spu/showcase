@@ -102,6 +102,15 @@ describe('PostgresProfilePhotoRepository integration', () => {
         },
       }),
     ).resolves.toEqual({ outcome: 'updated' });
+    const privateProfile = await profiles.findPrivateProfile(ACCOUNT_ID);
+    await expect(photos.findPrivatePhotoObjectKey(ACCOUNT_ID)).resolves.toBe(
+      `profile-media/${UPLOAD_ID}.webp`,
+    );
+    await expect(photos.findPrivatePhotoObjectKey(OTHER_ACCOUNT_ID)).resolves.toBeNull();
+    await expect(
+      photos.findPublicPhotoObjectKey(privateProfile!.profile!.publicId),
+    ).resolves.toBeNull();
+
     await profiles.grantConsent({
       actorAccountId: ACCOUNT_ID,
       consentTextVersion: 'phase-1-v1',
@@ -109,7 +118,9 @@ describe('PostgresProfilePhotoRepository integration', () => {
       idempotencyKey: '62000000-0000-4000-8000-000000000009',
       now: new Date('2026-08-25T08:08:00.000Z'),
     });
-    const privateProfile = await profiles.findPrivateProfile(ACCOUNT_ID);
+    await expect(photos.findPublicPhotoObjectKey(privateProfile!.profile!.publicId)).resolves.toBe(
+      `profile-media/${UPLOAD_ID}.webp`,
+    );
     await expect(
       profiles.findPublicProfile(privateProfile!.profile!.publicId),
     ).resolves.toMatchObject({
@@ -145,6 +156,9 @@ describe('PostgresProfilePhotoRepository integration', () => {
       `;
       await transaction`delete from public.accounts where id in (${ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})`;
       await transaction`delete from public.students where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
+      await transaction`
+        delete from private.person_names where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})
+      `;
       await transaction`delete from public.people where id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
     });
   }

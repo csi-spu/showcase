@@ -46,6 +46,7 @@ const photoUploadSchema = z
   })
   .strict();
 const finalizedPhotoSchema = z.object({ photoId: z.uuid(), status: z.literal('ready') }).strict();
+const photoUrlSchema = z.object({ url: z.url() }).strict();
 
 export type PrivatePublicProfile = z.infer<typeof privateProfileSchema>;
 export type PrivatePerson = z.infer<typeof privatePersonSchema>;
@@ -81,6 +82,16 @@ export class StudentProfileCoreClient {
       responseSchema: privateProfileResponseSchema,
       sessionToken,
     });
+  }
+
+  async getPhotoUrl(sessionToken: string): Promise<string> {
+    const result = await this.client.request({
+      method: 'GET',
+      path: '/v1/internal/student/profile/photo',
+      responseSchema: photoUrlSchema,
+      sessionToken,
+    });
+    return result.url;
   }
 
   updateProfile(sessionToken: string, input: ProfileUpdateInput) {
