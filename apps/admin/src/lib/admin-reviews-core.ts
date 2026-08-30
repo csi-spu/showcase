@@ -339,6 +339,7 @@ export class AdminReviewsCoreClient {
         })
         .strict(),
       sessionToken,
+      timeoutMilliseconds: 15_000,
     });
   }
 

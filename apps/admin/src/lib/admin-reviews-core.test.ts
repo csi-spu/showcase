@@ -72,6 +72,50 @@ describe('AdminReviewsCoreClient', () => {
     });
   });
 
+  it('allows the bounded idempotent Change Request transaction to exceed the default read timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => resolve(Response.json({ outcome: 'changed_requested', review: changeRequest() })),
+          6_000,
+        );
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new Error('Request aborted'));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    try {
+      const review = new AdminReviewsCoreClient(config, fetchMock).requestChanges(
+        'opaque-admin-session',
+        REVISION_PUBLIC_ID,
+        {
+          expectedRevisionVersion: 1,
+          feedback: 'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
+          idempotencyKey: '77000000-0000-4000-8000-000000000003',
+          reason: 'content',
+        },
+      );
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      await expect(review).resolves.toMatchObject({ outcome: 'changed_requested' });
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('sends approval as a separate optimistic idempotent command', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
