@@ -263,8 +263,8 @@ export function WorkMediaUpload({
   const isInputDisabled = isBusy || isGalleryFull;
   return (
     <>
-      <Card aria-labelledby={headingId}>
-        <CardHeader>
+      <Card aria-labelledby={headingId} className="h-full">
+        <CardHeader className="min-h-32 content-start">
           <CardTitle>
             <h2 className="flex flex-wrap items-center gap-2 text-lg" id={headingId}>
               <span>{t(mediaKind === 'poster' ? 'posterHeading' : 'galleryHeading')}</span>

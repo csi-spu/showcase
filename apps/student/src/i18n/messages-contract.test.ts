@@ -5,9 +5,7 @@ describe('Thai Student messages', () => {
   it('explains authentication in language a general Student can understand', () => {
     expect(messages.Auth.kicker).toBe('สำหรับนักศึกษา');
     expect(messages.Auth.login.description).toBe('เข้าสู่ระบบด้วยรหัสนักศึกษาและรหัสผ่านของคุณ');
-    expect(messages.Auth.login.privacy).toBe(
-      'ข้อมูลเข้าสู่ระบบของคุณใช้สำหรับยืนยันตัวตนเท่านั้น และจะไม่ถูกนำไปแสดงต่อสาธารณะ',
-    );
+    expect(messages.Auth.login).not.toHaveProperty('privacy');
     expect(messages.Auth.expired.heading).toBe('หมดเวลาใช้งาน');
   });
 

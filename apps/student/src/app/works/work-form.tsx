@@ -3,8 +3,21 @@
 import { Button } from '@showcase/ui/button';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
+import Image from 'next/image';
+import {
+  ExternalLinkIcon,
+  FileTextIcon,
+  ImagesIcon,
+  SendIcon,
+  TagsIcon,
+  type LucideIcon,
+  UserRoundIcon,
+  UsersIcon,
+} from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,12 +27,17 @@ import type {
   WorkDraft,
   WorkDraftPatch,
 } from '@/lib/student-works-core';
-import { saveWorkDraftAction, submitLatestWorkAction } from './work.actions';
+import {
+  getWorkMediaStatusAction,
+  saveWorkDraftAction,
+  submitLatestWorkAction,
+} from './work.actions';
 import { WorkContributorEditor } from './work-contributor-editor';
 import { WorkMediaUpload } from './work-media-upload';
 import { WorkTagInput } from './work-tag-input';
 
 const STEP_COUNT = 5;
+const STEP_ICONS = [FileTextIcon, ImagesIcon, UsersIcon, TagsIcon, SendIcon] as const;
 const ACADEMIC_YEAR_MINIMUM = 2400;
 type SaveState = 'saved' | 'saving' | 'unsynced';
 type DraftValues = {
@@ -243,22 +261,26 @@ export function WorkForm({
   };
 
   return (
-    <div className="mx-auto grid w-full max-w-4xl gap-6">
+    <div className="mx-auto grid w-full max-w-6xl gap-6">
       <ol aria-label={t('wizard.label')} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {Array.from({ length: STEP_COUNT }, (_, index) => (
-          <li key={index}>
-            <span
-              aria-current={step === index ? 'step' : undefined}
-              className={`flex min-h-11 w-full items-center justify-center rounded-control border px-3 text-center text-sm font-medium ${
-                step === index
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-card text-muted-foreground'
-              }`}
-            >
-              {t(`wizard.step${index + 1}`)}
-            </span>
-          </li>
-        ))}
+        {Array.from({ length: STEP_COUNT }, (_, index) => {
+          const StepIcon = STEP_ICONS[index]!;
+          return (
+            <li className="h-full" key={index}>
+              <span
+                aria-current={step === index ? 'step' : undefined}
+                className={`grid min-h-20 w-full content-center justify-items-center gap-2 rounded-control border px-3 py-3 text-center text-sm font-medium ${
+                  step === index
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <StepIcon aria-hidden="true" className="size-5" />
+                <span className="leading-tight">{t(`wizard.step${index + 1}`)}</span>
+              </span>
+            </li>
+          );
+        })}
       </ol>
       <p aria-live="polite" className="text-sm text-muted-foreground">
         {t(`draftSave.${saveState}`)}
@@ -321,6 +343,7 @@ export function WorkForm({
               media={effectiveWork?.media ?? []}
               onEdit={setStep}
               onSubmit={submit}
+              publicId={workPublicId}
               t={t}
               values={values}
             />
@@ -362,7 +385,7 @@ function DetailsStep({
 }) {
   return (
     <>
-      <h2 className="text-2xl font-semibold">{t('wizard.step1')}</h2>
+      <StepHeading icon={FileTextIcon}>{t('wizard.step1')}</StepHeading>
       <TextField
         label={t('title')}
         maxLength={150}
@@ -470,11 +493,8 @@ function MediaStep({
   if (publicId === null || version === null) return <p>{t('media.saveFirst')}</p>;
   return (
     <>
-      <h2 className="text-2xl font-semibold">{t('wizard.step2')}</h2>
-      <div
-        className="grid gap-5 lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,1.2fr)] lg:items-start"
-        data-slot="work-media-layout"
-      >
+      <StepHeading icon={ImagesIcon}>{t('wizard.step2')}</StepHeading>
+      <div className="grid items-stretch gap-5 lg:grid-cols-2" data-slot="work-media-layout">
         <WorkMediaUpload
           expectedVersion={version}
           media={media.filter((item) => item.kind === 'poster')}
@@ -517,7 +537,7 @@ function AttributionStep({
 }) {
   return (
     <>
-      <h2 className="text-2xl font-semibold">{t('wizard.step3')}</h2>
+      <StepHeading icon={UsersIcon}>{t('wizard.step3')}</StepHeading>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field>
           <FieldLabel>{t('attribution.submitter')}</FieldLabel>
@@ -566,7 +586,7 @@ function DiscoveryStep({
 }) {
   return (
     <>
-      <h2 className="text-2xl font-semibold">{t('wizard.step4')}</h2>
+      <StepHeading icon={TagsIcon}>{t('wizard.step4')}</StepHeading>
       <TextField
         label="GitHub"
         maxLength={2_048}
@@ -637,6 +657,7 @@ function ReviewStep({
   media,
   onEdit,
   onSubmit,
+  publicId,
   t,
   values,
 }: {
@@ -647,87 +668,145 @@ function ReviewStep({
   media: WorkDraft['media'];
   onEdit: (step: number) => void;
   onSubmit: () => void;
+  publicId: string | null;
   t: Translation;
   values: DraftValues;
 }) {
   const poster = media.find((item) => item.kind === 'poster');
+  const gallery = media.filter((item) => item.kind === 'gallery');
+  const links = [values.githubUrl, ...values.links.map((item) => item.url)].filter(Boolean);
   return (
     <>
-      <h2 className="text-2xl font-semibold">{t('wizard.step5')}</h2>
-      <dl className="grid gap-3">
-        <div>
-          <dt className="font-medium">{t('title')}</dt>
-          <dd>{values.title || '—'}</dd>
+      <StepHeading icon={SendIcon}>{t('wizard.step5')}</StepHeading>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(16rem,0.72fr)_minmax(0,1.28fr)]">
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle>
+              <h3 className="flex items-center gap-2 text-lg">
+                <ImagesIcon aria-hidden="true" className="size-5 text-primary" />
+                {t('review.previewTitle')}
+              </h3>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <div className="grid gap-2">
+              <p className="font-medium">{t('review.poster')}</p>
+              <div className="relative mx-auto aspect-[3/4] w-full max-w-64 overflow-hidden rounded-media border bg-muted">
+                {poster?.status === 'ready' && publicId !== null ? (
+                  <ReviewMediaImage
+                    alt={t('media.posterPreview')}
+                    item={poster}
+                    publicId={publicId}
+                    sizes="256px"
+                  />
+                ) : (
+                  <div className="grid h-full place-items-center p-4 text-center text-sm text-muted-foreground">
+                    {poster === undefined ? '—' : t(`review.mediaStatus.${poster.status}`)}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{t('review.gallery')}</p>
+                <Badge variant="outline">
+                  {t('review.galleryCount', { count: gallery.length })}
+                </Badge>
+              </div>
+              {gallery.length === 0 || publicId === null ? (
+                <div className="grid min-h-24 place-items-center rounded-media border border-dashed text-muted-foreground">
+                  —
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {gallery.map((item) => (
+                    <div
+                      className="relative aspect-square overflow-hidden rounded-media border bg-muted"
+                      key={item.assetId}
+                    >
+                      {item.status === 'ready' ? (
+                        <ReviewMediaImage
+                          alt={t('media.galleryPreview')}
+                          item={item}
+                          publicId={publicId}
+                          sizes="96px"
+                        />
+                      ) : (
+                        <span className="grid h-full place-items-center p-1 text-center text-xs text-muted-foreground">
+                          {t(`review.mediaStatus.${item.status}`)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-5">
+          <Card>
+            <CardHeader className="gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge>{values.category === '' ? '—' : t(`categories.${values.category}`)}</Badge>
+                <Badge variant="outline">
+                  {values.academicPeriod.year || '—'} ·{' '}
+                  {values.academicPeriod.semester === 'summer'
+                    ? t('summer')
+                    : values.academicPeriod.semester || '—'}
+                </Badge>
+              </div>
+              <CardTitle>
+                <h3 className="text-2xl">{values.title || '—'}</h3>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-5">
+              <ReviewRow label={t('summary')} value={values.summary} />
+              <ReviewRow label={t('description')} value={values.description} multiline />
+              <dl className="grid gap-3 rounded-control bg-muted p-4 sm:grid-cols-3">
+                <ReviewRow
+                  label={t('category')}
+                  value={values.category === '' ? '' : t(`categories.${values.category}`)}
+                />
+                <ReviewRow label={t('academicYear')} value={values.academicPeriod.year} />
+                <ReviewRow
+                  label={t('semester')}
+                  value={
+                    values.academicPeriod.semester === 'summer'
+                      ? t('summer')
+                      : values.academicPeriod.semester
+                  }
+                />
+              </dl>
+            </CardContent>
+          </Card>
+
+          <div className="grid items-stretch gap-5 md:grid-cols-2">
+            <ReviewSection icon={UserRoundIcon} title={t('review.attributionTitle')}>
+              <dl className="grid gap-4">
+                <ReviewRow label={t('attribution.submitter')} value={attributionName} />
+                <ReviewRow label={t('attribution.studyYear')} value={values.studyYear} />
+                <ReviewRow
+                  label={t('attribution.contributors')}
+                  value={contributors
+                    .map((item) => `${item.attributionName} (${item.contributionRole})`)
+                    .join(', ')}
+                />
+              </dl>
+            </ReviewSection>
+            <ReviewSection icon={ExternalLinkIcon} title={t('review.discoveryTitle')}>
+              <dl className="grid gap-4">
+                <ReviewRow label={t('discovery.links')} value={links.join(', ')} />
+                <ReviewRow
+                  label={t('tags')}
+                  value={values.tags.map((tag) => `#${tag}`).join(' · ')}
+                />
+                <ReviewRow label={t('videoLinks')} value={values.videoLinks} multiline />
+              </dl>
+            </ReviewSection>
+          </div>
         </div>
-        <div>
-          <dt className="font-medium">{t('summary')}</dt>
-          <dd>{values.summary || '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('description')}</dt>
-          <dd className="whitespace-pre-wrap">{values.description || '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('category')}</dt>
-          <dd>{values.category === '' ? '—' : t(`categories.${values.category}`)}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('academicYear')}</dt>
-          <dd>{values.academicPeriod.year || '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('semester')}</dt>
-          <dd>
-            {values.academicPeriod.semester === 'summer'
-              ? t('summer')
-              : values.academicPeriod.semester || '—'}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('review.poster')}</dt>
-          <dd>{poster === undefined ? '—' : t(`review.mediaStatus.${poster.status}`)}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('review.gallery')}</dt>
-          <dd>
-            {t('review.galleryCount', {
-              count: media.filter((item) => item.kind === 'gallery').length,
-            })}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('attribution.submitter')}</dt>
-          <dd>{attributionName ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('attribution.studyYear')}</dt>
-          <dd>{values.studyYear || '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('attribution.contributors')}</dt>
-          <dd>
-            {contributors
-              .map((item) => `${item.attributionName} (${item.contributionRole})`)
-              .join(', ') || '—'}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('discovery.links')}</dt>
-          <dd>
-            {[values.githubUrl, ...values.links.map((item) => item.url)]
-              .filter(Boolean)
-              .join(', ') || '—'}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('tags')}</dt>
-          <dd>{values.tags.map((tag) => `#${tag}`).join(' · ') || '—'}</dd>
-        </div>
-        <div>
-          <dt className="font-medium">{t('videoLinks')}</dt>
-          <dd className="whitespace-pre-wrap">{values.videoLinks || '—'}</dd>
-        </div>
-      </dl>
+      </div>
       {incompleteSteps.length === 0 ? null : (
         <Alert variant="destructive">
           <AlertTitle>{t('review.incomplete')}</AlertTitle>
@@ -745,9 +824,103 @@ function ReviewStep({
         </Alert>
       )}
       <Button disabled={!canSubmit} onClick={onSubmit} type="button">
+        <SendIcon aria-hidden="true" />
         {t('review.submit')}
       </Button>
     </>
+  );
+}
+
+function StepHeading({ children, icon: Icon }: { children: string; icon: LucideIcon }) {
+  return (
+    <h2 className="flex items-center gap-3 text-2xl font-semibold">
+      <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
+        <Icon aria-hidden="true" className="size-5" />
+      </span>
+      {children}
+    </h2>
+  );
+}
+
+function ReviewMediaImage({
+  alt,
+  item,
+  publicId,
+  sizes,
+}: {
+  alt: string;
+  item: WorkDraft['media'][number];
+  publicId: string;
+  sizes: string;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let isCancelled = false;
+    void getWorkMediaStatusAction({ assetId: item.assetId, publicId }).then((result) => {
+      if (!isCancelled && !('error' in result) && result.preview !== null) {
+        setPreviewUrl(result.preview.url);
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [item.assetId, publicId]);
+
+  return previewUrl === null ? (
+    <span className="grid h-full place-items-center text-sm text-muted-foreground">…</span>
+  ) : (
+    <Image
+      alt={alt}
+      className="object-cover"
+      fill
+      loader={({ src }) => src}
+      sizes={sizes}
+      src={previewUrl}
+      unoptimized
+    />
+  );
+}
+
+function ReviewSection({
+  children,
+  icon: Icon,
+  title,
+}: {
+  children: ReactNode;
+  icon: LucideIcon;
+  title: string;
+}) {
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle>
+          <h3 className="flex items-center gap-2 text-lg">
+            <Icon aria-hidden="true" className="size-5 text-primary" />
+            {title}
+          </h3>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function ReviewRow({
+  label,
+  multiline = false,
+  value,
+}: {
+  label: string;
+  multiline?: boolean;
+  value: number | string | null;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
+      <dd className={multiline ? 'mt-1 whitespace-pre-wrap' : 'mt-1 break-words'}>
+        {value || '—'}
+      </dd>
+    </div>
   );
 }
 

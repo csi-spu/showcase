@@ -6,8 +6,11 @@ describe('Work Management cursor', () => {
   const codec = new WorkWorkspaceCursorCodec(SECRET);
   const state = {
     accountId: '55000000-0000-4000-8000-000000000001',
+    category: 'all' as const,
     pageSize: 12,
+    query: '',
     sort: 'updated_desc' as const,
+    status: 'all' as const,
     view: 'current' as const,
   };
 
@@ -27,6 +30,10 @@ describe('Work Management cursor', () => {
 
   it.each([
     ['actor', { ...state, accountId: '55000000-0000-4000-8000-000000000099' }],
+    ['category', { ...state, category: 'course_work' as const }],
+    ['query', { ...state, query: 'ก' }],
+    ['sort', { ...state, sort: 'updated_asc' as const }],
+    ['status', { ...state, status: 'draft' as const }],
     ['view', { ...state, view: 'saved' as const }],
     ['page size', { ...state, pageSize: 20 }],
   ])('rejects a cursor replayed under a different %s', (_field, mismatchedState) => {

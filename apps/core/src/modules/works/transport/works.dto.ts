@@ -210,8 +210,35 @@ export class AttachWorkMediaDto {
 export class WorkListQueryDto {
   @IsOptional()
   @IsString()
+  @IsIn(['all', ...WORK_CATEGORIES])
+  category: 'academic_article' | 'all' | 'competition_entry' | 'course_work' = 'all';
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   cursor?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10_000)
+  page = 1;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  query = '';
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['updated_asc', 'updated_desc'])
+  sort: 'updated_asc' | 'updated_desc' = 'updated_desc';
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'changes_requested', 'draft', 'pending_review', 'published'])
+  status: 'all' | 'changes_requested' | 'draft' | 'pending_review' | 'published' = 'all';
 
   @IsOptional()
   @IsString()

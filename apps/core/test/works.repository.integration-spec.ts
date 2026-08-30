@@ -11,6 +11,7 @@ const OTHER_PROVIDER_USER_ID = '62000000-0000-4000-8000-000000000006';
 const CREATE_KEY = '62000000-0000-4000-8000-000000000007';
 const UPDATE_KEY = '62000000-0000-4000-8000-000000000008';
 const CONCURRENT_UPDATE_KEY = '62000000-0000-4000-8000-000000000009';
+const SEARCH_CREATE_KEY = '62000000-0000-4000-8000-000000000010';
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 
@@ -117,6 +118,44 @@ describe('PostgresWorksRepository integration', () => {
       select count(*)::integer as count from public.works where submitter_person_id = ${PERSON_ID}
     `;
     expect(count).toEqual([{ count: 1 }]);
+  });
+
+  it('searches one literal character and returns bounded filter totals for only the Submitter', async () => {
+    await repository.createWork({
+      actorAccountId: ACCOUNT_ID,
+      draft: draft({ title: 'ค้นหา 100% งาน' }),
+      idempotencyKey: SEARCH_CREATE_KEY,
+      now: new Date('2026-08-25T10:02:00.000Z'),
+      submitterPersonId: PERSON_ID,
+    });
+
+    const page = await repository.listOwnedWorks({
+      accountId: ACCOUNT_ID,
+      category: 'course_work',
+      cursor: null,
+      limit: 12,
+      page: 1,
+      query: '%',
+      sort: 'updated_asc',
+      status: 'draft',
+      view: 'current',
+    });
+
+    expect(page).toMatchObject({ pageSize: 12, totalItems: 1, totalPages: 1 });
+    expect(page.items.map((item) => item.title)).toEqual(['ค้นหา 100% งาน']);
+    await expect(
+      repository.listOwnedWorks({
+        accountId: OTHER_ACCOUNT_ID,
+        category: 'all',
+        cursor: null,
+        limit: 12,
+        page: 1,
+        query: 'ค',
+        sort: 'updated_desc',
+        status: 'all',
+        view: 'current',
+      }),
+    ).resolves.toMatchObject({ items: [], totalItems: 0, totalPages: 0 });
   });
 
   it('atomically accepts one expected-version update and preserves data on the stale attempt', async () => {

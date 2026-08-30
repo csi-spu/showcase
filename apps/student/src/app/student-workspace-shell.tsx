@@ -142,7 +142,7 @@ export async function StudentWorkspaceShell({
       </Sidebar>
 
       <SidebarInset className="min-w-0 bg-transparent">
-        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-4 border-b border-border/80 bg-background px-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-4 border-b border-border/80 bg-background px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <SidebarTrigger
               aria-label={t('navigation.openMenu')}
@@ -157,9 +157,6 @@ export async function StudentWorkspaceShell({
               <span className="truncate font-medium">{activeLabel}</span>
             </div>
           </div>
-          <Badge className="hidden sm:flex" variant="outline">
-            {statusLabel}
-          </Badge>
         </header>
         <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">
           <BlurFade offset={8}>{children}</BlurFade>

@@ -2,8 +2,11 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export interface WorkWorkspaceCursorState {
   accountId: string;
+  category: 'academic_article' | 'all' | 'competition_entry' | 'course_work';
   pageSize: number;
-  sort: 'updated_desc';
+  query: string;
+  sort: 'updated_asc' | 'updated_desc';
+  status: 'all' | 'changes_requested' | 'draft' | 'pending_review' | 'published';
   view: 'current' | 'saved';
 }
 
@@ -70,7 +73,17 @@ export class WorkWorkspaceCursorCodec {
 
   private stateHash(state: WorkWorkspaceCursorState): string {
     return createHash('sha256')
-      .update(JSON.stringify([state.accountId, state.view, state.sort, state.pageSize]))
+      .update(
+        JSON.stringify([
+          state.accountId,
+          state.view,
+          state.query,
+          state.category,
+          state.status,
+          state.sort,
+          state.pageSize,
+        ]),
+      )
       .digest('base64url');
   }
 

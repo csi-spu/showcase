@@ -4,8 +4,9 @@ import { Button, buttonVariants } from '@showcase/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useTransition } from 'react';
+import { ArrowUpRightIcon, Clock3Icon, EllipsisIcon, ImageOffIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkListItem } from '@/lib/student-works-core';
 import { archiveSavedDraftAction, restoreSavedDraftAction } from './work.actions';
 
@@ -22,25 +23,36 @@ export function StudentWorkList({
 }) {
   return (
     <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {items.map((work) => (
-        <li aria-label={work.title ?? labels.placeholder} key={work.publicId}>
-          <Card className="h-full overflow-hidden">
-            {work.poster === null ? (
-              <div className="aspect-[3/4] bg-muted" aria-label={labels.posterFallback} />
-            ) : (
-              <Image
-                alt=""
-                className="aspect-[3/4] w-full object-cover"
-                height={work.poster.height}
-                loading="lazy"
-                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
-                unoptimized
-                width={work.poster.width}
-              />
-            )}
-            <CardHeader>
-              <div className="flex flex-wrap gap-2">
+      {items.map((work) => {
+        const action = getPrimaryAction(work, canEdit, labels, visitorUrl);
+        const title = work.title ?? labels.placeholder;
+        const card = (
+          <Card className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden transition-[transform,box-shadow,border-color] duration-200 group-hover/work-card:-translate-y-0.5 group-hover/work-card:border-primary/30 group-hover/work-card:shadow-lg group-focus-visible/work-card:border-ring group-focus-visible/work-card:ring-2 group-focus-visible/work-card:ring-ring group-focus-visible/work-card:ring-offset-2 group-focus-visible/work-card:ring-offset-background motion-reduce:transform-none motion-reduce:transition-none">
+            <div className="relative aspect-[3/4] overflow-hidden rounded-t-surface bg-muted">
+              {work.poster === null ? (
+                <div
+                  className="grid h-full place-items-center text-muted-foreground"
+                  aria-label={labels.posterFallback}
+                >
+                  <span className="grid justify-items-center gap-2 text-sm">
+                    <ImageOffIcon aria-hidden="true" className="size-8" />
+                    {labels.posterFallback}
+                  </span>
+                </div>
+              ) : (
+                <Image
+                  alt=""
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover/card:scale-[1.02] motion-reduce:transition-none"
+                  fill
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                  src={`/works/${work.publicId}/media/${work.poster.assetId}/${work.poster.variants.at(-1)?.width ?? work.poster.width}`}
+                  unoptimized
+                />
+              )}
+            </div>
+            <CardHeader className="grid min-h-36 content-start gap-3">
+              <div className="flex min-h-14 content-start flex-wrap gap-2">
                 <Badge>{labels[`source.${work.displayedSource}`]}</Badge>
                 <Badge variant="outline">{labels[`activity.${work.activityState}`]}</Badge>
                 <Badge variant="outline">{labels[`publication.${work.publicationState}`]}</Badge>
@@ -53,34 +65,62 @@ export function StudentWorkList({
                 </Badge>
               </div>
               <CardTitle>
-                <h2>{work.title ?? labels.placeholder}</h2>
+                <h2
+                  className="line-clamp-2 min-h-[2.75rem] text-lg"
+                  title={work.title ?? undefined}
+                >
+                  {title}
+                </h2>
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-2">
-              <p className="line-clamp-3 text-sm text-muted-foreground">
+            <CardContent className="grid content-between gap-4">
+              <p className="line-clamp-3 min-h-[3.75rem] text-sm text-muted-foreground">
                 {work.summary ?? labels.placeholder}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock3Icon aria-hidden="true" className="size-3.5" />
+                  {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
+                </p>
+                {action === null ? null : (
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
+                    <ArrowUpRightIcon aria-hidden="true" className="size-4" />
+                  </span>
+                )}
+              </div>
             </CardContent>
-            <CardFooter className="flex flex-wrap gap-2">
-              {primaryAction(work, canEdit, labels, visitorUrl)}
-              {canEdit ? <SecondaryActions labels={labels} work={work} /> : null}
-            </CardFooter>
           </Card>
-        </li>
-      ))}
+        );
+
+        return (
+          <li className="relative h-full" aria-label={title} key={work.publicId}>
+            {action === null ? (
+              card
+            ) : (
+              <Link
+                aria-label={`${action.label}: ${title}`}
+                className="group/work-card block h-full rounded-surface focus-visible:outline-none"
+                href={action.href}
+              >
+                {card}
+              </Link>
+            )}
+            {canEdit && work.publicationState !== 'published' ? (
+              <SecondaryActions labels={labels} work={work} />
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function primaryAction(
+function getPrimaryAction(
   work: WorkListItem,
   canEdit: boolean,
   labels: Record<string, string>,
   visitorUrl: string,
-) {
+): { href: string; label: string } | null {
   if (
     work.primaryAction === null ||
     (!canEdit && work.primaryAction !== 'view_details' && work.primaryAction !== 'view_public_work')
@@ -90,11 +130,7 @@ function primaryAction(
     work.primaryAction === 'view_public_work'
       ? `${visitorUrl}/works/${work.publicId}`
       : `/works/${work.publicId}`;
-  return (
-    <Link className={buttonVariants()} href={href}>
-      {labels[`actions.${work.primaryAction}`]}
-    </Link>
-  );
+  return { href, label: labels[`actions.${work.primaryAction}`]! };
 }
 
 function SecondaryActions({
@@ -107,9 +143,19 @@ function SecondaryActions({
   const [pending, start] = useTransition();
   if (work.secondaryActions.length === 0 && work.primaryAction !== 'return_to_editing') return null;
   return (
-    <details>
-      <summary className={buttonVariants({ variant: 'outline' })}>{labels.more}</summary>
-      <div className="mt-2 grid gap-2 rounded-control border bg-card p-2">
+    <details className="absolute top-4 right-4 z-20">
+      <summary
+        className={buttonVariants({
+          className:
+            'list-none rounded-full border-border/80 bg-card/95 shadow-md backdrop-blur-sm',
+          size: 'icon',
+          variant: 'outline',
+        })}
+      >
+        <EllipsisIcon aria-hidden="true" />
+        <span className="sr-only">{labels.more}</span>
+      </summary>
+      <div className="absolute top-[calc(100%+0.5rem)] right-0 z-20 grid min-w-56 gap-2 rounded-control border bg-card p-2 shadow-lg">
         {work.primaryAction === 'return_to_editing' ? (
           <Button
             disabled={pending}

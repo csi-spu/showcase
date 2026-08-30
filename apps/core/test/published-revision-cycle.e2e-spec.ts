@@ -70,11 +70,15 @@ class LifecycleWorksRepository implements WorksRepository {
 
   listOwnedWorks(): ReturnType<WorksRepository['listOwnedWorks']> {
     return Promise.resolve({
+      currentPage: 1,
       hasNextPage: false,
       hasPreviousPage: false,
       items: [],
       nextCursor: null,
+      pageSize: 12,
       previousCursor: null,
+      totalItems: 0,
+      totalPages: 0,
     });
   }
 

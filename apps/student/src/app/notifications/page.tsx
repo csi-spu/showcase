@@ -1,8 +1,11 @@
 import { Button, buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
 import Link from 'next/link';
+import Image from 'next/image';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { BellOffIcon, CheckCheckIcon } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
@@ -52,6 +55,18 @@ export default async function StudentNotificationsPage({
       canCreateWork={auth.session.canUseStudentCapabilities}
     >
       <WorkspacePage
+        decoration={
+          <div className="relative mt-3 hidden aspect-[4/3] max-h-80 w-full overflow-hidden rounded-surface border border-border/70 bg-card lg:block">
+            <div className="absolute inset-8 rounded-full bg-primary/10 blur-3xl" />
+            <Image
+              alt=""
+              className="object-contain object-bottom"
+              fill
+              sizes="(max-width: 1024px) 0px, 28vw"
+              src="/images/notification-student.png"
+            />
+          </div>
+        }
         description={t('description', { count: unread.count })}
         eyebrow={t('kicker')}
         title={t('title')}
@@ -75,15 +90,26 @@ export default async function StudentNotificationsPage({
             {unread.count > 0 ? (
               <form action={markAllStudentNotificationsReadAction}>
                 <Button type="submit" variant="outline">
+                  <CheckCheckIcon aria-hidden="true" />
                   {t('markAllRead')}
                 </Button>
               </form>
             ) : null}
           </div>
           {page.items.length === 0 ? (
-            <p className="rounded-surface border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
-              {view === 'unread' ? t('emptyUnread') : t('empty')}
-            </p>
+            <Card className="min-h-72 border-dashed bg-card/70">
+              <CardHeader className="m-auto max-w-md justify-items-center gap-4 text-center">
+                <span className="grid size-14 place-items-center rounded-full bg-primary-soft text-primary">
+                  <BellOffIcon aria-hidden="true" className="size-7" />
+                </span>
+                <CardTitle>
+                  <h2 className="text-xl">{t('fallbackTitle')}</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-8 text-center text-muted-foreground">
+                {view === 'unread' ? t('emptyUnread') : t('empty')}
+              </CardContent>
+            </Card>
           ) : (
             <StudentNotificationList
               items={page.items}
