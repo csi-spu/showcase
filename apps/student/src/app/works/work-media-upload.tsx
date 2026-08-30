@@ -356,9 +356,7 @@ export function WorkMediaUpload({
                     )}
                     height={preview.height}
                     loader={({ src }) => src}
-                    sizes={
-                      mediaKind === 'poster' ? '256px' : '(max-width: 1024px) 50vw, 160px'
-                    }
+                    sizes={mediaKind === 'poster' ? '256px' : '(max-width: 1024px) 50vw, 160px'}
                     src={preview.url}
                     unoptimized
                     width={preview.width}

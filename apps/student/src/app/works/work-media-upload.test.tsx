@@ -27,9 +27,7 @@ vi.mock('react-cropper', () => ({
   ) {
     useImperativeHandle(ref, () => ({ cropper: { getCroppedCanvas: cropper.getCroppedCanvas } }));
     useEffect(() => ready(), [ready, src]);
-    return (
-      <div aria-label="เครื่องมือครอป" data-aspect-ratio={aspectRatio} data-source={src} />
-    );
+    return <div aria-label="เครื่องมือครอป" data-aspect-ratio={aspectRatio} data-source={src} />;
   }),
 }));
 
@@ -208,9 +206,7 @@ describe('WorkMediaUpload', () => {
     await waitFor(() =>
       expect(screen.getAllByAltText('ตัวอย่างภาพแกลเลอรีที่ผ่านการประมวลผล')).toHaveLength(3),
     );
-    expect((screen.getByLabelText('เลือกไฟล์ภาพแกลเลอรี') as HTMLInputElement).disabled).toBe(
-      true,
-    );
+    expect((screen.getByLabelText('เลือกไฟล์ภาพแกลเลอรี') as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByText('เพิ่มแล้ว 3 จาก 3 ภาพ')).toBeTruthy();
   });
 
@@ -243,9 +239,9 @@ describe('WorkMediaUpload', () => {
     expect(actions.authorize).not.toHaveBeenCalled();
 
     await waitFor(() =>
-      expect((screen.getByRole('button', { name: 'ครอปและอัปโหลด' }) as HTMLButtonElement).disabled).toBe(
-        false,
-      ),
+      expect(
+        (screen.getByRole('button', { name: 'ครอปและอัปโหลด' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
     );
     fireEvent.click(screen.getByRole('button', { name: 'ครอปและอัปโหลด' }));
 
@@ -267,7 +263,9 @@ describe('WorkMediaUpload', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'ครอปรูปแกลเลอรี' })).toBeTruthy();
-    expect(screen.getByLabelText('เครื่องมือครอป').getAttribute('data-aspect-ratio')).toBeNull();
+    expect(
+      (await screen.findByLabelText('เครื่องมือครอป')).getAttribute('data-aspect-ratio'),
+    ).toBeNull();
     expect(actions.authorize).not.toHaveBeenCalled();
   });
 

@@ -100,7 +100,11 @@ export default async function EditWorkPage({
           ) : null}
           {state.kind === 'draft' ? (
             canMutate ? (
-              <WorkForm context={state.context} initialStep={initialStep} initialWork={state.work} />
+              <WorkForm
+                context={state.context}
+                initialStep={initialStep}
+                initialWork={state.work}
+              />
             ) : null
           ) : state.kind === 'pending' ? (
             <WorkRevisionDetails

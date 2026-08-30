@@ -2,13 +2,7 @@ import type { ReactNode } from 'react';
 import { ExternalLinkIcon, UserRoundIcon } from 'lucide-react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkRevision } from '@/lib/student-works-core';
 
 export interface WorkRevisionDetailsLabels {
@@ -135,9 +129,7 @@ function RevisionSidebar({
 }) {
   return (
     <aside className="contents xl:sticky xl:top-28 xl:col-start-2 xl:row-start-1 xl:grid xl:gap-6">
-      {action === undefined ? null : (
-        <div className="order-1 xl:order-none">{action}</div>
-      )}
+      {action === undefined ? null : <div className="order-1 xl:order-none">{action}</div>}
       <Card className="order-3 xl:order-none">
         <CardHeader className="border-b">
           <CardTitle>

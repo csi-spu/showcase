@@ -47,7 +47,7 @@ describe('Student visual contract', () => {
     expect(form).toContain('sm:grid-cols-5');
   });
 
-  it('gives an editable Work Draft the same full-width authoring layout', async () => {
+  it('gives Work details the same full-width authoring layout', async () => {
     const page = await readFile(
       resolve(process.cwd(), 'src/app/works/[publicId]/page.tsx'),
       'utf8',
@@ -57,7 +57,7 @@ describe('Student visual contract', () => {
       'utf8',
     );
 
-    expect(page).toContain("layout={state.kind === 'draft' ? 'authoring' : 'overview'}");
+    expect(page).toContain('layout="authoring"');
     expect(workspacePage).toContain("layout = 'overview'");
     expect(workspacePage).toContain("layout === 'authoring'");
   });

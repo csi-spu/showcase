@@ -93,9 +93,7 @@ export function WorkPublishedRevisionPanel({
     <section className="grid gap-5 rounded-surface border border-information/30 bg-information-background p-5 shadow-sm">
       <div className="grid gap-2">
         <p className="text-xs font-semibold tracking-[0.14em] text-information uppercase">
-          {t(
-            publicationState === 'published' ? 'published.eyebrow' : 'unpublished.eyebrow',
-          )}
+          {t(publicationState === 'published' ? 'published.eyebrow' : 'unpublished.eyebrow')}
         </p>
         <h2 className="text-xl font-semibold">
           {t(publicationState === 'published' ? 'published.heading' : 'unpublished.heading')}
