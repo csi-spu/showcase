@@ -78,37 +78,44 @@ export function AdminWorkspaceFrame({
   workspace: string;
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isPointerExpanded, setIsPointerExpanded] = useState(false);
+  const isSidebarCollapsed = isCollapsed && !isPointerExpanded;
 
   return (
     <main
       className={cn(
         'admin-canvas mx-auto grid min-h-svh w-full max-w-[1600px] bg-background transition-[grid-template-columns] duration-200 motion-reduce:transition-none lg:items-start',
-        isCollapsed ? 'lg:grid-cols-[4rem_minmax(0,1fr)]' : 'lg:grid-cols-[16rem_minmax(0,1fr)]',
+        isSidebarCollapsed
+          ? 'lg:grid-cols-[4rem_minmax(0,1fr)]'
+          : 'lg:grid-cols-[16rem_minmax(0,1fr)]',
       )}
     >
       <aside
         className={cn(
           'hidden flex-col justify-between border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground backdrop-blur lg:sticky lg:top-0 lg:flex lg:h-svh',
-          isCollapsed ? 'px-2 py-5' : 'px-5 py-6',
+          isSidebarCollapsed ? 'px-2 py-5' : 'px-5 py-6',
         )}
+        onPointerEnter={() => setIsPointerExpanded(isCollapsed)}
+        onPointerLeave={() => setIsPointerExpanded(false)}
         role="complementary"
       >
         <div className="flex min-h-0 flex-col gap-6">
-          <div className={cn('min-h-12', isCollapsed ? 'grid place-items-center' : 'px-2')}>
-            {isCollapsed ? <AdminBrandMark /> : <AdminBrand />}
-            {isCollapsed ? null : (
+          <div className={cn('min-h-12', isSidebarCollapsed ? 'grid place-items-center' : 'px-2')}>
+            {isSidebarCollapsed ? <AdminBrandMark /> : <AdminBrand />}
+            {isSidebarCollapsed ? null : (
               <p className="mt-2 truncate text-sm text-muted-foreground">{workspace}</p>
             )}
           </div>
           <WorkspaceNavigation
             activePage={activePage}
             groups={groups}
-            isCollapsed={isCollapsed}
+            isCollapsed={isSidebarCollapsed}
+            showsCollapsedTooltips={isSidebarCollapsed}
             label={navigationLabel}
           />
         </div>
         <div className="flex flex-col gap-3">
-          {isCollapsed ? (
+          {isSidebarCollapsed ? (
             collapsedLogout
           ) : (
             <>
@@ -122,8 +129,11 @@ export function AdminWorkspaceFrame({
           )}
           <Button
             aria-label={isCollapsed ? expandLabel : collapseLabel}
-            className={cn(isCollapsed ? 'w-full' : 'self-end')}
-            onClick={() => setIsCollapsed((value) => !value)}
+            className={cn(isSidebarCollapsed ? 'w-full' : 'self-end')}
+            onClick={() => {
+              setIsCollapsed((value) => !value);
+              setIsPointerExpanded(false);
+            }}
             size="icon-sm"
             title={isCollapsed ? expandLabel : collapseLabel}
             variant="ghost"
@@ -148,6 +158,7 @@ export function AdminWorkspaceFrame({
                 groups={groups}
                 isCollapsed={false}
                 label={navigationLabel}
+                showsCollapsedTooltips={false}
               />
             </div>
             <div className="flex flex-col gap-4">
@@ -177,11 +188,13 @@ function WorkspaceNavigation({
   groups,
   isCollapsed,
   label,
+  showsCollapsedTooltips,
 }: {
   activePage: AdminWorkspacePage;
   groups: AdminNavigationGroup[];
   isCollapsed: boolean;
   label: string;
+  showsCollapsedTooltips: boolean;
 }) {
   return (
     <nav aria-label={label} className="min-h-0 overflow-y-auto overflow-x-hidden">
@@ -197,24 +210,36 @@ function WorkspaceNavigation({
               {group.items.map(({ href, label: itemLabel, page }) => {
                 const Icon = PAGE_ICONS[page];
                 const isActive = activePage === page;
+                const tooltipId = `admin-navigation-${page}-tooltip`;
                 return (
                   <li key={page}>
-                    <Link
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-label={itemLabel}
-                      className={cn(
-                        'relative flex min-h-10 items-center rounded-control text-sm font-medium transition-colors duration-150 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full motion-reduce:transition-none',
-                        isCollapsed ? 'justify-center px-2' : 'gap-3 px-3',
-                        isActive
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground before:bg-primary'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                      )}
-                      href={href}
-                      title={isCollapsed ? itemLabel : undefined}
-                    >
-                      <Icon aria-hidden="true" className="size-[1.125rem] shrink-0" />
-                      {isCollapsed ? null : <span className="truncate">{itemLabel}</span>}
-                    </Link>
+                    <div className="group/navigation-item relative">
+                      <Link
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-describedby={showsCollapsedTooltips ? tooltipId : undefined}
+                        aria-label={itemLabel}
+                        className={cn(
+                          'relative flex min-h-10 items-center rounded-control text-sm font-medium transition-colors duration-150 before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full motion-reduce:transition-none',
+                          isCollapsed ? 'justify-center px-2' : 'gap-3 px-3',
+                          isActive
+                            ? 'bg-sidebar-accent text-sidebar-accent-foreground before:bg-primary'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                        href={href}
+                      >
+                        <Icon aria-hidden="true" className="size-[1.125rem] shrink-0" />
+                        {isCollapsed ? null : <span className="truncate">{itemLabel}</span>}
+                      </Link>
+                      {showsCollapsedTooltips ? (
+                        <span
+                          className="pointer-events-none absolute top-1/2 left-[calc(100%+0.5rem)] z-50 -translate-y-1/2 rounded-control bg-foreground px-2 py-1 text-xs whitespace-nowrap text-background opacity-0 shadow-sm transition-opacity group-focus-within/navigation-item:opacity-100"
+                          id={tooltipId}
+                          role="tooltip"
+                        >
+                          {itemLabel}
+                        </span>
+                      ) : null}
+                    </div>
                   </li>
                 );
               })}

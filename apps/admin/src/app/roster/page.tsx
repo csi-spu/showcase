@@ -1,4 +1,6 @@
+import { buttonVariants } from '@showcase/ui/button';
 import { CheckCircle2Icon, FileSpreadsheetIcon, ListChecksIcon, UserPlusIcon } from 'lucide-react';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -8,6 +10,7 @@ import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { getAdminRosterBatch, getAdminRosterConflicts } from '@/lib/admin-roster-page-state';
 import { AdminWorkspacePage } from '../admin-workspace-page';
 import { AdminWorkspaceShell } from '../admin-workspace-shell';
+import { resolveRosterPageMode } from '../roster-page-mode';
 import { RosterBatchStatus } from '../roster-batch-status';
 import { RosterConflictList } from '../roster-conflict-list';
 import { RosterStudentForm } from '../roster-student-form';
@@ -24,6 +27,7 @@ export default async function RosterPage({
   searchParams: Promise<{ batchId?: string; conflictAfter?: string; resolved?: string }>;
 }) {
   const { batchId, conflictAfter, resolved } = await searchParams;
+  const mode = resolveRosterPageMode(batchId);
   const [state, t] = await Promise.all([getAdminAuthPageState(), getTranslations('Roster')]);
   if (state.kind !== 'active') redirect(state.kind === 'expired' ? '/?expired=1' : '/');
   const batch = batchId ? await getAdminRosterBatch(batchId) : null;
@@ -32,19 +36,33 @@ export default async function RosterPage({
 
   return (
     <AdminWorkspaceShell activePage="roster">
-      <AdminWorkspacePage description={t('description')} eyebrow={t('kicker')} title={t('title')}>
-        <div className="grid gap-6">
-          {resolved === '1' ? (
-            <Alert className="border-success/30 bg-success-background text-success">
-              <CheckCircle2Icon aria-hidden="true" />
-              <AlertTitle>{t('conflicts.resolvedSuccess')}</AlertTitle>
-            </Alert>
-          ) : null}
+      <AdminWorkspacePage
+        actions={
+          mode === 'result' ? (
+            <Link className={buttonVariants({ variant: 'outline' })} href="/roster">
+              {t('batchResult.back')}
+            </Link>
+          ) : undefined
+        }
+        description={mode === 'result' ? t('batchResult.description') : t('description')}
+        eyebrow={t('kicker')}
+        layout={mode === 'result' ? 'detail' : 'overview'}
+        title={mode === 'result' ? t('batchResult.title') : t('title')}
+      >
+        {mode === 'result' ? (
+          <div className="grid max-w-5xl gap-6">
+            {resolved === '1' ? (
+              <Alert className="border-success/30 bg-success-background text-success">
+                <CheckCircle2Icon aria-hidden="true" />
+                <AlertTitle>{t('conflicts.resolvedSuccess')}</AlertTitle>
+              </Alert>
+            ) : null}
 
-          {batch || batchId ? (
             <Card>
               <CardHeader>
-                <CardTitle>{t('status.title')}</CardTitle>
+                <CardTitle>
+                  <h2>{t('status.title')}</h2>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {batch ? (
@@ -57,28 +75,30 @@ export default async function RosterPage({
                 )}
               </CardContent>
             </Card>
-          ) : null}
 
-          {conflictPage && batchId ? (
-            <RosterConflictList
-              action={resolveRosterConflictAction}
-              batchId={batchId}
-              page={conflictPage}
-            />
-          ) : batch?.status === 'completed_with_errors' ? (
-            <Alert variant="destructive">
-              <AlertTitle>{t('conflicts.title')}</AlertTitle>
-              <AlertDescription>{t('status.conflictsUnavailable')}</AlertDescription>
-            </Alert>
-          ) : null}
-
+            {conflictPage && batchId ? (
+              <RosterConflictList
+                action={resolveRosterConflictAction}
+                batchId={batchId}
+                page={conflictPage}
+              />
+            ) : batch?.status === 'completed_with_errors' ? (
+              <Alert variant="destructive">
+                <AlertTitle>{t('conflicts.title')}</AlertTitle>
+                <AlertDescription>{t('status.conflictsUnavailable')}</AlertDescription>
+              </Alert>
+            ) : null}
+          </div>
+        ) : (
           <div className="grid items-start gap-6 xl:grid-cols-12">
             <Card className="xl:col-span-6">
               <CardHeader>
                 <span className="grid size-10 place-items-center rounded-control bg-primary-soft text-primary">
                   <UserPlusIcon aria-hidden="true" className="size-5" />
                 </span>
-                <CardTitle>{t('single.title')}</CardTitle>
+                <CardTitle>
+                  <h2>{t('single.title')}</h2>
+                </CardTitle>
                 <CardDescription>{t('single.description')}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -91,7 +111,9 @@ export default async function RosterPage({
                 <span className="grid size-10 place-items-center rounded-control bg-primary-soft text-primary">
                   <FileSpreadsheetIcon aria-hidden="true" className="size-5" />
                 </span>
-                <CardTitle>{t('form.groupLabel')}</CardTitle>
+                <CardTitle>
+                  <h2>{t('form.groupLabel')}</h2>
+                </CardTitle>
                 <CardDescription>{t('form.fileHelp')}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -111,7 +133,7 @@ export default async function RosterPage({
               </ol>
             </details>
           </div>
-        </div>
+        )}
       </AdminWorkspacePage>
     </AdminWorkspaceShell>
   );

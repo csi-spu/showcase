@@ -2,6 +2,15 @@ import { buttonVariants } from '@showcase/ui/button';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { readAdminSessionToken } from '@/lib/admin-auth-session';
 import { AdminReviewsCoreClient } from '@/lib/admin-reviews-core';
@@ -36,38 +45,51 @@ export default async function ReviewQueuePage({
               {t('empty')}
             </p>
           ) : (
-            <ul className="grid gap-px overflow-hidden rounded-surface border border-border/80 bg-border">
-              {queue.items.map((item) => (
-                <li
-                  className="grid gap-4 bg-card p-5 sm:p-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-                  key={item.revisionPublicId}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-primary">
-                      {t('queue.revision', { number: item.number })}
-                    </p>
-                    {item.authorKind === 'admin_correction' ? (
-                      <p className="mt-1 text-sm font-medium text-information">
-                        {t('queue.adminCorrection')}
-                      </p>
-                    ) : null}
-                    <h2 className="mt-1 truncate text-lg font-semibold">{item.title}</h2>
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
-                      <span>{t('queue.submitter', { name: item.submitterAttributionName })}</span>
-                      <time dateTime={item.submittedAt}>
-                        {t('queue.submittedAt', { value: formatBangkokDate(item.submittedAt) })}
-                      </time>
-                    </div>
-                  </div>
-                  <Link
-                    className={buttonVariants({ variant: 'outline' })}
-                    href={`/reviews/${item.revisionPublicId}`}
-                  >
-                    {t('queue.view')}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <Table aria-label={t('queue.tableLabel')}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('queue.columns.work')}</TableHead>
+                  <TableHead>{t('queue.columns.submitter')}</TableHead>
+                  <TableHead>{t('queue.columns.submittedAt')}</TableHead>
+                  <TableHead>{t('queue.columns.status')}</TableHead>
+                  <TableHead className="text-right">{t('queue.columns.action')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {queue.items.map((item) => (
+                  <TableRow key={item.revisionPublicId}>
+                    <TableCell className="max-w-md">
+                      <h2 className="line-clamp-2 font-semibold">{item.title}</h2>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {t('queue.revision', { number: item.number })}
+                        </Badge>
+                        {item.authorKind === 'admin_correction' ? (
+                          <Badge className="text-information" variant="secondary">
+                            {t('queue.adminCorrection')}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>{item.submitterAttributionName}</TableCell>
+                    <TableCell>
+                      <time dateTime={item.submittedAt}>{formatBangkokDate(item.submittedAt)}</time>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{t('queue.pending')}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        className={buttonVariants({ size: 'sm', variant: 'outline' })}
+                        href={`/reviews/${item.revisionPublicId}`}
+                      >
+                        {t('queue.view')}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
           {queue.nextCursor === null ? null : (
             <Link

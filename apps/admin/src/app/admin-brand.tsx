@@ -36,10 +36,10 @@ export function AdminBrand({ className }: { className?: string }) {
       >
         <Image
           alt="ตราสัญลักษณ์ CSI"
-          className="h-auto w-[9.5rem]"
+          className="h-auto w-[clamp(7.5rem,40vw,9.5rem)]"
           height={363}
           priority
-          sizes="152px"
+          sizes="(max-width: 360px) 120px, 152px"
           src={CSI_BRAND_ASSET}
           width={1280}
         />

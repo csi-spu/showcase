@@ -51,10 +51,12 @@ export function WorkRecoveryPanel({
 
 export function RecoveryDecisionForm({
   action,
+  compact = false,
   idempotencyKey,
   request,
 }: {
   action: RecoveryAction;
+  compact?: boolean;
   idempotencyKey: string;
   request: AdminRemovalRequest;
 }) {
@@ -67,13 +69,19 @@ export function RecoveryDecisionForm({
   return (
     <form
       action={formAction}
-      className="grid gap-5 rounded-surface border border-border bg-card p-6"
+      className={
+        compact
+          ? 'grid min-w-72 gap-3'
+          : 'grid gap-5 rounded-surface border border-border bg-card p-6'
+      }
     >
-      <div className="grid gap-2">
-        <h2 className="text-xl font-semibold">{request.title}</h2>
-        <p className="whitespace-pre-wrap text-foreground">{request.reason}</p>
-        <p className="text-sm text-muted-foreground">{t('requestRetained')}</p>
-      </div>
+      {compact ? null : (
+        <div className="grid gap-2">
+          <h2 className="text-xl font-semibold">{request.title}</h2>
+          <p className="whitespace-pre-wrap text-foreground">{request.reason}</p>
+          <p className="text-sm text-muted-foreground">{t('requestRetained')}</p>
+        </div>
+      )}
       <input name="expectedVersion" type="hidden" value={request.version} />
       <input name="expectedWorkVersion" type="hidden" value={request.workVersion} />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
@@ -91,7 +99,7 @@ export function RecoveryDecisionForm({
         </div>
       ) : null}
       <Feedback state={state} />
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap justify-end gap-2">
         {isDeclining ? (
           <>
             <Button
@@ -134,10 +142,12 @@ export function RecoveryDecisionForm({
 
 export function AttributionRemovalDecisionForm({
   action,
+  compact = false,
   idempotencyKey,
   request,
 }: {
   action: RecoveryAction;
+  compact?: boolean;
   idempotencyKey: string;
   request: AdminAttributionRemovalRequest;
 }) {
@@ -150,14 +160,20 @@ export function AttributionRemovalDecisionForm({
   return (
     <form
       action={formAction}
-      className="grid gap-5 rounded-surface border border-border bg-card p-6"
+      className={
+        compact
+          ? 'grid min-w-72 gap-3'
+          : 'grid gap-5 rounded-surface border border-border bg-card p-6'
+      }
     >
-      <div className="grid gap-2">
-        <h2 className="text-xl font-semibold">{request.workTitle}</h2>
-        <p className="font-medium">{request.attributionName}</p>
-        <p className="whitespace-pre-wrap">{request.reason}</p>
-        <p className="text-sm text-muted-foreground">{t('attribution.approveHelp')}</p>
-      </div>
+      {compact ? null : (
+        <div className="grid gap-2">
+          <h2 className="text-xl font-semibold">{request.workTitle}</h2>
+          <p className="font-medium">{request.attributionName}</p>
+          <p className="whitespace-pre-wrap">{request.reason}</p>
+          <p className="text-sm text-muted-foreground">{t('attribution.approveHelp')}</p>
+        </div>
+      )}
       <input name="expectedRequestVersion" type="hidden" value={request.version} />
       <input
         name="expectedPublishedRevisionPublicId"
@@ -184,7 +200,7 @@ export function AttributionRemovalDecisionForm({
         </div>
       ) : null}
       <Feedback state={state} />
-      <div className="flex gap-3">
+      <div className="flex flex-wrap justify-end gap-2">
         {isDeclining ? (
           <>
             <Button

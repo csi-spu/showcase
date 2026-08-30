@@ -51,7 +51,7 @@ describe('Admin Account controls panel', () => {
     });
     renderPanel(academicYearAction, vi.fn<StudentAccountAction>());
 
-    expect(screen.getByText('ปีการศึกษาปัจจุบัน')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'ปีการศึกษาปัจจุบัน' })).toBeTruthy();
     expect(screen.getByText('2577')).toBeTruthy();
     expect(screen.getByText(/อัปเดตล่าสุด.*13:00/)).toBeTruthy();
     await userEvent.setup().clear(screen.getByLabelText('ปีการศึกษาใหม่'));

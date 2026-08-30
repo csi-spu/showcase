@@ -7,9 +7,15 @@
     "./src/styles.css"
   ],
   "exports": {
+    "./badge": "./src/badge.tsx",
     "./button": "./src/button.tsx",
+    "./card": "./src/card.tsx",
     "./cn": "./src/cn.ts",
-    "./styles.css": "./src/styles.css"
+    "./input": "./src/input.tsx",
+    "./label": "./src/label.tsx",
+    "./separator": "./src/separator.tsx",
+    "./styles.css": "./src/styles.css",
+    "./textarea": "./src/textarea.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

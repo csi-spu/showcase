@@ -63,7 +63,9 @@ export function AccountControlsPanel({
           <Card className={cn(mode === 'all' && 'xl:col-span-5')}>
             <CardHeader>
               <CalendarClockIcon aria-hidden="true" className="size-6 text-primary" />
-              <CardTitle>{t('year.title')}</CardTitle>
+              <CardTitle>
+                <h2>{t('year.title')}</h2>
+              </CardTitle>
               <CardDescription>{t('year.description')}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -117,7 +119,9 @@ export function AccountControlsPanel({
           <Card className={cn(mode === 'all' && 'xl:col-span-7')}>
             <CardHeader>
               <UserRoundCogIcon aria-hidden="true" className="size-6 text-primary" />
-              <CardTitle>{t('student.title')}</CardTitle>
+              <CardTitle>
+                <h2>{t('student.title')}</h2>
+              </CardTitle>
               <CardDescription>{t('student.description')}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-6">

@@ -83,9 +83,16 @@ describe('AdminWorkspaceShell', () => {
     await user.click(within(sidebar).getByRole('button', { name: 'ย่อเมนู' }));
     expect(within(sidebar).getByRole('button', { name: 'ขยายเมนู' })).toBeTruthy();
     expect(within(sidebar).getByRole('link', { name: 'ภาพรวม' })).toBeTruthy();
+    expect(within(sidebar).getByRole('tooltip', { name: 'ภาพรวม' })).toBeTruthy();
     expect(within(sidebar).getByRole('form', { name: 'ออกจากระบบ' })).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'เปิดเมนูผู้ดูแล' }));
+    await user.hover(sidebar);
+    expect(within(sidebar).getByRole('link', { name: 'ภาพรวม' }).textContent).toBe('ภาพรวม');
+
+    const mobileTrigger = screen.getByRole('button', { name: 'เปิดเมนูผู้ดูแล' });
+    expect(mobileTrigger.textContent).toBe('');
+
+    await user.click(mobileTrigger);
     const dialog = await screen.findByRole('dialog', { name: 'เมนูผู้ดูแลระบบ' });
     expect(
       within(dialog)

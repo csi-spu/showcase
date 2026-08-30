@@ -27,6 +27,8 @@ describe('Admin authentication boundary', () => {
     expect(frame).toContain('max-w-[1600px]');
     expect(frame).toContain('<AdminBrandMark />');
     expect(page).toContain('max-w-[1600px]');
+    expect(page).toContain('<h1 className="text-3xl');
+    expect(page).toContain('<h2 className="text-[clamp');
     expect(page).not.toContain(' bg-primary ');
   });
 });

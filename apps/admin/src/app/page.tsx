@@ -65,9 +65,9 @@ export default async function Home({ searchParams }: HomeProps) {
         <AdminBrand className="relative z-10" />
         <div className="relative z-10 hidden max-w-xl gap-4 lg:grid">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">{authT('kicker')}</p>
-          <h1 className="text-[clamp(2.25rem,5vw,4.5rem)] leading-[1.05] font-semibold tracking-[-0.045em] text-balance">
+          <h2 className="text-[clamp(2.25rem,5vw,4.5rem)] leading-[1.05] font-semibold tracking-[-0.045em] text-balance">
             {homeT('title')}
-          </h1>
+          </h2>
           <p className="max-w-[52ch] text-lg text-muted-foreground">{homeT('description')}</p>
         </div>
         <Image
@@ -107,9 +107,9 @@ function AuthPanel({ state, t }: { state: AuthPageState; t: AuthTranslations }) 
         <CardHeader className="gap-3">
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
           <CardTitle>
-            <h2 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
+            <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
               {heading}
-            </h2>
+            </h1>
           </CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>

@@ -116,6 +116,41 @@ const publicationSchema = z
     workPublicId: z.uuid(),
   })
   .strict();
+const publishedWorkSchema = z
+  .object({
+    academicPeriod: academicPeriodSchema,
+    attributions: z.array(z.string().min(1).max(100)).max(21),
+    category: categorySchema,
+    poster: z
+      .object({
+        assetId: z.uuid(),
+        dominantColor: z.string().regex(/^#[0-9A-F]{6}$/i),
+        height: z.number().int().positive(),
+        variants: z
+          .array(
+            z
+              .object({ height: z.number().int().positive(), width: z.number().int().positive() })
+              .strict(),
+          )
+          .min(1),
+        width: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    publishedAt: z.iso.datetime(),
+    summary: z.string().min(1).max(300),
+    tags: z.array(z.object({ displayLabel: z.string(), publicId: z.uuid() }).strict()).max(5),
+    title: z.string().min(1).max(150),
+    workPublicId: z.uuid(),
+  })
+  .strict();
+const publishedWorkPageSchema = z
+  .object({
+    hasNextPage: z.boolean(),
+    items: z.array(publishedWorkSchema).max(48),
+    nextCursor: z.string().min(1).nullable(),
+  })
+  .strict();
 const workRecoverySchema = z
   .object({
     activityState: z.enum(['active', 'archived']),
@@ -166,6 +201,7 @@ export type ChangeRequestReason = z.infer<typeof changeRequestReasonSchema>;
 export type AdminWorkRecovery = z.infer<typeof workRecoverySchema>;
 export type AdminRemovalRequest = z.infer<typeof removalRequestSchema>;
 export type AdminAttributionRemovalRequest = z.infer<typeof attributionRemovalRequestSchema>;
+export type AdminPublishedWork = z.infer<typeof publishedWorkSchema>;
 
 interface AdminReviewsCoreConfig {
   adminBffSecret: string;
@@ -194,6 +230,17 @@ export class AdminReviewsCoreClient {
       path: `/v1/internal/admin/review-queue?${query.toString()}`,
       responseSchema: reviewQueueSchema,
       sessionToken,
+    });
+  }
+
+  listPublishedWorks(input: { cursor?: string; limit: number; q?: string }) {
+    const query = new URLSearchParams({ limit: String(input.limit), sort: 'recent' });
+    if (input.cursor !== undefined) query.set('cursor', input.cursor);
+    if (input.q !== undefined) query.set('q', input.q);
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/public/works?${query.toString()}`,
+      responseSchema: publishedWorkPageSchema,
     });
   }
 
@@ -267,6 +314,7 @@ export class AdminReviewsCoreClient {
         })
         .strict(),
       sessionToken,
+      timeoutMilliseconds: 15_000,
     });
   }
 
