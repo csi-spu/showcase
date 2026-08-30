@@ -6,6 +6,7 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Textarea } from '@/components/ui/textarea';
 
 export type ChangeRequestActionError = 'invalid' | 'network' | 'stale' | 'unavailable' | null;
 
@@ -76,8 +77,8 @@ export function ChangeRequestForm({
       </Field>
       <Field>
         <FieldLabel htmlFor="change-request-feedback">{t('form.feedback')}</FieldLabel>
-        <textarea
-          className="min-h-40 rounded-control border border-input bg-card px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-sm"
+        <Textarea
+          className="min-h-40"
           id="change-request-feedback"
           maxLength={2_000}
           minLength={10}

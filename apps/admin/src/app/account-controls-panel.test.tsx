@@ -103,6 +103,9 @@ describe('Admin Account controls panel', () => {
     });
     expect(await screen.findByText('สมชาย ใจดี')).toBeTruthy();
     expect(screen.getByText('ศิษย์เก่า')).toBeTruthy();
+    expect(screen.queryByLabelText('ชื่อจริง')).toBeNull();
+    expect(screen.queryByLabelText('ปีสิ้นสุดสิทธิ์ใหม่')).toBeNull();
+    expect(screen.getByRole('button', { name: 'แก้ไขชื่อจากทะเบียน' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'ขยายระยะเวลาสิทธิ์' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'รีเซ็ตรหัสผ่าน' })).toBeTruthy();
   });
@@ -127,6 +130,7 @@ describe('Admin Account controls panel', () => {
     await user.type(screen.getByLabelText('รหัสนักศึกษา'), '69000001');
     await user.click(screen.getByRole('button', { name: 'ค้นหาบัญชี' }));
     await user.click(await screen.findByRole('button', { name: 'รีเซ็ตรหัสผ่าน' }));
+    await user.click(screen.getByRole('button', { name: 'ยืนยันรีเซ็ตรหัสผ่าน' }));
 
     expect(await screen.findByText('one-time-random-password')).toBeTruthy();
     expect(screen.getByText('รหัสผ่านชั่วคราวจะแสดงครั้งนี้ครั้งเดียว')).toBeTruthy();
@@ -151,6 +155,7 @@ describe('Admin Account controls panel', () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('รหัสนักศึกษา'), '69000001');
     await user.click(screen.getByRole('button', { name: 'ค้นหาบัญชี' }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขชื่อจากทะเบียน' }));
     await user.clear(await screen.findByLabelText('ชื่อจริง'));
     await user.type(screen.getByLabelText('ชื่อจริง'), 'สมหญิง');
     await user.clear(screen.getByLabelText('นามสกุล'));

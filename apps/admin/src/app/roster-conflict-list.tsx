@@ -91,7 +91,7 @@ export async function RosterConflictList({
       {page.nextAfterRowNumber === null ? null : (
         <Link
           className={cn(buttonVariants({ variant: 'outline' }), 'self-start')}
-          href={`/?batchId=${batchId}&conflictAfter=${page.nextAfterRowNumber}`}
+          href={`/roster?batchId=${batchId}&conflictAfter=${page.nextAfterRowNumber}`}
         >
           {t('nextPage')}
         </Link>

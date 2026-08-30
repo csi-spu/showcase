@@ -1,3 +1,5 @@
+import { Button, buttonVariants } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -8,6 +10,7 @@ import {
   notificationTypeSchema,
 } from '@/lib/admin-notifications-core';
 import { getAdminServerEnvironment } from '@/lib/server-environment';
+import { AdminWorkspacePage } from '../admin-workspace-page';
 import { AdminWorkspaceShell } from '../admin-workspace-shell';
 import { AdminNotificationList } from './admin-notification-list';
 import {
@@ -44,64 +47,60 @@ export default async function AdminNotificationsPage({
 
   return (
     <AdminWorkspaceShell activePage="notifications">
-      <header className="mb-8 flex max-w-4xl flex-col gap-3">
-        <p className="text-sm font-medium text-muted-foreground">{t('kicker')}</p>
-        <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-          {t('title')}
-        </h1>
-        <p className="text-muted-foreground">{t('description', { count: unread.count })}</p>
-      </header>
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <Link
-          aria-current={view === 'all' ? 'page' : undefined}
-          className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-          href="/notifications"
-        >
-          {t('filters.all')}
-        </Link>
-        <Link
-          aria-current={view === 'unread' ? 'page' : undefined}
-          className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-          href="/notifications?view=unread"
-        >
-          {t('filters.unread')}
-        </Link>
-        {unread.count > 0 ? (
-          <form action={markAllAdminNotificationsReadAction}>
-            <button
-              className="min-h-11 rounded-control border border-input px-4 text-sm font-medium"
-              type="submit"
-            >
-              {t('markAllRead')}
-            </button>
-          </form>
-        ) : null}
-      </div>
-      {page.items.length === 0 ? (
-        <p className="rounded-surface border border-border bg-card p-8 text-muted-foreground">
-          {view === 'unread' ? t('emptyUnread') : t('empty')}
-        </p>
-      ) : (
-        <AdminNotificationList
-          items={page.items}
-          labels={{
-            markRead: t('markRead'),
-            open: t('open'),
-            unavailable: t('unavailable'),
-            unread: t('unread'),
-          }}
-          markReadAction={markAdminNotificationReadAction}
-          messages={messages}
-        />
-      )}
-      {page.nextCursor === null ? null : (
-        <Link
-          className="mt-6 inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-          href={`/notifications?view=${view}&cursor=${encodeURIComponent(page.nextCursor)}`}
-        >
-          {t('next')}
-        </Link>
-      )}
+      <AdminWorkspacePage
+        description={t('description', { count: unread.count })}
+        eyebrow={t('kicker')}
+        title={t('title')}
+      >
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <Link
+            aria-current={view === 'all' ? 'page' : undefined}
+            className={cn(buttonVariants({ variant: view === 'all' ? 'default' : 'outline' }))}
+            href="/notifications"
+          >
+            {t('filters.all')}
+          </Link>
+          <Link
+            aria-current={view === 'unread' ? 'page' : undefined}
+            className={cn(buttonVariants({ variant: view === 'unread' ? 'default' : 'outline' }))}
+            href="/notifications?view=unread"
+          >
+            {t('filters.unread')}
+          </Link>
+          {unread.count > 0 ? (
+            <form action={markAllAdminNotificationsReadAction}>
+              <Button type="submit" variant="outline">
+                {t('markAllRead')}
+              </Button>
+            </form>
+          ) : null}
+        </div>
+        {page.items.length === 0 ? (
+          <p className="rounded-surface border border-dashed border-border p-8 text-muted-foreground">
+            {view === 'unread' ? t('emptyUnread') : t('empty')}
+          </p>
+        ) : (
+          <AdminNotificationList
+            items={page.items}
+            labels={{
+              markRead: t('markRead'),
+              open: t('open'),
+              unavailable: t('unavailable'),
+              unread: t('unread'),
+            }}
+            markReadAction={markAdminNotificationReadAction}
+            messages={messages}
+          />
+        )}
+        {page.nextCursor === null ? null : (
+          <Link
+            className={cn(buttonVariants({ variant: 'outline' }), 'mt-6')}
+            href={`/notifications?view=${view}&cursor=${encodeURIComponent(page.nextCursor)}`}
+          >
+            {t('next')}
+          </Link>
+        )}
+      </AdminWorkspacePage>
     </AdminWorkspaceShell>
   );
 }

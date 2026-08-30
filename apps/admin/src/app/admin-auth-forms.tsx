@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { LogOutIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -85,14 +86,34 @@ export function ChangePasswordForm({ action }: { action: AuthAction }) {
   );
 }
 
-export function LogoutForm({ action }: { action: AuthAction }) {
+export function LogoutForm({ action, compact = false }: { action: AuthAction; compact?: boolean }) {
   const t = useTranslations('Auth');
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
   return (
     <form action={formAction} className="flex w-full flex-col gap-3">
       <ActionError error={state.error} />
-      <SubmitButton label={t('active.logout')} pendingLabel={t('submitting')} variant="outline" />
+      {compact ? (
+        <CompactLogoutButton label={t('active.logout')} pendingLabel={t('submitting')} />
+      ) : (
+        <SubmitButton label={t('active.logout')} pendingLabel={t('submitting')} variant="outline" />
+      )}
     </form>
+  );
+}
+
+function CompactLogoutButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      aria-label={pending ? pendingLabel : label}
+      disabled={pending}
+      size="icon-sm"
+      title={label}
+      type="submit"
+      variant="ghost"
+    >
+      {pending ? <Spinner aria-label={pendingLabel} /> : <LogOutIcon aria-hidden="true" />}
+    </Button>
   );
 }
 

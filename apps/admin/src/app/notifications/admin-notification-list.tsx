@@ -1,3 +1,4 @@
+import { Button, buttonVariants } from '@showcase/ui/button';
 import Link from 'next/link';
 import type { AdminNotification } from '@/lib/admin-notifications-core';
 
@@ -45,21 +46,15 @@ export function AdminNotificationList({
                   {labels.unavailable}
                 </span>
               ) : (
-                <Link
-                  className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-                  href={targetPath}
-                >
+                <Link className={buttonVariants({ variant: 'outline' })} href={targetPath}>
                   {labels.open}
                 </Link>
               )}
               {item.readAt === null ? (
                 <form action={markReadAction.bind(null, item.publicId)}>
-                  <button
-                    className="min-h-11 rounded-control border border-input px-4 text-sm font-medium"
-                    type="submit"
-                  >
+                  <Button type="submit" variant="outline">
                     {labels.markRead}
-                  </button>
+                  </Button>
                 </form>
               ) : null}
             </div>
@@ -71,7 +66,10 @@ export function AdminNotificationList({
 }
 
 function adminTargetPath(notification: AdminNotification): string | null {
-  return notification.targetDestination === 'admin_roster' ? '/' : null;
+  if (notification.targetDestination !== 'admin_roster') return null;
+  return notification.target.kind === 'roster_batch'
+    ? `/roster?batchId=${encodeURIComponent(notification.target.batchId)}`
+    : '/roster';
 }
 
 function formatBangkokDate(value: string): string {

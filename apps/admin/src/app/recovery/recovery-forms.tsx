@@ -2,8 +2,9 @@
 
 import { Button } from '@showcase/ui/button';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import type {
   AdminAttributionRemovalRequest,
   AdminRemovalRequest,
@@ -30,7 +31,7 @@ export function WorkRecoveryPanel({
   return (
     <div className="grid gap-6">
       <section className="grid gap-2 rounded-surface border border-border bg-card p-6">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">WORK STATE</p>
+        <p className="text-sm font-semibold tracking-wide text-primary">{t('stateKicker')}</p>
         <h2 className="text-2xl font-semibold">{t(`states.${state.activityState}`)}</h2>
         <p className="text-muted-foreground">{t(`publication.${state.publicationState}`)}</p>
         <p className="text-sm text-muted-foreground">{t('version', { version: state.version })}</p>
@@ -62,6 +63,7 @@ export function RecoveryDecisionForm({
     action,
     initialRecoveryActionState(idempotencyKey),
   );
+  const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
       action={formAction}
@@ -75,24 +77,56 @@ export function RecoveryDecisionForm({
       <input name="expectedVersion" type="hidden" value={request.version} />
       <input name="expectedWorkVersion" type="hidden" value={request.workVersion} />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-      <div className="grid gap-2">
-        <Label htmlFor={`decision-reason-${request.publicId}`}>{t('decisionReason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2 leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          id={`decision-reason-${request.publicId}`}
-          maxLength={1_000}
-          minLength={10}
-          name="decisionReason"
-        />
-      </div>
+      {isDeclining ? (
+        <div className="grid gap-2">
+          <Label htmlFor={`decision-reason-${request.publicId}`}>{t('decisionReason')}</Label>
+          <Textarea
+            className="min-h-28"
+            id={`decision-reason-${request.publicId}`}
+            maxLength={1_000}
+            minLength={10}
+            name="decisionReason"
+            required
+          />
+        </div>
+      ) : null}
       <Feedback state={state} />
       <div className="flex flex-wrap gap-3">
-        <Button disabled={pending} name="decision" type="submit" value="approve">
-          {t('approveRequest')}
-        </Button>
-        <Button disabled={pending} name="decision" type="submit" value="decline" variant="outline">
-          {t('declineRequest')}
-        </Button>
+        {isDeclining ? (
+          <>
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
+            </Button>
+            <Button
+              disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button disabled={pending} name="decision" type="submit" value="approve">
+              {t('approveRequest')}
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(true)}
+              type="button"
+              variant="outline"
+            >
+              {t('declineRequest')}
+            </Button>
+          </>
+        )}
       </div>
     </form>
   );
@@ -112,6 +146,7 @@ export function AttributionRemovalDecisionForm({
     action,
     initialRecoveryActionState(idempotencyKey),
   );
+  const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
       action={formAction}
@@ -135,24 +170,56 @@ export function AttributionRemovalDecisionForm({
         value={request.currentPublishedRevisionVersion ?? ''}
       />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-      <div className="grid gap-2">
-        <Label htmlFor={`attribution-decision-${request.publicId}`}>{t('decisionReason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2"
-          id={`attribution-decision-${request.publicId}`}
-          maxLength={1000}
-          minLength={10}
-          name="decisionReason"
-        />
-      </div>
+      {isDeclining ? (
+        <div className="grid gap-2">
+          <Label htmlFor={`attribution-decision-${request.publicId}`}>{t('decisionReason')}</Label>
+          <Textarea
+            className="min-h-28"
+            id={`attribution-decision-${request.publicId}`}
+            maxLength={1000}
+            minLength={10}
+            name="decisionReason"
+            required
+          />
+        </div>
+      ) : null}
       <Feedback state={state} />
       <div className="flex gap-3">
-        <Button disabled={pending} name="decision" type="submit" value="approve">
-          {t('attribution.approve')}
-        </Button>
-        <Button disabled={pending} name="decision" type="submit" value="decline" variant="outline">
-          {t('attribution.decline')}
-        </Button>
+        {isDeclining ? (
+          <>
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
+            </Button>
+            <Button
+              disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button disabled={pending} name="decision" type="submit" value="approve">
+              {t('attribution.approve')}
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(true)}
+              type="button"
+              variant="outline"
+            >
+              {t('attribution.decline')}
+            </Button>
+          </>
+        )}
       </div>
     </form>
   );
@@ -190,8 +257,8 @@ function TransitionForm({
       <input name="operation" type="hidden" value={operation} />
       <div className="grid gap-2">
         <Label htmlFor={`recovery-reason-${operation}`}>{t('reason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2 leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        <Textarea
+          className="min-h-28"
           id={`recovery-reason-${operation}`}
           maxLength={1_000}
           minLength={10}

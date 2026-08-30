@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { AdminBrand } from './admin-brand';
 
 export function AdminMobileNavigation({
   children,
@@ -28,7 +29,7 @@ export function AdminMobileNavigation({
   return (
     <Sheet>
       <header className="flex min-h-16 items-center justify-between border-b border-border px-4 lg:hidden">
-        <p className="text-sm font-semibold tracking-[0.12em]">STUDENT SHOWCASE</p>
+        <AdminBrand />
         <SheetTrigger render={<Button aria-label={label} size="default" variant="outline" />}>
           <MenuIcon data-icon="inline-start" />
           {label}

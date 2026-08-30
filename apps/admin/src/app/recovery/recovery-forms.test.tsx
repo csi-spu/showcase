@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
@@ -36,14 +37,17 @@ describe('Admin recovery forms', () => {
     expect(screen.queryByRole('button', { name: 'คืนการเผยแพร่' })).toBeNull();
   });
 
-  it('requires a reason for decline while approval is an explicit action', () => {
+  it('asks for a reason only after the Admin chooses to decline', async () => {
+    const user = userEvent.setup();
     renderForm(
       <RecoveryDecisionForm action={vi.fn()} idempotencyKey={id(12)} request={request()} />,
     );
     expect(screen.getByText(request().reason)).toBeTruthy();
-    expect(screen.getByLabelText('เหตุผลที่ไม่อนุมัติ')).toBeTruthy();
+    expect(screen.queryByLabelText('เหตุผลที่ไม่อนุมัติ')).toBeNull();
     expect(screen.getByRole('button', { name: 'อนุมัติและระงับการเผยแพร่' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'ไม่อนุมัติคำขอ' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'ไม่อนุมัติคำขอ' }));
+    expect(screen.getByLabelText('เหตุผลที่ไม่อนุมัติ')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'ยืนยันไม่อนุมัติคำขอ' })).toBeTruthy();
   });
 
   it('explains that attribution removal creates a reviewed correction', () => {
@@ -69,7 +73,7 @@ describe('Admin recovery forms', () => {
         request={attributionRequest}
       />,
     );
-    expect(screen.getByText(/เผยแพร่ทันทีในธุรกรรมเดียว/)).toBeTruthy();
+    expect(screen.getByText(/สร้างฉบับแก้ไข.*เผยแพร่ทันที/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'อนุมัติและเผยแพร่การนำชื่อออก' })).toBeTruthy();
     expect(screen.queryByText(/ลบถาวร/)).toBeNull();
   });
