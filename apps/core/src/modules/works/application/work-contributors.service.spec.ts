@@ -67,12 +67,13 @@ describe('WorkContributorsService', () => {
       nameQuery: 'สมชาย',
       now: NOW,
       sourceKeyHash: 'source:safe-source',
-      studentIdHash: null,
+      studentIdPrefixHash: null,
+      studentIdPrefixLength: null,
       workPublicId: WORK_ID,
     });
   });
 
-  it('hashes an exact Student ID but never returns it', async () => {
+  it('hashes a Student ID prefix but never returns it', async () => {
     repository.searchCandidates.mockResolvedValue({
       candidates: [
         {
@@ -86,21 +87,25 @@ describe('WorkContributorsService', () => {
     });
     const result = await service.search({
       actorAccountId: ACCOUNT_ID,
-      query: '69000001',
+      query: '6',
       sourceAddress: 'safe-source',
       workPublicId: WORK_ID,
     });
     expect(repository.searchCandidates.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ nameQuery: null, studentIdHash: 'student:69000001' }),
+      expect.objectContaining({
+        nameQuery: null,
+        studentIdPrefixHash: 'student:6',
+        studentIdPrefixLength: 1,
+      }),
     );
-    expect(JSON.stringify(result)).not.toContain('69000001');
+    expect(JSON.stringify(result)).not.toContain('"6"');
   });
 
-  it('rejects an invalid search before hashing or repository access', async () => {
+  it('rejects an overlong numeric search before hashing or repository access', async () => {
     await expect(
       service.search({
         actorAccountId: ACCOUNT_ID,
-        query: '6',
+        query: '690000011',
         sourceAddress: 'safe-source',
         workPublicId: WORK_ID,
       }),

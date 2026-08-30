@@ -20,17 +20,24 @@ describe('Work Contributor policy', () => {
     expect(normalizeContributionRole('ก'.repeat(101))).toBeNull();
   });
 
-  it('normalizes a name or exact Student ID Contributor Candidate search', () => {
+  it('normalizes a name or one-to-eight-digit Student ID prefix search', () => {
     expect(normalizeContributorSearchQuery('  สมชาย   ใจดี  ')).toEqual({
       kind: 'name',
       nameQuery: 'สมชาย ใจดี',
     });
-    expect(normalizeContributorSearchQuery('69000001')).toEqual({
-      kind: 'student_id',
-      studentId: '69000001',
+    expect(normalizeContributorSearchQuery('6')).toEqual({
+      kind: 'student_id_prefix',
+      studentIdPrefix: '6',
     });
-    expect(normalizeContributorSearchQuery('6')).toBeNull();
-    expect(normalizeContributorSearchQuery('6900000')).toBeNull();
+    expect(normalizeContributorSearchQuery('6900000')).toEqual({
+      kind: 'student_id_prefix',
+      studentIdPrefix: '6900000',
+    });
+    expect(normalizeContributorSearchQuery('69000001')).toEqual({
+      kind: 'student_id_prefix',
+      studentIdPrefix: '69000001',
+    });
+    expect(normalizeContributorSearchQuery('690000011')).toBeNull();
     expect(normalizeContributorSearchQuery('ก'.repeat(101))).toBeNull();
   });
 

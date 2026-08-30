@@ -22,6 +22,11 @@ import type { WorkRemovalActionError, WorkRemovalActionState } from './work-remo
 const categorySchema = z.enum(['course_work', 'competition_entry', 'academic_article']);
 const semesterSchema = z.enum(['1', '2', 'summer']);
 const linkSchema = z.object({ label: z.string().max(50), url: z.string().max(2_048) }).strict();
+const contributorSearchQuerySchema = z
+  .string()
+  .trim()
+  .max(100)
+  .refine((query) => /^[0-9]{1,8}$/u.test(query) || [...query].length >= 2);
 const draftPatchSchema = z
   .object({
     academicPeriod: z
@@ -114,7 +119,7 @@ export async function saveWorkDraftAction(input: unknown): Promise<SaveWorkDraft
 
 export async function searchContributorCandidatesAction(input: unknown) {
   const parsed = z
-    .object({ publicId: z.uuid(), query: z.string().trim().min(2).max(100) })
+    .object({ publicId: z.uuid(), query: contributorSearchQuerySchema })
     .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };

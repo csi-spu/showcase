@@ -63,9 +63,17 @@ describe('PostgresRosterRepository integration', () => {
         providerUserId: STUDENT_PROVIDER_USER_ID,
         rowId: firstClaim[0]!.rowId,
         studentIdHash: STUDENT_ID_HASH,
+        studentIdPrefixHashes: firstClaim[0]!.studentIdPrefixHashes,
         syntheticIdentity: SYNTHETIC_IDENTITY,
       }),
     ).resolves.toBe('created');
+
+    await database.sql`
+      delete from private.student_id_search_prefixes
+      where account_id = (
+        select id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+      )
+    `;
 
     const secondBatch = await repository.createBatch({
       ...batchInput(),
@@ -77,15 +85,15 @@ describe('PostgresRosterRepository integration', () => {
       now: new Date(NOW.getTime() + 1_000),
     });
     expect(secondClaim).toHaveLength(1);
-    await expect(repository.findExistingStudent(STUDENT_ID_HASH)).resolves.toMatchObject({
-      firstNameTh: 'สมชาย',
-      lastNameTh: 'ใจดี',
-    });
-    await repository.markUnchanged({
-      batchId: secondBatch.batchId,
-      now: new Date(NOW.getTime() + 1_000),
-      rowId: secondClaim[0]!.rowId,
-    });
+    await expect(
+      repository.settleExistingRow({
+        batchId: secondBatch.batchId,
+        now: new Date(NOW.getTime() + 1_000),
+        rowId: secondClaim[0]!.rowId,
+        studentIdHash: STUDENT_ID_HASH,
+        studentIdPrefixHashes: secondClaim[0]!.studentIdPrefixHashes,
+      }),
+    ).resolves.toBe('unchanged');
 
     await expect(repository.getBatch(firstBatch.batchId)).resolves.toMatchObject({
       createdCount: 1,
@@ -107,6 +115,13 @@ describe('PostgresRosterRepository integration', () => {
           where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}) as students
     `;
     expect(records).toEqual([{ accounts: 1, people: 1, students: 1 }]);
+    const prefixes = await database.sql<{ count: number }[]>`
+      select count(*)::integer as count
+      from private.student_id_search_prefixes as prefix
+      join public.accounts as account on account.id = prefix.account_id
+      where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+    `;
+    expect(prefixes).toEqual([{ count: 7 }]);
     const outbox = await database.sql<{ count: number }[]>`
       select count(*)::integer as count from private.outbox_events
       where aggregate_id in (${firstBatch.batchId}, ${secondBatch.batchId})
@@ -239,6 +254,7 @@ describe('PostgresRosterRepository integration', () => {
       providerUserId: STUDENT_PROVIDER_USER_ID,
       rowId: firstClaim[0]!.rowId,
       studentIdHash: STUDENT_ID_HASH,
+      studentIdPrefixHashes: firstClaim[0]!.studentIdPrefixHashes,
       syntheticIdentity: SYNTHETIC_IDENTITY,
     });
     const existing = await repository.findExistingStudent(STUDENT_ID_HASH);
@@ -266,6 +282,7 @@ describe('PostgresRosterRepository integration', () => {
         now: new Date(NOW.getTime() + 1_000),
         rowId: conflictClaim[0]!.rowId,
         studentIdHash: STUDENT_ID_HASH,
+        studentIdPrefixHashes: conflictClaim[0]!.studentIdPrefixHashes,
       }),
     ).resolves.toBe('conflict');
     const page = await repository.listConflicts({
@@ -373,6 +390,7 @@ describe('PostgresRosterRepository integration', () => {
       now: new Date(NOW.getTime() + 3_000),
       rowId: keepClaim[0]!.rowId,
       studentIdHash: STUDENT_ID_HASH,
+      studentIdPrefixHashes: keepClaim[0]!.studentIdPrefixHashes,
     });
     const keepPage = await repository.listConflicts({
       afterRowNumber: null,
@@ -472,6 +490,9 @@ describe('PostgresRosterRepository integration', () => {
           rowNumber: 2,
           studentId: '69000001',
           studentIdHash: STUDENT_ID_HASH,
+          studentIdPrefixHashes: Array.from({ length: 7 }, (_, index) =>
+            String(index + 1).repeat(64),
+          ),
           syntheticIdentity: SYNTHETIC_IDENTITY,
         },
       ],

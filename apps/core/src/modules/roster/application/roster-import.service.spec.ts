@@ -25,6 +25,7 @@ class MemoryRosterRepository implements RosterRepository {
   readonly conflicts: RosterConflict[] = [];
   readonly errors: RosterErrorRow[] = [];
   readonly existing = new Map<string, ExistingRosterStudent>();
+  readonly prefixHashes = new Map<string, string[]>();
   readonly rows: ClaimedRosterRow[] = [];
   batch: RosterBatch | null = null;
 
@@ -41,6 +42,7 @@ class MemoryRosterRepository implements RosterRepository {
     providerUserId: string;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes?: string[];
     syntheticIdentity: string;
   }): Promise<'created' | 'unchanged'> {
     const outcome = this.existing.has(input.studentIdHash) ? 'unchanged' : 'created';
@@ -49,6 +51,7 @@ class MemoryRosterRepository implements RosterRepository {
       lastNameTh: input.lastNameTh,
       personId: 'person-1',
     });
+    this.prefixHashes.set(input.studentIdHash, input.studentIdPrefixHashes ?? []);
     this.finishRow(input.rowId, outcome);
     return Promise.resolve(outcome);
   }
@@ -137,10 +140,12 @@ class MemoryRosterRepository implements RosterRepository {
     now: Date;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes?: string[];
   }): Promise<'conflict' | 'missing' | 'unchanged'> {
     const row = this.rows.find((candidate) => candidate.rowId === input.rowId);
     const existing = this.existing.get(input.studentIdHash);
     if (row === undefined || existing === undefined) return Promise.resolve('missing');
+    this.prefixHashes.set(input.studentIdHash, input.studentIdPrefixHashes ?? []);
     if (existing.firstNameTh === row.firstNameTh && existing.lastNameTh === row.lastNameTh) {
       this.finishRow(input.rowId, 'unchanged');
       return Promise.resolve('unchanged');
@@ -217,6 +222,15 @@ describe('RosterImportService and RosterWorker', () => {
         firstNameTh: 'สมชาย',
         lastNameTh: 'ใจดี',
         rowNumber: 2,
+        studentIdPrefixHashes: [
+          '6'.padEnd(64, '0'),
+          '69'.padEnd(64, '0'),
+          '690'.padEnd(64, '0'),
+          '6900'.padEnd(64, '0'),
+          '69000'.padEnd(64, '0'),
+          '690000'.padEnd(64, '0'),
+          '6900000'.padEnd(64, '0'),
+        ],
       }),
     ]);
   });
@@ -313,6 +327,7 @@ describe('RosterImportService and RosterWorker', () => {
       unchangedCount: 1,
     });
     expect(ensureIdentity).not.toHaveBeenCalled();
+    expect(repository.prefixHashes.get(studentIdHash)).toHaveLength(7);
   });
 
   it('creates a Roster Conflict without overwriting identity data or calling Auth', async () => {

@@ -45,7 +45,12 @@ interface ClaimedRosterRowRecord {
   row_number: number;
   student_id: string;
   student_id_hash: string;
+  student_id_prefix_hashes: string[] | null;
   synthetic_identity: string;
+}
+
+interface ExistingRosterStudentRecord extends ExistingRosterStudent {
+  accountId: string;
 }
 
 interface RosterConflictRecord {
@@ -119,6 +124,7 @@ export class PostgresRosterRepository implements RosterRepository {
             status: isInvalid ? 'failed' : 'pending',
             student_id: row.studentId,
             student_id_hash: isInvalid ? null : row.studentIdHash,
+            student_id_prefix_hashes: isInvalid ? null : row.studentIdPrefixHashes,
             synthetic_identity: isInvalid ? null : row.syntheticIdentity,
             updated_at: input.now,
           };
@@ -139,6 +145,7 @@ export class PostgresRosterRepository implements RosterRepository {
             'status',
             'student_id',
             'student_id_hash',
+            'student_id_prefix_hashes',
             'synthetic_identity',
             'updated_at',
           )}
@@ -173,6 +180,7 @@ export class PostgresRosterRepository implements RosterRepository {
           roster_row.row_number,
           roster_row.student_id,
           roster_row.student_id_hash,
+          roster_row.student_id_prefix_hashes,
           roster_row.synthetic_identity,
           roster_row.provider_user_id,
           roster_row.first_name_th,
@@ -211,6 +219,7 @@ export class PostgresRosterRepository implements RosterRepository {
         rowNumber: row.row_number,
         studentId: row.student_id,
         studentIdHash: row.student_id_hash,
+        studentIdPrefixHashes: row.student_id_prefix_hashes ?? [],
         syntheticIdentity: row.synthetic_identity,
       }));
     });
@@ -246,6 +255,7 @@ export class PostgresRosterRepository implements RosterRepository {
     providerUserId: string;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes: string[];
     syntheticIdentity: string;
   }): Promise<'conflict' | 'created' | 'unchanged'> {
     return this.database.sql.begin(async (transaction) => {
@@ -255,6 +265,12 @@ export class PostgresRosterRepository implements RosterRepository {
         input.studentIdHash,
       );
       if (existing !== null) {
+        await this.upsertStudentIdPrefixes(
+          transaction,
+          existing.accountId,
+          input.studentIdPrefixHashes,
+          input.now,
+        );
         if (
           existing.firstNameTh !== input.firstNameTh ||
           existing.lastNameTh !== input.lastNameTh
@@ -312,6 +328,12 @@ export class PostgresRosterRepository implements RosterRepository {
           ${account.id}, ${input.studentIdHash}, ${input.syntheticIdentity}, ${input.now}
         )
       `;
+      await this.upsertStudentIdPrefixes(
+        transaction,
+        account.id,
+        input.studentIdPrefixHashes,
+        input.now,
+      );
       await transaction`
         insert into private.authentication_audit_events (
           account_id, event_type, occurred_at
@@ -564,6 +586,7 @@ export class PostgresRosterRepository implements RosterRepository {
     now: Date;
     rowId: string;
     studentIdHash: string;
+    studentIdPrefixHashes: string[];
   }): Promise<'conflict' | 'missing' | 'unchanged'> {
     return this.database.sql.begin(async (transaction) => {
       await transaction`select pg_advisory_xact_lock(hashtextextended(${input.studentIdHash}, 0))`;
@@ -572,6 +595,12 @@ export class PostgresRosterRepository implements RosterRepository {
         input.studentIdHash,
       );
       if (existing === null) return 'missing';
+      await this.upsertStudentIdPrefixes(
+        transaction,
+        existing.accountId,
+        input.studentIdPrefixHashes,
+        input.now,
+      );
       const rows = await transaction<{ first_name_th: string; last_name_th: string }[]>`
         select first_name_th, last_name_th
         from private.roster_rows
@@ -711,11 +740,12 @@ export class PostgresRosterRepository implements RosterRepository {
   private async findExistingStudentInTransaction(
     transaction: postgres.TransactionSql,
     studentIdHash: string,
-  ): Promise<ExistingRosterStudent | null> {
+  ): Promise<ExistingRosterStudentRecord | null> {
     const rows = await transaction<
-      { first_name_th: string; last_name_th: string; person_id: string }[]
+      { account_id: string; first_name_th: string; last_name_th: string; person_id: string }[]
     >`
-      select account.person_id, person_name.first_name_th, person_name.last_name_th
+      select account.id as account_id, account.person_id,
+        person_name.first_name_th, person_name.last_name_th
       from private.student_auth_identities as identity
       join public.accounts as account on account.id = identity.account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
@@ -726,10 +756,37 @@ export class PostgresRosterRepository implements RosterRepository {
     return row === undefined
       ? null
       : {
+          accountId: row.account_id,
           firstNameTh: row.first_name_th,
           lastNameTh: row.last_name_th,
           personId: row.person_id,
         };
+  }
+
+  private async upsertStudentIdPrefixes(
+    transaction: postgres.TransactionSql,
+    accountId: string,
+    prefixHashes: string[],
+    now: Date,
+  ): Promise<void> {
+    if (prefixHashes.length === 0) return;
+    if (prefixHashes.length !== 7) throw new Error('STUDENT_ID_PREFIX_HASHES_INVARIANT');
+    await transaction`
+      insert into private.student_id_search_prefixes ${transaction(
+        prefixHashes.map((prefixHash, index) => ({
+          account_id: accountId,
+          created_at: now,
+          prefix_hash: prefixHash,
+          prefix_length: index + 1,
+        })),
+        'account_id',
+        'prefix_length',
+        'prefix_hash',
+        'created_at',
+      )}
+      on conflict (account_id, prefix_length)
+      do update set prefix_hash = excluded.prefix_hash
+    `;
   }
 
   private async recordConflictInTransaction(

@@ -108,6 +108,12 @@ describe('direct Work Contributors (e2e)', () => {
     );
   });
 
+  it('accepts a Student ID prefix from its first digit', async () => {
+    await studentRequest('post', 'contributor-candidates/search').send({ query: '1' }).expect(200);
+
+    expect(contributors.search).toHaveBeenCalledWith(expect.objectContaining({ query: '1' }));
+  });
+
   it('adds and removes Contributors directly through versioned idempotent commands', async () => {
     await studentRequest('post', 'contributors/account')
       .send({

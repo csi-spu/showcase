@@ -60,7 +60,8 @@ export interface WorkContributorsRepository {
     nameQuery: string | null;
     now: Date;
     sourceKeyHash: string;
-    studentIdHash: string | null;
+    studentIdPrefixHash: string | null;
+    studentIdPrefixLength: number | null;
     workPublicId: string;
   }): Promise<
     | { candidates: ContributorCandidateView[]; outcome: 'matches' }

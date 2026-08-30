@@ -1,10 +1,16 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
-import { LockKeyholeIcon, UserPlusIcon, UserRoundIcon, XIcon } from 'lucide-react';
+import {
+  LoaderCircleIcon,
+  LockKeyholeIcon,
+  UserPlusIcon,
+  UserRoundIcon,
+  XIcon,
+} from 'lucide-react';
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useRef, useState, useTransition } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState, useTransition } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -25,6 +31,7 @@ import {
 } from './work.actions';
 
 const SEARCH_DEBOUNCE_MS = 300;
+type ContributorCandidateSearchStatus = 'idle' | 'matches' | 'no_match' | 'searching';
 
 export function WorkContributorEditor({
   contributors,
@@ -47,16 +54,30 @@ export function WorkContributorEditor({
   const [role, setRole] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<ContributorCandidate | null>(null);
   const [candidates, setCandidates] = useState<ContributorCandidate[]>([]);
+  const [candidateSearchStatus, setCandidateSearchStatus] =
+    useState<ContributorCandidateSearchStatus>('idle');
   const [activeIndex, setActiveIndex] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const applyCandidateSearchResult = useEffectEvent(
+    (result: Awaited<ReturnType<typeof searchContributorCandidatesAction>>) => {
+      if ('error' in result) {
+        setCandidates([]);
+        setCandidateSearchStatus('idle');
+        setMessage(t(`attribution.errors.${result.error}`));
+        return;
+      }
+      setCandidates(result.candidates);
+      setCandidateSearchStatus(result.candidates.length === 0 ? 'no_match' : 'matches');
+      setActiveIndex(0);
+      setMessage(null);
+    },
+  );
 
   useEffect(() => {
     if (!isEditorOpen || selectedCandidate !== null) return;
     const query = name.trim();
-    const isNumeric = /^[0-9]+$/u.test(query);
-    const canSearch = isNumeric ? /^[0-9]{8}$/u.test(query) : [...query].length >= 2;
-    if (!canSearch) {
+    if (!canSearchContributorCandidates(query)) {
       requestSequenceRef.current += 1;
       return;
     }
@@ -66,18 +87,11 @@ export function WorkContributorEditor({
     const timeout = window.setTimeout(async () => {
       const result = await searchContributorCandidatesAction({ publicId, query });
       if (requestSequenceRef.current !== requestSequence) return;
-      if ('error' in result) {
-        setCandidates([]);
-        setMessage(t(`attribution.errors.${result.error}`));
-        return;
-      }
-      setCandidates(result.candidates);
-      setActiveIndex(0);
-      setMessage(null);
+      applyCandidateSearchResult(result);
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeout);
-  }, [isEditorOpen, name, publicId, selectedCandidate, t]);
+  }, [isEditorOpen, name, publicId, selectedCandidate]);
 
   const resetEditor = () => {
     requestSequenceRef.current += 1;
@@ -85,6 +99,7 @@ export function WorkContributorEditor({
     setRole('');
     setSelectedCandidate(null);
     setCandidates([]);
+    setCandidateSearchStatus('idle');
     setMessage(null);
   };
 
@@ -103,6 +118,7 @@ export function WorkContributorEditor({
     setSelectedCandidate(candidate);
     setName(`${candidate.firstName} ${candidate.lastName}`);
     setCandidates([]);
+    setCandidateSearchStatus('idle');
     setMessage(null);
   };
 
@@ -112,6 +128,14 @@ export function WorkContributorEditor({
     setName('');
     setRole('');
     setCandidates([]);
+    setCandidateSearchStatus('idle');
+    setMessage(null);
+  };
+
+  const updateCandidateQuery = (query: string) => {
+    setName(query);
+    setCandidates([]);
+    setCandidateSearchStatus(canSearchContributorCandidates(query.trim()) ? 'searching' : 'idle');
     setMessage(null);
   };
 
@@ -149,6 +173,11 @@ export function WorkContributorEditor({
       applyMutation(result);
     });
   };
+  const canAddContributor =
+    !isPending &&
+    role.trim() !== '' &&
+    name.trim() !== '' &&
+    (selectedCandidate !== null || !/^[0-9]+$/u.test(name.trim()));
 
   return (
     <div className="grid gap-5">
@@ -223,9 +252,9 @@ export function WorkContributorEditor({
                 name={name}
                 onActiveIndex={setActiveIndex}
                 onCandidates={setCandidates}
-                onMessage={setMessage}
-                onName={setName}
+                onName={updateCandidateQuery}
                 onSelect={selectCandidate}
+                searchStatus={candidateSearchStatus}
                 t={t}
               />
             ) : (
@@ -243,11 +272,7 @@ export function WorkContributorEditor({
             <Button disabled={isPending} onClick={closeEditor} type="button" variant="outline">
               {t('attribution.cancel')}
             </Button>
-            <Button
-              disabled={isPending || role.trim() === '' || name.trim() === ''}
-              onClick={addContributor}
-              type="button"
-            >
+            <Button disabled={!canAddContributor} onClick={addContributor} type="button">
               {t('attribution.add')}
             </Button>
           </SheetFooter>
@@ -264,9 +289,9 @@ function ContributorCandidateSearch({
   name,
   onActiveIndex,
   onCandidates,
-  onMessage,
   onName,
   onSelect,
+  searchStatus,
   t,
 }: {
   activeIndex: number;
@@ -275,9 +300,9 @@ function ContributorCandidateSearch({
   name: string;
   onActiveIndex: (index: number | ((current: number) => number)) => void;
   onCandidates: (candidates: ContributorCandidate[]) => void;
-  onMessage: (message: string | null) => void;
   onName: (name: string) => void;
   onSelect: (candidate: ContributorCandidate) => void;
+  searchStatus: ContributorCandidateSearchStatus;
   t: Translation;
 }) {
   return (
@@ -295,11 +320,7 @@ function ContributorCandidateSearch({
         autoComplete="off"
         id={`${listboxId}-input`}
         maxLength={100}
-        onChange={(event) => {
-          onName(event.target.value);
-          onCandidates([]);
-          onMessage(null);
-        }}
+        onChange={(event) => onName(event.target.value)}
         onKeyDown={(event) => {
           if (candidates.length === 0) return;
           if (event.key === 'ArrowDown') {
@@ -320,6 +341,7 @@ function ContributorCandidateSearch({
         value={name}
       />
       <p className="text-sm text-muted-foreground">{t('attribution.candidateHelp')}</p>
+      <ContributorCandidateSearchStatus name={name} status={searchStatus} t={t} />
       {candidates.length === 0 ? null : (
         <ul
           aria-label={t('attribution.suggestions')}
@@ -355,6 +377,45 @@ function ContributorCandidateSearch({
       )}
     </div>
   );
+}
+
+function ContributorCandidateSearchStatus({
+  name,
+  status,
+  t,
+}: {
+  name: string;
+  status: ContributorCandidateSearchStatus;
+  t: Translation;
+}) {
+  if (status === 'idle' || status === 'matches') return null;
+  if (status === 'searching') {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+        <LoaderCircleIcon
+          aria-hidden="true"
+          className="size-4 animate-spin motion-reduce:animate-none"
+        />
+        {t('attribution.candidateSearching')}
+      </div>
+    );
+  }
+  const isStudentId = /^[0-9]{1,8}$/u.test(name.trim());
+  return (
+    <div className="rounded-control border bg-muted/40 p-3 text-sm" role="status">
+      <p className="font-medium">
+        {t(isStudentId ? 'attribution.candidateNoMatchStudentId' : 'attribution.candidateNoMatch')}
+      </p>
+      {isStudentId ? null : (
+        <p className="mt-1 text-muted-foreground">{t('attribution.candidateExternalFallback')}</p>
+      )}
+    </div>
+  );
+}
+
+function canSearchContributorCandidates(query: string): boolean {
+  const isNumeric = /^[0-9]+$/u.test(query);
+  return isNumeric ? /^[0-9]{1,8}$/u.test(query) : [...query].length >= 2;
 }
 
 function SelectedCandidateCard({

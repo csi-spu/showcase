@@ -1,9 +1,9 @@
-import { IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 
 export class ContributorSearchDto {
   @IsString()
-  @MinLength(2)
   @MaxLength(100)
+  @Matches(/^(?:[0-9]{1,8}|(?=.*[^0-9]).{2,100})$/u)
   query!: string;
 }
 

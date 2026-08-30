@@ -62,8 +62,12 @@ export class WorkContributorsService {
       nameQuery: query.kind === 'name' ? query.nameQuery : null,
       now: this.clock.now(),
       sourceKeyHash: this.identityProtector.hashSourceAddress(input.sourceAddress),
-      studentIdHash:
-        query.kind === 'student_id' ? this.identityProtector.hashStudentId(query.studentId) : null,
+      studentIdPrefixHash:
+        query.kind === 'student_id_prefix'
+          ? this.identityProtector.hashStudentId(query.studentIdPrefix)
+          : null,
+      studentIdPrefixLength:
+        query.kind === 'student_id_prefix' ? query.studentIdPrefix.length : null,
       workPublicId: input.workPublicId,
     });
     this.logger.log({

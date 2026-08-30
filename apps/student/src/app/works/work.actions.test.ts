@@ -99,7 +99,20 @@ describe('searchContributorCandidatesAction', () => {
     );
   });
 
-  it('rejects a one-character query before Core', async () => {
+  it('forwards a Student ID prefix from its first digit', async () => {
+    await searchContributorCandidatesAction({
+      publicId: '64000000-0000-4000-8000-000000000001',
+      query: '6',
+    });
+
+    expect(dependencies.searchContributorCandidates).toHaveBeenCalledWith(
+      'session',
+      '64000000-0000-4000-8000-000000000001',
+      '6',
+    );
+  });
+
+  it('rejects a one-character name query before Core', async () => {
     await expect(
       searchContributorCandidatesAction({
         publicId: '64000000-0000-4000-8000-000000000001',
