@@ -131,7 +131,6 @@ export default async function StudentWorksPage({
             ) : null}
           </div>
           <WorkListControls
-            key={searchQuery}
             labels={{
               category: t('filters.category'),
               categoryAll: t('filters.categoryAll'),

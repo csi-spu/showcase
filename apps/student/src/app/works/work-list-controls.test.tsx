@@ -41,6 +41,72 @@ describe('WorkListControls', () => {
       scroll: false,
     });
   });
+
+  it('shows Thai labels for the selected filters instead of their internal values', () => {
+    render(
+      <WorkListControls
+        labels={labels}
+        value={{
+          category: 'all',
+          page: 1,
+          query: '',
+          sort: 'updated_desc',
+          status: 'all',
+          view: 'current',
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'ประเภท' }).textContent).toContain('ทุกประเภท');
+    expect(screen.getByRole('combobox', { name: 'สถานะ' }).textContent).toContain('ทุกสถานะ');
+    expect(screen.getByRole('combobox', { name: 'เรียงลำดับ' }).textContent).toContain(
+      'อัปเดตล่าสุด',
+    );
+  });
+
+  it('syncs an externally changed query without replacing the search input', () => {
+    const value = {
+      category: 'all' as const,
+      page: 1,
+      query: '',
+      sort: 'updated_desc' as const,
+      status: 'all' as const,
+      view: 'current' as const,
+    };
+    const view = render(<WorkListControls labels={labels} value={value} />);
+    const input = screen.getByRole('searchbox', { name: 'ค้นหาผลงาน' });
+    input.focus();
+
+    view.rerender(
+      <WorkListControls labels={labels} value={{ ...value, query: 'ผลงานเว็บ' }} />,
+    );
+
+    expect(screen.getByRole('searchbox', { name: 'ค้นหาผลงาน' })).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('ผลงานเว็บ');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('preserves newer typing when an earlier search result arrives', async () => {
+    const value = {
+      category: 'all' as const,
+      page: 1,
+      query: '',
+      sort: 'updated_desc' as const,
+      status: 'all' as const,
+      view: 'current' as const,
+    };
+    const view = render(<WorkListControls labels={labels} value={value} />);
+    const input = screen.getByRole('searchbox', { name: 'ค้นหาผลงาน' });
+    input.focus();
+
+    fireEvent.change(input, { target: { value: 'เว็บ' } });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(input, { target: { value: 'เว็บไซต์' } });
+    view.rerender(<WorkListControls labels={labels} value={{ ...value, query: 'เว็บ' }} />);
+
+    expect((input as HTMLInputElement).value).toBe('เว็บไซต์');
+    expect(document.activeElement).toBe(input);
+  });
 });
 
 const labels = {

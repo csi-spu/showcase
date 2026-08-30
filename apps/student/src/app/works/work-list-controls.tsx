@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { ArrowDownUpIcon, FilterIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -63,10 +63,38 @@ export function WorkListControls({
   const router = useRouter();
   const [localQuery, setLocalQuery] = useState(value.query);
   const [isPending, startTransition] = useTransition();
+  const submittedQuery = useRef<string | null>(null);
+  const categoryItems: Record<WorkListCategory, string> = {
+    academic_article: labels.categoryAcademicArticle,
+    all: labels.categoryAll,
+    competition_entry: labels.categoryCompetitionEntry,
+    course_work: labels.categoryCourseWork,
+  };
+  const statusItems: Record<WorkListStatus, string> = {
+    all: labels.statusAll,
+    changes_requested: labels.statusChangesRequested,
+    draft: labels.statusDraft,
+    pending_review: labels.statusPendingReview,
+    published: labels.statusPublished,
+  };
+  const sortItems: Record<WorkListSort, string> = {
+    updated_asc: labels.sortOldest,
+    updated_desc: labels.sortNewest,
+  };
 
   useEffect(() => {
-    if (localQuery === value.query) return;
+    if (submittedQuery.current === value.query) {
+      submittedQuery.current = null;
+      return;
+    }
+    setLocalQuery(value.query);
+  }, [value.query]);
+
+  useEffect(() => {
+    const normalizedQuery = localQuery.trim();
+    if (normalizedQuery === value.query) return;
     const timeout = window.setTimeout(() => {
+      submittedQuery.current = normalizedQuery;
       startTransition(() => router.replace(buildHref(value, { query: localQuery }), { scroll: false }));
     }, 250);
     return () => window.clearTimeout(timeout);
@@ -105,6 +133,7 @@ export function WorkListControls({
       </label>
 
       <Select
+        items={categoryItems}
         onValueChange={(next) => update({ category: next as WorkListCategory })}
         value={value.category}
       >
@@ -113,14 +142,15 @@ export function WorkListControls({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">{labels.categoryAll}</SelectItem>
-          <SelectItem value="course_work">{labels.categoryCourseWork}</SelectItem>
-          <SelectItem value="competition_entry">{labels.categoryCompetitionEntry}</SelectItem>
-          <SelectItem value="academic_article">{labels.categoryAcademicArticle}</SelectItem>
+          <SelectItem value="all">{categoryItems.all}</SelectItem>
+          <SelectItem value="course_work">{categoryItems.course_work}</SelectItem>
+          <SelectItem value="competition_entry">{categoryItems.competition_entry}</SelectItem>
+          <SelectItem value="academic_article">{categoryItems.academic_article}</SelectItem>
         </SelectContent>
       </Select>
 
       <Select
+        items={statusItems}
         onValueChange={(next) => update({ status: next as WorkListStatus })}
         value={value.status}
       >
@@ -129,22 +159,26 @@ export function WorkListControls({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">{labels.statusAll}</SelectItem>
-          <SelectItem value="draft">{labels.statusDraft}</SelectItem>
-          <SelectItem value="pending_review">{labels.statusPendingReview}</SelectItem>
-          <SelectItem value="changes_requested">{labels.statusChangesRequested}</SelectItem>
-          <SelectItem value="published">{labels.statusPublished}</SelectItem>
+          <SelectItem value="all">{statusItems.all}</SelectItem>
+          <SelectItem value="draft">{statusItems.draft}</SelectItem>
+          <SelectItem value="pending_review">{statusItems.pending_review}</SelectItem>
+          <SelectItem value="changes_requested">{statusItems.changes_requested}</SelectItem>
+          <SelectItem value="published">{statusItems.published}</SelectItem>
         </SelectContent>
       </Select>
 
-      <Select onValueChange={(next) => update({ sort: next as WorkListSort })} value={value.sort}>
+      <Select
+        items={sortItems}
+        onValueChange={(next) => update({ sort: next as WorkListSort })}
+        value={value.sort}
+      >
         <SelectTrigger aria-label={labels.sort} className="w-full">
           <ArrowDownUpIcon aria-hidden="true" />
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="updated_desc">{labels.sortNewest}</SelectItem>
-          <SelectItem value="updated_asc">{labels.sortOldest}</SelectItem>
+          <SelectItem value="updated_desc">{sortItems.updated_desc}</SelectItem>
+          <SelectItem value="updated_asc">{sortItems.updated_asc}</SelectItem>
         </SelectContent>
       </Select>
     </div>

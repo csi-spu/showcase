@@ -9,12 +9,14 @@ vi.mock('./work.actions', () => ({
 
 describe('StudentWorkList', () => {
   afterEach(cleanup);
-  it('labels displayed source separately from lifecycle dimensions and renders one primary action', () => {
+  it('labels lifecycle dimensions and makes the whole card the primary action', () => {
     render(<StudentWorkList canEdit items={[item()]} labels={labels} />);
     expect(screen.getByText('จากร่าง')).toBeTruthy();
     expect(screen.getByText('ใช้งาน')).toBeTruthy();
     expect(screen.getByText('เผยแพร่')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'แก้ไขต่อ' })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'แก้ไขต่อ: ผลงาน' }).querySelector('[data-slot="card"]'),
+    ).toBeTruthy();
   });
 
   it('loads a private Poster directly so the browser sends its Student session cookie', () => {
@@ -32,6 +34,52 @@ describe('StudentWorkList', () => {
       `/works/${work.publicId}/media/${work.poster?.assetId}/1200`,
     );
   });
+
+  it('floats an accessible secondary menu outside the card link and removes the footer', () => {
+    render(
+      <StudentWorkList
+        canEdit
+        items={[
+          item({
+            primaryAction: 'view_public_work',
+            publicationState: 'never_published',
+            secondaryActions: ['create_new_revision'],
+          }),
+        ]}
+        labels={labels}
+      />,
+    );
+
+    const cardLink = screen.getByRole('link', { name: 'ดูผลงานสาธารณะ: ผลงาน' });
+    const menuLabel = screen.getByText('เพิ่มเติม');
+    const menuTrigger = menuLabel.closest('summary');
+
+    expect(cardLink.querySelector('[data-slot="card"]')).toBeTruthy();
+    expect(cardLink.contains(menuTrigger)).toBe(false);
+    expect(menuLabel.classList).toContain('sr-only');
+    expect(menuTrigger?.classList).toContain('size-11');
+    expect(document.querySelector('[data-slot="card-footer"]')).toBeNull();
+  });
+
+  it('does not offer secondary actions for a Published Work', () => {
+    render(
+      <StudentWorkList
+        canEdit
+        items={[
+          item({
+            primaryAction: 'view_public_work',
+            publicationState: 'published',
+            secondaryActions: ['create_new_revision'],
+          }),
+        ]}
+        labels={labels}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'ดูผลงานสาธารณะ: ผลงาน' })).toBeTruthy();
+    expect(screen.queryByText('เพิ่มเติม')).toBeNull();
+    expect(screen.queryByText('สร้างฉบับแก้ไข')).toBeNull();
+  });
 });
 
 const labels: Record<string, string> = {
@@ -41,7 +89,10 @@ const labels: Record<string, string> = {
   posterFallback: 'ไม่มีโปสเตอร์',
   updatedAt: 'อัปเดต',
   'actions.continue_editing': 'แก้ไขต่อ',
+  'actions.create_new_revision': 'สร้างฉบับแก้ไข',
+  'actions.view_public_work': 'ดูผลงานสาธารณะ',
   'activity.active': 'ใช้งาน',
+  'publication.never_published': 'ยังไม่เคยเผยแพร่',
   'publication.published': 'เผยแพร่',
   'review.draft': 'ร่าง',
   'source.draft': 'จากร่าง',
