@@ -52,7 +52,6 @@ export default async function PublicProfilePage({
             description: t('worksDescription'),
             empty: t('worksEmpty'),
             heading: t('worksHeading'),
-            openWork: t('openWork'),
             posterAlt: (title) => t('workPosterAlt', { title }),
           }}
           works={works.items}

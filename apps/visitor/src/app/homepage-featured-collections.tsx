@@ -6,7 +6,12 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import type { PeopleCatalogCard, WorkCatalogCard } from '@/lib/public-catalog-core';
-import { CatalogEmptyState, PersonPortrait, WorkPosterFallback } from './catalog-artwork';
+import {
+  CARD_SCRIM_CLASS,
+  CatalogEmptyState,
+  PersonPortrait,
+  WorkPosterFallback,
+} from './catalog-artwork';
 
 interface SectionLabels {
   artworkAlt: string;
@@ -272,24 +277,21 @@ function FeaturedWorkCard({
             workPublicId={work.workPublicId}
           />
         )}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"
-        />
-        <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/10 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+        <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
+        <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
           <ArrowUpRightIcon aria-hidden="true" className="size-4" />
         </span>
         <div className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5">
           <Badge
-            className="w-fit border-white/30 bg-white/10 text-white backdrop-blur-sm"
+            className="w-fit border-white/35 bg-white/15 text-white backdrop-blur-sm"
             variant="outline"
           >
             {work.academicPeriod.year} / {work.academicPeriod.semester}
           </Badge>
-          <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white">
+          <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white [text-shadow:0_1px_6px_rgb(0_0_0_/_60%)]">
             {work.title}
           </h3>
-          <p className="line-clamp-2 text-sm leading-relaxed text-white/75 text-pretty">
+          <p className="line-clamp-2 text-sm leading-relaxed text-white/85 text-pretty [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
             {work.summary}
           </p>
         </div>
@@ -374,11 +376,8 @@ function PeopleCollectionSection({
                         person={person}
                         sizes="(max-width: 639px) 100vw, (max-width: 1279px) 50vw, 25vw"
                       />
-                      <div
-                        aria-hidden="true"
-                        className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"
-                      />
-                      <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/10 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+                      <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
+                      <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
                         <ArrowUpRightIcon aria-hidden="true" className="size-4" />
                       </span>
                       <div
@@ -386,15 +385,15 @@ function PeopleCollectionSection({
                         data-person-card-meta="true"
                       >
                         <Badge
-                          className="w-fit border-white/30 bg-white/10 text-white backdrop-blur-sm"
+                          className="w-fit border-white/35 bg-white/15 text-white backdrop-blur-sm"
                           variant="outline"
                         >
                           {labels.studentEntryYear(person.entryYear)}
                         </Badge>
-                        <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white">
+                        <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white [text-shadow:0_1px_6px_rgb(0_0_0_/_60%)]">
                           {`${person.firstName} ${person.lastName}`}
                         </h3>
-                        <p className="text-sm font-medium text-white/75 tabular-nums">
+                        <p className="text-sm font-medium text-white/85 tabular-nums [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
                           {labels.publishedWorks(person.publishedWorkCount)}
                         </p>
                       </div>

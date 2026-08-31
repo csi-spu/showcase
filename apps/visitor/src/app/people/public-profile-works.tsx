@@ -6,7 +6,6 @@ interface PublicProfileWorksLabels {
   description: string;
   empty: string;
   heading: string;
-  openWork: string;
   posterAlt(title: string): string;
 }
 
@@ -32,11 +31,7 @@ export function PublicProfileWorks({
           </p>
         </header>
         <CatalogWorkGrid
-          labels={{
-            empty: labels.empty,
-            openWork: labels.openWork,
-            posterAlt: labels.posterAlt,
-          }}
+          labels={{ empty: labels.empty, posterAlt: labels.posterAlt }}
           works={works}
         />
       </section>

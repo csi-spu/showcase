@@ -3,6 +3,12 @@ import { ImagesIcon, UserRoundIcon, type LucideIcon } from 'lucide-react';
 import Image from 'next/image';
 import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
 
+// Tailwind's bg-gradient-to-* utilities interpolate in oklab and render as
+// `none` on engines that don't support that gradient syntax, so this scrim
+// uses a plain rgba() linear-gradient (same technique as the page hero).
+export const CARD_SCRIM_CLASS =
+  'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.55)_42%,rgba(0,0,0,0)_100%)]';
+
 const FALLBACK_COMPOSITIONS = [
   {
     accent: 'right-8 top-20 rotate-6',

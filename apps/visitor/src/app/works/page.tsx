@@ -78,11 +78,7 @@ export default async function WorksPage({ searchParams }: Props) {
             window={pageWindow}
           />
           <CatalogWorkGrid
-            labels={{
-              empty: t('emptyWorks'),
-              openWork: t('openWork'),
-              posterAlt: (title) => t('posterAlt', { title }),
-            }}
+            labels={{ empty: t('emptyWorks'), posterAlt: (title) => t('posterAlt', { title }) }}
             works={page.items}
           />
           <CatalogPagination
