@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { buttonVariants } from '@/components/ui/button';
 import { PublicCatalogCoreClient, type CatalogSearchParams } from '@/lib/public-catalog-core';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
-import { catalogContinuationUrl, hasCatalogVariant } from '../catalog-url';
+import { CatalogPagination } from '../catalog-pagination';
+import { catalogPageWindow, hasCatalogVariant } from '../catalog-url';
 import { PublicPageIntro } from '../public-page';
 import { PublicShell } from '../public-shell';
 import { CatalogPeopleGrid } from './catalog-people-grid';
@@ -29,6 +28,13 @@ export default async function PeoplePage({ searchParams }: Props) {
     client.listFilterOptions(),
     getTranslations('People'),
   ]);
+  const pageWindow = catalogPageWindow('/people', params, page.nextCursor);
+  const paginationLabels = {
+    ellipsis: t('ellipsis'),
+    goToPage: (pageNumber: number) => t('goToPage', { page: pageNumber }),
+    nextPage: t('nextPage'),
+    previousPage: t('previousPage'),
+  };
 
   return (
     <PublicShell>
@@ -50,24 +56,27 @@ export default async function PeoplePage({ searchParams }: Props) {
           }}
           params={params}
         />
-        <CatalogPeopleGrid
-          labels={{
-            empty: t('empty'),
-            entryYear: (year) => t('entryYear', { year }),
-            photoAlt: (name) => t('photoAlt', { name }),
-            publishedWorks: (count) => t('publishedWorks', { count }),
-          }}
-          people={page.items}
-        />
-        {page.hasNextPage && page.nextCursor ? (
-          <Link
-            className={buttonVariants({ className: 'min-h-11', variant: 'outline' })}
-            href={catalogContinuationUrl('/people', params, page.nextCursor)}
-            rel="next"
-          >
-            {t('more')}
-          </Link>
-        ) : null}
+        <section className="grid gap-6" aria-label={t('catalogTitle')}>
+          <CatalogPagination
+            ariaLabel={t('pagination')}
+            labels={paginationLabels}
+            window={pageWindow}
+          />
+          <CatalogPeopleGrid
+            labels={{
+              empty: t('empty'),
+              entryYear: (year) => t('entryYear', { year }),
+              photoAlt: (name) => t('photoAlt', { name }),
+              publishedWorks: (count) => t('publishedWorks', { count }),
+            }}
+            people={page.items}
+          />
+          <CatalogPagination
+            ariaLabel={t('pagination')}
+            labels={paginationLabels}
+            window={pageWindow}
+          />
+        </section>
       </div>
     </PublicShell>
   );

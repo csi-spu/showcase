@@ -47,11 +47,7 @@ export default async function TagPage({ params, searchParams }: Props) {
           title={tag.displayLabel}
         />
         <CatalogWorkGrid
-          labels={{
-            empty: t('empty'),
-            openWork: t('openWork'),
-            posterAlt: (title) => t('posterAlt', { title }),
-          }}
+          labels={{ empty: t('empty'), posterAlt: (title) => t('posterAlt', { title }) }}
           works={works.items}
         />
         {works.hasNextPage && works.nextCursor ? (

@@ -50,6 +50,52 @@ export function catalogPagination(
   };
 }
 
+const PAGE_WINDOW_RADIUS = 2;
+
+export interface CatalogPageWindow {
+  currentPage: number;
+  firstPage: { href: string; page: number } | null;
+  nextUrl: string | null;
+  pages: Array<{ href: string; page: number }>;
+  previousUrl: string | null;
+}
+
+export function catalogPageWindow(
+  path: string,
+  params: CatalogSearchParams,
+  nextCursor: string | null,
+): CatalogPageWindow {
+  const { currentPage, nextUrl, previousUrl } = catalogPagination(path, params, nextCursor);
+  const trail = values(params.trail).filter(Boolean).slice(-MAX_CURSOR_TRAIL);
+  const filters = catalogFilters(params);
+  const rawWindowStart = Math.max(1, currentPage - PAGE_WINDOW_RADIUS);
+  // A window that starts on page 2 would pin page 1 behind a pointless single-page ellipsis.
+  const windowStart = rawWindowStart === 2 ? 1 : rawWindowStart;
+
+  const pages: Array<{ href: string; page: number }> = [];
+  for (let page = windowStart; page <= currentPage; page += 1) {
+    pages.push({ href: hrefForPage(page), page });
+  }
+
+  return {
+    currentPage,
+    firstPage: windowStart > 1 ? { href: hrefForPage(1), page: 1 } : null,
+    nextUrl,
+    pages,
+    previousUrl,
+  };
+
+  function hrefForPage(page: number): string {
+    if (page === currentPage) return catalogCurrentUrl(path, params);
+    if (page === 1) return paginationUrl(path, filters, { cursor: undefined, page: 1, trail: [] });
+    return paginationUrl(path, filters, {
+      cursor: trail[page - 2],
+      page,
+      trail: trail.slice(0, page - 2),
+    });
+  }
+}
+
 export function catalogContinuationUrl(
   path: string,
   params: CatalogSearchParams,

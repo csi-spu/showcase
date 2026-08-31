@@ -1,16 +1,9 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
 import { PublicCatalogCoreClient, type CatalogSearchParams } from '@/lib/public-catalog-core';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
-import { catalogCurrentUrl, catalogPagination, hasCatalogVariant } from '../catalog-url';
+import { CatalogPagination } from '../catalog-pagination';
+import { catalogPageWindow, hasCatalogVariant } from '../catalog-url';
 import { PublicPageIntro } from '../public-page';
 import { PublicShell } from '../public-shell';
 import { CatalogWorkGrid } from './catalog-work-grid';
@@ -36,7 +29,13 @@ export default async function WorksPage({ searchParams }: Props) {
     client.listFilterOptions(),
     getTranslations('Catalog'),
   ]);
-  const pagination = catalogPagination('/works', params, page.nextCursor);
+  const pageWindow = catalogPageWindow('/works', params, page.nextCursor);
+  const paginationLabels = {
+    ellipsis: t('ellipsis'),
+    goToPage: (pageNumber: number) => t('goToPage', { page: pageNumber }),
+    nextPage: t('nextPage'),
+    previousPage: t('previousPage'),
+  };
 
   return (
     <PublicShell>
@@ -72,44 +71,21 @@ export default async function WorksPage({ searchParams }: Props) {
           tags={tags}
           years={filterOptions.workYears}
         />
-        <section className="grid gap-8" aria-label={t('worksTitle')}>
+        <section className="grid gap-6" aria-label={t('worksTitle')}>
+          <CatalogPagination
+            ariaLabel={t('pagination')}
+            labels={paginationLabels}
+            window={pageWindow}
+          />
           <CatalogWorkGrid
-            labels={{
-              empty: t('emptyWorks'),
-              openWork: t('openWork'),
-              posterAlt: (title) => t('posterAlt', { title }),
-            }}
+            labels={{ empty: t('emptyWorks'), posterAlt: (title) => t('posterAlt', { title }) }}
             works={page.items}
           />
-          {pagination.previousUrl || pagination.nextUrl ? (
-            <Pagination aria-label={t('pagination')}>
-              <PaginationContent>
-                {pagination.previousUrl ? (
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href={pagination.previousUrl}
-                      rel="prev"
-                      text={t('previousPage')}
-                    />
-                  </PaginationItem>
-                ) : null}
-                <PaginationItem>
-                  <PaginationLink
-                    aria-label={t('currentPage', { page: pagination.currentPage })}
-                    href={catalogCurrentUrl('/works', params)}
-                    isActive
-                  >
-                    {pagination.currentPage}
-                  </PaginationLink>
-                </PaginationItem>
-                {pagination.nextUrl ? (
-                  <PaginationItem>
-                    <PaginationNext href={pagination.nextUrl} rel="next" text={t('nextPage')} />
-                  </PaginationItem>
-                ) : null}
-              </PaginationContent>
-            </Pagination>
-          ) : null}
+          <CatalogPagination
+            ariaLabel={t('pagination')}
+            labels={paginationLabels}
+            window={pageWindow}
+          />
         </section>
       </div>
     </PublicShell>

@@ -9,18 +9,22 @@ describe('Admin-to-Visitor Published Work UI', () => {
         labels={{
           academicPeriod: 'ปีการศึกษา 2569 ภาค 1',
           attributions: 'ผู้สร้างผลงาน',
+          carouselGoToSlide: (index) => `ไปภาพที่ ${index}`,
+          carouselNext: 'ภาพถัดไป',
+          carouselPrevious: 'ภาพก่อนหน้า',
           category: 'ผลงานรายวิชา',
           description: 'รายละเอียด',
-          gallery: 'แกลเลอรี',
           galleryAlt: (index) => `ภาพเพิ่มเติม ${index} ของ ระบบแนะนำผลงาน`,
           links: 'ลิงก์',
           missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
-          publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
+          publishedAt: '26 ส.ค. 2569',
+          publishedAtLabel: 'เผยแพร่เมื่อ',
           removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
+          videoAlt: (index) => `วิดีโอ ${index}`,
           videos: 'วิดีโอ',
         }}
         work={publicWork()}
@@ -38,6 +42,10 @@ describe('Admin-to-Visitor Published Work UI', () => {
       'srcSet="/works/87000000-0000-4000-8000-000000000001/media/87000000-0000-4000-8000-000000000002/480 480w"',
     );
     expect(html).not.toMatch(/studentId|accountId|personId|session/i);
+    expect(html).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
+    expect(html).toContain(
+      'src="/works/87000000-0000-4000-8000-000000000001/media/87000000-0000-4000-8000-000000000006/1600"',
+    );
   });
 
   it('renders themed fallbacks when poster and attribution data are absent', () => {
@@ -47,18 +55,22 @@ describe('Admin-to-Visitor Published Work UI', () => {
         labels={{
           academicPeriod: 'ปีการศึกษา 2569 ภาค 1',
           attributions: 'ผู้สร้างผลงาน',
+          carouselGoToSlide: (index) => `ไปภาพที่ ${index}`,
+          carouselNext: 'ภาพถัดไป',
+          carouselPrevious: 'ภาพก่อนหน้า',
           category: 'ผลงานรายวิชา',
           description: 'รายละเอียด',
-          gallery: 'แกลเลอรี',
           galleryAlt: (index) => `ภาพเพิ่มเติม ${index}`,
           links: 'ลิงก์',
           missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
-          publishedAt: 'เผยแพร่เมื่อ 26 ส.ค. 2569',
+          publishedAt: '26 ส.ค. 2569',
+          publishedAtLabel: 'เผยแพร่เมื่อ',
           removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
+          videoAlt: (index) => `วิดีโอ ${index}`,
           videos: 'วิดีโอ',
         }}
         work={{ ...work, attributions: [], media: [] }}
@@ -98,13 +110,28 @@ function publicWork() {
         variants: [{ height: 720, width: 480 }],
         width: 1200,
       },
+      {
+        assetId: '87000000-0000-4000-8000-000000000006',
+        dominantColor: '#3A5A78',
+        height: 1000,
+        kind: 'gallery' as const,
+        position: 1,
+        variants: [{ height: 1000, width: 1600 }],
+        width: 1600,
+      },
     ],
     publishedAt: '2026-08-25T18:00:00.000Z',
     revisionNumber: 1,
     summary: 'สรุปผลงาน',
     tags: [{ displayLabel: 'React', publicId: '87000000-0000-4000-8000-000000000003' }],
     title: 'ระบบแนะนำผลงาน',
-    videoLinks: [],
+    videoLinks: [
+      {
+        provider: 'youtube' as const,
+        providerVideoId: 'dQw4w9WgXcQ',
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      },
+    ],
     workPublicId: '87000000-0000-4000-8000-000000000001',
   };
 }

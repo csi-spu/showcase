@@ -37,15 +37,18 @@ export default async function PublicWorkPage({
               year: work.academicPeriod.year,
             }),
             attributions: t('attributions'),
+            carouselGoToSlide: (index) => t('carouselGoToSlide', { index }),
+            carouselNext: t('carouselNext'),
+            carouselPrevious: t('carouselPrevious'),
             category: t(`categories.${work.category}`),
             description: t('description'),
-            gallery: t('gallery'),
             galleryAlt: (index) => t('galleryAlt', { index, title: work.title }),
             links: t('links'),
             missingAttributions: t('missingAttributions'),
             missingPoster: t('missingPoster'),
             posterAlt: t('posterAlt', { title: work.title }),
-            publishedAt: t('publishedAt', { value: formatBangkokDate(work.publishedAt) }),
+            publishedAt: formatBangkokDate(work.publishedAt),
+            publishedAtLabel: t('publishedAtLabel'),
             removal: {
               heading: t('removal.heading'),
               help: t('removal.help'),
@@ -58,6 +61,7 @@ export default async function PublicWorkPage({
             },
             studyYear: (year) => t('studyYear', { year }),
             tagsLabel: t('tagsLabel'),
+            videoAlt: (index) => t('videoAlt', { index, title: work.title }),
             videos: t('videos'),
           }}
           work={work}

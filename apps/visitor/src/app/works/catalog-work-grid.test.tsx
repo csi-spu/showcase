@@ -6,7 +6,6 @@ describe('Public Catalog Work grid', () => {
   it('renders Poster-only server markup with one LCP preload and lazy remaining images', () => {
     const html = renderToStaticMarkup(
       <CatalogWorkGrid
-        isHomepage
         labels={{ empty: 'ไม่พบผลงาน', posterAlt: (title) => `โปสเตอร์ ${title}` }}
         works={[work(1), work(2)]}
       />,
@@ -23,11 +22,7 @@ describe('Public Catalog Work grid', () => {
     const item = { ...work(3), poster: null };
     const html = renderToStaticMarkup(
       <CatalogWorkGrid
-        labels={{
-          empty: 'ไม่พบผลงาน',
-          openWork: 'เปิดดูผลงาน',
-          posterAlt: (title) => `โปสเตอร์ ${title}`,
-        }}
+        labels={{ empty: 'ไม่พบผลงาน', posterAlt: (title) => `โปสเตอร์ ${title}` }}
         works={[item]}
       />,
     );
@@ -35,7 +30,6 @@ describe('Public Catalog Work grid', () => {
     expect(html).toContain('data-poster-fallback="true"');
     expect(html).toContain(`href="/works/${item.workPublicId}"`);
     expect(html).toContain('ผลงาน 3');
-    expect(html).toContain('เปิดดูผลงาน');
   });
 });
 
