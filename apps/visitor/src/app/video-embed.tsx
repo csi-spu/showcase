@@ -13,7 +13,9 @@ export function VideoEmbed({ title, video }: { title: string; video: VideoLink }
     <div
       className={cn(
         'overflow-hidden rounded-media border border-border bg-black',
-        video.provider === 'tiktok' ? 'aspect-[9/16] max-w-xs justify-self-center' : 'aspect-video',
+        video.provider === 'tiktok'
+          ? 'aspect-[9/16] w-64 shrink-0 sm:w-72'
+          : 'aspect-video w-full max-w-xl',
       )}
     >
       <iframe

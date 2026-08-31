@@ -15,21 +15,15 @@ describe('ImageCarousel', () => {
         slides={[
           {
             alt: 'ภาพที่ 1',
-            dominantColor: '#285078',
             dotLabel: 'ไปภาพที่ 1',
-            height: 1000,
             src: '/works/1/media/a/1600',
             srcSet: '/works/1/media/a/1600 1600w',
-            width: 1600,
           },
           {
             alt: 'ภาพที่ 2',
-            dominantColor: '#3A5A78',
             dotLabel: 'ไปภาพที่ 2',
-            height: 1000,
             src: '/works/1/media/b/1600',
             srcSet: '/works/1/media/b/1600 1600w',
-            width: 1600,
           },
         ]}
       />,
@@ -42,6 +36,7 @@ describe('ImageCarousel', () => {
     expect(html).toContain('aria-label="ภาพถัดไป"');
     expect(html.match(/aria-label="ไปภาพที่ \d"/g)).toHaveLength(2);
     expect(html).toContain('aria-current="true"');
+    expect(html).toContain('object-cover');
   });
 
   it('hides prev/next controls and dots for a single slide', () => {
@@ -51,12 +46,9 @@ describe('ImageCarousel', () => {
         slides={[
           {
             alt: 'ภาพเดียว',
-            dominantColor: '#285078',
             dotLabel: 'ไปภาพที่ 1',
-            height: 1000,
             src: '/works/1/media/a/1600',
             srcSet: '/works/1/media/a/1600 1600w',
-            width: 1600,
           },
         ]}
       />,

@@ -42,7 +42,6 @@ export default async function PublicWorkPage({
             carouselPrevious: t('carouselPrevious'),
             category: t(`categories.${work.category}`),
             description: t('description'),
-            gallery: t('gallery'),
             galleryAlt: (index) => t('galleryAlt', { index, title: work.title }),
             links: t('links'),
             missingAttributions: t('missingAttributions'),
