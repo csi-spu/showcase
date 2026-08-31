@@ -24,10 +24,13 @@ describe('RosterExceptionFilter', () => {
 
     expect(status).toHaveBeenCalledWith(503);
     expect(json).toHaveBeenCalledWith({ error: { code: 'ROSTER_SERVICE_UNAVAILABLE' } });
-    expect(logger).toHaveBeenCalledWith({
-      errorCode: 'ROSTER_INTERNAL_ERROR',
-      operation: 'roster_request',
-    });
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'ROSTER_INTERNAL_ERROR',
+        operation: 'roster_request',
+        errorName: 'Error',
+      }),
+    );
     expect(JSON.stringify(logger.mock.calls)).not.toContain('69000001');
     expect(JSON.stringify(logger.mock.calls)).not.toContain('ข้อมูลลับ');
   });

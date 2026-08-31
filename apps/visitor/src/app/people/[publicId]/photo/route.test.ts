@@ -38,6 +38,42 @@ describe('public profile photo route', () => {
     expect(response.status).toBe(404);
   });
 
+  it('returns a service error when Core cannot authorize the photo URL', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockRejectedValue(
+      new Error('core timeout'),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ publicId: PUBLIC_ID }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: { code: 'PUBLIC_PROFILE_PHOTO_UNAVAILABLE' } });
+  });
+
+  it('returns a service error when the upstream photo body fails while reading', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
+      'https://media.example.test/profile-media/photo.webp',
+    );
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.error(new Error('stream failed'));
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(stream, { headers: { 'Content-Type': 'image/webp' } }),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ publicId: PUBLIC_ID }),
+    });
+
+    expect(response.status).toBe(503);
+  });
+
   it('serves only bounded sanitized WebP after rechecking consent', async () => {
     vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
       'https://media.example.test/profile-media/photo.webp',

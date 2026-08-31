@@ -30,8 +30,9 @@ export async function transitionWorkRecoveryAction(
       workPublicId,
     });
   if (!parsed.success) return failed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().transitionWork(await sessionToken(), parsed.data.workPublicId, {
+    await client().transitionWork(token, parsed.data.workPublicId, {
       expectedVersion: parsed.data.expectedVersion,
       idempotencyKey: parsed.data.idempotencyKey,
       operation: parsed.data.operation,
@@ -76,8 +77,9 @@ export async function decideRemovalRequestAction(
       workPublicId,
     });
   if (!parsed.success) return failed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().decideRemovalRequest(await sessionToken(), parsed.data.requestPublicId, {
+    await client().decideRemovalRequest(token, parsed.data.requestPublicId, {
       decision: parsed.data.decision,
       ...(parsed.data.decisionReason === undefined
         ? {}
@@ -131,8 +133,8 @@ export async function decideAttributionRemovalRequestAction(
       requestPublicId,
     });
   if (!parsed.success) return failed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    const token = await sessionToken();
     if (parsed.data.decision === 'decline') {
       await client().declineAttributionRemovalRequest(token, parsed.data.requestPublicId, {
         decisionReason: parsed.data.decisionReason!,

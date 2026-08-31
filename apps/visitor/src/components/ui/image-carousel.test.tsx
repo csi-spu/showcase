@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ImageCarousel } from './image-carousel';
 
 const labels = {
+  imageUnavailable: 'ไม่สามารถแสดงภาพนี้ได้',
   next: 'ภาพถัดไป',
   previous: 'ภาพก่อนหน้า',
 };

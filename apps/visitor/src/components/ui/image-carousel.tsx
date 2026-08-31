@@ -25,10 +25,11 @@ export function ImageCarousel({
   slides,
 }: {
   className?: string;
-  labels: { next: string; previous: string };
+  labels: { imageUnavailable: string; next: string; previous: string };
   slides: ImageCarouselSlide[];
 }) {
   const [index, setIndex] = useState(0);
+  const [failedImageSource, setFailedImageSource] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const isReducedMotion = useReducedMotion();
   const active = slides[index];
@@ -55,19 +56,30 @@ export function ImageCarousel({
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.img
-          alt={active.alt}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 size-full object-cover"
-          exit={{ opacity: 0 }}
-          initial={{ opacity: 0 }}
-          key={active.src}
-          src={active.src}
-          srcSet={active.srcSet}
-          transition={{ duration: isReducedMotion ? 0 : 0.7, ease: 'easeInOut' }}
-        />
-      </AnimatePresence>
+      {failedImageSource === active.src ? (
+        <div
+          aria-label={labels.imageUnavailable}
+          className="absolute inset-0 grid place-items-center bg-muted text-sm text-muted-foreground"
+          role="img"
+        >
+          {labels.imageUnavailable}
+        </div>
+      ) : (
+        <AnimatePresence initial={false} mode="popLayout">
+          <motion.img
+            alt={active.alt}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 size-full object-cover"
+            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            key={active.src}
+            onError={() => setFailedImageSource(active.src)}
+            src={active.src}
+            srcSet={active.srcSet}
+            transition={{ duration: isReducedMotion ? 0 : 0.7, ease: 'easeInOut' }}
+          />
+        </AnimatePresence>
+      )}
       {slides.length > 1 ? (
         <>
           <CarouselButton

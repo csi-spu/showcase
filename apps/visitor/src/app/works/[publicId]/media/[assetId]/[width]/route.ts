@@ -17,11 +17,13 @@ export async function GET(
   const parsed = paramsSchema.safeParse(await params);
   if (!parsed.success) return notFound();
   const { assetId, publicId, width } = parsed.data;
-  const url = await new PublicWorkCoreClient(getVisitorCoreUrl()).getMediaUrl(
-    publicId,
-    assetId,
-    width,
-  );
+  let url: string | null;
+  try {
+    url = await new PublicWorkCoreClient(getVisitorCoreUrl()).getMediaUrl(publicId, assetId, width);
+  } catch (error) {
+    console.error('PUBLIC_WORK_MEDIA_URL_FAILED', { assetId, publicId, width }, error);
+    return unavailable();
+  }
   if (url === null) return notFound();
 
   let upstream: Response;
@@ -37,14 +39,31 @@ export async function GET(
     return notFound();
   }
   const declaredLength = Number(upstream.headers.get('content-length'));
+  if (!upstream.ok) {
+    if (upstream.status >= 500) {
+      console.error('PUBLIC_WORK_MEDIA_UPSTREAM_FAILED', {
+        assetId,
+        publicId,
+        status: upstream.status,
+        width,
+      });
+      return unavailable();
+    }
+    return notFound();
+  }
   if (
-    !upstream.ok ||
     !upstream.headers.get('content-type')?.toLowerCase().startsWith('image/webp') ||
     (Number.isFinite(declaredLength) && declaredLength > MAX_MEDIA_BYTES)
   ) {
     return notFound();
   }
-  const bytes = await readBoundedBody(upstream, MAX_MEDIA_BYTES);
+  let bytes: ArrayBuffer | null;
+  try {
+    bytes = await readBoundedBody(upstream, MAX_MEDIA_BYTES);
+  } catch (error) {
+    console.error('PUBLIC_WORK_MEDIA_BODY_FAILED', { assetId, publicId, width }, error);
+    return unavailable();
+  }
   if (bytes === null) return notFound();
   const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
   if (request.headers.get('if-none-match') === etag) {
@@ -93,4 +112,11 @@ async function readBoundedBody(
 
 function notFound(): Response {
   return Response.json({ error: { code: 'PUBLIC_WORK_NOT_FOUND' } }, { status: 404 });
+}
+
+function unavailable(): Response {
+  return Response.json(
+    { error: { code: 'PUBLIC_WORK_MEDIA_UNAVAILABLE' } },
+    { headers: { 'Cache-Control': 'private, no-store' }, status: 503 },
+  );
 }

@@ -10,7 +10,13 @@ export async function GET(
 ): Promise<Response> {
   const { publicId } = await params;
   if (!z.uuid().safeParse(publicId).success) return notFound();
-  const photoUrl = await new PublicProfileCoreClient(getVisitorCoreUrl()).getPhotoUrl(publicId);
+  let photoUrl: string | null;
+  try {
+    photoUrl = await new PublicProfileCoreClient(getVisitorCoreUrl()).getPhotoUrl(publicId);
+  } catch (error) {
+    console.error('PUBLIC_PROFILE_PHOTO_URL_FAILED', { publicId }, error);
+    return unavailable();
+  }
   if (photoUrl === null) return notFound();
 
   let upstream: Response;
@@ -26,14 +32,26 @@ export async function GET(
     return notFound();
   }
   const declaredLength = Number(upstream.headers.get('content-length'));
+  if (!upstream.ok) {
+    if (upstream.status >= 500) {
+      console.error('PUBLIC_PROFILE_PHOTO_UPSTREAM_FAILED', { publicId, status: upstream.status });
+      return unavailable();
+    }
+    return notFound();
+  }
   if (
-    !upstream.ok ||
     !upstream.headers.get('content-type')?.toLowerCase().startsWith('image/webp') ||
     (Number.isFinite(declaredLength) && declaredLength > MAX_SANITIZED_PHOTO_BYTES)
   ) {
     return notFound();
   }
-  const bytes = await upstream.arrayBuffer();
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await upstream.arrayBuffer();
+  } catch (error) {
+    console.error('PUBLIC_PROFILE_PHOTO_BODY_FAILED', { publicId }, error);
+    return unavailable();
+  }
   if (bytes.byteLength > MAX_SANITIZED_PHOTO_BYTES) return notFound();
   const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
   if (request.headers.get('if-none-match') === etag) {
@@ -55,4 +73,11 @@ export async function GET(
 
 function notFound(): Response {
   return Response.json({ error: { code: 'PUBLIC_PROFILE_NOT_FOUND' } }, { status: 404 });
+}
+
+function unavailable(): Response {
+  return Response.json(
+    { error: { code: 'PUBLIC_PROFILE_PHOTO_UNAVAILABLE' } },
+    { headers: { 'Cache-Control': 'private, no-store' }, status: 503 },
+  );
 }

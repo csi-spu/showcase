@@ -10,6 +10,7 @@ import { AdminCorrectionError } from '../application/admin-corrections.service';
 import { WorkRecoveryError } from '../application/work-recovery.service';
 import { AttributionRemovalError } from '../application/attribution-removal.service';
 import { WorkContributorError } from '../application/work-contributors.service';
+import { safeErrorLogFields } from '../../../observability/error-log';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -35,6 +36,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof WorkRecoveryError
     ) {
       this.logger.warn({
+        ...safeErrorLogFields(error),
         errorCode: error.code,
         operation: 'work_request_rejected',
         status: error.status,
@@ -43,6 +45,7 @@ export class WorksExceptionFilter implements ExceptionFilter {
       return;
     }
     this.logger.error({
+      ...safeErrorLogFields(error),
       errorCode: 'WORKS_INTERNAL_ERROR',
       operation: 'work_authoring_request',
     });

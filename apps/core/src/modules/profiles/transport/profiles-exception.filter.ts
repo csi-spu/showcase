@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
 import { ProfileError } from '../application/profiles.service';
 import { ProfilePhotoError } from '../application/profile-photo.service';
+import { safeErrorLogFields } from '../../../observability/error-log';
 
 @Catch()
 export class ProfilesExceptionFilter implements ExceptionFilter {
@@ -20,10 +21,19 @@ export class ProfilesExceptionFilter implements ExceptionFilter {
       error instanceof ProfileError ||
       error instanceof ProfilePhotoError
     ) {
+      if (error.status >= 500) {
+        this.logger.warn({
+          ...safeErrorLogFields(error),
+          errorCode: error.code,
+          operation: 'profiles_request_rejected',
+          status: error.status,
+        });
+      }
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
     this.logger.error({
+      ...safeErrorLogFields(error),
       errorCode: 'PROFILES_INTERNAL_ERROR',
       operation: 'profiles_request',
     });

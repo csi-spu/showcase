@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
-import { readStudentSessionToken } from '@/lib/student-auth-session';
+import { clearStudentSessionToken, readStudentSessionToken } from '@/lib/student-auth-session';
 import { StudentProfileCoreClient, StudentProfileCoreError } from '@/lib/student-profile-core';
 import { validateProfileForm } from '@/lib/student-profile-validation';
 import type { ProfileActionError, ProfileActionState } from './profile-action-state';
@@ -31,9 +31,11 @@ export async function updateProfileAction(
 ): Promise<ProfileActionState> {
   const input = validateProfileForm(formData);
   if (input === 'invalid') return { error: 'invalid', success: false };
+  const token = await sessionToken();
   try {
-    await client().updateProfile(await sessionToken(), input);
+    await client().updateProfile(token, input);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapError(error), success: false };
   }
   revalidatePath('/profile');
@@ -46,12 +48,14 @@ export async function grantConsentAction(
 ): Promise<ProfileActionState> {
   const input = consentMutationSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) return { error: 'invalid', success: false };
+  const token = await sessionToken();
   try {
-    await client().grantConsent(await sessionToken(), {
+    await client().grantConsent(token, {
       ...input.data,
       consentTextVersion: 'phase-1-v1',
     });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapError(error), success: false };
   }
   revalidatePath('/profile');
@@ -64,9 +68,11 @@ export async function withdrawConsentAction(
 ): Promise<ProfileActionState> {
   const input = consentMutationSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) return { error: 'invalid', success: false };
+  const token = await sessionToken();
   try {
-    await client().withdrawConsent(await sessionToken(), input.data);
+    await client().withdrawConsent(token, input.data);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapError(error), success: false };
   }
   revalidatePath('/profile');
@@ -76,10 +82,12 @@ export async function withdrawConsentAction(
 export async function createPhotoUploadAction(input: unknown) {
   const parsed = photoUploadSchema.safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
-    const upload = await client().createPhotoUpload(await sessionToken(), parsed.data);
+    const upload = await client().createPhotoUpload(token, parsed.data);
     return { data: upload };
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapError(error) };
   }
 }
@@ -87,8 +95,8 @@ export async function createPhotoUploadAction(input: unknown) {
 export async function finalizePhotoUploadAction(input: unknown) {
   const parsed = finalizePhotoUploadSchema.safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
-    const token = await sessionToken();
     const profileClient = client();
     const photo = await profileClient.finalizePhotoUpload(token, parsed.data.uploadId);
     const current = await profileClient.getProfile(token);
@@ -104,6 +112,7 @@ export async function finalizePhotoUploadAction(input: unknown) {
       data: { ...photo, version: parsed.data.expectedVersion + 1 },
     };
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapError(error) };
   }
 }
@@ -128,4 +137,14 @@ function mapError(error: unknown): ProfileActionError {
   }
   if (error.code.startsWith('PROFILE_PHOTO')) return 'photo';
   return error.code === 'AUTH_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
+}
+
+async function redirectExpiredSession(error: unknown): Promise<void> {
+  if (
+    error instanceof StudentProfileCoreError &&
+    ['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)
+  ) {
+    await clearStudentSessionToken();
+    redirect('/?expired=1');
+  }
 }

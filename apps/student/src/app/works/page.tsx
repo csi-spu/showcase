@@ -63,6 +63,8 @@ export default async function StudentWorksPage({
   const currentPage = page.currentPage;
   const canEdit = auth.session.canUseStudentCapabilities;
   const labels = {
+    actionErrorConflict: t('actionErrorConflict'),
+    actionErrorUnavailable: t('actionErrorUnavailable'),
     archiveConfirm: t('archiveConfirm'),
     more: t('more'),
     placeholder: t('placeholder'),

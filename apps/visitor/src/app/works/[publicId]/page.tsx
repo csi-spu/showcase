@@ -40,6 +40,7 @@ export default async function PublicWorkPage({
             carouselGoToSlide: (index) => t('carouselGoToSlide', { index }),
             carouselNext: t('carouselNext'),
             carouselPrevious: t('carouselPrevious'),
+            imageUnavailable: t('imageUnavailable'),
             category: t(`categories.${work.category}`),
             description: t('description'),
             galleryAlt: (index) => t('galleryAlt', { index, title: work.title }),

@@ -1,6 +1,7 @@
 import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { CatalogError } from '../application/catalog.service';
+import { safeErrorLogFields } from '../../../observability/error-log';
 
 @Catch()
 export class CatalogExceptionFilter implements ExceptionFilter {
@@ -14,10 +15,22 @@ export class CatalogExceptionFilter implements ExceptionFilter {
       return;
     }
     if (error instanceof CatalogError) {
+      if (error.status >= 500) {
+        this.logger.warn({
+          ...safeErrorLogFields(error),
+          errorCode: error.code,
+          operation: 'public_catalog_query_rejected',
+          status: error.status,
+        });
+      }
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
-    this.logger.error({ errorCode: 'CATALOG_INTERNAL_ERROR', operation: 'public_catalog_query' });
+    this.logger.error({
+      ...safeErrorLogFields(error),
+      errorCode: 'CATALOG_INTERNAL_ERROR',
+      operation: 'public_catalog_query',
+    });
     response.status(503).json({ error: { code: 'CATALOG_SERVICE_UNAVAILABLE' } });
   }
 }

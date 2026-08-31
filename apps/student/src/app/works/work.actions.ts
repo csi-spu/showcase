@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
-import { readStudentSessionToken } from '@/lib/student-auth-session';
+import { clearStudentSessionToken, readStudentSessionToken } from '@/lib/student-auth-session';
 import {
   StudentWorksCoreClient,
   StudentWorksCoreError,
@@ -113,6 +113,7 @@ export async function saveWorkDraftAction(input: unknown): Promise<SaveWorkDraft
       work: result.work,
     };
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return actionError(mapMutationError(error));
   }
 }
@@ -134,6 +135,7 @@ export async function searchContributorCandidatesAction(input: unknown) {
       ),
     };
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapContributorError(error) };
   }
 }
@@ -151,7 +153,8 @@ export async function suggestWorkTagsAction(input: unknown) {
       outcome: 'success' as const,
       suggestions: await client().suggestTags(token, parsed.data.query),
     };
-  } catch {
+  } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: 'unavailable' as const, outcome: 'error' as const };
   }
 }
@@ -224,11 +227,12 @@ export async function uploadWorkMediaAction(input: unknown) {
     .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
-    const token = await sessionToken();
     const { publicId, ...authorization } = parsed.data;
     return await client().authorizeMediaUpload(token, publicId, authorization);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapMutationError(error) };
   }
 }
@@ -245,10 +249,12 @@ export async function attachWorkMediaAction(input: unknown) {
     .strict()
     .safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
     const { publicId, ...body } = parsed.data;
-    return await client().attachMedia(await sessionToken(), publicId, body);
+    return await client().attachMedia(token, publicId, body);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapMutationError(error) };
   }
 }
@@ -256,13 +262,11 @@ export async function attachWorkMediaAction(input: unknown) {
 export async function finalizeWorkMediaAction(input: unknown) {
   const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).strict().safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
-    return await client().finalizeMediaUpload(
-      await sessionToken(),
-      parsed.data.publicId,
-      parsed.data.assetId,
-    );
+    return await client().finalizeMediaUpload(token, parsed.data.publicId, parsed.data.assetId);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapMutationError(error) };
   }
 }
@@ -270,13 +274,11 @@ export async function finalizeWorkMediaAction(input: unknown) {
 export async function getWorkMediaStatusAction(input: unknown) {
   const parsed = z.object({ assetId: z.uuid(), publicId: z.uuid() }).strict().safeParse(input);
   if (!parsed.success) return { error: 'invalid' as const };
+  const token = await sessionToken();
   try {
-    return await client().getMediaUploadStatus(
-      await sessionToken(),
-      parsed.data.publicId,
-      parsed.data.assetId,
-    );
+    return await client().getMediaUploadStatus(token, parsed.data.publicId, parsed.data.assetId);
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapMutationError(error) };
   }
 }
@@ -318,31 +320,53 @@ export async function submitLatestWorkAction(input: unknown) {
     revalidatePath(`/works/${publicId}`);
     return { outcome: 'submitted' as const, revisionPublicId: result.revision.publicId };
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapSubmissionError(error) };
   }
 }
 
-export async function archiveSavedDraftAction(input: unknown) {
+export type SavedDraftActionResult =
+  | { error: null; outcome: 'success' }
+  | {
+      error: 'conflict' | 'invalid' | 'unauthenticated' | 'unavailable';
+      outcome: 'error';
+    };
+
+export async function archiveSavedDraftAction(input: unknown): Promise<SavedDraftActionResult> {
   const parsed = savedDraftCommand(input, true);
-  if (!parsed.success) return;
-  await client().archiveSavedDraft(await sessionToken(), parsed.data.publicId, {
-    confirmation: true,
-    expectedVersion: parsed.data.expectedVersion,
-    idempotencyKey: parsed.data.idempotencyKey,
-  });
+  if (!parsed.success) return { error: 'invalid', outcome: 'error' };
+  const token = await sessionToken();
+  try {
+    await client().archiveSavedDraft(token, parsed.data.publicId, {
+      confirmation: true,
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+  } catch (error: unknown) {
+    await redirectExpiredSession(error);
+    return { error: mapSavedDraftError(error), outcome: 'error' };
+  }
   revalidatePath('/');
   revalidatePath('/works');
+  return { error: null, outcome: 'success' };
 }
 
-export async function restoreSavedDraftAction(input: unknown) {
+export async function restoreSavedDraftAction(input: unknown): Promise<SavedDraftActionResult> {
   const parsed = savedDraftCommand(input, false);
-  if (!parsed.success) return;
-  await client().restoreSavedDraft(await sessionToken(), parsed.data.publicId, {
-    expectedVersion: parsed.data.expectedVersion,
-    idempotencyKey: parsed.data.idempotencyKey,
-  });
+  if (!parsed.success) return { error: 'invalid', outcome: 'error' };
+  const token = await sessionToken();
+  try {
+    await client().restoreSavedDraft(token, parsed.data.publicId, {
+      expectedVersion: parsed.data.expectedVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
+  } catch (error: unknown) {
+    await redirectExpiredSession(error);
+    return { error: mapSavedDraftError(error), outcome: 'error' };
+  }
   revalidatePath('/');
   revalidatePath('/works');
+  return { error: null, outcome: 'success' };
 }
 
 export async function withdrawWorkRevisionAction(
@@ -365,17 +389,14 @@ export async function withdrawWorkRevisionAction(
       revisionPublicId,
     });
   if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().withdrawRevision(
-      await sessionToken(),
-      parsed.data.publicId,
-      parsed.data.revisionPublicId,
-      {
-        expectedRevisionVersion: parsed.data.expectedRevisionVersion,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-    );
+    await client().withdrawRevision(token, parsed.data.publicId, parsed.data.revisionPublicId, {
+      expectedRevisionVersion: parsed.data.expectedRevisionVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return revisionFailed(previousState, mapRevisionError(error));
   }
   revalidatePath(`/works/${parsed.data.publicId}`);
@@ -395,12 +416,14 @@ export async function seedPublishedWorkDraftAction(
       publicId,
     });
   if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().seedPublishedDraft(await sessionToken(), parsed.data.publicId, {
+    await client().seedPublishedDraft(token, parsed.data.publicId, {
       expectedPublishedRevisionId: parsed.data.expectedPublishedRevisionId,
       idempotencyKey: parsed.data.idempotencyKey,
     });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return revisionFailed(previousState, mapRevisionError(error));
   }
   revalidatePath(`/works/${parsed.data.publicId}`);
@@ -426,13 +449,15 @@ export async function rebaseWorkDraftAction(
       publicId,
     });
   if (!parsed.success) return revisionFailed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().rebaseDraft(await sessionToken(), parsed.data.publicId, {
+    await client().rebaseDraft(token, parsed.data.publicId, {
       expectedPublishedRevisionId: parsed.data.expectedPublishedRevisionId,
       expectedVersion: parsed.data.expectedVersion,
       idempotencyKey: parsed.data.idempotencyKey,
     });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return revisionFailed(previousState, mapRevisionError(error));
   }
   revalidatePath(`/works/${parsed.data.publicId}`);
@@ -459,13 +484,15 @@ export async function createWorkRemovalRequestAction(
       reason: formData.get('reason'),
     });
   if (!parsed.success) return removalFailed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().createRemovalRequest(await sessionToken(), parsed.data.publicId, {
+    await client().createRemovalRequest(token, parsed.data.publicId, {
       expectedWorkVersion: parsed.data.expectedWorkVersion,
       idempotencyKey: parsed.data.idempotencyKey,
       reason: parsed.data.reason,
     });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return removalFailed(previousState, mapRemovalError(error));
   }
   revalidatePath(`/works/${parsed.data.publicId}`);
@@ -492,12 +519,14 @@ export async function cancelWorkRemovalRequestAction(
       requestPublicId,
     });
   if (!parsed.success) return removalFailed(previousState, 'invalid');
+  const token = await sessionToken();
   try {
-    await client().cancelRemovalRequest(await sessionToken(), parsed.data.requestPublicId, {
+    await client().cancelRemovalRequest(token, parsed.data.requestPublicId, {
       expectedVersion: parsed.data.expectedVersion,
       idempotencyKey: parsed.data.idempotencyKey,
     });
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return removalFailed(previousState, mapRemovalError(error));
   }
   revalidatePath(`/works/${parsed.data.publicId}`);
@@ -535,6 +564,25 @@ function mapMutationError(
   return 'unavailable';
 }
 
+function mapSavedDraftError(
+  error: unknown,
+): Exclude<SavedDraftActionResult, { outcome: 'success' }>['error'] {
+  if (!(error instanceof StudentWorksCoreError)) return 'unavailable';
+  if (error.status === 409) return 'conflict';
+  if (error.code === 'INVALID_REQUEST') return 'invalid';
+  return 'unavailable';
+}
+
+async function redirectExpiredSession(error: unknown): Promise<void> {
+  if (
+    error instanceof StudentWorksCoreError &&
+    ['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)
+  ) {
+    await clearStudentSessionToken();
+    redirect('/?expired=1');
+  }
+}
+
 function mapContributorError(error: unknown) {
   if (!(error instanceof StudentWorksCoreError)) return 'unavailable' as const;
   if (error.code === 'CONTRIBUTOR_LOOKUP_RATE_LIMITED') return 'rate_limited' as const;
@@ -557,6 +605,7 @@ async function contributorMutation<T extends { publicId: string }>(
     revalidatePath(`/works/${input.publicId}`);
     return result;
   } catch (error: unknown) {
+    await redirectExpiredSession(error);
     return { error: mapContributorError(error) };
   }
 }
