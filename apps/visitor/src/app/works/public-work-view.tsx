@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRightIcon, UserRoundIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ImageCarousel } from '@/components/ui/image-carousel';
 import { InteractiveGridPattern } from '@/components/ui/interactive-grid-pattern';
 import type { PublicWork } from '@/lib/public-work-core';
@@ -50,7 +51,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
   return (
     <article className="mx-auto grid w-full max-w-6xl gap-10 lg:gap-14">
       <section className="relative isolate min-h-[28rem] overflow-hidden rounded-media border border-border sm:min-h-[32rem] lg:min-h-[38rem]">
-        <div className="absolute inset-0 -z-20 bg-muted">
+        <div className="absolute inset-0 bg-muted">
           {gallery.length > 0 ? (
             <ImageCarousel
               labels={{ next: labels.carouselNext, previous: labels.carouselPrevious }}
@@ -84,7 +85,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         </div>
         <div
           aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-[linear-gradient(to_top,rgba(10,8,14,0.9)_0%,rgba(10,8,14,0.55)_45%,rgba(10,8,14,0.2)_100%)]"
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(10,8,14,0.9)_0%,rgba(10,8,14,0.55)_45%,rgba(10,8,14,0.2)_100%)]"
         />
 
         <div className="relative grid gap-8 p-6 pb-14 sm:p-8 sm:pb-16 lg:grid-cols-12 lg:items-end lg:gap-10 lg:p-12 lg:pb-16">
@@ -169,53 +170,49 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {work.attributions.map((attribution, index) => (
               <li
-                className="grid gap-3 rounded-media border border-border bg-card p-4"
+                className="grid justify-items-center gap-3 rounded-media border border-border bg-card p-5 text-center transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30"
                 key={`${index}:${attribution.attributionName}`}
               >
-                <div className="flex items-center gap-3">
-                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
-                    <UserRoundIcon aria-hidden="true" className="size-5" />
-                  </span>
-                  <div className="min-w-0">
-                    {attribution.profilePublicId === null ? (
-                      <p className="font-semibold wrap-break-word">{attribution.attributionName}</p>
-                    ) : (
-                      <Link
-                        className="font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-                        href={`/people/${attribution.profilePublicId}`}
-                      >
-                        {attribution.attributionName}
-                      </Link>
-                    )}
-                    {attribution.contributionRole ? (
-                      <p className="text-sm text-muted-foreground">
-                        {attribution.contributionRole}
-                      </p>
-                    ) : null}
-                  </div>
+                <span className="grid size-16 place-items-center rounded-full bg-primary-soft text-primary ring-4 ring-primary/10">
+                  <UserRoundIcon aria-hidden="true" className="size-7" />
+                </span>
+                <div className="grid justify-items-center gap-1.5">
+                  {attribution.profilePublicId === null ? (
+                    <p className="text-lg font-semibold break-words">
+                      {attribution.attributionName}
+                    </p>
+                  ) : (
+                    <Link
+                      className="text-lg font-semibold break-words text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                      href={`/people/${attribution.profilePublicId}`}
+                    >
+                      {attribution.attributionName}
+                    </Link>
+                  )}
+                  {attribution.contributionRole ? (
+                    <Badge variant="secondary">{attribution.contributionRole}</Badge>
+                  ) : null}
                 </div>
                 {attribution.studyYear === null && !attribution.affiliation ? null : (
-                  <p className="text-sm text-muted-foreground">
-                    {[
-                      attribution.studyYear === null
-                        ? null
-                        : labels.studyYear(attribution.studyYear),
-                      attribution.affiliation,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
+                  <div className="grid gap-0.5 text-sm text-muted-foreground">
+                    {attribution.studyYear === null ? null : (
+                      <p>{labels.studyYear(attribution.studyYear)}</p>
+                    )}
+                    {attribution.affiliation ? <p>{attribution.affiliation}</p> : null}
+                  </div>
                 )}
                 {attribution.canRequestRemoval ? (
-                  <AttributionRemovalForm
-                    action={requestAttributionRemovalAction.bind(
-                      null,
-                      work.workPublicId,
-                      attribution.attributionPublicId,
-                    )}
-                    idempotencyKey={crypto.randomUUID()}
-                    labels={labels.removal}
-                  />
+                  <div className="w-full border-t border-border pt-3">
+                    <AttributionRemovalForm
+                      action={requestAttributionRemovalAction.bind(
+                        null,
+                        work.workPublicId,
+                        attribution.attributionPublicId,
+                      )}
+                      idempotencyKey={crypto.randomUUID()}
+                      labels={labels.removal}
+                    />
+                  </div>
                 ) : null}
               </li>
             ))}
@@ -277,26 +274,48 @@ function PosterFrame({
     .join(', ');
 
   return (
-    <div
-      className="mx-auto w-48 overflow-hidden rounded-media border border-white/10 shadow-[0_1.5rem_4rem_-1.5rem_rgba(0,0,0,0.6)] sm:w-56 lg:mx-0 lg:w-full lg:max-w-[17rem]"
-      style={{
-        aspectRatio: `${variant.width} / ${variant.height}`,
-        backgroundColor: media.dominantColor,
-      }}
-    >
-      <picture>
-        <source sizes="(max-width: 1024px) 40vw, 17rem" srcSet={srcSet} type="image/webp" />
-        <Image
-          alt={alt}
-          className="h-full w-full object-contain"
-          height={variant.height}
-          sizes="(max-width: 1024px) 40vw, 17rem"
-          src={source}
-          unoptimized
-          width={variant.width}
-        />
-      </picture>
-    </div>
+    <Dialog>
+      <DialogTrigger
+        className="mx-auto block w-48 cursor-zoom-in overflow-hidden rounded-media border border-white/10 shadow-[0_1.5rem_4rem_-1.5rem_rgba(0,0,0,0.6)] transition-transform duration-200 hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:w-56 lg:mx-0 lg:w-full lg:max-w-[17rem]"
+        style={{
+          aspectRatio: `${variant.width} / ${variant.height}`,
+          backgroundColor: media.dominantColor,
+        }}
+      >
+        <picture>
+          <source sizes="(max-width: 1024px) 40vw, 17rem" srcSet={srcSet} type="image/webp" />
+          <Image
+            alt={alt}
+            className="h-full w-full object-contain"
+            height={variant.height}
+            sizes="(max-width: 1024px) 40vw, 17rem"
+            src={source}
+            unoptimized
+            width={variant.width}
+          />
+        </picture>
+      </DialogTrigger>
+      <DialogContent className="max-w-[calc(100%-2rem)] border-none bg-transparent p-0 shadow-none ring-0 sm:max-w-3xl">
+        <DialogTitle className="sr-only">{alt}</DialogTitle>
+        <div
+          className="overflow-hidden rounded-media"
+          style={{ backgroundColor: media.dominantColor }}
+        >
+          <picture>
+            <source sizes="90vw" srcSet={srcSet} type="image/webp" />
+            <Image
+              alt={alt}
+              className="max-h-[85vh] w-full object-contain"
+              height={variant.height}
+              sizes="90vw"
+              src={source}
+              unoptimized
+              width={variant.width}
+            />
+          </picture>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

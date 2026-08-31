@@ -48,7 +48,7 @@ export function PublicProfileView({
             </h1>
             <p
               className={cn(
-                'max-w-[60ch] text-pretty',
+                'max-w-[60ch] text-pretty break-words',
                 bio ? 'text-foreground/85' : 'text-muted-foreground italic',
               )}
             >
