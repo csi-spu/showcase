@@ -24,12 +24,18 @@ export async function GET(
   );
   if (url === null) return notFound();
 
-  const upstream = await fetch(url, {
-    cache: 'no-store',
-    credentials: 'omit',
-    headers: { accept: 'image/webp' },
-    signal: AbortSignal.timeout(5_000),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: { accept: 'image/webp' },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    console.error('PUBLIC_WORK_MEDIA_FETCH_FAILED', { assetId, publicId, width }, error);
+    return notFound();
+  }
   const declaredLength = Number(upstream.headers.get('content-length'));
   if (
     !upstream.ok ||

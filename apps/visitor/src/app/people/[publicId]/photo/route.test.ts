@@ -22,6 +22,22 @@ describe('public profile photo route', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('returns not-found instead of crashing when the upstream fetch rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
+      'https://media.example.test/profile-media/photo.webp',
+    );
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ publicId: PUBLIC_ID }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it('serves only bounded sanitized WebP after rechecking consent', async () => {
     vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
       'https://media.example.test/profile-media/photo.webp',

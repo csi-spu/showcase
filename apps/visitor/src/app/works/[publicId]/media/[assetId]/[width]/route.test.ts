@@ -37,6 +37,22 @@ describe('published Work media route', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('returns not-found instead of crashing when the upstream fetch rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://r2.example.test/signed-public-media',
+    );
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it('stops reading a variant that exceeds the public media limit', async () => {
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://media.example.test/oversized.webp',

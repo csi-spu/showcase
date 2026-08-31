@@ -13,12 +13,18 @@ export async function GET(
   const photoUrl = await new PublicProfileCoreClient(getVisitorCoreUrl()).getPhotoUrl(publicId);
   if (photoUrl === null) return notFound();
 
-  const upstream = await fetch(photoUrl, {
-    cache: 'no-store',
-    credentials: 'omit',
-    headers: { accept: 'image/webp' },
-    signal: AbortSignal.timeout(5_000),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(photoUrl, {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: { accept: 'image/webp' },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    console.error('PUBLIC_PROFILE_PHOTO_FETCH_FAILED', { publicId }, error);
+    return notFound();
+  }
   const declaredLength = Number(upstream.headers.get('content-length'));
   if (
     !upstream.ok ||
