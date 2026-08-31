@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  BellIcon,
   FilePlus2Icon,
   FolderKanbanIcon,
   HouseIcon,
@@ -19,8 +18,7 @@ import {
   useSidebar,
 } from '@/components/animate-ui/components/radix/sidebar';
 
-export type StudentWorkspacePage =
-  'add-work' | 'dashboard' | 'edit-profile' | 'notifications' | 'works';
+export type StudentWorkspacePage = 'add-work' | 'dashboard' | 'edit-profile' | 'works';
 
 export interface StudentSidebarItem {
   href: string;
@@ -37,7 +35,6 @@ const PAGE_ICONS: Record<StudentWorkspacePage, LucideIcon> = {
   'add-work': FilePlus2Icon,
   dashboard: HouseIcon,
   'edit-profile': UserRoundPenIcon,
-  notifications: BellIcon,
   works: FolderKanbanIcon,
 };
 

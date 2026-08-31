@@ -190,12 +190,6 @@ _Avoid_: Category, keyword
 A newly entered Tag that has not yet appeared on an approved Work. It remains private to the relevant Submitter and Review until `approve_and_publish` activates it; an activated Tag with no current Published Works is retained but hidden from discovery.
 _Avoid_: Draft tag, pending category
 
-## Notifications
-
-**Notification**:
-A private, audience-bound in-app record derived from a durable domain event for an Account-backed Person. It contains a structured type, safe parameters, an authorized target, creation time, and optional read time; it expires after 180 days and is not an audit record.
-_Avoid_: Activity log, audit event, email
-
 **Star**:
 An External Member's saved association with a Work. A Member may Star a Work at most once.
 _Avoid_: Like, favorite

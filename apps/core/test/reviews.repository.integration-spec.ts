@@ -165,16 +165,14 @@ describe('PostgresReviewsRepository integration', () => {
     expect(state).toMatchObject([
       {
         draft_count: 1,
-        event_count: 1,
+        event_count: 0,
         published_revision_id: null,
         review_count: 1,
         revision_status: 'changes_requested',
         revision_version: '2',
       },
     ]);
-    expect(JSON.stringify(state[0]?.event_payload)).not.toContain(
-      'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
-    );
+    expect(state[0]?.event_payload).toBeNull();
     await expect(
       repository.findRevisionMediaObject(REVISION_PUBLIC_ID, POSTER_ID),
     ).resolves.toBeNull();

@@ -109,15 +109,7 @@ describe('Postgres Admin corrections integration', () => {
         reason: 'แก้ไขข้อความสรุปที่คลาดเคลื่อน',
       },
     ]);
-    expect(event[0]).toMatchObject({
-      count: 1,
-      payload: {
-        audience: 'student',
-        recipientAccountIds: [STUDENT_ACCOUNT_ID],
-        type: 'admin_correction_created',
-      },
-    });
-    expect(JSON.stringify({ audit, event })).not.toMatch(/studentId|token|credential/i);
+    expect(event).toEqual([]);
 
     await expect(revisions.createCorrection(correctionInput())).resolves.toMatchObject({
       outcome: 'replayed',
@@ -133,7 +125,7 @@ describe('Postgres Admin corrections integration', () => {
     ).rejects.toMatchObject({ code: '23514' });
   });
 
-  it('serializes equivalent concurrent retries into one audit and one event', async () => {
+  it('serializes equivalent concurrent retries into one audit without a derived event', async () => {
     const results = await Promise.all([
       revisions.createCorrection(correctionInput()),
       revisions.createCorrection(correctionInput()),
@@ -149,7 +141,7 @@ describe('Postgres Admin corrections integration', () => {
               select public_id from private.work_revisions where work_id = ${WORK_ID}
             )) as events
     `;
-    expect(counts).toEqual([{ audits: 1, events: 1 }]);
+    expect(counts).toEqual([{ audits: 1, events: 0 }]);
   });
 
   it('rejects stale, conflicting, archived, and already-pending correction commands', async () => {

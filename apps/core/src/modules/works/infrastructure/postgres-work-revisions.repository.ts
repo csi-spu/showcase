@@ -84,7 +84,6 @@ interface LockedCorrectionRow {
   base_revision_version: string;
   publication_state: 'never_published' | 'published' | 'unpublished';
   published_revision_id: string | null;
-  submitter_account_id: string;
   work_id: string;
 }
 
@@ -172,7 +171,7 @@ export class PostgresWorkRevisionsRepository
         select work.id as work_id, work.activity_state, work.publication_state,
           work.published_revision_id, revision.id as base_revision_id,
           revision.public_id as base_revision_public_id,
-          revision.version as base_revision_version, account.id as submitter_account_id
+          revision.version as base_revision_version
         from public.works as work
         left join private.work_revisions as revision on revision.id = work.published_revision_id
         join public.accounts as account on account.person_id = work.submitter_person_id
@@ -249,20 +248,6 @@ export class PostgresWorkRevisionsRepository
         )
       `;
         await transaction`update public.works set updated_at = ${input.now} where id = ${work.work_id}`;
-        await this.emitEvent(
-          transaction,
-          revision.public_id,
-          'admin_correction_created',
-          {
-            audience: 'student',
-            parameters: { revisionNumber, title: input.candidate.title },
-            recipientAccountIds: [work.submitter_account_id],
-            revisionPublicId: revision.public_id,
-            target: { kind: 'work', workPublicId: input.workPublicId },
-            type: 'admin_correction_created',
-          },
-          input.now,
-        );
         const view = await this.findRevisionById(transaction, revision.id);
         if (view === null) throw new Error('ADMIN_CORRECTION_CREATE_READ_FAILED');
         return { outcome: 'created', revision: view };

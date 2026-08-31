@@ -304,7 +304,7 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
         resultingVersion: Number(resolved.version),
       });
       await refreshPublicWorkCatalog(sql, request.work_id, input.now);
-      await this.emitPublicationEvents(sql, request, correction, work, input.now);
+      await this.emitPublicationEvents(sql, request, correction, input.now);
       return { outcome: 'resolved', request: this.map(resolved) };
     });
   }
@@ -342,51 +342,17 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
   private async emitPublicationEvents(
     sql: postgres.TransactionSql,
     request: RemovalRow,
-    correction: { public_id: string; revision_number: string },
-    work: { submitter_account_id: string; title: string },
+    correction: { public_id: string },
     now: Date,
   ) {
-    const recipients = await sql<Array<{ account_id: string }>>`
-      select account.id as account_id from private.work_revision_attributions as attribution
-      join public.accounts as account on account.person_id = attribution.person_id
-      join private.work_revisions as revision on revision.id = attribution.revision_id
-      where revision.public_id = ${correction.public_id}
-        and attribution.kind in ('submitter', 'account') order by attribution.position
-    `;
     await sql`insert into private.outbox_events (
       aggregate_type, aggregate_id, event_type, payload, occurred_at
     ) values (
       'work_revision', ${correction.public_id}, 'work_revision_published',
       ${sql.json({
-        audience: 'student',
         cacheTargets: { workPublicId: request.work_public_id },
-        parameters: { revisionNumber: Number(correction.revision_number), title: work.title },
-        recipientAccountIds: recipients.map((recipient) => recipient.account_id),
-        revisionPublicId: correction.public_id,
-        target: { kind: 'work', workPublicId: request.work_public_id },
-        type: 'work_published',
       })}, ${now}
     )`;
-    if (request.kind === 'account') {
-      const removedAccounts = await sql<Array<{ id: string }>>`
-        select id from public.accounts where person_id = ${request.person_id} limit 1
-      `;
-      const removed = removedAccounts[0];
-      if (removed !== undefined) {
-        await sql`insert into private.outbox_events (
-          aggregate_type, aggregate_id, event_type, payload, occurred_at
-        ) values (
-          'attribution_removal_request', ${request.public_id}, 'work_attribution_removed',
-          ${sql.json({
-            audience: 'student',
-            parameters: { title: work.title },
-            recipientAccountIds: [removed.id],
-            target: { kind: 'work', workPublicId: request.work_public_id },
-            type: 'work_attribution_removed',
-          })}, ${now}
-        )`;
-      }
-    }
   }
 
   private rows(sql: Sql, condition: postgres.PendingQuery<postgres.Row[]>, limit = 20) {

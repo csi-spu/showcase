@@ -4,15 +4,14 @@
 
 Create two environments, `staging` and `production`. Each contains these Docker Image applications and workers:
 
-| App                      | Image name                         | Container port | Health path        |
-| ------------------------ | ---------------------------------- | -------------: | ------------------ |
-| core                     | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
-| core-media-processor     | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
-| core-cache-worker        | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
-| core-notification-worker | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
-| admin                    | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
-| student                  | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
-| visitor                  | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
+| App                  | Image name                         | Container port | Health path        |
+| -------------------- | ---------------------------------- | -------------: | ------------------ |
+| core                 | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
+| core-media-processor | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
+| core-cache-worker    | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
+| admin                | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
+| student              | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
+| visitor              | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
 
 Give Coolify read-only GHCR access. Configure an initial valid SHA tag before first start. Do not connect these applications to a Git source or enable automatic deploy.
 
@@ -43,8 +42,6 @@ Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_OR
 Create a fifth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares only Core's database/R2 environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
 
 Create a sixth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
-
-Create a seventh non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/notifications/commands/process-notifications.js` continuously, needs only Core's database environment, and restarts on failure. The worker polls idle state once per second, leases one delivery for 30 seconds, retries with bounded backoff up to eight attempts, reconciles missing delivery rows once per minute, and removes expired Notifications in at most ten batches of 1,000 per maintenance pass. Multiple workers are safe through `FOR UPDATE SKIP LOCKED` and the Notification uniqueness constraint. Alert when the oldest pending delivery exceeds 60 seconds, reconciliation creates any missing row, or a delivery reaches `failed`; the originating outbox and audit records must remain retained when 180-day Notification cleanup runs.
 
 Configure Cloudflare to cache eligible Core API and Visitor HTML responses using their origin `Cache-Control`, retain the origin `Cache-Tag` values, and keep private/no-store routes out of shared cache. The cache worker expires matching Next.js data/path cache first and then calls Cloudflare's zone cache-purge API by tag. Media remains capped at five minutes without `stale-if-error`; HTML/API remains capped at two minutes if purge delivery is delayed.
 

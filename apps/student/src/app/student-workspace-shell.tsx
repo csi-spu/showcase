@@ -51,10 +51,7 @@ export async function StudentWorkspaceShell({
   ]);
   const groups: StudentSidebarGroup[] = [
     {
-      items: [
-        { href: '/', label: t('navigation.dashboard'), page: 'dashboard' },
-        { href: '/notifications', label: t('navigation.notifications'), page: 'notifications' },
-      ],
+      items: [{ href: '/', label: t('navigation.dashboard'), page: 'dashboard' }],
       label: t('navigation.overviewGroup'),
     },
     {

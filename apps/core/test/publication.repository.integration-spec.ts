@@ -267,8 +267,6 @@ describe('PostgresPublicationRepository integration', () => {
             tagPublicIds: string[];
             workPublicId: string;
           };
-          parameters: { revisionNumber: number; title: string };
-          type: string;
         };
         draft_lifecycle_state: string;
         publication_state: string;
@@ -314,15 +312,11 @@ describe('PostgresPublicationRepository integration', () => {
     ]);
     expect(state[0]?.catalog_normalized_search).toContain('react');
     expect(state[0]?.event_payload).toMatchObject({
-      audience: 'student',
       cacheTargets: {
         mediaAssetIds: [POSTER_ID],
         tagPublicIds: [expect.any(String)],
         workPublicId: WORK_PUBLIC_ID,
       },
-      parameters: { revisionNumber: 1, title: 'ระบบแนะนำผลงาน' },
-      recipientAccountIds: [STUDENT_ACCOUNT_ID, CONTRIBUTOR_ACCOUNT_ID],
-      target: { kind: 'work', workPublicId: WORK_PUBLIC_ID },
     });
     expect(JSON.stringify(state[0]?.event_payload)).not.toMatch(/studentId|provider/i);
     await expect(
@@ -444,8 +438,6 @@ describe('PostgresPublicationRepository integration', () => {
             tagPublicIds: string[];
             workPublicId: string;
           };
-          parameters: { revisionNumber: number; title: string };
-          type: string;
         };
         old_media_retained: boolean;
         old_revision_retained: boolean;
@@ -473,8 +465,6 @@ describe('PostgresPublicationRepository integration', () => {
       cacheTargets: {
         workPublicId: WORK_PUBLIC_ID,
       },
-      parameters: { revisionNumber: 2, title: 'ผลงานฉบับใหม่' },
-      type: 'work_published',
     });
     expect(eventPayload?.cacheTargets.mediaAssetIds.sort()).toEqual(
       [POSTER_ID, SECOND_POSTER_ID].sort(),

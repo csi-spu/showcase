@@ -24,7 +24,6 @@ interface LockedPublicationRow {
   revision_public_id: string;
   revision_status: 'approved' | 'changes_requested' | 'pending_review' | 'withdrawn';
   revision_version: string;
-  title: string;
   work_id: string;
   work_public_id: string;
 }
@@ -80,7 +79,7 @@ export class PostgresPublicationRepository implements PublicationRepository {
 
         const rows = await transaction<LockedPublicationRow[]>`
           select revision.id, revision.public_id as revision_public_id, revision.revision_number,
-            revision.status as revision_status, revision.version as revision_version, revision.title,
+            revision.status as revision_status, revision.version as revision_version,
             revision.base_published_revision_id,
             work.id as work_id, work.public_id as work_public_id, work.activity_state,
             work.publication_state, work.published_revision_id
@@ -369,28 +368,6 @@ export class PostgresPublicationRepository implements PublicationRepository {
     candidate: LockedPublicationRow,
     now: Date,
   ): Promise<void> {
-    const recipients = await transaction<Array<{ account_id: string }>>`
-      select account.id as account_id
-      from private.work_revision_attributions as attribution
-      join public.accounts as account on account.person_id = attribution.person_id
-      where attribution.revision_id = ${candidate.id}
-        and attribution.kind in ('submitter', 'account')
-      order by attribution.position
-    `;
-    const removedRecipients = await transaction<Array<{ account_id: string }>>`
-      select account.id as account_id
-      from private.work_revision_attributions as previous_attribution
-      join public.accounts as account on account.person_id = previous_attribution.person_id
-      where previous_attribution.revision_id = ${candidate.published_revision_id}
-        and previous_attribution.kind = 'account'
-        and not exists (
-          select 1 from private.work_revision_attributions as current_attribution
-          where current_attribution.revision_id = ${candidate.id}
-            and current_attribution.kind = 'account'
-            and current_attribution.person_id = previous_attribution.person_id
-        )
-      order by account.id
-    `;
     const tags = await transaction<Array<{ public_id: string }>>`
       select distinct tag.public_id
       from private.published_revision_tags as published_tag
@@ -410,40 +387,15 @@ export class PostgresPublicationRepository implements PublicationRepository {
         'work_revision', ${candidate.revision_public_id},
         'work_revision_published',
         ${transaction.json({
-          audience: 'student',
           cacheTargets: {
             mediaAssetIds: media.map((asset) => asset.asset_id),
             tagPublicIds: tags.map((tag) => tag.public_id),
             workPublicId: candidate.work_public_id,
           },
-          parameters: {
-            revisionNumber: Number(candidate.revision_number),
-            title: candidate.title,
-          },
-          recipientAccountIds: recipients.map((recipient) => recipient.account_id),
-          revisionPublicId: candidate.revision_public_id,
-          target: { kind: 'work', workPublicId: candidate.work_public_id },
-          type: 'work_published',
         })},
         ${now}
       )
     `;
-    if (removedRecipients.length > 0) {
-      await transaction`
-        insert into private.outbox_events (
-          aggregate_type, aggregate_id, event_type, payload, occurred_at
-        ) values (
-          'work_revision', ${candidate.revision_public_id}, 'work_attribution_removed',
-          ${transaction.json({
-            audience: 'student',
-            parameters: { title: candidate.title },
-            recipientAccountIds: removedRecipients.map((recipient) => recipient.account_id),
-            target: { kind: 'work', workPublicId: candidate.work_public_id },
-            type: 'work_attribution_removed',
-          })}, ${now}
-        )
-      `;
-    }
   }
 
   private async resolveReplay(

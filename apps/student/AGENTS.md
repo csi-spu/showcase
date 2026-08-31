@@ -15,4 +15,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Profile Consent must be explicit; roster import and Account activation never imply public visibility.
 - One Submitter can edit a Work. Contributors only accept attribution and never gain edit rights.
 - Distinguish Published Revision, current draft, pending Review, and Change Request in state and copy.
-- Place upload controls, forms, and notifications behind the smallest possible client boundary.
+- Place upload controls and forms behind the smallest possible client boundary.

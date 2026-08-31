@@ -42,7 +42,6 @@ vi.mock('next-intl/server', () => ({
       'navigation.label': 'เมนูนักศึกษา',
       'navigation.menuDescription': 'เลือกหน้าที่ต้องการเปิด',
       'navigation.menuTitle': 'เมนูระบบนักศึกษา',
-      'navigation.notifications': 'การแจ้งเตือน',
       'navigation.openMenu': 'เปิดเมนู',
       'navigation.overviewGroup': 'ภาพรวม',
       'navigation.profileGroup': 'โปรไฟล์',

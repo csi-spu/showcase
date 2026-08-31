@@ -14,7 +14,6 @@ interface LockedRevisionRow {
   id: string;
   revision_number: string;
   status: 'approved' | 'changes_requested' | 'pending_review' | 'withdrawn';
-  submitter_account_id: string;
   title: string;
   version: string;
   work_id: string;
@@ -57,7 +56,7 @@ export class PostgresReviewsRepository implements ReviewRepository {
         const rows = await transaction<LockedRevisionRow[]>`
           select revision.id, revision.revision_number, revision.status, revision.title,
             revision.version, work.id as work_id, work.public_id as work_public_id,
-            work.activity_state, submitter_account.id as submitter_account_id
+            work.activity_state
           from private.work_revisions as revision
           join public.works as work on work.id = revision.work_id
           join public.accounts as submitter_account
@@ -107,24 +106,6 @@ export class PostgresReviewsRepository implements ReviewRepository {
         await this.seedDraftFromRevision(transaction, revision.work_id, revision.id, input.now);
         await transaction`
           update public.works set updated_at = ${input.now} where id = ${revision.work_id}
-        `;
-        await transaction`
-          insert into private.outbox_events (
-            aggregate_type, aggregate_id, event_type, payload, occurred_at
-          ) values (
-            'work_revision', ${input.revisionPublicId}, 'work_revision_changes_requested',
-            ${transaction.json({
-              audience: 'student',
-              parameters: {
-                revisionNumber: Number(revision.revision_number),
-                title: revision.title,
-              },
-              recipientAccountId: revision.submitter_account_id,
-              target: { kind: 'work', workPublicId: revision.work_public_id },
-              type: 'work_change_requested',
-            })},
-            ${input.now}
-          ) on conflict (aggregate_type, aggregate_id, event_type) do nothing
         `;
         const review = await this.findReviewById(transaction, reviewId);
         if (review === null) throw new Error('REVIEW_CREATE_READ_FAILED');

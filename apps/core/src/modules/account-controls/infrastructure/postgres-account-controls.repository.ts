@@ -303,21 +303,6 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
           ${input.now}
         )
       `;
-      await transaction`
-        insert into private.outbox_events (
-          aggregate_type, aggregate_id, event_type, payload, occurred_at
-        ) values (
-          'student_access_extension',
-          ${input.idempotencyKey},
-          'student_access_extended',
-          ${transaction.json({
-            accessEndsAcademicYear: input.accessEndsAcademicYear,
-            studentAccountId: input.studentAccountId,
-          })},
-          ${input.now}
-        )
-        on conflict (aggregate_type, aggregate_id, event_type) do nothing
-      `;
       return {
         outcome: 'updated',
         student: {

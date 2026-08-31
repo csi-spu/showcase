@@ -248,7 +248,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
         active_work_count: number;
         audit_count: number;
         catalog_count: number;
-        event_payload: { cacheTargets: { workPublicId: string }; recipientAccountIds: string[] };
+        event_payload: { cacheTargets: { workPublicId: string } };
         publication_state: string;
         published_revision_id: string;
         request_count: number;
@@ -274,18 +274,13 @@ describe('PostgresWorkRecoveryRepository integration', () => {
     expect(rows[0]?.catalog_count).toBe(0);
     expect(rows[0]?.event_payload).toMatchObject({
       cacheTargets: { workPublicId: WORK_PUBLIC_ID },
-      recipientAccountIds: [STUDENT_ACCOUNT_ID],
     });
     const contributorEvents = await database.sql<Array<{ payload: unknown }>>`
       select payload from private.outbox_events
       where aggregate_type = 'work_recovery' and aggregate_id = ${created.request.publicId}
         and event_type = 'work_unpublish'
     `;
-    expect(contributorEvents).toHaveLength(1);
-    expect(contributorEvents[0]?.payload).toMatchObject({
-      recipientAccountIds: [CONTRIBUTOR_ACCOUNT_ID],
-      type: 'work_unpublish',
-    });
+    expect(contributorEvents).toHaveLength(0);
     expect(rows[0]?.publication_state).toBe('unpublished');
     expect(rows[0]?.published_revision_id).toBe(REVISION_ID);
     expect(rows[0]?.request_count).toBe(1);
@@ -346,7 +341,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
     ]);
   });
 
-  it('declines with retained reason and emits only a private decision intent', async () => {
+  it('declines with retained reason without creating a derived delivery intent', async () => {
     const created = await repository.createRemovalRequest({
       actorAccountId: STUDENT_ACCOUNT_ID,
       expectedWorkVersion: 1,
@@ -375,12 +370,7 @@ describe('PostgresWorkRecoveryRepository integration', () => {
       select payload from private.outbox_events
       where aggregate_id = ${created.request.publicId} and event_type = 'removal_request_declined'
     `;
-    expect(events).toHaveLength(1);
-    expect(events[0]?.payload).toMatchObject({
-      recipientAccountIds: [STUDENT_ACCOUNT_ID],
-      type: 'removal_request_declined',
-    });
-    expect(JSON.stringify(events)).not.toMatch(/studentId|credential|token/i);
+    expect(events).toHaveLength(0);
   });
 
   function transitionInput(
