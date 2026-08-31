@@ -3,8 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRightIcon, UserRoundIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { BlurFade } from '@/components/ui/blur-fade';
-import { InteractiveGridPattern } from '@/components/ui/interactive-grid-pattern';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PublicWork } from '@/lib/public-work-core';
 import { WorkPosterFallback } from '../catalog-artwork';
 import { VideoEmbed } from '../video-embed';
@@ -13,16 +12,20 @@ import { AttributionRemovalForm } from './[publicId]/attribution-removal-form';
 
 interface PublicWorkLabels {
   academicPeriod: string;
+  academicPeriodLabel: string;
   attributions: string;
   category: string;
+  categoryLabel: string;
   description: string;
-  gallery: string;
   galleryAlt(index: number): string;
+  information: string;
   links: string;
+  media: string;
   missingAttributions: string;
   missingPoster: string;
   posterAlt: string;
   publishedAt: string;
+  publishedAtLabel: string;
   removal: Record<
     | 'heading'
     | 'help'
@@ -45,187 +48,228 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
   const gallery = work.media.filter((media) => media.kind === 'gallery');
 
   return (
-    <article className="grid gap-8 lg:gap-12">
-      <BlurFade blur="8px" duration={0.45}>
-        <section className="relative isolate grid overflow-hidden rounded-media border border-border bg-card shadow-[0_2rem_5rem_-3rem_color-mix(in_oklch,var(--primary),transparent_50%)] lg:grid-cols-12">
-          <InteractiveGridPattern
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 right-0 left-auto -z-10 h-full w-4/5 border-0 opacity-55 [mask-image:linear-gradient(to_left,black,transparent_88%)]"
-            squares={[16, 14]}
-            squaresClassName="stroke-primary/10"
-            tabIndex={-1}
-          />
-          <header className="grid content-center gap-5 px-5 py-10 sm:px-8 sm:py-12 lg:col-span-7 lg:px-12 lg:py-16">
-            <Badge className="w-fit" variant="outline">
-              {labels.category}
-            </Badge>
-            <h1 className="text-[clamp(2.6rem,6vw,5rem)] leading-[1.08] font-semibold tracking-[-0.05em] text-balance">
-              {work.title}
-            </h1>
-            <p className="max-w-2xl text-xl leading-[1.7] text-muted-foreground text-pretty">
-              {work.summary}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{labels.academicPeriod}</Badge>
-              <span className="text-sm text-muted-foreground">{labels.publishedAt}</span>
-            </div>
-            {work.tags.length > 0 ? (
-              <ul className="flex flex-wrap gap-2" aria-label={labels.tagsLabel}>
-                {work.tags.map((tag) => (
-                  <li key={tag.publicId}>
-                    <Badge render={<Link href={`/tags/${tag.publicId}`} />} variant="outline">
-                      {tag.displayLabel}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </header>
+    <div className="mx-auto grid w-full max-w-6xl gap-6">
+      <header className="grid max-w-4xl gap-3">
+        <p className="text-sm font-semibold tracking-[0.16em] text-primary">{labels.category}</p>
+        <h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.12] font-semibold tracking-[-0.035em] text-balance">
+          {work.title}
+        </h1>
+        <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground text-pretty">
+          {work.summary}
+        </p>
+      </header>
 
-          <div className="grid content-center justify-items-center border-t border-border bg-muted p-6 sm:p-8 lg:col-span-5 lg:border-t-0 lg:border-l lg:p-10">
-            {poster ? (
-              <MediaImage
-                alt={labels.posterAlt}
-                className="w-full max-w-64 self-center sm:max-w-72 lg:max-w-80"
-                media={poster}
-                sizes="(max-width: 1024px) 55vw, 22vw"
-                workPublicId={work.workPublicId}
-              />
-            ) : (
-              <div
-                className="group relative aspect-[3/4] w-full max-w-64 sm:max-w-72 lg:max-w-80"
-                data-poster-fallback="true"
-              >
-                <WorkPosterFallback title={work.title} variant={0} />
-                <p className="absolute inset-x-4 bottom-4 rounded-control border border-border bg-background/85 px-4 py-3 text-center font-medium text-muted-foreground backdrop-blur-sm">
-                  {labels.missingPoster}
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
-      </BlurFade>
-
-      <div className="grid gap-8 lg:grid-cols-12">
-        <BlurFade className="lg:col-span-7" blur="5px" duration={0.4} inView>
-          <section className="grid h-full gap-6 rounded-media border border-border bg-card p-5 sm:p-8 lg:p-10">
-            <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.description}</h2>
-            <p className="max-w-[65ch] whitespace-pre-wrap text-lg leading-[1.85] text-pretty">
-              {work.description}
-            </p>
-          </section>
-        </BlurFade>
-
-        <BlurFade className="lg:col-span-5" blur="5px" delay={0.06} duration={0.4} inView>
-          <section className="grid h-full content-start gap-5 rounded-media border border-border bg-card p-5 sm:p-8 lg:p-10">
-            <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.attributions}</h2>
-            {work.attributions.length > 0 ? (
-              <ul className="grid gap-3">
-                {work.attributions.map((attribution, index) => (
-                  <li
-                    className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-control border border-border bg-background p-4"
-                    key={`${index}:${attribution.attributionName}`}
-                  >
-                    <span className="grid size-10 place-items-center rounded-full bg-primary-soft text-primary">
-                      <UserRoundIcon aria-hidden="true" className="size-5" />
-                    </span>
-                    <div className="min-w-0">
-                      {attribution.profilePublicId === null ? (
-                        <p className="font-medium">{attribution.attributionName}</p>
-                      ) : (
-                        <Link
-                          className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-                          href={`/people/${attribution.profilePublicId}`}
-                        >
-                          {attribution.attributionName}
-                        </Link>
-                      )}
-                      {attribution.studyYear === null ? null : (
-                        <p className="text-sm text-muted-foreground">
-                          {labels.studyYear(attribution.studyYear)}
-                        </p>
-                      )}
-                      {attribution.contributionRole ? <p>{attribution.contributionRole}</p> : null}
-                      {attribution.affiliation ? (
-                        <p className="text-sm text-muted-foreground">{attribution.affiliation}</p>
-                      ) : null}
-                      {attribution.canRequestRemoval ? (
-                        <AttributionRemovalForm
-                          action={requestAttributionRemovalAction.bind(
-                            null,
-                            work.workPublicId,
-                            attribution.attributionPublicId,
-                          )}
-                          idempotencyKey={crypto.randomUUID()}
-                          labels={labels.removal}
-                        />
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="grid min-h-32 place-items-center rounded-media border border-dashed border-border bg-muted/35 px-5 text-center text-muted-foreground">
-                <p>{labels.missingAttributions}</p>
-              </div>
-            )}
-          </section>
-        </BlurFade>
-      </div>
-
-      {gallery.length > 0 ? (
-        <BlurFade blur="5px" duration={0.4} inView>
-          <section className="grid gap-6 rounded-media border border-border bg-card p-5 sm:p-8 lg:p-10">
-            <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.gallery}</h2>
-            <div className="grid gap-4 md:grid-cols-12">
-              {gallery.map((media, index) => (
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
+        <main className="grid min-w-0 gap-6">
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle>
+                <h2>{labels.media}</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-12">
+              {poster ? (
                 <MediaImage
-                  alt={labels.galleryAlt(index + 1)}
-                  className={index === 0 ? 'md:col-span-7' : 'md:col-span-5'}
-                  key={media.assetId}
-                  media={media}
-                  sizes="(max-width: 768px) 100vw, 50vw"
+                  alt={labels.posterAlt}
+                  className={gallery.length === 0 ? 'md:col-span-12' : 'md:col-span-7'}
+                  media={poster}
+                  sizes="(max-width: 768px) 100vw, 58vw"
                   workPublicId={work.workPublicId}
                 />
-              ))}
-            </div>
-          </section>
-        </BlurFade>
-      ) : null}
+              ) : (
+                <div
+                  className={cn(
+                    'group relative aspect-[3/4] overflow-hidden rounded-media border border-border',
+                    gallery.length === 0 ? 'md:col-span-12' : 'md:col-span-7',
+                  )}
+                  data-poster-fallback="true"
+                >
+                  <WorkPosterFallback title={work.title} variant={0} />
+                  <p className="absolute inset-x-4 bottom-4 rounded-control border border-border bg-background/85 px-4 py-3 text-center font-medium text-muted-foreground backdrop-blur-sm">
+                    {labels.missingPoster}
+                  </p>
+                </div>
+              )}
+              {gallery.length === 0 ? null : (
+                <div
+                  className={cn(
+                    'grid gap-4',
+                    poster ? 'md:col-span-5' : 'md:col-span-12 sm:grid-cols-2',
+                  )}
+                >
+                  {gallery.map((media, index) => (
+                    <MediaImage
+                      alt={labels.galleryAlt(index + 1)}
+                      key={media.assetId}
+                      media={media}
+                      sizes="(max-width: 768px) 100vw, 34vw"
+                      workPublicId={work.workPublicId}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      {work.videoLinks.length > 0 ? (
-        <BlurFade blur="5px" duration={0.4} inView>
-          <section className="grid gap-6 rounded-media border border-border bg-card p-5 sm:p-8 lg:p-10">
-            <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.videos}</h2>
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {work.videoLinks.map((video, index) => (
-                <VideoEmbed
-                  key={`${video.provider}-${video.providerVideoId}`}
-                  title={labels.videoAlt(index + 1)}
-                  video={video}
-                />
-              ))}
-            </div>
-          </section>
-        </BlurFade>
-      ) : null}
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle>
+                <h2>{labels.description}</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="max-w-[72ch] whitespace-pre-wrap text-base leading-8 text-pretty">
+                {work.description}
+              </p>
+            </CardContent>
+          </Card>
 
-      {work.links.length > 0 ? <LinkList heading={labels.links} links={work.links} /> : null}
-    </article>
+          {work.videoLinks.length === 0 ? null : (
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>
+                  <h2>{labels.videos}</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                {work.videoLinks.map((video, index) => (
+                  <VideoEmbed
+                    key={`${video.provider}-${video.providerVideoId}`}
+                    title={labels.videoAlt(index + 1)}
+                    video={video}
+                  />
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {work.links.length === 0 ? null : (
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>
+                  <h2>{labels.links}</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LinkList links={work.links} />
+              </CardContent>
+            </Card>
+          )}
+        </main>
+
+        <aside className="grid gap-6 xl:sticky xl:top-24">
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle>
+                <h2>{labels.information}</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-0">
+                <InformationRow label={labels.categoryLabel} value={labels.category} />
+                <InformationRow label={labels.academicPeriodLabel} value={labels.academicPeriod} />
+                <InformationRow label={labels.publishedAtLabel} value={labels.publishedAt} />
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle>
+                <h2>{labels.attributions}</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {work.attributions.length > 0 ? (
+                <ul className="grid gap-3">
+                  {work.attributions.map((attribution, index) => (
+                    <li
+                      className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-control border border-border bg-background p-3"
+                      key={`${index}:${attribution.attributionName}`}
+                    >
+                      <span className="grid size-9 place-items-center rounded-full bg-primary-soft text-primary">
+                        <UserRoundIcon aria-hidden="true" className="size-4" />
+                      </span>
+                      <div className="min-w-0">
+                        {attribution.profilePublicId === null ? (
+                          <p className="font-medium wrap-break-word">
+                            {attribution.attributionName}
+                          </p>
+                        ) : (
+                          <Link
+                            className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                            href={`/people/${attribution.profilePublicId}`}
+                          >
+                            {attribution.attributionName}
+                          </Link>
+                        )}
+                        {attribution.contributionRole ? (
+                          <p className="text-sm">{attribution.contributionRole}</p>
+                        ) : null}
+                        {attribution.studyYear === null ? null : (
+                          <p className="text-sm text-muted-foreground">
+                            {labels.studyYear(attribution.studyYear)}
+                          </p>
+                        )}
+                        {attribution.affiliation ? (
+                          <p className="text-sm text-muted-foreground">{attribution.affiliation}</p>
+                        ) : null}
+                        {attribution.canRequestRemoval ? (
+                          <AttributionRemovalForm
+                            action={requestAttributionRemovalAction.bind(
+                              null,
+                              work.workPublicId,
+                              attribution.attributionPublicId,
+                            )}
+                            idempotencyKey={crypto.randomUUID()}
+                            labels={labels.removal}
+                          />
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">{labels.missingAttributions}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {work.tags.length === 0 ? null : (
+            <Card>
+              <CardHeader className="border-b">
+                <CardTitle>
+                  <h2>{labels.tagsLabel}</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="flex flex-wrap gap-2">
+                  {work.tags.map((tag) => (
+                    <li key={tag.publicId}>
+                      <Badge render={<Link href={`/tags/${tag.publicId}`} />} variant="outline">
+                        {tag.displayLabel}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </aside>
+      </div>
+    </div>
   );
 }
 
 function MediaImage({
   alt,
-  className,
-  fill = false,
+  className = '',
   media,
   sizes,
   workPublicId,
 }: {
   alt: string;
   className?: string;
-  fill?: boolean;
   media: PublicWork['media'][number];
   sizes: string;
   workPublicId: string;
@@ -242,53 +286,52 @@ function MediaImage({
 
   return (
     <div
-      className={cn('overflow-hidden rounded-media bg-muted', className)}
+      className={cn(
+        'grid place-items-center overflow-hidden rounded-media border border-border bg-muted',
+        className,
+      )}
       style={{ backgroundColor: media.dominantColor }}
     >
       <picture>
         <source sizes={sizes} srcSet={srcSet} type="image/webp" />
         <Image
           alt={alt}
-          className={fill ? 'object-contain' : 'h-auto w-full'}
-          {...(fill ? { fill: true } : { height: variant.height, width: variant.width })}
+          className="h-auto max-h-[38rem] w-full object-contain"
+          height={variant.height}
           sizes={sizes}
           src={source}
           unoptimized
+          width={variant.width}
         />
       </picture>
     </div>
   );
 }
 
-function LinkList({
-  heading,
-  links,
-}: {
-  heading: string;
-  links: Array<{ label: string; url: string }>;
-}) {
+function InformationRow({ label, value }: { label: string; value: string }) {
   return (
-    <BlurFade blur="5px" duration={0.4} inView>
-      <section className="grid gap-4 rounded-media border border-border bg-card p-5 sm:p-8">
-        <h2 className="text-3xl font-semibold tracking-[-0.03em]">{heading}</h2>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {links.map((link) => (
-            <li key={link.url}>
-              <a
-                className="group flex min-h-14 items-center justify-between gap-3 rounded-control border border-border bg-background px-4 font-medium text-primary transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/35 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary motion-reduce:transform-none"
-                href={link.url}
-                rel="external noopener noreferrer"
-              >
-                {link.label}
-                <ArrowUpRightIcon
-                  aria-hidden="true"
-                  className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none"
-                />
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </BlurFade>
+    <div className="grid gap-1 border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+      <dt className="text-xs font-medium tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function LinkList({ links }: { links: Array<{ label: string; url: string }> }) {
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {links.map((link) => (
+        <li key={link.url}>
+          <a
+            className="flex min-h-11 items-center justify-between gap-3 rounded-control border border-border bg-background px-4 py-2 font-medium text-primary hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            href={link.url}
+            rel="external noopener noreferrer"
+          >
+            <span className="truncate">{link.label}</span>
+            <ArrowUpRightIcon aria-hidden="true" className="size-4 shrink-0" />
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }

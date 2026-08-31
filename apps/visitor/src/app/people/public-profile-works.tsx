@@ -18,15 +18,15 @@ export function PublicProfileWorks({
 }) {
   return (
     <BlurFade blur="5px" duration={0.4} inView>
-      <section className="grid gap-6 border-t border-border pt-8" aria-labelledby="profile-works">
-        <header className="grid gap-3">
-          <h2
-            className="text-[clamp(2.25rem,4vw,3.75rem)] leading-[1.08] font-semibold tracking-[-0.05em] text-balance"
-            id="profile-works"
-          >
+      <section
+        className="mx-auto grid w-full max-w-6xl gap-6 border-t border-border pt-8"
+        aria-labelledby="profile-works"
+      >
+        <header className="grid gap-1">
+          <h2 className="text-2xl font-semibold tracking-tight" id="profile-works">
             {labels.heading}
           </h2>
-          <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground text-pretty">
+          <p className="max-w-2xl text-sm text-muted-foreground text-pretty">
             {labels.description}
           </p>
         </header>
