@@ -8,7 +8,10 @@ const dependencies = vi.hoisted(() => ({
   searchContributorCandidates: vi.fn(),
   suggestTags: vi.fn(),
   StudentWorksCoreError: class extends Error {
-    constructor(readonly code: string, readonly status: number) {
+    constructor(
+      readonly code: string,
+      readonly status: number,
+    ) {
       super(code);
     }
   },

@@ -131,7 +131,7 @@ export async function decideAttributionRemovalRequestAction(
       expectedRequestVersion: formData.get('expectedRequestVersion'),
       idempotencyKey: formData.get('idempotencyKey'),
       requestPublicId,
-  });
+    });
   if (!parsed.success) return failed(previousState, 'invalid');
   const token = await sessionToken();
   try {

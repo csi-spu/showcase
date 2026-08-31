@@ -391,15 +391,10 @@ export async function withdrawWorkRevisionAction(
   if (!parsed.success) return revisionFailed(previousState, 'invalid');
   const token = await sessionToken();
   try {
-    await client().withdrawRevision(
-      token,
-      parsed.data.publicId,
-      parsed.data.revisionPublicId,
-      {
-        expectedRevisionVersion: parsed.data.expectedRevisionVersion,
-        idempotencyKey: parsed.data.idempotencyKey,
-      },
-    );
+    await client().withdrawRevision(token, parsed.data.publicId, parsed.data.revisionPublicId, {
+      expectedRevisionVersion: parsed.data.expectedRevisionVersion,
+      idempotencyKey: parsed.data.idempotencyKey,
+    });
   } catch (error: unknown) {
     await redirectExpiredSession(error);
     return revisionFailed(previousState, mapRevisionError(error));

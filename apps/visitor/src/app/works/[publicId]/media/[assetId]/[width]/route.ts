@@ -19,11 +19,7 @@ export async function GET(
   const { assetId, publicId, width } = parsed.data;
   let url: string | null;
   try {
-    url = await new PublicWorkCoreClient(getVisitorCoreUrl()).getMediaUrl(
-      publicId,
-      assetId,
-      width,
-    );
+    url = await new PublicWorkCoreClient(getVisitorCoreUrl()).getMediaUrl(publicId, assetId, width);
   } catch (error) {
     console.error('PUBLIC_WORK_MEDIA_URL_FAILED', { assetId, publicId, width }, error);
     return unavailable();
