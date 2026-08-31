@@ -3,12 +3,16 @@
 import { Button, buttonVariants } from '@showcase/ui/button';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { ArrowUpRightIcon, Clock3Icon, EllipsisIcon, ImageOffIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkListItem } from '@/lib/student-works-core';
-import { archiveSavedDraftAction, restoreSavedDraftAction } from './work.actions';
+import {
+  archiveSavedDraftAction,
+  restoreSavedDraftAction,
+  type SavedDraftActionResult,
+} from './work.actions';
 
 export function StudentWorkList({
   canEdit,
@@ -141,6 +145,7 @@ function SecondaryActions({
   work: WorkListItem;
 }) {
   const [pending, start] = useTransition();
+  const [error, setError] = useState<SavedDraftActionResult['error'] | null>(null);
   if (work.secondaryActions.length === 0 && work.primaryAction !== 'return_to_editing') return null;
   return (
     <details className="absolute top-4 right-4 z-20">
@@ -161,11 +166,16 @@ function SecondaryActions({
             disabled={pending}
             onClick={() =>
               start(async () => {
-                await restoreSavedDraftAction({
+                setError(null);
+                const result = await restoreSavedDraftAction({
                   expectedVersion: work.version,
                   idempotencyKey: crypto.randomUUID(),
                   publicId: work.publicId,
                 });
+                if (result.outcome === 'error') {
+                  setError(result.error);
+                  return;
+                }
                 window.location.reload();
               })
             }
@@ -183,12 +193,17 @@ function SecondaryActions({
               onClick={() => {
                 if (window.confirm(labels.archiveConfirm))
                   start(async () => {
-                    await archiveSavedDraftAction({
+                    setError(null);
+                    const result = await archiveSavedDraftAction({
                       confirmation: true,
                       expectedVersion: work.version,
                       idempotencyKey: crypto.randomUUID(),
                       publicId: work.publicId,
                     });
+                    if (result.outcome === 'error') {
+                      setError(result.error);
+                      return;
+                    }
                     window.location.reload();
                   });
               }}
@@ -208,6 +223,15 @@ function SecondaryActions({
           ),
         )}
       </div>
+      {error !== null ? (
+        <p
+          aria-live="assertive"
+          className="absolute top-full right-0 z-30 mt-2 w-64 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {error === 'conflict' ? labels.actionErrorConflict : labels.actionErrorUnavailable}
+        </p>
+      ) : null}
     </details>
   );
 }

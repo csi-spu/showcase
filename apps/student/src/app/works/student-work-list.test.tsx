@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkListItem } from '@/lib/student-works-core';
 import { StudentWorkList } from './student-work-list';
@@ -80,16 +81,39 @@ describe('StudentWorkList', () => {
     expect(screen.queryByText('เพิ่มเติม')).toBeNull();
     expect(screen.queryByText('สร้างฉบับแก้ไข')).toBeNull();
   });
+
+  it('shows a recoverable error when restoring a saved draft fails', async () => {
+    const restore = vi.mocked((await import('./work.actions')).restoreSavedDraftAction);
+    restore.mockResolvedValue({ error: 'conflict', outcome: 'error' });
+    const user = userEvent.setup();
+    render(
+      <StudentWorkList
+        canEdit
+        items={[
+          item({
+            primaryAction: 'return_to_editing',
+            publicationState: 'never_published',
+          }),
+        ]}
+        labels={labels}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'กลับไปแก้ไข' }));
+    expect(screen.getByRole('alert').textContent).toContain('ข้อมูลเปลี่ยนแล้ว');
+  });
 });
 
 const labels: Record<string, string> = {
   archiveConfirm: 'ยืนยัน',
+  actionErrorConflict: 'ข้อมูลเปลี่ยนแล้ว',
+  actionErrorUnavailable: 'ดำเนินการไม่ได้',
   more: 'เพิ่มเติม',
   placeholder: 'ยังไม่มีชื่อ',
   posterFallback: 'ไม่มีโปสเตอร์',
   updatedAt: 'อัปเดต',
   'actions.continue_editing': 'แก้ไขต่อ',
   'actions.create_new_revision': 'สร้างฉบับแก้ไข',
+  'actions.return_to_editing': 'กลับไปแก้ไข',
   'actions.view_public_work': 'ดูผลงานสาธารณะ',
   'activity.active': 'ใช้งาน',
   'publication.never_published': 'ยังไม่เคยเผยแพร่',

@@ -2,6 +2,7 @@ import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } fr
 import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
 import { AccountControlsError } from '../application/account-controls.service';
+import { safeErrorLogFields } from '../../../observability/error-log';
 
 @Catch()
 export class AccountControlsExceptionFilter implements ExceptionFilter {
@@ -14,10 +15,19 @@ export class AccountControlsExceptionFilter implements ExceptionFilter {
       return;
     }
     if (error instanceof AuthError || error instanceof AccountControlsError) {
+      if (error.status >= 500) {
+        this.logger.warn({
+          ...safeErrorLogFields(error),
+          errorCode: error.code,
+          operation: 'account_controls_request_rejected',
+          status: error.status,
+        });
+      }
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
     this.logger.error({
+      ...safeErrorLogFields(error),
       errorCode: 'ACCOUNT_CONTROLS_INTERNAL_ERROR',
       operation: 'account_controls_request',
     });

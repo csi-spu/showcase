@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dependencies = vi.hoisted(() => ({
   createWork: vi.fn(),
+  archiveSavedDraft: vi.fn(),
+  restoreSavedDraft: vi.fn(),
   readToken: vi.fn(),
   revalidate: vi.fn(),
   searchContributorCandidates: vi.fn(),
   suggestTags: vi.fn(),
+  StudentWorksCoreError: class extends Error {
+    constructor(readonly code: string, readonly status: number) {
+      super(code);
+    }
+  },
 }));
 vi.mock('next/cache', () => ({ revalidatePath: dependencies.revalidate }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
@@ -17,16 +24,17 @@ vi.mock('@/lib/server-environment', () => ({
 vi.mock('@/lib/student-auth-session', () => ({ readStudentSessionToken: dependencies.readToken }));
 vi.mock('@/lib/student-works-core', () => ({
   StudentWorksCoreClient: class {
+    archiveSavedDraft = dependencies.archiveSavedDraft;
     createWork = dependencies.createWork;
+    restoreSavedDraft = dependencies.restoreSavedDraft;
     searchContributorCandidates = dependencies.searchContributorCandidates;
     suggestTags = dependencies.suggestTags;
   },
-  StudentWorksCoreError: class extends Error {
-    code = 'TEST';
-    status = 500;
-  },
+  StudentWorksCoreError: dependencies.StudentWorksCoreError,
 }));
 import {
+  archiveSavedDraftAction,
+  restoreSavedDraftAction,
   saveWorkDraftAction,
   searchContributorCandidatesAction,
   suggestWorkTagsAction,
@@ -150,5 +158,47 @@ describe('suggestWorkTagsAction', () => {
       outcome: 'error',
     });
     expect(dependencies.suggestTags).not.toHaveBeenCalled();
+  });
+});
+
+describe('saved draft actions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencies.readToken.mockResolvedValue('session');
+  });
+
+  it('returns a conflict state when archiving races with another edit', async () => {
+    dependencies.archiveSavedDraft.mockRejectedValue(
+      new dependencies.StudentWorksCoreError('WORK_VERSION_CONFLICT', 409),
+    );
+
+    await expect(
+      archiveSavedDraftAction({
+        confirmation: true,
+        expectedVersion: 2,
+        idempotencyKey: '64000000-0000-4000-8000-000000000002',
+        publicId: '64000000-0000-4000-8000-000000000001',
+      }),
+    ).resolves.toEqual({ error: 'conflict', outcome: 'error' });
+  });
+
+  it('returns success after restoring a saved draft', async () => {
+    dependencies.restoreSavedDraft.mockResolvedValue({
+      outcome: 'restored',
+      work: {
+        activityState: 'active',
+        publicationState: 'never_published',
+        publicId: '64000000-0000-4000-8000-000000000001',
+        version: 3,
+      },
+    });
+
+    await expect(
+      restoreSavedDraftAction({
+        expectedVersion: 2,
+        idempotencyKey: '64000000-0000-4000-8000-000000000002',
+        publicId: '64000000-0000-4000-8000-000000000001',
+      }),
+    ).resolves.toEqual({ error: null, outcome: 'success' });
   });
 });

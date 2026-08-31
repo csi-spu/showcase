@@ -27,10 +27,13 @@ describe('AuthExceptionFilter', () => {
     expect(json).toHaveBeenCalledWith({
       error: { code: 'AUTH_SERVICE_UNAVAILABLE' },
     });
-    expect(logger).toHaveBeenCalledWith({
-      errorCode: 'AUTH_INTERNAL_ERROR',
-      operation: 'authentication_request',
-    });
+    expect(logger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'AUTH_INTERNAL_ERROR',
+        operation: 'authentication_request',
+        errorName: 'Error',
+      }),
+    );
     expect(JSON.stringify(logger.mock.calls)).not.toContain('provider-token');
   });
 });

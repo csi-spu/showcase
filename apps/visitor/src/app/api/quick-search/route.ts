@@ -39,7 +39,11 @@ export function createQuickSearchHandler(catalog: QuickSearchCatalog) {
         },
         { headers: NO_STORE_HEADERS },
       );
-    } catch {
+    } catch (error: unknown) {
+      console.error('QUICK_SEARCH_FAILED', {
+        errorName: error instanceof Error ? error.name : 'UNKNOWN',
+        operation: 'visitor_quick_search',
+      });
       return Response.json(
         { error: { code: 'QUICK_SEARCH_UNAVAILABLE' } },
         { headers: NO_STORE_HEADERS, status: 503 },
@@ -52,7 +56,11 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const handler = createQuickSearchHandler(new PublicCatalogCoreClient(getVisitorCoreUrl()));
     return await handler(request);
-  } catch {
+  } catch (error: unknown) {
+    console.error('QUICK_SEARCH_CONFIGURATION_FAILED', {
+      errorName: error instanceof Error ? error.name : 'UNKNOWN',
+      operation: 'visitor_quick_search',
+    });
     return Response.json(
       { error: { code: 'QUICK_SEARCH_UNAVAILABLE' } },
       { headers: NO_STORE_HEADERS, status: 503 },

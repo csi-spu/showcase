@@ -21,6 +21,7 @@ interface PublicWorkLabels {
   category: string;
   description: string;
   galleryAlt(index: number): string;
+  imageUnavailable: string;
   links: string;
   missingAttributions: string;
   missingPoster: string;
@@ -54,7 +55,11 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         <div className="absolute inset-0 bg-muted">
           {gallery.length > 0 ? (
             <ImageCarousel
-              labels={{ next: labels.carouselNext, previous: labels.carouselPrevious }}
+              labels={{
+                imageUnavailable: labels.imageUnavailable,
+                next: labels.carouselNext,
+                previous: labels.carouselPrevious,
+              }}
               slides={gallery.flatMap((media, index) => {
                 const variant = media.variants.at(-1);
                 if (variant === undefined) return [];

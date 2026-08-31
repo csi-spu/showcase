@@ -102,6 +102,7 @@ describe('Visitor quick search route', () => {
   });
 
   it('returns a stable unavailable response when Core cannot be reached', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const handler = createQuickSearchHandler({
       listPeople: vi.fn().mockRejectedValue(new Error('unavailable')),
       listWorks: vi.fn().mockRejectedValue(new Error('unavailable')),
@@ -111,5 +112,9 @@ describe('Visitor quick search route', () => {
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: { code: 'QUICK_SEARCH_UNAVAILABLE' } });
+    expect(console.error).toHaveBeenCalledWith('QUICK_SEARCH_FAILED', {
+      errorName: 'Error',
+      operation: 'visitor_quick_search',
+    });
   });
 });

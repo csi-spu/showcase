@@ -53,6 +53,42 @@ describe('published Work media route', () => {
     expect(response.status).toBe(404);
   });
 
+  it('returns a service error and logs when Core cannot authorize the media URL', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockRejectedValue(
+      new Error('core timeout'),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: { code: 'PUBLIC_WORK_MEDIA_UNAVAILABLE' } });
+  });
+
+  it('returns a service error when the upstream body stream fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://r2.example.test/signed-public-media',
+    );
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.error(new Error('stream failed'));
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(stream, { headers: { 'Content-Type': 'image/webp' } }),
+    );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(503);
+  });
+
   it('stops reading a variant that exceeds the public media limit', async () => {
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://media.example.test/oversized.webp',
