@@ -27,5 +27,10 @@ coverage/
 *.log
 pnpm-debug.log*
 
+# Browser E2E output (synthetic identities, but treat artifacts as sensitive)
+test-results/
+playwright-report/
+.auth/
+
 # Agent scratch space
 .scratch/
