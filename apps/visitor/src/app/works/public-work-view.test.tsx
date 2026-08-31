@@ -8,15 +8,15 @@ describe('Admin-to-Visitor Published Work UI', () => {
       <PublicWorkView
         labels={{
           academicPeriod: 'ปีการศึกษา 2569 ภาค 1',
-          academicPeriodLabel: 'ช่วงการศึกษา',
           attributions: 'ผู้สร้างผลงาน',
+          carouselGoToSlide: (index) => `ไปภาพที่ ${index}`,
+          carouselNext: 'ภาพถัดไป',
+          carouselPrevious: 'ภาพก่อนหน้า',
           category: 'ผลงานรายวิชา',
-          categoryLabel: 'ประเภทผลงาน',
           description: 'รายละเอียด',
+          gallery: 'แกลเลอรีภาพ',
           galleryAlt: (index) => `ภาพเพิ่มเติม ${index} ของ ระบบแนะนำผลงาน`,
-          information: 'ข้อมูลผลงาน',
           links: 'ลิงก์',
-          media: 'สื่อผลงาน',
           missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
@@ -44,6 +44,9 @@ describe('Admin-to-Visitor Published Work UI', () => {
     );
     expect(html).not.toMatch(/studentId|accountId|personId|session/i);
     expect(html).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
+    expect(html).toContain(
+      'src="/works/87000000-0000-4000-8000-000000000001/media/87000000-0000-4000-8000-000000000006/1600"',
+    );
   });
 
   it('renders themed fallbacks when poster and attribution data are absent', () => {
@@ -52,15 +55,15 @@ describe('Admin-to-Visitor Published Work UI', () => {
       <PublicWorkView
         labels={{
           academicPeriod: 'ปีการศึกษา 2569 ภาค 1',
-          academicPeriodLabel: 'ช่วงการศึกษา',
           attributions: 'ผู้สร้างผลงาน',
+          carouselGoToSlide: (index) => `ไปภาพที่ ${index}`,
+          carouselNext: 'ภาพถัดไป',
+          carouselPrevious: 'ภาพก่อนหน้า',
           category: 'ผลงานรายวิชา',
-          categoryLabel: 'ประเภทผลงาน',
           description: 'รายละเอียด',
+          gallery: 'แกลเลอรีภาพ',
           galleryAlt: (index) => `ภาพเพิ่มเติม ${index}`,
-          information: 'ข้อมูลผลงาน',
           links: 'ลิงก์',
-          media: 'สื่อผลงาน',
           missingAttributions: 'ยังไม่มีรายละเอียดผู้สร้างผลงาน',
           missingPoster: 'ยังไม่มีภาพโปสเตอร์',
           posterAlt: 'โปสเตอร์ ระบบแนะนำผลงาน',
@@ -108,6 +111,15 @@ function publicWork() {
         position: 1,
         variants: [{ height: 720, width: 480 }],
         width: 1200,
+      },
+      {
+        assetId: '87000000-0000-4000-8000-000000000006',
+        dominantColor: '#3A5A78',
+        height: 1000,
+        kind: 'gallery' as const,
+        position: 1,
+        variants: [{ height: 1000, width: 1600 }],
+        width: 1600,
       },
     ],
     publishedAt: '2026-08-25T18:00:00.000Z',
