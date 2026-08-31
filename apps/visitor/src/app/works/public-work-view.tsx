@@ -88,8 +88,8 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(10,8,14,0.9)_0%,rgba(10,8,14,0.55)_45%,rgba(10,8,14,0.2)_100%)]"
         />
 
-        <div className="relative grid gap-8 p-6 pb-14 sm:p-8 sm:pb-16 lg:grid-cols-12 lg:items-end lg:gap-10 lg:p-12 lg:pb-16">
-          <div className="lg:col-span-4">
+        <div className="pointer-events-none relative grid gap-8 p-6 pb-14 sm:p-8 sm:pb-16 lg:grid-cols-12 lg:items-end lg:gap-10 lg:p-12 lg:pb-16">
+          <div className="pointer-events-auto lg:col-span-4">
             {poster ? (
               <PosterFrame alt={labels.posterAlt} media={poster} workPublicId={work.workPublicId} />
             ) : (
@@ -105,7 +105,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
             )}
           </div>
 
-          <div className="grid content-end gap-4 lg:col-span-8">
+          <div className="pointer-events-auto grid content-end gap-4 lg:col-span-8">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/80">
               <Badge
                 className="border-white/30 bg-white/10 text-white backdrop-blur-sm"
