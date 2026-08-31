@@ -3,7 +3,6 @@
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
 import {
-  BellIcon,
   CalendarClockIcon,
   FileSpreadsheetIcon,
   FolderKanbanIcon,
@@ -22,7 +21,7 @@ import { AdminBrand, AdminBrandMark } from './admin-brand';
 import { AdminMobileNavigation } from './admin-mobile-navigation';
 
 export type AdminWorkspacePage =
-  'account-controls' | 'academic-year' | 'dashboard' | 'notifications' | 'roster' | 'works';
+  'account-controls' | 'academic-year' | 'dashboard' | 'roster' | 'works';
 
 export interface AdminNavigationGroup {
   items: Array<{ href: string; label: string; page: AdminWorkspacePage }>;
@@ -33,7 +32,6 @@ const PAGE_ICONS: Record<AdminWorkspacePage, LucideIcon> = {
   'account-controls': UserRoundCogIcon,
   'academic-year': CalendarClockIcon,
   dashboard: LayoutDashboardIcon,
-  notifications: BellIcon,
   roster: FileSpreadsheetIcon,
   works: FolderKanbanIcon,
 };

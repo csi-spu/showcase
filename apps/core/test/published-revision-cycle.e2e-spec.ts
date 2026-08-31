@@ -90,7 +90,6 @@ class LifecycleWorksRepository implements WorksRepository {
       latestActionableDraftPublicId: this.draft?.publicId ?? null,
       pendingReviewCount: 0,
       publishedCount: 1,
-      unreadNotificationCount: 0,
     });
   }
 

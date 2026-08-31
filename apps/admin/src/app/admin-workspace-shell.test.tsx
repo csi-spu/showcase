@@ -21,7 +21,6 @@ vi.mock('next-intl/server', () => ({
     }
     if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
     if (namespace === 'AccountControls' && key === 'year.navigation') return 'ปีการศึกษาปัจจุบัน';
-    if (namespace === 'Notifications' && key === 'navigation') return 'การแจ้งเตือน';
     if (namespace === 'WorkManagement' && key === 'navigation') return 'จัดการผลงาน';
     return 'ทะเบียนนักศึกษา';
   }),

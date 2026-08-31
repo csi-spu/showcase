@@ -38,11 +38,9 @@ Use application cleanup plus prefix-scoped R2 lifecycle rules for quarantine and
 
 External Contributor links and recovery codes are bearer secrets, not Accounts. Generate high-entropy values, persist only their hashes, expire invitations after 14 days, exchange them only for short-lived HttpOnly invitation sessions, suppress referrers, and never log them or place them in analytics. Display a recovery code once after acceptance so the External Contributor can later request attribution removal; lost-code recovery requires an Admin. Acceptance grants only the recorded public attribution and no authenticated application capability.
 
-## Public cache and Notifications
+## Public cache
 
-Apply publication and Profile Consent filters before a response reaches a shared cache. Public cache keys never vary on an Authentication Session or reuse a private endpoint namespace. Free-text search, high-cardinality cursor/filter combinations, Notifications, and unread counts use `no-store`. Visibility removal changes the authoritative Core projection in the domain transaction and dispatches durable, retryable cache-purge intent; monitor bounded propagation because CDN invalidation is not atomic with the database.
-
-Notifications are private, audience-authorized records. Store structured types and safe parameters rather than credentials, bearer secrets, Student IDs, sensitive Roster data, full Review feedback, or arbitrary target URLs. Re-authorize the target when opened; possession of a Notification never grants access.
+Apply publication and Profile Consent filters before a response reaches a shared cache. Public cache keys never vary on an Authentication Session or reuse a private endpoint namespace. Free-text search and high-cardinality cursor/filter combinations use `no-store`. Visibility removal changes the authoritative Core projection in the domain transaction and dispatches durable, retryable cache-purge intent; monitor bounded propagation because CDN invalidation is not atomic with the database.
 
 ## Data and logs
 

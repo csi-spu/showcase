@@ -52,7 +52,7 @@ Contributor attribution is invitation-based. The Submitter alone edits and submi
 - Public catalog responses and media are cacheable only after publication and consent filters.
 - Search starts with indexed Postgres capabilities; introduce a separate search system only after measured need.
 - Services remain stateless so Coolify can add replicas behind the same route.
-- Background work must be idempotent and observable before it is moved out of request handling. Core records cache invalidation and Notification delivery intent in a durable outbox with the authoritative domain transition, then dispatches retry-safe derived effects asynchronously.
+- Background work must be idempotent and observable before it is moved out of request handling. Core records cache-invalidation intent in a durable outbox with the authoritative domain transition, then dispatches retry-safe derived effects asynchronously.
 
 ## Architecture changes
 

@@ -89,7 +89,6 @@ class FakeWorksRepository implements WorksRepository {
       latestActionableDraftPublicId: PUBLIC_ID,
       pendingReviewCount: 4,
       publishedCount: 5,
-      unreadNotificationCount: 6,
     });
   }
 
@@ -320,7 +319,6 @@ describe('WorksService', () => {
       latestActionableDraftPublicId: PUBLIC_ID,
       pendingReviewCount: 4,
       publishedCount: 5,
-      unreadNotificationCount: 6,
     });
     expect(repository.lastList).toBeUndefined();
   });

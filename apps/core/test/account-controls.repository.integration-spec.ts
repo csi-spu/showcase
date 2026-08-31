@@ -212,21 +212,14 @@ describe('PostgresAccountControlsRepository integration', () => {
       outcome: 'replayed',
       student: { accessEndsAcademicYear: 2571, version: 2 },
     });
-    const [audits, outbox] = await Promise.all([
+    const [audits] = await Promise.all([
       database.sql<{ count: number }[]>`
         select count(*)::integer as count
         from private.student_access_extension_audit_events
         where idempotency_key = ${EXTENSION_IDEMPOTENCY_KEY}
       `,
-      database.sql<{ count: number }[]>`
-        select count(*)::integer as count
-        from private.outbox_events
-        where aggregate_id = ${EXTENSION_IDEMPOTENCY_KEY}
-          and event_type = 'student_access_extended'
-      `,
     ]);
     expect(audits).toEqual([{ count: 1 }]);
-    expect(outbox).toEqual([{ count: 1 }]);
     await expect(authRepository.findSession(SESSION_ID_HASH)).resolves.toMatchObject({
       currentAcademicYear: 2570,
       studentAccessEndsAcademicYear: 2571,

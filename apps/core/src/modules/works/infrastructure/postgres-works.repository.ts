@@ -501,12 +501,6 @@ export class PostgresWorksRepository implements WorksRepository {
           where work.activity_state = 'active' and work.publication_state = 'published'
         )::integer as "publishedCount",
         (
-          select count(*)::integer from private.notifications as notification
-          where notification.recipient_person_id = account.person_id
-            and notification.audience = 'student' and notification.read_at is null
-            and notification.created_at >= now() - interval '180 days'
-        ) as "unreadNotificationCount",
-        (
           select recent_work.public_id from public.works as recent_work
           join private.work_drafts as recent_draft
             on recent_draft.work_id = recent_work.id and recent_draft.lifecycle_state = 'active'
@@ -548,7 +542,6 @@ export class PostgresWorksRepository implements WorksRepository {
       latestActionableDraftPublicId: row.latestActionableDraftPublicId,
       pendingReviewCount: row.pendingReviewCount,
       publishedCount: row.publishedCount,
-      unreadNotificationCount: row.unreadNotificationCount,
     };
   }
 

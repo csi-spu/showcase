@@ -545,19 +545,14 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
     auditPublicId: string,
     now: Date,
   ): Promise<void> {
-    const context = await this.effectContext(sql, work, operation === 'restore_active');
+    const context = await this.effectContext(sql, work);
     await sql`
       insert into private.outbox_events (
         aggregate_type, aggregate_id, event_type, payload, occurred_at
       ) values (
         'work_recovery', ${auditPublicId}, ${`work_${operation}`},
         ${sql.json({
-          audience: 'student',
           cacheTargets: context.cacheTargets,
-          parameters: { title: work.title },
-          recipientAccountIds: context.recipientAccountIds,
-          target: { kind: 'work', workPublicId: work.public_id },
-          type: `work_${operation}`,
         })}, ${now}
       )
     `;
@@ -569,64 +564,21 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
     work: WorkRow,
     now: Date,
   ): Promise<void> {
-    const context = await this.effectContext(sql, work, false);
-    const submitter = await sql<Array<{ account_id: string }>>`
-      select submitter_account_id as account_id from private.removal_requests where id = ${request.id}
-    `;
-    const submitterAccountId = this.required(submitter[0]).account_id;
+    if (request.state !== 'approved') return;
+    const context = await this.effectContext(sql, work);
     await sql`
       insert into private.outbox_events (
         aggregate_type, aggregate_id, event_type, payload, occurred_at
       ) values (
-        'removal_request', ${request.public_id}, ${`removal_request_${request.state}`},
+        'removal_request', ${request.public_id}, 'removal_request_approved',
         ${sql.json({
-          audience: 'student',
-          ...(request.state === 'approved' ? { cacheTargets: context.cacheTargets } : {}),
-          parameters: { title: request.title },
-          recipientAccountIds: [submitterAccountId],
-          target: { kind: 'work', workPublicId: request.work_public_id },
-          type: `removal_request_${request.state}`,
+          cacheTargets: context.cacheTargets,
         })}, ${now}
       )
     `;
-    if (request.state === 'approved') {
-      const contributorAccountIds = context.recipientAccountIds.filter(
-        (accountId) => accountId !== submitterAccountId,
-      );
-      if (contributorAccountIds.length > 0) {
-        await sql`
-          insert into private.outbox_events (
-            aggregate_type, aggregate_id, event_type, payload, occurred_at
-          ) values (
-            'work_recovery', ${request.public_id}, 'work_unpublish',
-            ${sql.json({
-              audience: 'student',
-              parameters: { title: request.title },
-              recipientAccountIds: contributorAccountIds,
-              target: { kind: 'work', workPublicId: request.work_public_id },
-              type: 'work_unpublish',
-            })}, ${now}
-          )
-          on conflict (aggregate_type, aggregate_id, event_type) do nothing
-        `;
-      }
-    }
   }
 
-  private async effectContext(sql: postgres.TransactionSql, work: WorkRow, submitterOnly: boolean) {
-    const recipients = await sql<Array<{ account_id: string }>>`
-      select distinct account.id as account_id
-      from public.accounts as account
-      where account.person_id = (
-        select submitter_person_id from public.works where id = ${work.id}
-      ) or (
-        not ${submitterOnly} and exists (
-          select 1 from private.work_revision_attributions as attribution
-          where attribution.revision_id = ${work.published_revision_id}
-            and attribution.person_id = account.person_id and attribution.kind = 'account'
-        )
-      ) order by account.id
-    `;
+  private async effectContext(sql: postgres.TransactionSql, work: WorkRow) {
     const tags = await sql<Array<{ public_id: string }>>`
       select tag.public_id from private.published_revision_tags as published
       join public.tags as tag on tag.id = published.tag_id
@@ -642,7 +594,6 @@ export class PostgresWorkRecoveryRepository implements WorkRecoveryRepository {
         tagPublicIds: tags.map((item) => item.public_id),
         workPublicId: work.public_id,
       },
-      recipientAccountIds: recipients.map((item) => item.account_id),
     };
   }
 

@@ -127,7 +127,6 @@ export interface StudentWorkspaceSummary {
   latestActionableDraftPublicId: string | null;
   pendingReviewCount: number;
   publishedCount: number;
-  unreadNotificationCount: number;
 }
 
 export type WorkMutationResult =

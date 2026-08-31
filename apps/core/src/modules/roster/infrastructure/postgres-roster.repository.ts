@@ -716,25 +716,6 @@ export class PostgresRosterRepository implements RosterRepository {
         ${batchId}, ${batch.uploader_account_id}, 'roster_batch_completed', ${now}
       )
     `;
-    await transaction`
-      insert into private.outbox_events (
-        aggregate_type, aggregate_id, event_type, payload, occurred_at
-      ) values (
-        'roster_batch',
-        ${batchId},
-        'roster_batch_completed',
-        ${transaction.json({
-          batchId,
-          createdCount: count.created_count,
-          failedCount: count.failed_count,
-          status,
-          unchangedCount: count.unchanged_count,
-          uploaderAccountId: batch.uploader_account_id,
-        })},
-        ${now}
-      )
-      on conflict (aggregate_type, aggregate_id, event_type) do nothing
-    `;
   }
 
   private async findExistingStudentInTransaction(

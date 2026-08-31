@@ -102,7 +102,6 @@ class E2eWorksRepository implements WorksRepository {
       latestActionableDraftPublicId: PUBLIC_ID,
       pendingReviewCount: 0,
       publishedCount: 0,
-      unreadNotificationCount: 0,
     });
   }
 

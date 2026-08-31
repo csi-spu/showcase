@@ -3,7 +3,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   ArrowRightIcon,
-  BellRingIcon,
   CircleCheckBigIcon,
   FileClockIcon,
   FilePlus2Icon,
@@ -108,7 +107,7 @@ export default async function Home({ searchParams }: HomeProps) {
         </header>
         <section
           aria-label={dashboardT('counts.heading')}
-          className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+          className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
         >
           <DashboardCount
             icon={PencilLineIcon}
@@ -129,11 +128,6 @@ export default async function Home({ searchParams }: HomeProps) {
             icon={CircleCheckBigIcon}
             label={dashboardT('counts.published')}
             value={summary.publishedCount}
-          />
-          <DashboardCount
-            icon={BellRingIcon}
-            label={dashboardT('counts.unreadNotifications')}
-            value={summary.unreadNotificationCount}
           />
         </section>
         <div className="mt-8 grid max-w-6xl items-stretch gap-6 xl:grid-cols-12">

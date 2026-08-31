@@ -122,12 +122,6 @@ describe('PostgresRosterRepository integration', () => {
       where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}
     `;
     expect(prefixes).toEqual([{ count: 7 }]);
-    const outbox = await database.sql<{ count: number }[]>`
-      select count(*)::integer as count from private.outbox_events
-      where aggregate_id in (${firstBatch.batchId}, ${secondBatch.batchId})
-        and event_type = 'roster_batch_completed'
-    `;
-    expect(outbox).toEqual([{ count: 2 }]);
   });
 
   it('persists and reports distinct Entry Years for a multi-cohort Batch', async () => {
@@ -217,11 +211,6 @@ describe('PostgresRosterRepository integration', () => {
         now: NOW,
       }),
     ).resolves.toEqual([]);
-    const outbox = await database.sql<{ count: number }[]>`
-      select count(*)::integer as count from private.outbox_events
-      where aggregate_id = ${batch.batchId} and event_type = 'roster_batch_completed'
-    `;
-    expect(outbox).toEqual([{ count: 1 }]);
     const expiredAt = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1_000);
     await expect(repository.deleteExpiredRowContent({ limit: 1, now: expiredAt })).resolves.toBe(1);
     await expect(repository.getErrorRows(batch.batchId)).resolves.toHaveLength(1);

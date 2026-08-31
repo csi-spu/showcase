@@ -30,7 +30,7 @@ Use this runbook for the forward-only Student workspace and direct Contributor r
    The transaction serializes with the batch worker, locks legacy write tables, and rechecks that every source row has a successful or terminal outcome. It then invalidates every invitation/recovery hash, removes every legacy invitation session, installs read-only audit triggers, and finally marks direct Contributor runtime available.
 
 6. Replay the function and verify it returns the same completion time and counts. Verify all credential hashes are null, session count is zero, legacy mutations fail, and direct Contributor lookup/add/remove succeeds through Core.
-7. Switch traffic to the new Core and frontends. Monitor explicit Draft-save failure/conflict rate, exact-lookup rate limits, removal queue age, notification outbox lag, and cache invalidation lag.
+7. Switch traffic to the new Core and frontends. Monitor explicit Draft-save failure/conflict rate, exact-lookup rate limits, removal queue age, and cache invalidation lag.
 
 ## Rollback
 

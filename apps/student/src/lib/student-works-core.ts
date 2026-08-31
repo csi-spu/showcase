@@ -150,7 +150,6 @@ const workspaceSummarySchema = z
     latestActionableDraftPublicId: z.uuid().nullable(),
     pendingReviewCount: z.number().int().nonnegative(),
     publishedCount: z.number().int().nonnegative(),
-    unreadNotificationCount: z.number().int().nonnegative(),
   })
   .strict();
 const authoringContextSchema = z

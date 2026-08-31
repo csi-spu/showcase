@@ -12,7 +12,6 @@ describe('StudentWorksCoreClient', () => {
       latestActionableDraftPublicId: PUBLIC_ID,
       pendingReviewCount: 3,
       publishedCount: 4,
-      unreadNotificationCount: 5,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
     await expect(client(fetchMock).getWorkspaceSummary(SESSION)).resolves.toEqual(response);

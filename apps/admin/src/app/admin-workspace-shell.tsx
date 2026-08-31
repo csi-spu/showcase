@@ -17,24 +17,15 @@ export async function AdminWorkspaceShell({
   activePage: AdminWorkspacePage;
   children: ReactNode;
 }) {
-  const [accountControlsT, notificationsT, rosterT, workManagementT, workspaceT] =
-    await Promise.all([
-      getTranslations('AccountControls'),
-      getTranslations('Notifications'),
-      getTranslations('Roster'),
-      getTranslations('WorkManagement'),
-      getTranslations('Workspace'),
-    ]);
+  const [accountControlsT, rosterT, workManagementT, workspaceT] = await Promise.all([
+    getTranslations('AccountControls'),
+    getTranslations('Roster'),
+    getTranslations('WorkManagement'),
+    getTranslations('Workspace'),
+  ]);
   const groups: AdminNavigationGroup[] = [
     {
-      items: [
-        { href: '/', label: workspaceT('navigation.dashboard'), page: 'dashboard' },
-        {
-          href: '/notifications',
-          label: notificationsT('navigation'),
-          page: 'notifications',
-        },
-      ],
+      items: [{ href: '/', label: workspaceT('navigation.dashboard'), page: 'dashboard' }],
       label: workspaceT('groups.overview'),
     },
     {
