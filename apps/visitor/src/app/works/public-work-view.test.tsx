@@ -21,6 +21,7 @@ describe('Admin-to-Visitor Published Work UI', () => {
           removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
+          videoAlt: (index) => `วิดีโอ ${index}`,
           videos: 'วิดีโอ',
         }}
         work={publicWork()}
@@ -38,6 +39,7 @@ describe('Admin-to-Visitor Published Work UI', () => {
       'srcSet="/works/87000000-0000-4000-8000-000000000001/media/87000000-0000-4000-8000-000000000002/480 480w"',
     );
     expect(html).not.toMatch(/studentId|accountId|personId|session/i);
+    expect(html).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
   });
 
   it('renders themed fallbacks when poster and attribution data are absent', () => {
@@ -59,6 +61,7 @@ describe('Admin-to-Visitor Published Work UI', () => {
           removal: removalLabels,
           studyYear: (year) => `ชั้นปีที่ ${year}`,
           tagsLabel: 'หัวข้อของผลงาน',
+          videoAlt: (index) => `วิดีโอ ${index}`,
           videos: 'วิดีโอ',
         }}
         work={{ ...work, attributions: [], media: [] }}
@@ -104,7 +107,13 @@ function publicWork() {
     summary: 'สรุปผลงาน',
     tags: [{ displayLabel: 'React', publicId: '87000000-0000-4000-8000-000000000003' }],
     title: 'ระบบแนะนำผลงาน',
-    videoLinks: [],
+    videoLinks: [
+      {
+        provider: 'youtube' as const,
+        providerVideoId: 'dQw4w9WgXcQ',
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      },
+    ],
     workPublicId: '87000000-0000-4000-8000-000000000001',
   };
 }

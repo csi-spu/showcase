@@ -7,6 +7,7 @@ import { BlurFade } from '@/components/ui/blur-fade';
 import { InteractiveGridPattern } from '@/components/ui/interactive-grid-pattern';
 import type { PublicWork } from '@/lib/public-work-core';
 import { WorkPosterFallback } from '../catalog-artwork';
+import { VideoEmbed } from '../video-embed';
 import { requestAttributionRemovalAction } from './[publicId]/attribution-removal.actions';
 import { AttributionRemovalForm } from './[publicId]/attribution-removal-form';
 
@@ -35,6 +36,7 @@ interface PublicWorkLabels {
   >;
   studyYear(year: number): string;
   tagsLabel: string;
+  videoAlt(index: number): string;
   videos: string;
 }
 
@@ -80,20 +82,22 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
             ) : null}
           </header>
 
-          <div className="relative min-h-[32rem] overflow-hidden border-t border-border bg-muted lg:col-span-5 lg:min-h-[42rem] lg:border-t-0 lg:border-l">
+          <div className="grid content-center justify-items-center border-t border-border bg-muted p-6 sm:p-8 lg:col-span-5 lg:border-t-0 lg:border-l lg:p-10">
             {poster ? (
               <MediaImage
                 alt={labels.posterAlt}
-                className="absolute inset-0 size-full"
-                fill
+                className="w-full max-w-64 self-center sm:max-w-72 lg:max-w-80"
                 media={poster}
-                sizes="(max-width: 1024px) 100vw, 42vw"
+                sizes="(max-width: 1024px) 55vw, 22vw"
                 workPublicId={work.workPublicId}
               />
             ) : (
-              <div className="group absolute inset-0" data-poster-fallback="true">
+              <div
+                className="group relative aspect-[3/4] w-full max-w-64 sm:max-w-72 lg:max-w-80"
+                data-poster-fallback="true"
+              >
                 <WorkPosterFallback title={work.title} variant={0} />
-                <p className="absolute inset-x-6 bottom-6 rounded-control border border-border bg-background/85 px-4 py-3 text-center font-medium text-muted-foreground backdrop-blur-sm">
+                <p className="absolute inset-x-4 bottom-4 rounded-control border border-border bg-background/85 px-4 py-3 text-center font-medium text-muted-foreground backdrop-blur-sm">
                   {labels.missingPoster}
                 </p>
               </div>
@@ -189,14 +193,24 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         </BlurFade>
       ) : null}
 
-      {work.links.length > 0 || work.videoLinks.length > 0 ? (
-        <div className="grid gap-8 lg:grid-cols-2">
-          {work.links.length > 0 ? <LinkList heading={labels.links} links={work.links} /> : null}
-          {work.videoLinks.length > 0 ? (
-            <LinkList heading={labels.videos} links={work.videoLinks} />
-          ) : null}
-        </div>
+      {work.videoLinks.length > 0 ? (
+        <BlurFade blur="5px" duration={0.4} inView>
+          <section className="grid gap-6 rounded-media border border-border bg-card p-5 sm:p-8 lg:p-10">
+            <h2 className="text-3xl font-semibold tracking-[-0.03em]">{labels.videos}</h2>
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+              {work.videoLinks.map((video, index) => (
+                <VideoEmbed
+                  key={`${video.provider}-${video.providerVideoId}`}
+                  title={labels.videoAlt(index + 1)}
+                  video={video}
+                />
+              ))}
+            </div>
+          </section>
+        </BlurFade>
       ) : null}
+
+      {work.links.length > 0 ? <LinkList heading={labels.links} links={work.links} /> : null}
     </article>
   );
 }
@@ -251,13 +265,13 @@ function LinkList({
   links,
 }: {
   heading: string;
-  links: Array<{ label?: string; provider?: string; url: string }>;
+  links: Array<{ label: string; url: string }>;
 }) {
   return (
     <BlurFade blur="5px" duration={0.4} inView>
       <section className="grid gap-4 rounded-media border border-border bg-card p-5 sm:p-8">
         <h2 className="text-3xl font-semibold tracking-[-0.03em]">{heading}</h2>
-        <ul className="grid gap-3">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {links.map((link) => (
             <li key={link.url}>
               <a
@@ -265,7 +279,7 @@ function LinkList({
                 href={link.url}
                 rel="external noopener noreferrer"
               >
-                {link.label ?? link.provider}
+                {link.label}
                 <ArrowUpRightIcon
                   aria-hidden="true"
                   className="size-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none"

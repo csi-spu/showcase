@@ -58,6 +58,7 @@ export default async function PublicWorkPage({
             },
             studyYear: (year) => t('studyYear', { year }),
             tagsLabel: t('tagsLabel'),
+            videoAlt: (index) => t('videoAlt', { index, title: work.title }),
             videos: t('videos'),
           }}
           work={work}
