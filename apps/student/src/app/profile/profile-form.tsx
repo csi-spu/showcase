@@ -182,6 +182,7 @@ export function ProfileForm({
         setHasDraftChanges(false);
         setVersionOverride(expectedVersion + 1);
         setCurrentIdempotencyKey(crypto.randomUUID());
+        router.refresh();
       }
       return nextState;
     },

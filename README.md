@@ -32,8 +32,11 @@ pnpm --filter @showcase/visitor dev
 pnpm --filter @showcase/admin test:ci
 pnpm --filter @showcase/student typecheck
 pnpm --filter @showcase/core test:e2e
+pnpm e2e
 pnpm turbo run lint typecheck test:ci build --affected
 ```
+
+The deterministic Chromium Profile Consent journey and local-only data lifecycle are documented in [Browser E2E harness](docs/testing/browser-e2e.md).
 
 Do not run the full monorepo validation locally without checking resource impact. CI uses affected gates; release builds all four deployment artifacts.
 
