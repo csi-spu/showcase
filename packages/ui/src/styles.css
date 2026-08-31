@@ -2,7 +2,13 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+@source './badge.tsx';
 @source './button.tsx';
+@source './card.tsx';
+@source './input.tsx';
+@source './label.tsx';
+@source './separator.tsx';
+@source './textarea.tsx';
 
 :root {
   color-scheme: light;

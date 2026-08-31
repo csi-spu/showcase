@@ -1,4 +1,7 @@
+import { Button, buttonVariants } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import Link from 'next/link';
+import { StatusBadge } from '@/components/ui/status-badge';
 import type { AdminNotification } from '@/lib/admin-notifications-core';
 
 export function AdminNotificationList({
@@ -18,16 +21,19 @@ export function AdminNotificationList({
         const targetPath = adminTargetPath(item);
         return (
           <li
-            className="grid gap-4 bg-card p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+            className={cn(
+              'grid gap-4 bg-card p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center',
+              item.readAt === null && 'border-l-2 border-primary bg-primary-soft/40',
+            )}
             key={item.publicId}
           >
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium">{messages[item.type]}</p>
                 {item.readAt === null ? (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-sm font-medium text-primary-foreground">
+                  <StatusBadge className="px-2 py-0.5" icon={false} tone="primary">
                     {labels.unread}
-                  </span>
+                  </StatusBadge>
                 ) : null}
               </div>
               {typeof item.parameters.title === 'string' ? (
@@ -45,21 +51,15 @@ export function AdminNotificationList({
                   {labels.unavailable}
                 </span>
               ) : (
-                <Link
-                  className="inline-flex min-h-11 items-center rounded-control border border-input px-4 text-sm font-medium"
-                  href={targetPath}
-                >
+                <Link className={buttonVariants({ variant: 'outline' })} href={targetPath}>
                   {labels.open}
                 </Link>
               )}
               {item.readAt === null ? (
                 <form action={markReadAction.bind(null, item.publicId)}>
-                  <button
-                    className="min-h-11 rounded-control border border-input px-4 text-sm font-medium"
-                    type="submit"
-                  >
+                  <Button type="submit" variant="outline">
                     {labels.markRead}
-                  </button>
+                  </Button>
                 </form>
               ) : null}
             </div>
@@ -71,7 +71,10 @@ export function AdminNotificationList({
 }
 
 function adminTargetPath(notification: AdminNotification): string | null {
-  return notification.targetDestination === 'admin_roster' ? '/' : null;
+  if (notification.targetDestination !== 'admin_roster') return null;
+  return notification.target.kind === 'roster_batch'
+    ? `/roster?batchId=${encodeURIComponent(notification.target.batchId)}`
+    : '/roster';
 }
 
 function formatBangkokDate(value: string): string {

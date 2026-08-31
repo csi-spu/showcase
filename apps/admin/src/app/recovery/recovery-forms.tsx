@@ -1,9 +1,13 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { ArrowLeftIcon, CheckIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
+import { ActionGroup } from '@/components/ui/action-group';
+import { ActionTooltip } from '@/components/ui/action-tooltip';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import type {
   AdminAttributionRemovalRequest,
   AdminRemovalRequest,
@@ -30,7 +34,7 @@ export function WorkRecoveryPanel({
   return (
     <div className="grid gap-6">
       <section className="grid gap-2 rounded-surface border border-border bg-card p-6">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">WORK STATE</p>
+        <p className="text-sm font-semibold tracking-wide text-primary">{t('stateKicker')}</p>
         <h2 className="text-2xl font-semibold">{t(`states.${state.activityState}`)}</h2>
         <p className="text-muted-foreground">{t(`publication.${state.publicationState}`)}</p>
         <p className="text-sm text-muted-foreground">{t('version', { version: state.version })}</p>
@@ -50,10 +54,14 @@ export function WorkRecoveryPanel({
 
 export function RecoveryDecisionForm({
   action,
+  compact = false,
+  iconOnly = false,
   idempotencyKey,
   request,
 }: {
   action: RecoveryAction;
+  compact?: boolean;
+  iconOnly?: boolean;
   idempotencyKey: string;
   request: AdminRemovalRequest;
 }) {
@@ -62,48 +70,152 @@ export function RecoveryDecisionForm({
     action,
     initialRecoveryActionState(idempotencyKey),
   );
+  const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
       action={formAction}
-      className="grid gap-5 rounded-surface border border-border bg-card p-6"
+      className={
+        iconOnly && !isDeclining
+          ? 'flex min-w-max justify-end gap-2'
+          : compact || iconOnly
+            ? 'grid min-w-72 gap-3'
+            : 'grid gap-5 rounded-surface border border-border bg-card p-6'
+      }
     >
-      <div className="grid gap-2">
-        <h2 className="text-xl font-semibold">{request.title}</h2>
-        <p className="whitespace-pre-wrap text-foreground">{request.reason}</p>
-        <p className="text-sm text-muted-foreground">{t('requestRetained')}</p>
-      </div>
+      {compact || iconOnly ? null : (
+        <div className="grid gap-2">
+          <h2 className="text-xl font-semibold">{request.title}</h2>
+          <p className="whitespace-pre-wrap text-foreground">{request.reason}</p>
+          <p className="text-sm text-muted-foreground">{t('requestRetained')}</p>
+        </div>
+      )}
       <input name="expectedVersion" type="hidden" value={request.version} />
       <input name="expectedWorkVersion" type="hidden" value={request.workVersion} />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-      <div className="grid gap-2">
-        <Label htmlFor={`decision-reason-${request.publicId}`}>{t('decisionReason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2 leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          id={`decision-reason-${request.publicId}`}
-          maxLength={1_000}
-          minLength={10}
-          name="decisionReason"
-        />
-      </div>
-      <Feedback state={state} />
-      <div className="flex flex-wrap gap-3">
-        <Button disabled={pending} name="decision" type="submit" value="approve">
-          {t('approveRequest')}
-        </Button>
-        <Button disabled={pending} name="decision" type="submit" value="decline" variant="outline">
-          {t('declineRequest')}
-        </Button>
-      </div>
+      {isDeclining ? (
+        <div className="grid gap-2">
+          <Label htmlFor={`decision-reason-${request.publicId}`}>{t('decisionReason')}</Label>
+          <Textarea
+            className="min-h-28"
+            id={`decision-reason-${request.publicId}`}
+            maxLength={1_000}
+            minLength={10}
+            name="decisionReason"
+            required
+          />
+        </div>
+      ) : null}
+      {iconOnly && !state.success && state.error === null ? null : <Feedback state={state} />}
+      {isDeclining ? (
+        iconOnly ? (
+          <ActionGroup>
+            <ActionTooltip label={t('cancelDecision')}>
+              <Button
+                aria-label={t('cancelDecision')}
+                disabled={pending}
+                onClick={() => setIsDeclining(false)}
+                size="icon-sm"
+                title={t('cancelDecision')}
+                type="button"
+                variant="ghost"
+              >
+                <ArrowLeftIcon aria-hidden="true" />
+              </Button>
+            </ActionTooltip>
+            <ActionTooltip label={t('confirmDecline')}>
+              <Button
+                aria-label={t('confirmDecline')}
+                disabled={pending}
+                name="decision"
+                size="icon-sm"
+                title={t('confirmDecline')}
+                type="submit"
+                value="decline"
+                variant="destructive"
+              >
+                <XIcon aria-hidden="true" />
+              </Button>
+            </ActionTooltip>
+          </ActionGroup>
+        ) : (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
+            </Button>
+            <Button
+              disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </div>
+        )
+      ) : iconOnly ? (
+        <ActionGroup>
+          <ActionTooltip label={t('approveRequest')}>
+            <Button
+              aria-label={t('approveRequest')}
+              disabled={pending}
+              name="decision"
+              size="icon-sm"
+              title={t('approveRequest')}
+              type="submit"
+              value="approve"
+            >
+              <CheckIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip label={t('declineRequest')}>
+            <Button
+              aria-label={t('declineRequest')}
+              disabled={pending}
+              onClick={() => setIsDeclining(true)}
+              size="icon-sm"
+              title={t('declineRequest')}
+              type="button"
+              variant="outline"
+            >
+              <XIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+        </ActionGroup>
+      ) : (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button disabled={pending} name="decision" type="submit" value="approve">
+            {t('approveRequest')}
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={() => setIsDeclining(true)}
+            type="button"
+            variant="outline"
+          >
+            {t('declineRequest')}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
 
 export function AttributionRemovalDecisionForm({
   action,
+  compact = false,
+  iconOnly = false,
   idempotencyKey,
   request,
 }: {
   action: RecoveryAction;
+  compact?: boolean;
+  iconOnly?: boolean;
   idempotencyKey: string;
   request: AdminAttributionRemovalRequest;
 }) {
@@ -112,17 +224,26 @@ export function AttributionRemovalDecisionForm({
     action,
     initialRecoveryActionState(idempotencyKey),
   );
+  const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
       action={formAction}
-      className="grid gap-5 rounded-surface border border-border bg-card p-6"
+      className={
+        iconOnly && !isDeclining
+          ? 'flex min-w-max justify-end gap-2'
+          : compact || iconOnly
+            ? 'grid min-w-72 gap-3'
+            : 'grid gap-5 rounded-surface border border-border bg-card p-6'
+      }
     >
-      <div className="grid gap-2">
-        <h2 className="text-xl font-semibold">{request.workTitle}</h2>
-        <p className="font-medium">{request.attributionName}</p>
-        <p className="whitespace-pre-wrap">{request.reason}</p>
-        <p className="text-sm text-muted-foreground">{t('attribution.approveHelp')}</p>
-      </div>
+      {compact || iconOnly ? null : (
+        <div className="grid gap-2">
+          <h2 className="text-xl font-semibold">{request.workTitle}</h2>
+          <p className="font-medium">{request.attributionName}</p>
+          <p className="whitespace-pre-wrap">{request.reason}</p>
+          <p className="text-sm text-muted-foreground">{t('attribution.approveHelp')}</p>
+        </div>
+      )}
       <input name="expectedRequestVersion" type="hidden" value={request.version} />
       <input
         name="expectedPublishedRevisionPublicId"
@@ -135,25 +256,116 @@ export function AttributionRemovalDecisionForm({
         value={request.currentPublishedRevisionVersion ?? ''}
       />
       <input name="idempotencyKey" type="hidden" value={state.idempotencyKey} />
-      <div className="grid gap-2">
-        <Label htmlFor={`attribution-decision-${request.publicId}`}>{t('decisionReason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2"
-          id={`attribution-decision-${request.publicId}`}
-          maxLength={1000}
-          minLength={10}
-          name="decisionReason"
-        />
-      </div>
-      <Feedback state={state} />
-      <div className="flex gap-3">
-        <Button disabled={pending} name="decision" type="submit" value="approve">
-          {t('attribution.approve')}
-        </Button>
-        <Button disabled={pending} name="decision" type="submit" value="decline" variant="outline">
-          {t('attribution.decline')}
-        </Button>
-      </div>
+      {isDeclining ? (
+        <div className="grid gap-2">
+          <Label htmlFor={`attribution-decision-${request.publicId}`}>{t('decisionReason')}</Label>
+          <Textarea
+            className="min-h-28"
+            id={`attribution-decision-${request.publicId}`}
+            maxLength={1000}
+            minLength={10}
+            name="decisionReason"
+            required
+          />
+        </div>
+      ) : null}
+      {iconOnly && !state.success && state.error === null ? null : <Feedback state={state} />}
+      {isDeclining ? (
+        iconOnly ? (
+          <ActionGroup>
+            <ActionTooltip label={t('cancelDecision')}>
+              <Button
+                aria-label={t('cancelDecision')}
+                disabled={pending}
+                onClick={() => setIsDeclining(false)}
+                size="icon-sm"
+                title={t('cancelDecision')}
+                type="button"
+                variant="ghost"
+              >
+                <ArrowLeftIcon aria-hidden="true" />
+              </Button>
+            </ActionTooltip>
+            <ActionTooltip label={t('confirmDecline')}>
+              <Button
+                aria-label={t('confirmDecline')}
+                disabled={pending}
+                name="decision"
+                size="icon-sm"
+                title={t('confirmDecline')}
+                type="submit"
+                value="decline"
+                variant="destructive"
+              >
+                <XIcon aria-hidden="true" />
+              </Button>
+            </ActionTooltip>
+          </ActionGroup>
+        ) : (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={pending}
+              onClick={() => setIsDeclining(false)}
+              type="button"
+              variant="ghost"
+            >
+              {t('cancelDecision')}
+            </Button>
+            <Button
+              disabled={pending}
+              name="decision"
+              type="submit"
+              value="decline"
+              variant="outline"
+            >
+              {t('confirmDecline')}
+            </Button>
+          </div>
+        )
+      ) : iconOnly ? (
+        <ActionGroup>
+          <ActionTooltip label={t('attribution.approve')}>
+            <Button
+              aria-label={t('attribution.approve')}
+              disabled={pending}
+              name="decision"
+              size="icon-sm"
+              title={t('attribution.approve')}
+              type="submit"
+              value="approve"
+            >
+              <CheckIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+          <ActionTooltip label={t('attribution.decline')}>
+            <Button
+              aria-label={t('attribution.decline')}
+              disabled={pending}
+              onClick={() => setIsDeclining(true)}
+              size="icon-sm"
+              title={t('attribution.decline')}
+              type="button"
+              variant="outline"
+            >
+              <XIcon aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+        </ActionGroup>
+      ) : (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button disabled={pending} name="decision" type="submit" value="approve">
+            {t('attribution.approve')}
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={() => setIsDeclining(true)}
+            type="button"
+            variant="outline"
+          >
+            {t('attribution.decline')}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
@@ -190,8 +402,8 @@ function TransitionForm({
       <input name="operation" type="hidden" value={operation} />
       <div className="grid gap-2">
         <Label htmlFor={`recovery-reason-${operation}`}>{t('reason')}</Label>
-        <textarea
-          className="min-h-28 rounded-control border border-input bg-background px-3 py-2 leading-7 outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        <Textarea
+          className="min-h-28"
           id={`recovery-reason-${operation}`}
           maxLength={1_000}
           minLength={10}

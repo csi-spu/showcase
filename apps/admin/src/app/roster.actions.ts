@@ -39,7 +39,7 @@ export async function createRosterStudentAction(
     }
     return { error: 'unavailable' };
   }
-  redirect(`/?batchId=${batch.batchId}`);
+  redirect(`/roster?batchId=${batch.batchId}`);
 }
 
 export async function uploadRosterAction(
@@ -64,7 +64,7 @@ export async function uploadRosterAction(
     }
     return { error: mapRosterError(error) };
   }
-  redirect(`/?batchId=${batch.batchId}`);
+  redirect(`/roster?batchId=${batch.batchId}`);
 }
 
 export async function resolveRosterConflictAction(
@@ -105,7 +105,7 @@ export async function resolveRosterConflictAction(
     }
     return { error: 'unavailable' };
   }
-  redirect(`/?batchId=${input.batchId}&resolved=1`);
+  redirect(`/roster?batchId=${input.batchId}&resolved=1`);
 }
 
 function mapRosterError(error: unknown): RosterUploadErrorMessage {

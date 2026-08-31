@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { buttonVariants } from '@showcase/ui/button';
+import { ArrowLeftIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -7,6 +9,7 @@ import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { readAdminSessionToken } from '@/lib/admin-auth-session';
 import { AdminReviewsCoreClient, AdminReviewsCoreError } from '@/lib/admin-reviews-core';
 import { getAdminServerEnvironment } from '@/lib/server-environment';
+import { AdminWorkspacePage } from '../../admin-workspace-page';
 import { AdminWorkspaceShell } from '../../admin-workspace-shell';
 import { WorkRecoveryPanel } from '../recovery-forms';
 import { transitionWorkRecoveryAction } from '../recovery.actions';
@@ -34,21 +37,31 @@ export default async function WorkRecoveryPage({
     throw error;
   }
   return (
-    <AdminWorkspaceShell activePage="recovery">
-      <Link className="text-sm font-medium text-primary underline" href="/recovery">
-        {t('navigation')}
-      </Link>
-      <header className="mt-6 grid max-w-4xl gap-3">
-        <h1 className="text-3xl font-semibold sm:text-4xl">{t('heading')}</h1>
-        <p className="break-all text-sm text-muted-foreground">Public Work ID: {state.publicId}</p>
-      </header>
-      <div className="mt-8 max-w-3xl">
-        <WorkRecoveryPanel
-          action={transitionWorkRecoveryAction.bind(null, state.publicId)}
-          idempotencyKey={randomUUID()}
-          state={state}
-        />
-      </div>
+    <AdminWorkspaceShell activePage="works">
+      <AdminWorkspacePage
+        actions={
+          <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=removals">
+            <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
+            {t('back')}
+          </Link>
+        }
+        description={
+          <span className="break-all text-sm">
+            {t('workIdentifier', { value: state.publicId })}
+          </span>
+        }
+        eyebrow={t('detailKicker')}
+        layout="detail"
+        title={t('heading')}
+      >
+        <div className="max-w-3xl">
+          <WorkRecoveryPanel
+            action={transitionWorkRecoveryAction.bind(null, state.publicId)}
+            idempotencyKey={randomUUID()}
+            state={state}
+          />
+        </div>
+      </AdminWorkspacePage>
     </AdminWorkspaceShell>
   );
 }

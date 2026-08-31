@@ -72,6 +72,50 @@ describe('AdminReviewsCoreClient', () => {
     });
   });
 
+  it('allows the bounded idempotent Change Request transaction to exceed the default read timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => resolve(Response.json({ outcome: 'changed_requested', review: changeRequest() })),
+          6_000,
+        );
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new Error('Request aborted'));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    try {
+      const review = new AdminReviewsCoreClient(config, fetchMock).requestChanges(
+        'opaque-admin-session',
+        REVISION_PUBLIC_ID,
+        {
+          expectedRevisionVersion: 1,
+          feedback: 'กรุณาเพิ่มแหล่งอ้างอิงในรายละเอียดผลงาน',
+          idempotencyKey: '77000000-0000-4000-8000-000000000003',
+          reason: 'content',
+        },
+      );
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      await expect(review).resolves.toMatchObject({ outcome: 'changed_requested' });
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('sends approval as a separate optimistic idempotent command', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
@@ -100,6 +144,59 @@ describe('AdminReviewsCoreClient', () => {
       expectedRevisionVersion: 1,
       idempotencyKey: '77000000-0000-4000-8000-000000000003',
     });
+  });
+
+  it('allows the bounded idempotent publication transaction to exceed the default read timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            resolve(
+              Response.json({
+                outcome: 'published',
+                publication: {
+                  publishedAt: '2026-08-25T16:00:00.000Z',
+                  revisionPublicId: REVISION_PUBLIC_ID,
+                  revisionVersion: 2,
+                  workPublicId: '77000000-0000-4000-8000-000000000002',
+                },
+              }),
+            ),
+          6_000,
+        );
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new Error('Request aborted'));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    try {
+      const publication = new AdminReviewsCoreClient(config, fetchMock).approveAndPublish(
+        'opaque-admin-session',
+        REVISION_PUBLIC_ID,
+        {
+          expectedRevisionVersion: 1,
+          idempotencyKey: '77000000-0000-4000-8000-000000000003',
+        },
+      );
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      await expect(publication).resolves.toMatchObject({ outcome: 'published' });
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
   });
 
   it('loads a Published correction base and saves a separate pending Revision', async () => {
@@ -141,6 +238,37 @@ describe('AdminReviewsCoreClient', () => {
       reason: 'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง',
       summary: 'สรุปใหม่',
     });
+  });
+
+  it('lists bounded Published Works for the correction table through the public Core projection', async () => {
+    const page = {
+      hasNextPage: false,
+      items: [
+        {
+          academicPeriod: { semester: '1', year: 2569 },
+          attributions: ['ผู้สร้างผลงาน'],
+          category: 'course_work',
+          poster: null,
+          publishedAt: '2026-08-25T16:00:00.000Z',
+          summary: 'สรุปผลงาน',
+          tags: [],
+          title: 'ผลงานที่เผยแพร่',
+          workPublicId: '77000000-0000-4000-8000-000000000002',
+        },
+      ],
+      nextCursor: null,
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(page));
+
+    await expect(
+      new AdminReviewsCoreClient(config, fetchMock).listPublishedWorks({
+        limit: 20,
+        q: 'ผลงาน',
+      }),
+    ).resolves.toEqual(page);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://core.example.test/v1/public/works?limit=20&sort=recent&q=%E0%B8%9C%E0%B8%A5%E0%B8%87%E0%B8%B2%E0%B8%99',
+    );
   });
 
   it('uses bounded recovery queue and explicit optimistic recovery commands', async () => {

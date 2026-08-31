@@ -9,7 +9,7 @@ import { RosterConflictResolutionForm } from './roster-conflict-resolution-form'
 describe('RosterConflictResolutionForm', () => {
   afterEach(cleanup);
 
-  it('submits the stable optimistic fields and audited reason', async () => {
+  it('keeps the existing Roster Name without asking the Admin to write a reason', async () => {
     const action = vi.fn<RosterConflictAction>().mockResolvedValue({ error: null });
     const user = userEvent.setup();
     render(
@@ -24,8 +24,32 @@ describe('RosterConflictResolutionForm', () => {
       </NextIntlClientProvider>,
     );
 
-    await user.type(screen.getByLabelText('เหตุผลประกอบการตัดสินใจ'), 'ตรวจสอบแล้ว');
+    expect(screen.queryByLabelText('เหตุผลที่ใช้ชื่อใหม่')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'เก็บชื่อเดิม' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(Object.fromEntries(action.mock.calls[0]?.[1].entries() ?? [])).toMatchObject({
+      resolution: 'keep_existing',
+    });
+  });
+
+  it('asks for an audited reason only after the Admin chooses the incoming Roster Name', async () => {
+    const action = vi.fn<RosterConflictAction>().mockResolvedValue({ error: null });
+    const user = userEvent.setup();
+    render(
+      <NextIntlClientProvider locale="th" messages={messages}>
+        <RosterConflictResolutionForm
+          action={action}
+          batchId="20000000-0000-4000-8000-000000000001"
+          conflictId="30000000-0000-4000-8000-000000000001"
+          expectedVersion={1}
+          idempotencyKey="40000000-0000-4000-8000-000000000001"
+        />
+      </NextIntlClientProvider>,
+    );
+
     await user.click(screen.getByRole('button', { name: 'ยอมรับชื่อจากไฟล์' }));
+    await user.type(screen.getByLabelText('เหตุผลที่ใช้ชื่อใหม่'), 'ตรวจสอบแล้ว');
+    await user.click(screen.getByRole('button', { name: 'ยืนยันใช้ชื่อจากไฟล์' }));
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
 
     const formData = action.mock.calls[0]?.[1];

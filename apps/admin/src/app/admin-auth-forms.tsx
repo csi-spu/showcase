@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { KeyRoundIcon, LogInIcon, LogOutIcon, type LucideIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -46,7 +47,7 @@ export function LoginForm({ action }: { action: AuthAction }) {
         </FieldGroup>
       </FieldSet>
       <ActionError error={state.error} />
-      <SubmitButton label={t('login.submit')} pendingLabel={t('submitting')} />
+      <SubmitButton icon={LogInIcon} label={t('login.submit')} pendingLabel={t('submitting')} />
     </form>
   );
 }
@@ -80,19 +81,39 @@ export function ChangePasswordForm({ action }: { action: AuthAction }) {
         </FieldGroup>
       </FieldSet>
       <ActionError error={state.error} />
-      <SubmitButton label={t('change.submit')} pendingLabel={t('submitting')} />
+      <SubmitButton icon={KeyRoundIcon} label={t('change.submit')} pendingLabel={t('submitting')} />
     </form>
   );
 }
 
-export function LogoutForm({ action }: { action: AuthAction }) {
+export function LogoutForm({ action, compact = false }: { action: AuthAction; compact?: boolean }) {
   const t = useTranslations('Auth');
   const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
   return (
     <form action={formAction} className="flex w-full flex-col gap-3">
       <ActionError error={state.error} />
-      <SubmitButton label={t('active.logout')} pendingLabel={t('submitting')} variant="outline" />
+      {compact ? (
+        <CompactLogoutButton label={t('active.logout')} pendingLabel={t('submitting')} />
+      ) : (
+        <SubmitButton label={t('active.logout')} pendingLabel={t('submitting')} variant="outline" />
+      )}
     </form>
+  );
+}
+
+function CompactLogoutButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      aria-label={pending ? pendingLabel : label}
+      disabled={pending}
+      size="icon-sm"
+      title={label}
+      type="submit"
+      variant="ghost"
+    >
+      {pending ? <Spinner aria-label={pendingLabel} /> : <LogOutIcon aria-hidden="true" />}
+    </Button>
   );
 }
 
@@ -133,10 +154,12 @@ function ActionError({ error }: { error: AuthErrorMessage | null }) {
 }
 
 function SubmitButton({
+  icon: Icon,
   label,
   pendingLabel,
   variant = 'default',
 }: {
+  icon?: LucideIcon;
   label: string;
   pendingLabel: string;
   variant?: 'default' | 'outline';
@@ -144,7 +167,11 @@ function SubmitButton({
   const { pending } = useFormStatus();
   return (
     <Button className="w-full" disabled={pending} size="lg" type="submit" variant={variant}>
-      {pending ? <Spinner aria-label={pendingLabel} data-icon="inline-start" /> : null}
+      {pending ? (
+        <Spinner aria-label={pendingLabel} data-icon="inline-start" />
+      ) : Icon ? (
+        <Icon aria-hidden="true" data-icon="inline-start" />
+      ) : null}
       {pending ? pendingLabel : label}
     </Button>
   );

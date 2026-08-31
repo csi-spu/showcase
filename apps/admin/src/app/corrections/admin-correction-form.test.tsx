@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
@@ -24,7 +24,10 @@ describe('Admin correction form', () => {
     fireEvent.change(screen.getByLabelText('เหตุผลการแก้ไข'), {
       target: { value: 'แก้ไขข้อความที่คลาดเคลื่อนจากผลงานจริง' },
     });
-    await user.click(screen.getByRole('button', { name: 'บันทึกเป็น Revision รอตรวจ' }));
+    expect(
+      within(screen.getByRole('status', { name: 'รายการที่เปลี่ยน' })).getByText('สรุป'),
+    ).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'บันทึกเป็นฉบับรอตรวจ' }));
 
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
     expect(Object.fromEntries(action.mock.calls[0]?.[1]?.entries() ?? [])).toMatchObject({
@@ -35,8 +38,8 @@ describe('Admin correction form', () => {
       summary: 'สรุปที่แก้ไขโดยผู้ดูแล',
     });
     expect(screen.queryByRole('button', { name: 'อนุมัติและเผยแพร่' })).toBeNull();
-    expect(await screen.findByText('สร้าง Revision รอตรวจแล้ว')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'เปิด Revision เพื่อตรวจและเผยแพร่' })).toBeTruthy();
+    expect(await screen.findByText('สร้างฉบับรอตรวจแล้ว')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'เปิดฉบับใหม่เพื่อตรวจและเผยแพร่' })).toBeTruthy();
   });
 
   it('focuses the error summary and preserves edited content after a stale conflict', async () => {
@@ -52,7 +55,7 @@ describe('Admin correction form', () => {
     fireEvent.change(screen.getByLabelText('เหตุผลการแก้ไข'), {
       target: { value: 'แก้ข้อมูลให้ถูกต้องตามหลักฐาน' },
     });
-    await user.click(screen.getByRole('button', { name: 'บันทึกเป็น Revision รอตรวจ' }));
+    await user.click(screen.getByRole('button', { name: 'บันทึกเป็นฉบับรอตรวจ' }));
 
     const alert = await screen.findByRole('alert');
     await waitFor(() => expect(document.activeElement).toBe(alert));

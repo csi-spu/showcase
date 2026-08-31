@@ -15,15 +15,20 @@ describe('Admin authentication boundary', () => {
     expect(forms).not.toContain('ADMIN_BFF_SECRET');
   });
 
-  it('follows DESIGN.md typography and restrained Admin workspace rules', async () => {
-    const [layout, page] = await Promise.all([
+  it('uses the shared typography, bounded canvas, and CSI workspace identity', async () => {
+    const [frame, layout, page] = await Promise.all([
+      readFile(resolve(process.cwd(), 'src/app/admin-workspace-frame.tsx'), 'utf8'),
       readFile(resolve(process.cwd(), 'src/app/layout.tsx'), 'utf8'),
       readFile(resolve(process.cwd(), 'src/app/page.tsx'), 'utf8'),
     ]);
     expect(layout).toContain('IBM_Plex_Sans_Thai');
     expect(layout).toContain("weight: ['400', '500', '600']");
-    expect(page).toContain('lg:grid-cols-[16rem_minmax(0,1fr)]');
-    expect(page).not.toMatch(/<aside className="[^"]*\bbg-primary\b/);
-    expect(page).not.toContain('shadow-');
+    expect(frame).toContain("'lg:grid-cols-[16rem_minmax(0,1fr)]'");
+    expect(frame).toContain('max-w-[1600px]');
+    expect(frame).toContain('<AdminBrandMark />');
+    expect(page).toContain('max-w-[1600px]');
+    expect(page).toContain('<h1 className="text-3xl');
+    expect(page).toContain('<h2 className="text-[clamp');
+    expect(page).not.toContain(' bg-primary ');
   });
 });
