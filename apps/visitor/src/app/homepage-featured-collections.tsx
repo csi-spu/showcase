@@ -258,9 +258,9 @@ function FeaturedWorkCard({
   work: WorkCatalogCard;
 }) {
   return (
-    <article className="group grid gap-5" data-work-card-layout="poster">
+    <article data-work-card-layout="poster">
       <Link
-        className="relative block aspect-[3/4] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+        className="group relative block aspect-[3/4] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
         href={`/works/${work.workPublicId}`}
       >
         {work.poster === null ? (
@@ -272,26 +272,28 @@ function FeaturedWorkCard({
             workPublicId={work.workPublicId}
           />
         )}
-        <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-background/90 text-primary backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"
+        />
+        <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/10 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
           <ArrowUpRightIcon aria-hidden="true" className="size-4" />
         </span>
-      </Link>
-      <div className="grid gap-2 border-t border-border pt-4">
-        <Badge className="w-fit" variant="secondary">
-          {work.academicPeriod.year} / {work.academicPeriod.semester}
-        </Badge>
-        <h3 className="text-xl leading-snug font-semibold text-balance">
-          <Link
-            className="transition-colors duration-150 group-hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-            href={`/works/${work.workPublicId}`}
+        <div className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5">
+          <Badge
+            className="w-fit border-white/30 bg-white/10 text-white backdrop-blur-sm"
+            variant="outline"
           >
+            {work.academicPeriod.year} / {work.academicPeriod.semester}
+          </Badge>
+          <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white">
             {work.title}
-          </Link>
-        </h3>
-        <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground text-pretty">
-          {work.summary}
-        </p>
-      </div>
+          </h3>
+          <p className="line-clamp-2 text-sm leading-relaxed text-white/75 text-pretty">
+            {work.summary}
+          </p>
+        </div>
+      </Link>
     </article>
   );
 }
@@ -362,9 +364,9 @@ function PeopleCollectionSection({
             {people.map((person, personIndex) => (
               <li key={person.publicId}>
                 <BlurFade blur="4px" delay={personIndex * 0.07} duration={0.4} inView>
-                  <article className="group grid gap-5" data-person-card-layout="portrait">
+                  <article data-person-card-layout="portrait">
                     <Link
-                      className="relative block aspect-[4/5] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                      className="group relative block aspect-[4/5] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
                       href={`/people/${person.publicId}`}
                     >
                       <PersonPortrait
@@ -372,26 +374,31 @@ function PeopleCollectionSection({
                         person={person}
                         sizes="(max-width: 639px) 100vw, (max-width: 1279px) 50vw, 25vw"
                       />
-                      <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-background/90 text-primary backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"
+                      />
+                      <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/10 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
                         <ArrowUpRightIcon aria-hidden="true" className="size-4" />
                       </span>
-                    </Link>
-                    <div className="grid gap-2 border-t border-border pt-4" data-person-card-meta>
-                      <Badge className="w-fit" variant="secondary">
-                        {labels.studentEntryYear(person.entryYear)}
-                      </Badge>
-                      <h3 className="text-xl leading-snug font-semibold text-balance">
-                        <Link
-                          className="transition-colors duration-150 group-hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-                          href={`/people/${person.publicId}`}
+                      <div
+                        className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5"
+                        data-person-card-meta="true"
+                      >
+                        <Badge
+                          className="w-fit border-white/30 bg-white/10 text-white backdrop-blur-sm"
+                          variant="outline"
                         >
+                          {labels.studentEntryYear(person.entryYear)}
+                        </Badge>
+                        <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white">
                           {`${person.firstName} ${person.lastName}`}
-                        </Link>
-                      </h3>
-                      <p className="text-sm font-medium text-muted-foreground tabular-nums">
-                        {labels.publishedWorks(person.publishedWorkCount)}
-                      </p>
-                    </div>
+                        </h3>
+                        <p className="text-sm font-medium text-white/75 tabular-nums">
+                          {labels.publishedWorks(person.publishedWorkCount)}
+                        </p>
+                      </div>
+                    </Link>
                   </article>
                 </BlurFade>
               </li>
