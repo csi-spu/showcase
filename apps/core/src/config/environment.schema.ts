@@ -8,8 +8,7 @@ const LOCAL_CLOUDFLARE_API_TOKEN = 'local-development-only-cloudflare-api-token'
 const LOCAL_STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const LOCAL_VISITOR_CACHE_SECRET = 'local-development-only-visitor-cache-secret';
 const LOCAL_VISITOR_BFF_SECRET = 'local-development-only-visitor-bff-secret';
-const LOCAL_SUPABASE_KEY = 'local-publishable-key-set-by-supabase-status';
-const LOCAL_SUPABASE_SECRET_KEY = 'local-secret-key-set-by-supabase-status';
+const LOCAL_BETTER_AUTH_SECRET = 'local-development-only-better-auth-secret';
 const originSchema = z
   .url()
   .refine((value) => new URL(value).origin === value, 'Must be an origin without a path');
@@ -19,6 +18,8 @@ const environmentSchema = z
     ADMIN_BFF_SECRET: z.string().min(32).default(LOCAL_ADMIN_BFF_SECRET),
     APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     AUTH_IDENTITY_SECRET: z.string().min(32).default(LOCAL_IDENTITY_SECRET),
+    BETTER_AUTH_BASE_URL: originSchema.default('http://127.0.0.1:4100'),
+    BETTER_AUTH_SECRET: z.string().min(32).default(LOCAL_BETTER_AUTH_SECRET),
     CATALOG_CURSOR_SECRET: z.string().min(32).default(LOCAL_CATALOG_CURSOR_SECRET),
     CLOUDFLARE_API_TOKEN: z.string().min(32).default(LOCAL_CLOUDFLARE_API_TOKEN),
     CLOUDFLARE_ZONE_ID: z
@@ -35,20 +36,10 @@ const environmentSchema = z
     MEDIA_PROVIDER_URL: originSchema.default('http://127.0.0.1:4191'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().max(65_535).default(4100),
+    MEDIA_SERVICE_URL: originSchema.optional(),
+    MEDIA_SERVICE_HMAC_SECRET: z.string().min(32).optional(),
     PUBLIC_MEDIA_ORIGIN: originSchema.optional(),
-    R2_ACCESS_KEY_ID: z.string().min(1).optional(),
-    R2_BUCKET_NAME: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
-      .optional(),
-    R2_ENDPOINT: originSchema.optional(),
-    R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-    R2_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
     STUDENT_BFF_SECRET: z.string().min(32).default(LOCAL_STUDENT_BFF_SECRET),
-    SUPABASE_AUTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(5_000),
-    SUPABASE_PUBLISHABLE_KEY: z.string().min(1).default(LOCAL_SUPABASE_KEY),
-    SUPABASE_SECRET_KEY: z.string().min(1).default(LOCAL_SUPABASE_SECRET_KEY),
-    SUPABASE_URL: z.url().default('http://127.0.0.1:54321'),
     VISITOR_CACHE_SECRET: z.string().min(32).default(LOCAL_VISITOR_CACHE_SECRET),
     VISITOR_BFF_SECRET: z.string().min(32).default(LOCAL_VISITOR_BFF_SECRET),
     VISITOR_URL: originSchema.default('http://localhost:3000'),
@@ -144,33 +135,20 @@ const environmentSchema = z
 
     if (
       ['production', 'staging'].includes(environment.APP_ENV) &&
-      environment.SUPABASE_PUBLISHABLE_KEY === LOCAL_SUPABASE_KEY
+      environment.BETTER_AUTH_SECRET === LOCAL_BETTER_AUTH_SECRET
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'SUPABASE_PUBLISHABLE_KEY must be configured outside local development',
-        path: ['SUPABASE_PUBLISHABLE_KEY'],
-      });
-    }
-
-    if (
-      ['production', 'staging'].includes(environment.APP_ENV) &&
-      environment.SUPABASE_SECRET_KEY === LOCAL_SUPABASE_SECRET_KEY
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'SUPABASE_SECRET_KEY must be configured outside local development',
-        path: ['SUPABASE_SECRET_KEY'],
+        message: 'BETTER_AUTH_SECRET must be configured outside local development',
+        path: ['BETTER_AUTH_SECRET'],
       });
     }
 
     if (['production', 'staging'].includes(environment.APP_ENV)) {
       for (const key of [
+        'MEDIA_SERVICE_URL',
+        'MEDIA_SERVICE_HMAC_SECRET',
         'PUBLIC_MEDIA_ORIGIN',
-        'R2_ACCESS_KEY_ID',
-        'R2_BUCKET_NAME',
-        'R2_ENDPOINT',
-        'R2_SECRET_ACCESS_KEY',
       ] as const) {
         if (environment[key] === undefined) {
           context.addIssue({

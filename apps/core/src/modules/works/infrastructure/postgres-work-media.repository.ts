@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import type { PrismaSql } from '../../auth/infrastructure/prisma-sql';
 import type {
   WorkMediaContentType,
   WorkMediaExtension,
@@ -408,7 +408,7 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
       }
   > {
     return this.database.sql.begin(async (transaction) => {
-      await transaction`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await transaction`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       const payload = {
         assetId: input.assetId,
         expectedVersion: input.expectedVersion,
@@ -512,11 +512,7 @@ export class PostgresWorkMediaRepository implements WorkMediaRepository {
     });
   }
 
-  private async isExpired(
-    sql: postgres.TransactionSql,
-    assetId: string,
-    now: Date,
-  ): Promise<boolean> {
+  private async isExpired(sql: PrismaSql, assetId: string, now: Date): Promise<boolean> {
     const rows = await sql<{ is_expired: boolean }[]>`
       select expires_at <= ${now} as is_expired from private.work_media_assets where id = ${assetId}
     `;

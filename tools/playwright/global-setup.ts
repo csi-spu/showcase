@@ -51,6 +51,8 @@ async function prepareWorkLifecyclePreconditions(databaseUrl: string): Promise<v
     prepare: true,
   });
   try {
+    await database`delete from private.authentication_rate_limits`;
+    await database`delete from private.attribution_source_lookup_rate_limits`;
     await database`select * from private.execute_issue_56_contributor_cutover()`;
   } catch (error: unknown) {
     throw new Error(

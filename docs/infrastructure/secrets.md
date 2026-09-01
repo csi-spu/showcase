@@ -39,26 +39,21 @@ Current required keys:
 - `CLOUDFLARE_API_TOKEN`, a zone-scoped token with only Cache Purge permission
 - `CLOUDFLARE_ZONE_ID`, the Cloudflare zone containing Core and Visitor public hostnames
 - `CORS_ALLOWED_ORIGINS`
-- `DATABASE_URL`, the pooled Supabase Postgres connection used only by Core
+- `DATABASE_URL`, the self-hosted Postgres connection used only by Core
+- `BETTER_AUTH_BASE_URL`, the internal Core origin used by headless BetterAuth
+- `BETTER_AUTH_SECRET`, an environment-specific BetterAuth signing secret
 - `GIT_SHA`, baked into the image by CI
 - `NODE_ENV`
 - `PORT`
 - `PUBLIC_MEDIA_ORIGIN`, the controlled origin that serves sanitized eligible media only
-- `R2_ACCESS_KEY_ID`, a bucket-scoped R2 S3 credential used only by Core
-- `R2_BUCKET_NAME`, the private media bucket
-- `R2_ENDPOINT`, the account-specific R2 S3 API origin
-- `R2_SECRET_ACCESS_KEY`, the matching bucket-scoped secret used only by Core
-- `R2_TIMEOUT_MS`, the bounded timeout for R2 operations
+- `MEDIA_SERVICE_URL`, the private storage-service origin used only by Core
+- `MEDIA_SERVICE_HMAC_SECRET`, an environment-specific signing secret shared by Core and media
 - `STUDENT_BFF_SECRET`, an environment-specific high-entropy secret shared only with the Student server runtime
-- `SUPABASE_AUTH_TIMEOUT_MS`
-- `SUPABASE_PUBLISHABLE_KEY`, used by Core for Supabase Auth password and refresh grants
-- `SUPABASE_SECRET_KEY`, used only by Core's authorized Admin provisioning command
-- `SUPABASE_URL`
 - `VISITOR_CACHE_SECRET`, an environment-specific high-entropy secret shared only with the Visitor cache-revalidation endpoint
 - `VISITOR_BFF_SECRET`, an environment-specific high-entropy secret used by Visitor to authenticate opaque source keys for public mutation rate limits
 - `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
 
-R2 credentials must allow only object read, write, and delete operations in the configured private bucket. Presigned URLs use the S3 API origin, never the public media origin. Bucket CORS allows `PUT` only from the exact Student origin and permits the `Content-Type` header. The Supabase secret key is restricted to the Admin provisioning adapter; normal Admin and Student authentication use the publishable key.
+The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
 
 Admin receives `CORE_URL` and the matching `ADMIN_BFF_SECRET` at container runtime. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 

@@ -22,8 +22,11 @@ import {
 } from './infrastructure/node-auth-crypto';
 import { PostgresAuthRepository } from './infrastructure/postgres-auth.repository';
 import { PostgresAdminProvisioningRepository } from './infrastructure/postgres-admin-provisioning.repository';
-import { SupabaseAdminAuthAdapter } from './infrastructure/supabase-admin-auth.adapter';
-import { SupabaseAuthAdapter } from './infrastructure/supabase-auth.adapter';
+import {
+  BetterAuthAdminProvisioningProvider,
+  BetterAuthEngine,
+  BetterAuthProvider,
+} from './infrastructure/better-auth.adapter';
 import { AuthExceptionFilter } from './transport/auth-exception.filter';
 import { StudentAuthController } from './transport/student-auth.controller';
 import { StudentBffGuard } from './transport/student-bff.guard';
@@ -34,6 +37,15 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
   controllers: [AdminAuthController, StudentAuthController],
   providers: [
     DatabaseClient,
+    {
+      inject: [ConfigService, DatabaseClient],
+      provide: BetterAuthEngine,
+      useFactory: (config: ConfigService, database: DatabaseClient) =>
+        new BetterAuthEngine(database.prisma, {
+          baseUrl: config.getOrThrow<string>('BETTER_AUTH_BASE_URL'),
+          secret: config.getOrThrow<string>('BETTER_AUTH_SECRET'),
+        }),
+    },
     AdminAuthService,
     AdminBffGuard,
     AdminProvisioningService,
@@ -48,14 +60,9 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
         new NodeIdentityProtector(config.getOrThrow<string>('AUTH_IDENTITY_SECRET')),
     },
     {
-      inject: [ConfigService],
       provide: AUTH_PROVIDER,
-      useFactory: (config: ConfigService) =>
-        new SupabaseAuthAdapter({
-          apiKey: config.getOrThrow<string>('SUPABASE_PUBLISHABLE_KEY'),
-          baseUrl: config.getOrThrow<string>('SUPABASE_URL'),
-          timeoutMilliseconds: config.getOrThrow<number>('SUPABASE_AUTH_TIMEOUT_MS'),
-        }),
+      useFactory: (engine: BetterAuthEngine) => new BetterAuthProvider(engine),
+      inject: [BetterAuthEngine],
     },
     { provide: AUTH_REPOSITORY, useClass: PostgresAuthRepository },
     { provide: AUTH_TOKEN_GENERATOR, useClass: NodeTokenGenerator },
@@ -64,14 +71,9 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
       useClass: PostgresAdminProvisioningRepository,
     },
     {
-      inject: [ConfigService],
       provide: ADMIN_PROVISIONING_PROVIDER,
-      useFactory: (config: ConfigService) =>
-        new SupabaseAdminAuthAdapter({
-          baseUrl: config.getOrThrow<string>('SUPABASE_URL'),
-          secretKey: config.getOrThrow<string>('SUPABASE_SECRET_KEY'),
-          timeoutMilliseconds: config.getOrThrow<number>('SUPABASE_AUTH_TIMEOUT_MS'),
-        }),
+      useFactory: (engine: BetterAuthEngine) => new BetterAuthAdminProvisioningProvider(engine),
+      inject: [BetterAuthEngine],
     },
   ],
   exports: [
@@ -80,6 +82,7 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
     AUTH_IDENTITY_PROTECTOR,
     AUTH_TOKEN_GENERATOR,
     DatabaseClient,
+    BetterAuthEngine,
     StudentAuthService,
     StudentBffGuard,
   ],

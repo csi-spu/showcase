@@ -12,7 +12,7 @@ import type {
 import type { NormalizedWorkDraft } from '../domain/work-draft-policy';
 import { refreshPublicWorkCatalog } from '../../catalog/infrastructure/postgres-catalog-projection';
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 
 interface LockedPublicationRow {
   activity_state: 'active' | 'archived';

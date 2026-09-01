@@ -503,7 +503,10 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     operation: ProfileOperation,
     requestPayload: postgres.JSONValue,
   ): Promise<ProfileMutationResult | null> {
-    await transaction`select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))`;
+    await transaction`
+      select 1
+      from (select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}::text, 0))) as advisory_lock
+    `;
     const rows = await transaction<{ is_same: boolean }[]>`
       select operation = ${operation}
         and request_payload = ${transaction.json(requestPayload)} as is_same

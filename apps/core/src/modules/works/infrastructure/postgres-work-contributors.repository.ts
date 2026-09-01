@@ -15,7 +15,7 @@ const CANDIDATE_RESULT_LIMIT = 8;
 const EXPIRED_CANDIDATE_CLEANUP_LIMIT = 100;
 const CONTRIBUTOR_LIMIT = 20;
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 type ContributorOperation =
   'account_contributor_added' | 'draft_contributor_removed' | 'external_contributor_added';
 
@@ -75,7 +75,7 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
       if (candidates.length === 0) return { outcome: 'no_match' };
       await this.deleteExpiredCandidates(sql, input.now);
       const expiresAt = new Date(input.now.getTime() + CANDIDATE_LIFETIME_MILLISECONDS);
-      const references = (await sql`
+      const references = await sql<Array<{ person_id: string; reference: string }>>`
         insert into private.work_contributor_candidates ${sql(
           candidates.map((candidate) => ({
             created_at: input.now,
@@ -89,7 +89,7 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
           'created_at',
         )}
         returning person_id, reference
-      `) as Array<{ person_id: string; reference: string }>;
+      `;
       const referenceByPerson = new Map(
         references.map((reference) => [reference.person_id, reference.reference]),
       );
@@ -442,7 +442,7 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
     >,
   ): Promise<ContributorMutationResult> {
     return this.database.sql.begin(async (sql) => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await sql`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       if (!(await this.isCutoverComplete(sql))) return { outcome: 'cutover_unavailable' };
       const replay = await this.resolveReplay(sql, input, operation, fingerprint);
       if (replay !== null) return replay;

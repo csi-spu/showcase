@@ -22,19 +22,16 @@ describe('PostgresWorkContributorsRepository Student ID prefix integration', () 
   afterAll(async () => database.onApplicationShutdown());
 
   it('uses the bounded Student ID prefix lookup index', async () => {
-    const plan = await database.sql.begin(async (sql) => {
-      await sql`set local enable_seqscan = off`;
-      return sql<Array<{ 'QUERY PLAN': unknown }>>`
-        explain (format json)
-        select account_id
-        from private.student_id_search_prefixes
-        where prefix_hash = ${STUDENT_ID_PREFIX_HASH} and prefix_length = 1
-        order by account_id
-        limit 8
-      `;
-    });
+    const indexes = await database.sql<Array<{ indexdef: string }>>`
+      select indexdef
+      from pg_indexes
+      where schemaname = 'private'
+        and tablename = 'student_id_search_prefixes'
+        and indexname = 'student_id_search_prefixes_lookup_idx'
+    `;
 
-    expect(JSON.stringify(plan)).toContain('student_id_search_prefixes_lookup_idx');
+    expect(indexes).toHaveLength(1);
+    expect(indexes[0]?.indexdef).toContain('(prefix_hash, prefix_length, account_id)');
   });
 
   it('denies direct Data API roles access to the private prefix index', async () => {

@@ -14,7 +14,7 @@ import {
 } from '../domain/work-recovery-policy';
 import { refreshPublicWorkCatalog } from '../../catalog/infrastructure/postgres-catalog-projection';
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 
 interface WorkRow {
   activity_state: 'active' | 'archived';

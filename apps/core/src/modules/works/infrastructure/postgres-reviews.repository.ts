@@ -7,7 +7,7 @@ import type {
   ReviewResult,
 } from '../application/reviews.ports';
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 
 interface LockedRevisionRow {
   activity_state: 'active' | 'archived';

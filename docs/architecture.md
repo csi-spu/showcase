@@ -7,14 +7,14 @@ flowchart LR
   Visitor[Visitor Next.js] --> Core[NestJS Core]
   Admin[Admin Next.js BFF] --> Core
   Student[Student Next.js BFF] --> Core
-  Core --> Auth[Supabase Auth]
-  Core --> DB[Supabase Postgres]
-  Core --> R2[Cloudflare R2]
-  Student -. authorized presigned PUT .-> R2
-  Visitor -. cacheable media GET .-> R2
+  Core --> Auth[BetterAuth headless]
+  Core --> DB[Self-hosted Postgres]
+  Core --> Media[Self-hosted media service]
+  Student -. authorized signed PUT .-> Media
+  Visitor -. cacheable media GET .-> Media
 ```
 
-Core is the authoritative domain API and authentication service. Authenticated Next.js frontends are browser-facing BFFs: Server Components perform reads, Server Actions perform mutations, and host-only cookies never leave their frontend hostname. Frontends do not own domain authorization or query Supabase tables. The only direct browser-to-provider traffic is an R2 operation authorized by a short-lived, operation-specific presigned URL from Core.
+Core is the authoritative domain API and authentication service. Authenticated Next.js frontends are browser-facing BFFs: Server Components perform reads, Server Actions perform mutations, and host-only cookies never leave their frontend hostname. Frontends do not query the database. Media operations use short-lived HMAC-signed URLs issued by Core and validated by the dedicated storage service.
 
 ## Deployable surfaces
 
@@ -25,19 +25,19 @@ Each `apps/*` workspace is independently deployable, health-checked, and horizon
 | Visitor | internet                                        | Core                | `/health`                             |
 | Admin   | internet, authentication required               | Core                | `/health`                             |
 | Student | internet, authentication required               | Core                | `/health`                             |
-| Core    | internal endpoints plus controlled public reads | Supabase, R2        | `/v1/health/live`, `/v1/health/ready` |
+| Core    | internal endpoints plus controlled public reads | self-hosted Postgres, BetterAuth, media service | `/v1/health/live`, `/v1/health/ready` |
 
 ## Authentication flow
 
 1. An Admin or Student submits private login data to a Server Action on the matching frontend over TLS.
 2. The frontend validates input and calls its audience-specific, BFF-authenticated internal Core endpoint through `@showcase/core-client`.
-3. Core maps the private login identifier to a private synthetic Supabase Auth identity and creates an audience-bound authoritative session.
+3. Core maps the private login identifier to a private synthetic BetterAuth identity and creates an audience-bound authoritative session.
 4. The frontend stores only the opaque session token in its own Secure, HttpOnly, host-only cookie. Admin and Student cookies and BFF secrets remain distinct.
 5. Subsequent Server Components and Server Actions forward that token through the shared transport client. The client validates response contracts but owns no authorization policy.
 6. Core guards resolve current Account, role, audience, forced-change, and access state. Request bodies never choose actor identity.
 7. A newly provisioned Account remains restricted to password change until the forced-change requirement is cleared.
 
-Public profile identifiers are random and unrelated to Student ID, Admin login, or Supabase identity IDs.
+Public profile identifiers are random and unrelated to Student ID, Admin login, or BetterAuth identity IDs.
 
 ## Work publication model
 

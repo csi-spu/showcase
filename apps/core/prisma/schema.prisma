@@ -1,0 +1,1373 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["private", "public"]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model academic_year_change_audit_events {
+  id                     BigInt   @id @default(autoincrement())
+  idempotency_key        String   @unique @db.Uuid
+  actor_account_id       String   @db.Uuid
+  previous_academic_year Int?     @db.SmallInt
+  current_academic_year  Int      @db.SmallInt
+  expected_version       Int
+  resulting_version      Int
+  occurred_at            DateTime @db.Timestamptz(6)
+  accounts               accounts @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model admin_auth_identities {
+  account_id         String   @id @db.Uuid
+  admin_login_hash   String   @unique @db.Char(64)
+  synthetic_identity String   @unique
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  accounts           accounts @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model admin_correction_audits {
+  id                                                                      BigInt         @id @default(autoincrement())
+  idempotency_key                                                         String         @unique @db.Uuid
+  actor_account_id                                                        String         @db.Uuid
+  work_id                                                                 String         @db.Uuid
+  base_revision_id                                                        String         @db.Uuid
+  revision_id                                                             String         @unique @db.Uuid
+  action                                                                  String         @default("admin_correction_created")
+  reason                                                                  String
+  diff_metadata                                                           Json
+  request_fingerprint                                                     String         @db.Char(64)
+  occurred_at                                                             DateTime       @db.Timestamptz(6)
+  accounts                                                                accounts       @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  work_revisions_admin_correction_audits_base_revision_idTowork_revisions work_revisions @relation("admin_correction_audits_base_revision_idTowork_revisions", fields: [base_revision_id], references: [id], onUpdate: NoAction)
+  work_revisions_admin_correction_audits_revision_idTowork_revisions      work_revisions @relation("admin_correction_audits_revision_idTowork_revisions", fields: [revision_id], references: [id], onUpdate: NoAction)
+  works                                                                   works          @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([actor_account_id, occurred_at(sort: Desc), id(sort: Desc)], map: "admin_correction_audits_actor_time_idx")
+  @@index([base_revision_id], map: "admin_correction_audits_base_revision_idx")
+  @@index([work_id, occurred_at(sort: Desc), id(sort: Desc)], map: "admin_correction_audits_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_account_lookup_rate_limits {
+  actor_account_id  String   @id @db.Uuid
+  window_started_at DateTime @db.Timestamptz(6)
+  attempt_count     Int      @db.SmallInt
+  accounts          accounts @relation(fields: [actor_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_invitation_operations {
+  idempotency_key         String                   @id @db.Uuid
+  invitation_id           String?                  @db.Uuid
+  actor_account_id        String?                  @db.Uuid
+  operation               String
+  request_payload         Json
+  resulting_state         String?
+  resulting_version       BigInt?
+  occurred_at             DateTime                 @db.Timestamptz(6)
+  accounts                accounts?                @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attribution_invitations attribution_invitations? @relation(fields: [invitation_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_invitation_sessions {
+  session_hash            String                  @id @db.Char(64)
+  invitation_id           String                  @db.Uuid
+  account_id              String?                 @db.Uuid
+  expires_at              DateTime                @db.Timestamptz(6)
+  created_at              DateTime                @db.Timestamptz(6)
+  revoked_at              DateTime?               @db.Timestamptz(6)
+  accounts                accounts?               @relation(fields: [account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  attribution_invitations attribution_invitations @relation(fields: [invitation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([invitation_id, expires_at(sort: Desc)], map: "attribution_invitation_sessions_invitation_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_invitations {
+  id                                                        String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                                                 String                                 @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id                                                   String                                 @db.Uuid
+  kind                                                      String
+  invitee_person_id                                         String?                                @db.Uuid
+  accepted_person_id                                        String?                                @db.Uuid
+  state                                                     String                                 @default("pending")
+  proposed_attribution_name                                 String?
+  proposed_contribution_role                                String?
+  proposed_affiliation                                      String?
+  attribution_name                                          String?
+  study_year                                                Int?                                   @db.SmallInt
+  contribution_role                                         String?
+  affiliation                                               String?
+  public_attribution_consented_at                           DateTime?                              @db.Timestamptz(6)
+  invitation_token_hash                                     String?                                @unique @db.Char(64)
+  invitation_token_exchanged_at                             DateTime?                              @db.Timestamptz(6)
+  recovery_code_hash                                        String?                                @unique @db.Char(64)
+  expires_at                                                DateTime                               @db.Timestamptz(6)
+  version                                                   BigInt                                 @default(1)
+  created_at                                                DateTime                               @db.Timestamptz(6)
+  updated_at                                                DateTime                               @db.Timestamptz(6)
+  resolved_at                                               DateTime?                              @db.Timestamptz(6)
+  attribution_invitation_operations                         attribution_invitation_operations[]
+  attribution_invitation_sessions                           attribution_invitation_sessions[]
+  people_attribution_invitations_accepted_person_idTopeople people?                                @relation("attribution_invitations_accepted_person_idTopeople", fields: [accepted_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  people_attribution_invitations_invitee_person_idTopeople  people?                                @relation("attribution_invitations_invitee_person_idTopeople", fields: [invitee_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  works                                                     works                                  @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+  attribution_removal_requests                              attribution_removal_requests[]
+  work_draft_contributor_backfill_items                     work_draft_contributor_backfill_items?
+  work_draft_contributors                                   work_draft_contributors?
+
+  @@index([created_at, id], map: "attribution_invitations_issue_56_backfill_order_idx")
+  @@index([work_id, created_at(sort: Desc), id(sort: Desc)], map: "attribution_invitations_work_history_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_removal_operations {
+  idempotency_key              String                       @id @db.Uuid
+  request_id                   String                       @db.Uuid
+  actor_account_id             String?                      @db.Uuid
+  operation                    String
+  request_payload              Json
+  resulting_state              String
+  resulting_version            BigInt
+  occurred_at                  DateTime                     @db.Timestamptz(6)
+  accounts                     accounts?                    @relation(fields: [actor_account_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  attribution_removal_requests attribution_removal_requests @relation(fields: [request_id], references: [id], onUpdate: NoAction)
+
+  @@index([request_id, occurred_at(sort: Desc)], map: "attribution_removal_operations_request_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_removal_rate_limits {
+  dimension         String
+  key_hash          String   @db.Char(64)
+  window_started_at DateTime @db.Timestamptz(6)
+  attempt_count     Int      @db.SmallInt
+
+  @@id([dimension, key_hash])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_removal_requests {
+  id                                                                                 String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                                                                          String                           @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invitation_id                                                                      String?                          @db.Uuid
+  work_id                                                                            String                           @db.Uuid
+  revision_id                                                                        String                           @db.Uuid
+  state                                                                              String                           @default("pending")
+  reason                                                                             String
+  decision_reason                                                                    String?
+  decided_by_account_id                                                              String?                          @db.Uuid
+  correction_revision_id                                                             String?                          @unique @db.Uuid
+  version                                                                            BigInt                           @default(1)
+  created_at                                                                         DateTime                         @db.Timestamptz(6)
+  resolved_at                                                                        DateTime?                        @db.Timestamptz(6)
+  attribution_public_id                                                              String?                          @unique @db.Uuid
+  attribution_removal_operations                                                     attribution_removal_operations[]
+  work_revision_attributions                                                         work_revision_attributions?      @relation(fields: [attribution_public_id], references: [attribution_public_id], onDelete: Restrict, onUpdate: NoAction)
+  work_revisions_attribution_removal_requests_correction_revision_idTowork_revisions work_revisions?                  @relation("attribution_removal_requests_correction_revision_idTowork_revisions", fields: [correction_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  accounts                                                                           accounts?                        @relation(fields: [decided_by_account_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  attribution_invitations                                                            attribution_invitations?         @relation(fields: [invitation_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  work_revisions_attribution_removal_requests_revision_idTowork_revisions            work_revisions                   @relation("attribution_removal_requests_revision_idTowork_revisions", fields: [revision_id], references: [id], onUpdate: NoAction)
+  works                                                                              works                            @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([work_id, created_at(sort: Desc), id(sort: Desc)], map: "attribution_removal_work_history_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model attribution_source_lookup_rate_limits {
+  source_key_hash   String   @id @db.Char(64)
+  window_started_at DateTime @db.Timestamptz(6)
+  attempt_count     Int      @db.SmallInt
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authentication_audit_events {
+  id              BigInt    @id @default(autoincrement())
+  account_id      String?   @db.Uuid
+  event_type      String
+  source_key_hash String?   @db.Char(64)
+  error_code      String?
+  occurred_at     DateTime  @default(now()) @db.Timestamptz(6)
+  accounts        accounts? @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([account_id, occurred_at(sort: Desc)], map: "authentication_audit_events_account_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authentication_rate_limits {
+  key_kind          String
+  key_hash          String   @db.Char(64)
+  window_started_at DateTime @db.Timestamptz(6)
+  attempts          Int
+
+  @@id([key_kind, key_hash])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model authentication_sessions {
+  session_id_hash           String    @id @db.Char(64)
+  account_id                String    @db.Uuid
+  audience                  String
+  provider_access_token     String
+  provider_refresh_token    String
+  provider_token_expires_at DateTime  @db.Timestamptz(6)
+  created_at                DateTime  @db.Timestamptz(6)
+  last_activity_at          DateTime  @db.Timestamptz(6)
+  absolute_expires_at       DateTime  @db.Timestamptz(6)
+  revoked_at                DateTime? @db.Timestamptz(6)
+  revocation_reason         String?
+  accounts                  accounts  @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cache_invalidation_deliveries {
+  event_id         BigInt        @id
+  status           String        @default("pending")
+  attempt_count    Int           @default(0)
+  next_attempt_at  DateTime      @db.Timestamptz(6)
+  lease_expires_at DateTime?     @db.Timestamptz(6)
+  completed_at     DateTime?     @db.Timestamptz(6)
+  last_error_code  String?
+  created_at       DateTime      @db.Timestamptz(6)
+  updated_at       DateTime      @db.Timestamptz(6)
+  outbox_events    outbox_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model issue_56_contributor_cutover_state {
+  singleton                    Boolean   @id @default(true)
+  completed_at                 DateTime? @db.Timestamptz(6)
+  invalidated_invitation_count Int       @default(0)
+  deleted_session_count        Int       @default(0)
+
+  @@schema("private")
+}
+
+model outbox_events {
+  id                            BigInt                         @id @default(autoincrement())
+  aggregate_type                String
+  aggregate_id                  String                         @db.Uuid
+  event_type                    String
+  payload                       Json
+  occurred_at                   DateTime                       @db.Timestamptz(6)
+  published_at                  DateTime?                      @db.Timestamptz(6)
+  cache_invalidation_deliveries cache_invalidation_deliveries?
+
+  @@unique([aggregate_type, aggregate_id, event_type])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model person_name_correction_audit_events {
+  id                                                                        BigInt   @id @default(autoincrement())
+  idempotency_key                                                           String   @unique @db.Uuid
+  actor_account_id                                                          String   @db.Uuid
+  student_account_id                                                        String   @db.Uuid
+  previous_first_name_th                                                    String
+  previous_last_name_th                                                     String
+  first_name_th                                                             String
+  last_name_th                                                              String
+  reason                                                                    String
+  expected_version                                                          Int
+  resulting_version                                                         Int
+  occurred_at                                                               DateTime @db.Timestamptz(6)
+  accounts_person_name_correction_audit_events_actor_account_idToaccounts   accounts @relation("person_name_correction_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_person_name_correction_audit_events_student_account_idToaccounts accounts @relation("person_name_correction_audit_events_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([student_account_id, occurred_at(sort: Desc)], map: "person_name_correction_target_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model person_names {
+  person_id     String   @id @db.Uuid
+  first_name_th String
+  last_name_th  String
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+  people        people   @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model profile_operations {
+  idempotency_key   String   @id @db.Uuid
+  person_id         String   @db.Uuid
+  actor_account_id  String   @db.Uuid
+  operation         String
+  expected_version  BigInt
+  resulting_version BigInt
+  request_payload   Json
+  occurred_at       DateTime @db.Timestamptz(6)
+  accounts          accounts @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  people            people   @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([actor_account_id], map: "profile_operations_actor_account_idx")
+  @@index([person_id, occurred_at(sort: Desc)], map: "profile_operations_person_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model profile_photo_assets {
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  person_id              String            @db.Uuid
+  status                 String
+  quarantine_object_key  String            @unique
+  sanitized_object_key   String?           @unique
+  declared_content_type  String
+  declared_byte_size     Int
+  inspected_content_type String?
+  inspected_byte_size    Int?
+  width                  Int?
+  height                 Int?
+  created_at             DateTime          @db.Timestamptz(6)
+  updated_at             DateTime          @db.Timestamptz(6)
+  expires_at             DateTime          @db.Timestamptz(6)
+  rejection_code         String?
+  people                 people            @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  public_profiles        public_profiles[]
+
+  @@index([person_id, created_at(sort: Desc)], map: "profile_photo_assets_person_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model public_cache_version {
+  singleton  Boolean  @id @default(true)
+  version    BigInt
+  updated_at DateTime @db.Timestamptz(6)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model public_work_catalog {
+  work_id                 String         @id @db.Uuid
+  revision_id             String         @unique @db.Uuid
+  work_public_id          String         @unique @db.Uuid
+  title                   String
+  summary                 String
+  description             String
+  category                String
+  academic_year           Int            @db.SmallInt
+  semester                String
+  semester_order          Int            @db.SmallInt
+  published_at            DateTime       @db.Timestamptz(6)
+  normalized_title        String
+  normalized_summary      String
+  normalized_tags         String
+  normalized_attributions String
+  normalized_description  String
+  normalized_search       String
+  work_revisions          work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+  works                   works          @relation(fields: [work_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([academic_year(sort: Desc), semester_order(sort: Desc), published_at(sort: Desc), work_public_id(sort: Desc)], map: "public_work_catalog_academic_period_idx")
+  @@index([category, published_at(sort: Desc), work_public_id(sort: Desc)], map: "public_work_catalog_category_recent_idx")
+  @@index([academic_year, semester, published_at(sort: Desc), work_public_id(sort: Desc)], map: "public_work_catalog_period_recent_idx")
+  @@index([published_at(sort: Desc), work_public_id(sort: Desc)], map: "public_work_catalog_recent_idx")
+  @@index([normalized_search(ops: raw("gin_trgm_ops"))], map: "public_work_catalog_search_idx", type: Gin)
+  @@index([normalized_title, work_public_id], map: "public_work_catalog_title_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model published_revision_tags {
+  revision_id    String         @db.Uuid
+  tag_id         String         @db.Uuid
+  position       Int            @db.SmallInt
+  work_revisions work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+  tags           tags           @relation(fields: [tag_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, position])
+  @@unique([revision_id, tag_id])
+  @@index([tag_id, revision_id], map: "published_revision_tags_tag_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model removal_request_operations {
+  idempotency_key   String           @id @db.Uuid
+  request_id        String           @db.Uuid
+  actor_account_id  String           @db.Uuid
+  operation         String
+  request_payload   Json
+  resulting_state   String
+  resulting_version BigInt
+  occurred_at       DateTime         @db.Timestamptz(6)
+  accounts          accounts         @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  removal_requests  removal_requests @relation(fields: [request_id], references: [id], onUpdate: NoAction)
+
+  @@index([request_id, occurred_at(sort: Desc)], map: "removal_request_operations_request_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model removal_requests {
+  id                                                        String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                                                 String                       @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id                                                   String                       @db.Uuid
+  revision_id                                               String                       @db.Uuid
+  submitter_account_id                                      String                       @db.Uuid
+  state                                                     String                       @default("pending")
+  reason                                                    String
+  decision_reason                                           String?
+  decided_by_account_id                                     String?                      @db.Uuid
+  version                                                   BigInt                       @default(1)
+  created_at                                                DateTime                     @db.Timestamptz(6)
+  resolved_at                                               DateTime?                    @db.Timestamptz(6)
+  removal_request_operations                                removal_request_operations[]
+  accounts_removal_requests_decided_by_account_idToaccounts accounts?                    @relation("removal_requests_decided_by_account_idToaccounts", fields: [decided_by_account_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  work_revisions                                            work_revisions               @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+  accounts_removal_requests_submitter_account_idToaccounts  accounts                     @relation("removal_requests_submitter_account_idToaccounts", fields: [submitter_account_id], references: [id], onUpdate: NoAction)
+  works                                                     works                        @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([submitter_account_id, created_at(sort: Desc), id(sort: Desc)], map: "removal_requests_submitter_history_idx")
+  @@index([work_id, created_at(sort: Desc), id(sort: Desc)], map: "removal_requests_work_history_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model reviews {
+  id                         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                  String         @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revision_id                String         @unique @db.Uuid
+  actor_account_id           String         @db.Uuid
+  decision                   String
+  reason                     String?
+  feedback                   String?
+  expected_revision_version  BigInt
+  resulting_revision_version BigInt
+  idempotency_key            String         @unique @db.Uuid
+  request_payload            Json
+  reviewed_at                DateTime       @db.Timestamptz(6)
+  accounts                   accounts       @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  work_revisions             work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@index([actor_account_id, reviewed_at(sort: Desc), id], map: "reviews_actor_time_idx")
+  @@index([revision_id, reviewed_at(sort: Desc), id], map: "reviews_revision_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roster_audit_events {
+  id               BigInt         @id @default(autoincrement())
+  batch_id         String         @db.Uuid
+  actor_account_id String         @db.Uuid
+  event_type       String
+  occurred_at      DateTime       @db.Timestamptz(6)
+  accounts         accounts       @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_batches   roster_batches @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([batch_id, occurred_at], map: "roster_audit_events_batch_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model roster_batches {
+  id                                      String                                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploader_account_id                     String                                    @db.Uuid
+  status                                  String                                    @default("pending")
+  total_row_count                         Int
+  processed_row_count                     Int                                       @default(0)
+  created_count                           Int                                       @default(0)
+  unchanged_count                         Int                                       @default(0)
+  failed_count                            Int                                       @default(0)
+  uploaded_at                             DateTime                                  @db.Timestamptz(6)
+  completed_at                            DateTime?                                 @db.Timestamptz(6)
+  entry_years                             Int[]                                     @db.SmallInt
+  roster_audit_events                     roster_audit_events[]
+  accounts                                accounts                                  @relation(fields: [uploader_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_conflict_resolution_audit_events roster_conflict_resolution_audit_events[]
+  roster_conflicts                        roster_conflicts[]
+  roster_rows                             roster_rows[]
+
+  @@index([uploader_account_id, uploaded_at(sort: Desc)], map: "roster_batches_uploader_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roster_conflict_resolution_audit_events {
+  id               BigInt           @id @default(autoincrement())
+  conflict_id      String           @db.Uuid
+  batch_id         String           @db.Uuid
+  actor_account_id String           @db.Uuid
+  resolution       String
+  reason           String?
+  idempotency_key  String           @unique @db.Uuid
+  resolved_version Int
+  occurred_at      DateTime         @db.Timestamptz(6)
+  accounts         accounts         @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_batches   roster_batches   @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_conflicts roster_conflicts @relation(fields: [conflict_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([batch_id, occurred_at, id], map: "roster_conflict_audit_batch_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model roster_conflicts {
+  id                                      String                                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batch_id                                String                                    @db.Uuid
+  source_row_number                       Int
+  person_id                               String                                    @db.Uuid
+  student_id_hash                         String                                    @db.Char(64)
+  existing_first_name_th                  String
+  existing_last_name_th                   String
+  incoming_first_name_th                  String
+  incoming_last_name_th                   String
+  status                                  String                                    @default("pending")
+  version                                 Int                                       @default(1)
+  resolution                              String?
+  reason                                  String?
+  resolved_by_account_id                  String?                                   @db.Uuid
+  resolved_at                             DateTime?                                 @db.Timestamptz(6)
+  resolution_idempotency_key              String?                                   @unique @db.Uuid
+  created_at                              DateTime                                  @db.Timestamptz(6)
+  roster_conflict_resolution_audit_events roster_conflict_resolution_audit_events[]
+  roster_batches                          roster_batches                            @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  people                                  people                                    @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts                                accounts?                                 @relation(fields: [resolved_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([batch_id, source_row_number])
+  @@index([batch_id, source_row_number, id], map: "roster_conflicts_batch_row_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model roster_rows {
+  id                       String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batch_id                 String         @db.Uuid
+  row_number               Int
+  student_id               String
+  student_id_hash          String?        @db.Char(64)
+  synthetic_identity       String?
+  provider_user_id         String?        @db.Uuid
+  first_name_th            String?
+  last_name_th             String?
+  status                   String         @default("pending")
+  attempt_count            Int            @default(0) @db.SmallInt
+  error_code               String?
+  lease_until              DateTime?      @db.Timestamptz(6)
+  next_attempt_at          DateTime       @db.Timestamptz(6)
+  processed_at             DateTime?      @db.Timestamptz(6)
+  created_at               DateTime       @db.Timestamptz(6)
+  updated_at               DateTime       @db.Timestamptz(6)
+  entry_year               Int?           @db.SmallInt
+  student_id_prefix_hashes String[]       @db.Char(64)
+  roster_batches           roster_batches @relation(fields: [batch_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([batch_id, row_number])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model student_access_extension_audit_events {
+  id                                                                          BigInt   @id @default(autoincrement())
+  idempotency_key                                                             String   @unique @db.Uuid
+  actor_account_id                                                            String   @db.Uuid
+  student_account_id                                                          String   @db.Uuid
+  previous_access_ends_academic_year                                          Int      @db.SmallInt
+  access_ends_academic_year                                                   Int      @db.SmallInt
+  reason                                                                      String
+  expected_version                                                            Int
+  resulting_version                                                           Int
+  occurred_at                                                                 DateTime @db.Timestamptz(6)
+  accounts_student_access_extension_audit_events_actor_account_idToaccounts   accounts @relation("student_access_extension_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_student_access_extension_audit_events_student_account_idToaccounts accounts @relation("student_access_extension_audit_events_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([student_account_id, occurred_at(sort: Desc)], map: "student_access_extension_target_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model student_auth_identities {
+  account_id                 String                       @id @db.Uuid
+  student_id_hash            String                       @unique @db.Char(64)
+  synthetic_identity         String                       @unique
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  accounts                   accounts                     @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  student_id_search_prefixes student_id_search_prefixes[]
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model student_id_search_prefixes {
+  account_id              String                  @db.Uuid
+  prefix_length           Int                     @db.SmallInt
+  prefix_hash             String                  @db.Char(64)
+  created_at              DateTime                @db.Timestamptz(6)
+  student_auth_identities student_auth_identities @relation(fields: [account_id], references: [account_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([account_id, prefix_length])
+  @@index([prefix_hash, prefix_length, account_id], map: "student_id_search_prefixes_lookup_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model student_password_reset_operations {
+  idempotency_key                                                         String    @id @db.Uuid
+  actor_account_id                                                        String    @db.Uuid
+  student_account_id                                                      String    @db.Uuid
+  expected_version                                                        Int
+  resulting_version                                                       Int
+  status                                                                  String
+  error_code                                                              String?
+  started_at                                                              DateTime  @db.Timestamptz(6)
+  finished_at                                                             DateTime? @db.Timestamptz(6)
+  lease_until                                                             DateTime? @db.Timestamptz(6)
+  attempt_number                                                          Int       @default(1)
+  accounts_student_password_reset_operations_actor_account_idToaccounts   accounts  @relation("student_password_reset_operations_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_student_password_reset_operations_student_account_idToaccounts accounts  @relation("student_password_reset_operations_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([student_account_id, started_at(sort: Desc)], map: "student_password_reset_target_time_idx")
+  @@schema("private")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_contributor_candidates {
+  reference  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id    String   @db.Uuid
+  person_id  String   @db.Uuid
+  expires_at DateTime @db.Timestamptz(6)
+  created_at DateTime @db.Timestamptz(6)
+  people     people   @relation(fields: [person_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  works      works    @relation(fields: [work_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([reference, work_id, person_id])
+  @@index([expires_at, reference], map: "work_contributor_candidates_expiry_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_contributor_backfill_items {
+  invitation_id           String                  @id @db.Uuid
+  source_state            String
+  outcome                 String
+  processed_at            DateTime                @db.Timestamptz(6)
+  attribution_invitations attribution_invitations @relation(fields: [invitation_id], references: [id], onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_contributor_backfill_runs {
+  id                      BigInt   @id @default(autoincrement())
+  batch_size              Int
+  accepted_source_count   Int
+  pending_source_count    Int
+  terminal_excluded_count Int
+  inserted_count          Int
+  retained_count          Int
+  missing_draft_count     Int
+  invalid_source_count    Int
+  over_limit_count        Int
+  remaining_count         Int
+  occurred_at             DateTime @db.Timestamptz(6)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_contributor_operations {
+  idempotency_key         String                   @id @db.Uuid
+  actor_account_id        String                   @db.Uuid
+  work_id                 String                   @db.Uuid
+  contributor_id          BigInt?
+  operation               String
+  request_fingerprint     String                   @db.Char(64)
+  resulting_version       BigInt
+  occurred_at             DateTime                 @db.Timestamptz(6)
+  accounts                accounts                 @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  work_draft_contributors work_draft_contributors? @relation(fields: [contributor_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  works                   works                    @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([work_id, occurred_at(sort: Desc), idempotency_key], map: "work_draft_contributor_operations_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_contributors {
+  id                                BigInt                              @id @default(autoincrement())
+  public_id                         String                              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id                           String                              @db.Uuid
+  kind                              String
+  person_id                         String                              @db.Uuid
+  attribution_name                  String
+  contribution_role                 String?
+  position                          Int                                 @db.SmallInt
+  legacy_invitation_id              String?                             @unique @db.Uuid
+  created_at                        DateTime                            @db.Timestamptz(6)
+  updated_at                        DateTime                            @db.Timestamptz(6)
+  removed_at                        DateTime?                           @db.Timestamptz(6)
+  work_draft_contributor_operations work_draft_contributor_operations[]
+  attribution_invitations           attribution_invitations?            @relation(fields: [legacy_invitation_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  people                            people                              @relation(fields: [person_id], references: [id], onUpdate: NoAction)
+  work_drafts                       work_drafts                         @relation(fields: [work_id], references: [work_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model work_draft_links {
+  work_id     String      @db.Uuid
+  position    Int         @db.SmallInt
+  label       String
+  url         String
+  work_drafts work_drafts @relation(fields: [work_id], references: [work_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([work_id, position])
+  @@unique([work_id, url])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_media {
+  work_id           String            @db.Uuid
+  media_kind        String
+  position          Int               @db.SmallInt
+  asset_id          String            @unique @db.Uuid
+  created_at        DateTime          @db.Timestamptz(6)
+  work_media_assets work_media_assets @relation(fields: [asset_id], references: [id], onUpdate: NoAction)
+  work_drafts       work_drafts       @relation(fields: [work_id], references: [work_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([work_id, media_kind, position])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model work_draft_tags {
+  work_id             String      @db.Uuid
+  position            Int         @db.SmallInt
+  display_label       String
+  normalized_identity String
+  work_drafts         work_drafts @relation(fields: [work_id], references: [work_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([work_id, position])
+  @@unique([work_id, normalized_identity])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_draft_video_links {
+  work_id           String      @db.Uuid
+  position          Int         @db.SmallInt
+  provider          String
+  provider_video_id String
+  url               String
+  work_drafts       work_drafts @relation(fields: [work_id], references: [work_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([work_id, position])
+  @@unique([work_id, provider, provider_video_id])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model work_drafts {
+  work_id                    String                    @id @db.Uuid
+  base_published_revision_id String?                   @db.Uuid
+  title                      String?
+  summary                    String?
+  description                String?
+  category                   String?
+  academic_year              Int?                      @db.SmallInt
+  semester                   String?
+  version                    BigInt                    @default(1)
+  created_at                 DateTime                  @db.Timestamptz(6)
+  updated_at                 DateTime                  @db.Timestamptz(6)
+  lifecycle_state            String                    @default("active")
+  submitter_study_year       Int?                      @db.SmallInt
+  work_draft_contributors    work_draft_contributors[]
+  work_draft_links           work_draft_links[]
+  work_draft_media           work_draft_media[]
+  work_draft_tags            work_draft_tags[]
+  work_draft_video_links     work_draft_video_links[]
+  work_revisions             work_revisions?           @relation(fields: [base_published_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "work_drafts_base_published_revision_fk")
+  works                      works                     @relation(fields: [work_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_media_assets {
+  id                        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id                   String                @db.Uuid
+  media_kind                String
+  status                    String
+  quarantine_object_key     String                @unique
+  authorize_idempotency_key String                @db.Uuid
+  master_object_key         String?               @unique
+  declared_content_type     String
+  declared_extension        String
+  declared_byte_size        Int
+  inspected_byte_size       Int?
+  width                     Int?
+  height                    Int?
+  content_hash              Bytes?
+  dominant_color            String?
+  rejection_code            String?
+  warnings                  String[]              @default([])
+  processing_attempts       Int                   @default(0) @db.SmallInt
+  created_at                DateTime              @db.Timestamptz(6)
+  updated_at                DateTime              @db.Timestamptz(6)
+  expires_at                DateTime              @db.Timestamptz(6)
+  processing_started_at     DateTime?             @db.Timestamptz(6)
+  cleanup_started_at        DateTime?             @db.Timestamptz(6)
+  work_draft_media          work_draft_media?
+  works                     works                 @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+  work_media_variants       work_media_variants[]
+  work_revision_media       work_revision_media[]
+
+  @@unique([work_id, authorize_idempotency_key], map: "work_media_assets_authorize_idempotency_idx")
+  @@index([work_id, created_at(sort: Desc)], map: "work_media_assets_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_media_variants {
+  asset_id          String            @db.Uuid
+  width             Int
+  height            Int
+  byte_size         Int
+  content_hash      Bytes
+  object_key        String            @unique
+  work_media_assets work_media_assets @relation(fields: [asset_id], references: [id], onUpdate: NoAction)
+
+  @@id([asset_id, width])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model work_operations {
+  idempotency_key   String   @id @db.Uuid
+  actor_account_id  String   @db.Uuid
+  work_id           String   @db.Uuid
+  operation         String
+  request_payload   Json
+  resulting_version BigInt
+  occurred_at       DateTime @db.Timestamptz(6)
+  accounts          accounts @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  works             works    @relation(fields: [work_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([actor_account_id], map: "work_operations_actor_account_idx")
+  @@index([work_id, occurred_at(sort: Desc)], map: "work_operations_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_recovery_audits {
+  id                          BigInt   @id @default(autoincrement())
+  public_id                   String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotency_key             String   @unique @db.Uuid
+  actor_account_id            String   @db.Uuid
+  work_id                     String   @db.Uuid
+  action                      String
+  reason                      String
+  previous_activity_state     String
+  previous_publication_state  String
+  resulting_activity_state    String
+  resulting_publication_state String
+  expected_version            BigInt
+  resulting_version           BigInt
+  request_payload             Json
+  occurred_at                 DateTime @db.Timestamptz(6)
+  accounts                    accounts @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  works                       works    @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([actor_account_id, occurred_at(sort: Desc), id(sort: Desc)], map: "work_recovery_audits_actor_time_idx")
+  @@index([work_id, occurred_at(sort: Desc), id(sort: Desc)], map: "work_recovery_audits_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_attributions {
+  revision_id                  String                        @db.Uuid
+  position                     Int                           @db.SmallInt
+  kind                         String
+  person_id                    String?                       @db.Uuid
+  attribution_name             String
+  study_year                   Int?                          @db.SmallInt
+  contribution_role            String?
+  affiliation                  String?
+  attribution_public_id        String                        @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attribution_model_version    Int                           @default(1) @db.SmallInt
+  attribution_removal_requests attribution_removal_requests?
+  people                       people?                       @relation(fields: [person_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  work_revisions               work_revisions                @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, position])
+  @@unique([revision_id, person_id])
+  @@index([person_id], map: "work_revision_attributions_person_idx")
+  @@index([revision_id, attribution_public_id], map: "work_revision_attributions_public_target_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_links {
+  revision_id    String         @db.Uuid
+  position       Int            @db.SmallInt
+  label          String
+  url            String
+  work_revisions work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, position])
+  @@unique([revision_id, url])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_media {
+  revision_id       String            @db.Uuid
+  media_kind        String
+  position          Int               @db.SmallInt
+  asset_id          String            @db.Uuid
+  work_media_assets work_media_assets @relation(fields: [asset_id], references: [id], onUpdate: NoAction)
+  work_revisions    work_revisions    @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, media_kind, position])
+  @@unique([revision_id, asset_id])
+  @@index([asset_id], map: "work_revision_media_asset_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_operations {
+  idempotency_key   String         @id @db.Uuid
+  actor_account_id  String         @db.Uuid
+  work_id           String         @db.Uuid
+  revision_id       String         @db.Uuid
+  operation         String
+  request_payload   Json
+  resulting_status  String
+  resulting_version BigInt
+  occurred_at       DateTime       @db.Timestamptz(6)
+  accounts          accounts       @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  work_revisions    work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+  works             works          @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([actor_account_id], map: "work_revision_operations_actor_idx")
+  @@index([revision_id], map: "work_revision_operations_revision_idx")
+  @@index([work_id, occurred_at(sort: Desc)], map: "work_revision_operations_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_tags {
+  revision_id         String         @db.Uuid
+  position            Int            @db.SmallInt
+  display_label       String
+  normalized_identity String
+  work_revisions      work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, position])
+  @@unique([revision_id, normalized_identity])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revision_video_links {
+  revision_id       String         @db.Uuid
+  position          Int            @db.SmallInt
+  provider          String
+  provider_video_id String
+  url               String
+  work_revisions    work_revisions @relation(fields: [revision_id], references: [id], onUpdate: NoAction)
+
+  @@id([revision_id, position])
+  @@unique([revision_id, provider, provider_video_id])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_revisions {
+  id                                                                                               String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                                                                                        String                         @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_id                                                                                          String                         @db.Uuid
+  revision_number                                                                                  BigInt
+  status                                                                                           String                         @default("pending_review")
+  base_published_revision_id                                                                       String?                        @db.Uuid
+  draft_version                                                                                    BigInt?
+  title                                                                                            String
+  summary                                                                                          String
+  description                                                                                      String
+  category                                                                                         String
+  academic_year                                                                                    Int                            @db.SmallInt
+  semester                                                                                         String
+  submitted_at                                                                                     DateTime                       @db.Timestamptz(6)
+  withdrawn_at                                                                                     DateTime?                      @db.Timestamptz(6)
+  version                                                                                          BigInt                         @default(1)
+  author_kind                                                                                      String                         @default("student_submission")
+  admin_correction_audits_admin_correction_audits_base_revision_idTowork_revisions                 admin_correction_audits[]      @relation("admin_correction_audits_base_revision_idTowork_revisions")
+  admin_correction_audits_admin_correction_audits_revision_idTowork_revisions                      admin_correction_audits?       @relation("admin_correction_audits_revision_idTowork_revisions")
+  attribution_removal_requests_attribution_removal_requests_correction_revision_idTowork_revisions attribution_removal_requests?  @relation("attribution_removal_requests_correction_revision_idTowork_revisions")
+  attribution_removal_requests_attribution_removal_requests_revision_idTowork_revisions            attribution_removal_requests[] @relation("attribution_removal_requests_revision_idTowork_revisions")
+  public_work_catalog                                                                              public_work_catalog?
+  published_revision_tags                                                                          published_revision_tags[]
+  removal_requests                                                                                 removal_requests[]
+  reviews                                                                                          reviews?
+  work_drafts                                                                                      work_drafts[]
+  work_revision_attributions                                                                       work_revision_attributions[]
+  work_revision_links                                                                              work_revision_links[]
+  work_revision_media                                                                              work_revision_media[]
+  work_revision_operations                                                                         work_revision_operations[]
+  work_revision_tags                                                                               work_revision_tags[]
+  work_revision_video_links                                                                        work_revision_video_links[]
+  work_revisions                                                                                   work_revisions?                @relation("work_revisionsTowork_revisions", fields: [base_published_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  other_work_revisions                                                                             work_revisions[]               @relation("work_revisionsTowork_revisions")
+  works_work_revisions_work_idToworks                                                              works                          @relation("work_revisions_work_idToworks", fields: [work_id], references: [id], onUpdate: NoAction)
+  works_works_published_revision_idTowork_revisions                                                works[]                        @relation("works_published_revision_idTowork_revisions")
+
+  @@unique([work_id, revision_number])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_saved_draft_operations {
+  idempotency_key        String   @id @db.Uuid
+  actor_account_id       String   @db.Uuid
+  work_id                String   @db.Uuid
+  operation              String
+  request_fingerprint    String   @db.Char(64)
+  resulting_work_version BigInt
+  occurred_at            DateTime @db.Timestamptz(6)
+  accounts               accounts @relation(fields: [actor_account_id], references: [id], onUpdate: NoAction)
+  works                  works    @relation(fields: [work_id], references: [id], onUpdate: NoAction)
+
+  @@index([work_id, occurred_at(sort: Desc), idempotency_key], map: "work_saved_draft_operations_work_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model academic_settings {
+  singleton             Boolean   @id @default(true)
+  current_academic_year Int?      @db.SmallInt
+  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+  version               Int       @default(0)
+  updated_by_account_id String?   @db.Uuid
+  accounts              accounts? @relation(fields: [updated_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model account_roles {
+  account_id String   @db.Uuid
+  role       String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  accounts   accounts @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([account_id, role])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model accounts {
+  id                                                                                                       String                                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  person_id                                                                                                String                                    @unique @db.Uuid
+  provider_user_id                                                                                         String                                    @unique @db.Uuid
+  status                                                                                                   String                                    @default("active")
+  credential_state                                                                                         String                                    @default("initial")
+  created_at                                                                                               DateTime                                  @default(now()) @db.Timestamptz(6)
+  updated_at                                                                                               DateTime                                  @default(now()) @db.Timestamptz(6)
+  control_version                                                                                          Int                                       @default(1)
+  academic_year_change_audit_events                                                                        academic_year_change_audit_events[]
+  admin_auth_identities                                                                                    admin_auth_identities?
+  admin_correction_audits                                                                                  admin_correction_audits[]
+  attribution_account_lookup_rate_limits                                                                   attribution_account_lookup_rate_limits?
+  attribution_invitation_operations                                                                        attribution_invitation_operations[]
+  attribution_invitation_sessions                                                                          attribution_invitation_sessions[]
+  attribution_removal_operations                                                                           attribution_removal_operations[]
+  attribution_removal_requests                                                                             attribution_removal_requests[]
+  authentication_audit_events                                                                              authentication_audit_events[]
+  authentication_sessions                                                                                  authentication_sessions[]
+  person_name_correction_audit_events_person_name_correction_audit_events_actor_account_idToaccounts       person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_actor_account_idToaccounts")
+  person_name_correction_audit_events_person_name_correction_audit_events_student_account_idToaccounts     person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_student_account_idToaccounts")
+  profile_operations                                                                                       profile_operations[]
+  removal_request_operations                                                                               removal_request_operations[]
+  removal_requests_removal_requests_decided_by_account_idToaccounts                                        removal_requests[]                        @relation("removal_requests_decided_by_account_idToaccounts")
+  removal_requests_removal_requests_submitter_account_idToaccounts                                         removal_requests[]                        @relation("removal_requests_submitter_account_idToaccounts")
+  reviews                                                                                                  reviews[]
+  roster_audit_events                                                                                      roster_audit_events[]
+  roster_batches                                                                                           roster_batches[]
+  roster_conflict_resolution_audit_events                                                                  roster_conflict_resolution_audit_events[]
+  roster_conflicts                                                                                         roster_conflicts[]
+  student_access_extension_audit_events_student_access_extension_audit_events_actor_account_idToaccounts   student_access_extension_audit_events[]   @relation("student_access_extension_audit_events_actor_account_idToaccounts")
+  student_access_extension_audit_events_student_access_extension_audit_events_student_account_idToaccounts student_access_extension_audit_events[]   @relation("student_access_extension_audit_events_student_account_idToaccounts")
+  student_auth_identities                                                                                  student_auth_identities?
+  student_password_reset_operations_student_password_reset_operations_actor_account_idToaccounts           student_password_reset_operations[]       @relation("student_password_reset_operations_actor_account_idToaccounts")
+  student_password_reset_operations_student_password_reset_operations_student_account_idToaccounts         student_password_reset_operations[]       @relation("student_password_reset_operations_student_account_idToaccounts")
+  work_draft_contributor_operations                                                                        work_draft_contributor_operations[]
+  work_operations                                                                                          work_operations[]
+  work_recovery_audits                                                                                     work_recovery_audits[]
+  work_revision_operations                                                                                 work_revision_operations[]
+  work_saved_draft_operations                                                                              work_saved_draft_operations[]
+  academic_settings                                                                                        academic_settings[]
+  account_roles                                                                                            account_roles[]
+  people                                                                                                   people                                    @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+model people {
+  id                                                                         String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at                                                                 DateTime                      @default(now()) @db.Timestamptz(6)
+  attribution_invitations_attribution_invitations_accepted_person_idTopeople attribution_invitations[]     @relation("attribution_invitations_accepted_person_idTopeople")
+  attribution_invitations_attribution_invitations_invitee_person_idTopeople  attribution_invitations[]     @relation("attribution_invitations_invitee_person_idTopeople")
+  person_names                                                               person_names?
+  profile_operations                                                         profile_operations[]
+  profile_photo_assets                                                       profile_photo_assets[]
+  roster_conflicts                                                           roster_conflicts[]
+  work_contributor_candidates                                                work_contributor_candidates[]
+  work_draft_contributors                                                    work_draft_contributors[]
+  work_revision_attributions                                                 work_revision_attributions[]
+  accounts                                                                   accounts?
+  public_profiles                                                            public_profiles?
+  students                                                                   students?
+  works                                                                      works[]
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model profile_consents {
+  id                   BigInt          @id @default(autoincrement())
+  person_id            String          @db.Uuid
+  consent_text_version String
+  granted_at           DateTime        @db.Timestamptz(6)
+  withdrawn_at         DateTime?       @db.Timestamptz(6)
+  public_profiles      public_profiles @relation(fields: [person_id], references: [person_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([person_id, granted_at(sort: Desc)], map: "profile_consents_person_time_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model public_profile_links {
+  person_id       String          @db.Uuid
+  position        Int             @db.SmallInt
+  label           String
+  url             String
+  public_profiles public_profiles @relation(fields: [person_id], references: [person_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([person_id, position])
+  @@unique([person_id, url])
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model public_profiles {
+  person_id               String                 @id @db.Uuid
+  public_id               String                 @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  display_name            String
+  bio                     String?
+  photo_id                String?                @db.Uuid
+  version                 BigInt                 @default(1)
+  created_at              DateTime               @db.Timestamptz(6)
+  updated_at              DateTime               @db.Timestamptz(6)
+  normalized_display_name String
+  profile_consents        profile_consents[]
+  public_profile_links    public_profile_links[]
+  people                  people                 @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profile_photo_assets    profile_photo_assets?  @relation(fields: [photo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([normalized_display_name, public_id], map: "public_profiles_display_name_browse_idx")
+  @@index([normalized_display_name(ops: raw("gin_trgm_ops"))], map: "public_profiles_display_name_search_idx", type: Gin)
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model students {
+  person_id                 String   @id @db.Uuid
+  entry_year                Int      @db.SmallInt
+  access_ends_academic_year Int      @db.SmallInt
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  people                    people   @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entry_year, person_id], map: "students_entry_year_person_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tags {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id               String                    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  normalized_identity     String                    @unique
+  display_label           String
+  activated_at            DateTime                  @db.Timestamptz(6)
+  active_work_count       BigInt                    @default(0)
+  published_revision_tags published_revision_tags[]
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model works {
+  id                                                         String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  public_id                                                  String                              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submitter_person_id                                        String                              @db.Uuid
+  activity_state                                             String                              @default("active")
+  publication_state                                          String                              @default("never_published")
+  published_revision_id                                      String?                             @db.Uuid
+  created_at                                                 DateTime                            @db.Timestamptz(6)
+  updated_at                                                 DateTime                            @db.Timestamptz(6)
+  version                                                    BigInt                              @default(1)
+  archive_source                                             String?
+  admin_correction_audits                                    admin_correction_audits[]
+  attribution_invitations                                    attribution_invitations[]
+  attribution_removal_requests                               attribution_removal_requests[]
+  public_work_catalog                                        public_work_catalog?
+  removal_requests                                           removal_requests[]
+  work_contributor_candidates                                work_contributor_candidates[]
+  work_draft_contributor_operations                          work_draft_contributor_operations[]
+  work_drafts                                                work_drafts?
+  work_media_assets                                          work_media_assets[]
+  work_operations                                            work_operations[]
+  work_recovery_audits                                       work_recovery_audits[]
+  work_revision_operations                                   work_revision_operations[]
+  work_revisions_work_revisions_work_idToworks               work_revisions[]                    @relation("work_revisions_work_idToworks")
+  work_saved_draft_operations                                work_saved_draft_operations[]
+  work_revisions_works_published_revision_idTowork_revisions work_revisions?                     @relation("works_published_revision_idTowork_revisions", fields: [published_revision_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "works_published_revision_fk")
+  people                                                     people                              @relation(fields: [submitter_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([submitter_person_id, updated_at(sort: Desc)], map: "works_submitter_updated_idx")
+  @@index([submitter_person_id, activity_state, publication_state], map: "works_submitter_workspace_summary_idx")
+  @@schema("public")
+}
+
+model user {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  accounts      account[]
+  sessions      session[]
+
+  @@schema("private")
+}
+
+model session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  token     String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id") @db.Uuid
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@schema("private")
+}
+
+model account {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id") @db.Uuid
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  issuer                String    @default("")
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([providerId, accountId])
+  @@unique([issuer, accountId])
+  @@index([userId])
+  @@schema("private")
+}
+
+model verification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([identifier])
+  @@schema("private")
+}

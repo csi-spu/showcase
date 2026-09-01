@@ -1,4 +1,4 @@
-import type postgres from 'postgres';
+import type { PrismaSql } from '../../auth/infrastructure/prisma-sql';
 import { normalizeCatalogSearchText } from '../domain/catalog-query-policy';
 
 interface ProjectionSourceRow {
@@ -17,7 +17,7 @@ interface ProjectionSourceRow {
 }
 
 export async function refreshPublicWorkCatalog(
-  sql: postgres.TransactionSql,
+  sql: PrismaSql,
   workId: string,
   publishedAt: Date | null = null,
 ): Promise<void> {

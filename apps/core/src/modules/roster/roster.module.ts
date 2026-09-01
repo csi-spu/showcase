@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
+import {
+  BetterAuthEngine,
+  BetterAuthStudentIdentityProvider,
+} from '../auth/infrastructure/better-auth.adapter';
 import { ROSTER_REPOSITORY, STUDENT_IDENTITY_PROVIDER } from './application/roster.ports';
 import { RosterImportService } from './application/roster-import.service';
 import { RosterWorker } from './application/roster.worker';
 import { PostgresRosterRepository } from './infrastructure/postgres-roster.repository';
-import { SupabaseStudentIdentityAdapter } from './infrastructure/supabase-student-identity.adapter';
 import { AdminRosterController } from './transport/admin-roster.controller';
 import { AdminRosterStudentController } from './transport/admin-roster-student.controller';
 import { RosterExceptionFilter } from './transport/roster-exception.filter';
@@ -19,14 +21,9 @@ import { RosterExceptionFilter } from './transport/roster-exception.filter';
     RosterExceptionFilter,
     { provide: ROSTER_REPOSITORY, useClass: PostgresRosterRepository },
     {
-      inject: [ConfigService],
       provide: STUDENT_IDENTITY_PROVIDER,
-      useFactory: (config: ConfigService) =>
-        new SupabaseStudentIdentityAdapter({
-          baseUrl: config.getOrThrow<string>('SUPABASE_URL'),
-          secretKey: config.getOrThrow<string>('SUPABASE_SECRET_KEY'),
-          timeoutMilliseconds: config.getOrThrow<number>('SUPABASE_AUTH_TIMEOUT_MS'),
-        }),
+      useFactory: (engine: BetterAuthEngine) => new BetterAuthStudentIdentityProvider(engine),
+      inject: [BetterAuthEngine],
     },
   ],
 })

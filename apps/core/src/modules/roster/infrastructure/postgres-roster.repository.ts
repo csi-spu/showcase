@@ -259,7 +259,7 @@ export class PostgresRosterRepository implements RosterRepository {
     syntheticIdentity: string;
   }): Promise<'conflict' | 'created' | 'unchanged'> {
     return this.database.sql.begin(async (transaction) => {
-      await transaction`select pg_advisory_xact_lock(hashtextextended(${input.studentIdHash}, 0))`;
+      await transaction`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.studentIdHash}::text, 0))) as advisory_lock`;
       const existing = await this.findExistingStudentInTransaction(
         transaction,
         input.studentIdHash,
@@ -589,7 +589,7 @@ export class PostgresRosterRepository implements RosterRepository {
     studentIdPrefixHashes: string[];
   }): Promise<'conflict' | 'missing' | 'unchanged'> {
     return this.database.sql.begin(async (transaction) => {
-      await transaction`select pg_advisory_xact_lock(hashtextextended(${input.studentIdHash}, 0))`;
+      await transaction`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.studentIdHash}::text, 0))) as advisory_lock`;
       const existing = await this.findExistingStudentInTransaction(
         transaction,
         input.studentIdHash,

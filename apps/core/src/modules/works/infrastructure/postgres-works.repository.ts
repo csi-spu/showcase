@@ -1031,7 +1031,7 @@ export class PostgresWorksRepository implements WorksRepository {
   }
 
   private findOwnedDraftByWorkId(
-    sql: postgres.Sql | postgres.TransactionSql,
+    sql: postgres.Sql,
     accountId: string,
     workId: string,
   ): Promise<WorkDraftView | null> {
@@ -1039,7 +1039,7 @@ export class PostgresWorksRepository implements WorksRepository {
   }
 
   private async findOneOwnedDraft(
-    sql: postgres.Sql | postgres.TransactionSql,
+    sql: postgres.Sql,
     accountId: string,
     identifier: 'id' | 'public_id',
     value: string,
@@ -1450,7 +1450,7 @@ export class PostgresWorksRepository implements WorksRepository {
       .update(JSON.stringify([operation, input.publicId, input.expectedVersion]))
       .digest('hex');
     return this.database.sql.begin(async (sql) => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await sql`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       const replayRows = await sql<
         Array<{
           operation: string;

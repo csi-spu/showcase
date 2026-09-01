@@ -9,7 +9,7 @@ import type {
   AttributionRemovalRequestView,
 } from '../application/attribution-removal.ports';
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MILLISECONDS = 60 * 60 * 1_000;
 
@@ -47,7 +47,7 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
       workPublicId: input.workPublicId,
     };
     return this.database.sql.begin(async (sql) => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await sql`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       const replay = await this.createReplay(sql, input.idempotencyKey, payload);
       if (replay !== null) return replay;
       if (!(await this.consumeRateLimit(sql, input.now, 'source', input.sourceKeyHash))) {
@@ -146,7 +146,7 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
       expectedRequestVersion: input.expectedRequestVersion,
     };
     return this.database.sql.begin(async (sql) => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await sql`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       const replay = await this.decisionReplay(sql, input, 'declined', payload);
       if (replay !== null) return replay;
       const request = await this.lockRequest(sql, input.requestPublicId);
@@ -187,7 +187,7 @@ export class PostgresAttributionRemovalRepository implements AttributionRemovalR
       expectedRequestVersion: input.expectedRequestVersion,
     };
     return this.database.sql.begin(async (sql) => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))`;
+      await sql`select 1 from (select pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}::text, 0))) as advisory_lock`;
       const replay = await this.decisionReplay(sql, input, 'accepted', payload);
       if (replay !== null) return replay;
       const request = await this.lockRequest(sql, input.requestPublicId);

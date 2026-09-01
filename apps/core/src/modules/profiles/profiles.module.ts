@@ -21,7 +21,7 @@ import {
 import { ProfilePhotoService } from './application/profile-photo.service';
 import { PostgresProfilePhotoRepository } from './infrastructure/postgres-profile-photo.repository';
 import { PostgresProfilesRepository } from './infrastructure/postgres-profiles.repository';
-import { R2ProfilePhotoStorage } from './infrastructure/r2-profile-photo.storage';
+import { SelfHostedProfilePhotoStorage } from './infrastructure/self-hosted-profile-photo.storage';
 import { SharpProfilePhotoInspector } from './infrastructure/sharp-profile-photo.inspector';
 import { UnavailableProfilePhotoStorage } from './infrastructure/unavailable-profile-photo.storage';
 import { ProfilesExceptionFilter } from './transport/profiles-exception.filter';
@@ -43,25 +43,12 @@ import { StudentProfilesController } from './transport/student-profiles.controll
       inject: [ConfigService],
       provide: PROFILE_PHOTO_STORAGE,
       useFactory: (config: ConfigService): ProfilePhotoStorage => {
-        const accessKeyId = config.get<string>('R2_ACCESS_KEY_ID');
-        const bucket = config.get<string>('R2_BUCKET_NAME');
-        const endpoint = config.get<string>('R2_ENDPOINT');
-        const secretAccessKey = config.get<string>('R2_SECRET_ACCESS_KEY');
-        if (
-          accessKeyId === undefined ||
-          bucket === undefined ||
-          endpoint === undefined ||
-          secretAccessKey === undefined
-        ) {
+        const serviceUrl = config.get<string>('MEDIA_SERVICE_URL');
+        const signingSecret = config.get<string>('MEDIA_SERVICE_HMAC_SECRET');
+        if (serviceUrl === undefined || signingSecret === undefined) {
           return new UnavailableProfilePhotoStorage();
         }
-        return new R2ProfilePhotoStorage({
-          accessKeyId,
-          bucket,
-          endpoint,
-          secretAccessKey,
-          timeoutMilliseconds: config.getOrThrow<number>('R2_TIMEOUT_MS'),
-        });
+        return new SelfHostedProfilePhotoStorage(serviceUrl, signingSecret);
       },
     },
     {

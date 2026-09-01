@@ -682,7 +682,8 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     idempotencyKey: string,
   ): Promise<void> {
     await transaction`
-      select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))
+      select 1
+      from (select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}::text, 0))) as advisory_lock
     `;
   }
 

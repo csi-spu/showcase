@@ -9,7 +9,7 @@
 
 ## Authentication
 
-Student ID is a private login identifier. Core maps it to a private synthetic Supabase Auth identity. Never put Student ID into a public ID, email visible to a user, log, analytics event, client bundle, or object key.
+Student ID is a private login identifier. Core maps it to a private synthetic BetterAuth identity. Never put Student ID into a public ID, email visible to a user, log, analytics event, client bundle, or object key.
 
 The accepted Phase 1 initial password equals Student ID. This creates first-login takeover risk. Mitigations are mandatory: roster-only provisioning, rate limiting, forced password change as the only first-session capability, generic login errors, audit events, Admin random temporary resets, and session revocation after reset. A chosen password is 12 to 128 characters, differs from Student ID and the current or temporary password, and has no composition rule that rejects passphrases. Do not weaken or remove these mitigations without explicit product confirmation and a security ADR.
 
@@ -32,7 +32,7 @@ Authorize before issuing a presigned URL and again before accepting finalized me
 
 Serve active media through a controlled public origin. Uploaded objects remain private/quarantined until an isolated, resource-bounded processor decodes, auto-orients, validates, strips metadata, converts to sRGB, and rewrites them. Store only the sanitized master and generated variants permanently; delete raw quarantine objects after success. Do not accept SVG, HTML, arbitrary embeds, GIF, animated WebP/APNG, PDF, or video uploads in Phase 1.
 
-Use application cleanup plus prefix-scoped R2 lifecycle rules for quarantine and unattached objects. Lifecycle deletion is a backstop, not the authorization boundary. Media attached to retained Revisions remains stored, but only media referenced by the current Published Revision of an active, published Work is publicly eligible.
+Use bounded application cleanup for quarantine and unattached objects. Cleanup failure is alerted because self-hosted storage has no provider lifecycle backstop. Media attached to retained Revisions remains stored, but only media referenced by the current Published Revision of an active, published Work is publicly eligible.
 
 ## External Contributor invitations
 

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type postgres from 'postgres';
 import {
   AdminAuthenticationSessionRecord,
   AdminLoginAccount,
@@ -11,6 +10,7 @@ import {
   RateLimitResult,
 } from '../application/auth.ports';
 import { DatabaseClient } from './database.client';
+import type { PrismaSql } from './prisma-sql';
 
 interface AccountRow {
   account_id: string;
@@ -345,7 +345,7 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   private async insertSession(
-    transaction: postgres.TransactionSql,
+    transaction: PrismaSql,
     input: NewAuthenticationSession,
   ): Promise<void> {
     await transaction`
