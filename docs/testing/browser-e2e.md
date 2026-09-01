@@ -46,6 +46,9 @@ preflight verifies exact fixture creation, idempotent cleanup, and absence from 
 Auth and Postgres after cleanup before Chromium starts. The Work suite proves
 both approval and `changes_requested`/resubmission while retaining immutable Revision
 and Review history.
+The re-review path publishes Revision 1 first, keeps it public through the pending and
+Change Request states, and verifies that correction resubmission creates the next
+immutable Revision before publication.
 The database reset happens once before Playwright starts, not before each test.
 
 The harness fails closed unless `APP_ENV=test`, `E2E_LOCAL_ONLY=1`, Postgres is
