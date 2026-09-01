@@ -607,9 +607,11 @@ async function readWorkLifecycleState(
   >`
     select revision.id as revision_id, revision.public_id as "publicId", revision.revision_number as number,
       revision.status, revision.title, revision.summary, revision.version,
-      revision.base_published_revision_id as "basePublishedRevisionId"
+      base_revision.public_id as "basePublishedRevisionId"
     from private.work_revisions as revision
     join public.works as work on work.id = revision.work_id
+    left join private.work_revisions as base_revision
+      on base_revision.id = revision.base_published_revision_id
     where work.public_id = ${publicId}
     order by revision.revision_number
   `;

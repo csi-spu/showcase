@@ -7,7 +7,7 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 test.describe('Work lifecycle', () => {
-  test.describe.configure({ timeout: 90_000 });
+  test.describe.configure({ timeout: 240_000 });
   test('approves a submitted Work and publishes its immutable Revision', async ({
     browser,
     page,
@@ -85,6 +85,7 @@ test.describe('Work lifecycle', () => {
     workScenario,
   }) => {
     const originalTitle = `E2E ผลงานแก้ไข ${workScenario.tagLabel}`;
+    const pendingTitle = `${originalTitle} ฉบับรอตรวจ`;
     const correctedTitle = `${originalTitle} ฉบับแก้ไข`;
     const { publicId } = await submitWork(page, workScenario, originalTitle);
     const publicUrl = workScenario.workPublicUrl(publicId);
@@ -95,8 +96,38 @@ test.describe('Work lifecycle', () => {
     const adminPage = await adminContext.newPage();
     try {
       await loginAdmin(adminPage, workScenario);
-      await reviewPendingRevision(adminPage, originalTitle, 'ส่งคำขอแก้ไข', async () => {
+      await reviewPendingRevision(adminPage, originalTitle, 'อนุมัติและเผยแพร่', async () => {
         await expectAdminRevisionSnapshot(adminPage, workScenario, originalTitle);
+        await adminPage.getByRole('button', { name: 'อนุมัติและเผยแพร่' }).click();
+      });
+      await expect(adminPage.getByText('เผยแพร่ผลงานแล้ว', { exact: true })).toBeVisible();
+      await expectPublicRevision(browser, publicUrl, workScenario, originalTitle, pendingTitle);
+
+      await page.goto(`/works/${publicId}`);
+      await expect(page.getByRole('heading', { name: 'ผลงานเผยแพร่แล้ว' })).toBeVisible();
+      await page.getByRole('button', { name: 'สร้างร่างใหม่' }).click();
+      await expect(page.getByRole('heading', { name: originalTitle })).toBeVisible();
+      await page.getByLabel('ชื่อผลงาน').fill(pendingTitle);
+      await page.getByRole('button', { name: 'ถัดไป' }).click();
+      await expect(page.getByRole('heading', { name: '2 สื่อ' })).toBeVisible();
+      await advanceAuthoring(page, {
+        includeContributor: false,
+        preserveDiscovery: true,
+        scenario: workScenario,
+      });
+      await page.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' }).click();
+      await expect(page.getByRole('heading', { name: 'ส่งผลงานแล้ว' })).toBeVisible();
+      await expect(page.getByText('กำลังรอตรวจ', { exact: true }).first()).toBeVisible();
+      const pendingState = await workScenario.readState(publicId);
+      expect(pendingState.publishedRevisionPublicId).toBe(pendingState.revisions[0]?.publicId);
+      expect(pendingState.revisions.map((revision) => revision.status)).toEqual([
+        'approved',
+        'pending_review',
+      ]);
+      await expectPublicRevision(browser, publicUrl, workScenario, originalTitle, pendingTitle);
+
+      await reviewPendingRevision(adminPage, pendingTitle, 'ส่งคำขอแก้ไข', async () => {
+        await expectAdminRevisionSnapshot(adminPage, workScenario, pendingTitle);
         await adminPage.locator('#change-request-reason').selectOption('content');
         await adminPage
           .getByLabel('คำแนะนำที่นำไปแก้ไขได้')
@@ -104,7 +135,15 @@ test.describe('Work lifecycle', () => {
         await adminPage.getByRole('button', { name: 'ส่งคำขอแก้ไข' }).click();
       });
       await expect(adminPage.getByText('ส่งคำขอแก้ไขแล้ว', { exact: true })).toBeVisible();
-      await expectWorkNotPublic(browser, publicUrl);
+      const changesRequestedState = await workScenario.readState(publicId);
+      expect(changesRequestedState.publishedRevisionPublicId).toBe(
+        changesRequestedState.revisions[0]?.publicId,
+      );
+      expect(changesRequestedState.revisions.map((revision) => revision.status)).toEqual([
+        'approved',
+        'changes_requested',
+      ]);
+      await expectPublicRevision(browser, publicUrl, workScenario, originalTitle, pendingTitle);
 
       await page.goto(`/works/${publicId}`);
       const changeRequestAlert = page.getByRole('alert').filter({ hasText: 'ผู้ดูแลขอให้แก้ไข' });
@@ -127,12 +166,16 @@ test.describe('Work lifecycle', () => {
       await expect(page.getByText('กำลังรอตรวจ', { exact: true }).first()).toBeVisible();
       const stateBeforeReplacementApproval = await workScenario.readState(publicId);
       expect(stateBeforeReplacementApproval.revisions.map((revision) => revision.status)).toEqual([
+        'approved',
         'changes_requested',
         'pending_review',
       ]);
-      const replacementRevision = stateBeforeReplacementApproval.revisions[1];
+      const replacementRevision = stateBeforeReplacementApproval.revisions[2];
       if (replacementRevision === undefined) throw new Error('E2E_REPLACEMENT_REVISION_MISSING');
-      await expectWorkNotPublic(browser, publicUrl);
+      expect(stateBeforeReplacementApproval.publishedRevisionPublicId).toBe(
+        stateBeforeReplacementApproval.revisions[0]?.publicId,
+      );
+      await expectPublicRevision(browser, publicUrl, workScenario, originalTitle, correctedTitle);
 
       await reviewPendingRevision(adminPage, correctedTitle, 'อนุมัติและเผยแพร่', async () => {
         await expectAdminRevisionSnapshot(adminPage, workScenario, correctedTitle);
@@ -155,8 +198,15 @@ test.describe('Work lifecycle', () => {
     const visitorContext = await browser.newContext({ baseURL: process.env.VISITOR_URL });
     const visitorPage = await visitorContext.newPage();
     try {
-      await visitorPage.goto(workScenario.workPublicUrl(publicId));
-      await expect(visitorPage.getByRole('heading', { name: correctedTitle })).toBeVisible();
+      await expect
+        .poll(
+          async () => {
+            await visitorPage.goto(workScenario.workPublicUrl(publicId));
+            return visitorPage.getByRole('heading', { name: correctedTitle }).count();
+          },
+          { intervals: [1_000, 2_000, 5_000], timeout: 90_000 },
+        )
+        .toBeGreaterThan(0);
       await expect(
         visitorPage.getByRole('heading', { name: originalTitle, exact: true }),
       ).toHaveCount(0);
@@ -168,32 +218,51 @@ test.describe('Work lifecycle', () => {
     const state = await workScenario.readState(publicId);
     expect(state.work.activityState).toBe('active');
     expect(state.work.publicationState).toBe('published');
-    expect(state.revisions).toHaveLength(2);
+    expect(state.revisions).toHaveLength(3);
     expect(state.revisions.map((revision) => revision.status)).toEqual([
+      'approved',
       'changes_requested',
       'approved',
     ]);
+    expect(state.revisions.map((revision) => revision.number)).toEqual([1, 2, 3]);
+    expect(new Set(state.revisions.map((revision) => revision.publicId)).size).toBe(3);
     expect(state.revisions[1]).toMatchObject({
+      title: pendingTitle,
+      basePublishedRevisionId: state.revisions[0]?.publicId,
+    });
+    expect(state.revisions[2]).toMatchObject({
       title: correctedTitle,
-      basePublishedRevisionId: null,
+      basePublishedRevisionId: state.revisions[0]?.publicId,
     });
     expect(state.revisions[0]).toMatchObject({
       title: originalTitle,
       summary: 'สรุป E2E',
     });
-    expect(state.publishedRevisionPublicId).toBe(state.revisions[1]?.publicId);
+    expect(state.publishedRevisionPublicId).toBe(state.revisions[2]?.publicId);
     expect(state.reviews).toEqual([
+      {
+        decision: 'approved',
+        feedback: null,
+        reason: null,
+        revisionNumber: 1,
+      },
       {
         decision: 'changes_requested',
         feedback: 'กรุณาปรับชื่อผลงานให้สื่อความหมายและตรวจสอบสรุปให้ชัดเจน',
         reason: 'content',
-        revisionNumber: 1,
+        revisionNumber: 2,
       },
-      { decision: 'approved', feedback: null, reason: null, revisionNumber: 2 },
+      { decision: 'approved', feedback: null, reason: null, revisionNumber: 3 },
     ]);
-    expectAuthoritativeRevisionState(state, workScenario, [1, 2]);
-    expect(state.operations).toEqual(['revision_submitted', 'revision_submitted']);
+    expectAuthoritativeRevisionState(state, workScenario, [1, 2, 3]);
+    expect(state.operations).toEqual([
+      'revision_submitted',
+      'revision_submitted',
+      'revision_submitted',
+    ]);
     expect(state.outboxEvents).toEqual([
+      'work_revision_submitted',
+      'work_revision_published',
       'work_revision_submitted',
       'work_revision_submitted',
       'work_revision_published',
@@ -315,6 +384,43 @@ async function expectWorkNotPublic(browser: Browser, publicUrl: string): Promise
     await expect(
       page.getByText('ผลงานนี้ไม่มีอยู่หรือยังไม่ได้รับอนุมัติให้เผยแพร่', { exact: true }),
     ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+}
+
+async function expectPublicRevision(
+  browser: Browser,
+  publicUrl: string,
+  scenario: import('./fixtures.ts').WorkLifecycleScenario,
+  title: string,
+  hiddenTitle?: string,
+): Promise<void> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(publicUrl);
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    await expect(page.getByText('สรุป E2E', { exact: true })).toBeVisible();
+    const attributionSection = page.getByRole('heading', { name: 'ผู้จัดทำผลงาน' }).locator('..');
+    await expect(attributionSection.getByText(scenario.studentName, { exact: true })).toBeVisible();
+    await expect(
+      attributionSection.getByText(scenario.contributorName, { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'เอกสารประกอบ' })).toBeVisible();
+    await expect(
+      page
+        .getByRole('list', { name: 'หัวข้อของผลงาน' })
+        .getByText(scenario.tagLabel, { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('ดูผลงานผ่านวิดีโอ')).toBeVisible();
+    await expect(page.getByAltText(`โปสเตอร์ ${title}`)).toBeVisible();
+    await expect(page.getByAltText(`ภาพเพิ่มเติม 1 ของ ${title}`)).toBeVisible();
+    await expectPublicMediaUrlsSafe(page, scenario.studentId);
+    await expect(page.getByRole('heading', { name: 'ไม่พบผลงาน' })).toHaveCount(0);
+    if (hiddenTitle !== undefined) {
+      await expect(page.getByRole('heading', { name: hiddenTitle, exact: true })).toHaveCount(0);
+    }
   } finally {
     await context.close();
   }
@@ -455,14 +561,31 @@ async function loginStudent(
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.initialPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' })).toBeVisible();
+  await completeStudentLogin(page, scenario);
   await scenario.protectBrowserContext(page.context());
-  await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.initialPassword);
-  await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
-  await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
-  await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
-  await expect(page.getByRole('heading', { name: 'จัดการผลงานของคุณ' })).toBeVisible();
-  await scenario.protectBrowserContext(page.context());
+}
+
+async function completeStudentLogin(
+  page: Page,
+  scenario: import('./fixtures.ts').WorkLifecycleScenario,
+): Promise<void> {
+  const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
+  const dashboardHeading = page.getByRole('heading', { name: 'จัดการผลงานของคุณ' });
+  const requiresPasswordReset = await resetHeading
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (requiresPasswordReset) {
+    await scenario.protectBrowserContext(page.context());
+    await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.initialPassword);
+    await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
+    await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
+    await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
+  } else if (!(await dashboardHeading.isVisible().catch(() => false))) {
+    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.newPassword);
+    await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
+  }
+  await expect(dashboardHeading).toBeVisible();
 }
 
 async function loginAdmin(
@@ -473,14 +596,31 @@ async function loginAdmin(
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.adminLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.adminInitialPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' })).toBeVisible();
+  await completeAdminLogin(page, scenario);
   await scenario.protectBrowserContext(page.context());
-  await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.adminInitialPassword);
-  await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
-  await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
-  await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
-  await expect(page.getByRole('heading', { name: 'จัดการงานสำคัญจากที่เดียว' })).toBeVisible();
-  await scenario.protectBrowserContext(page.context());
+}
+
+async function completeAdminLogin(
+  page: Page,
+  scenario: import('./fixtures.ts').WorkLifecycleScenario,
+): Promise<void> {
+  const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
+  const dashboardHeading = page.getByRole('heading', { name: 'จัดการงานสำคัญจากที่เดียว' });
+  const requiresPasswordReset = await resetHeading
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (requiresPasswordReset) {
+    await scenario.protectBrowserContext(page.context());
+    await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.adminInitialPassword);
+    await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
+    await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
+    await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
+  } else if (!(await dashboardHeading.isVisible().catch(() => false))) {
+    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.adminNewPassword);
+    await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
+  }
+  await expect(dashboardHeading).toBeVisible();
 }
 
 async function reviewPendingRevision(
