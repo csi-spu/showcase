@@ -15,7 +15,7 @@ import {
 import { ReviewsService } from '../src/modules/works/application/reviews.service';
 import { WORKS_CLOCK } from '../src/modules/works/application/works.ports';
 
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
 const ADMIN_ACCOUNT_ID = id(1);
 const WORK_PUBLIC_ID = id(2);
 const BASE_REVISION_PUBLIC_ID = id(3);

@@ -7,7 +7,7 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
   const environment = assertLocalE2EEnvironment({
     APP_ENV: process.env.APP_ENV,
     ADMIN_URL: process.env.ADMIN_URL,
-    AUTH_IDENTITY_SECRET: process.env.AUTH_IDENTITY_SECRET,
+    API_KEY: process.env.API_KEY,
     CORE_URL: process.env.CORE_URL,
     DATABASE_URL: process.env.DATABASE_URL,
     E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,

@@ -26,8 +26,8 @@ import {
 
 const ACCOUNT_ID = '20000000-0000-4000-8000-000000000002';
 const PROVIDER_USER_ID = '20000000-0000-4000-8000-000000000001';
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 
 function readSessionToken(body: unknown): string {
   if (

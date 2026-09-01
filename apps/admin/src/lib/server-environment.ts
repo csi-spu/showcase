@@ -2,7 +2,7 @@ import 'server-only';
 import { z } from 'zod';
 
 const serverEnvironmentSchema = z.object({
-  ADMIN_BFF_SECRET: z.string().min(32),
+  API_KEY: z.string().min(32),
   CORE_URL: z.url().transform((value) => new URL(value).origin),
 });
 
@@ -14,13 +14,13 @@ export interface AdminServerEnvironment {
 export function getAdminServerEnvironment(): AdminServerEnvironment {
   const isProduction = process.env.NODE_ENV === 'production';
   const environment = serverEnvironmentSchema.parse({
-    ADMIN_BFF_SECRET:
-      process.env.ADMIN_BFF_SECRET ??
+    API_KEY:
+      process.env.API_KEY ??
       (isProduction ? undefined : 'local-development-only-admin-bff-secret'),
     CORE_URL: process.env.CORE_URL ?? (isProduction ? undefined : 'http://localhost:4100'),
   });
   return {
-    adminBffSecret: environment.ADMIN_BFF_SECRET,
+    adminBffSecret: environment.API_KEY,
     coreUrl: environment.CORE_URL,
   };
 }

@@ -22,8 +22,8 @@ import {
 } from '../src/modules/works/application/reviews.ports';
 import { WORK_MEDIA_STORAGE } from '../src/modules/works/application/work-media.ports';
 
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
 const ACCOUNT_ID = '74000000-0000-4000-8000-000000000001';
 const WORK_PUBLIC_ID = '74000000-0000-4000-8000-000000000002';
 const OTHER_WORK_PUBLIC_ID = '74000000-0000-4000-8000-000000000007';

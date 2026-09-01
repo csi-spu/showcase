@@ -7,7 +7,7 @@ import { configureApplication } from '../src/configure-application';
 import { AccountControlsService } from '../src/modules/account-controls/application/account-controls.service';
 import { AdminAuthService } from '../src/modules/auth/application/admin-auth.service';
 
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
 const SESSION_TOKEN = 'active-admin-session';
 const ACTOR_ACCOUNT_ID = '10000000-0000-4000-8000-000000000001';
 const STUDENT_ACCOUNT_ID = '20000000-0000-4000-8000-000000000001';

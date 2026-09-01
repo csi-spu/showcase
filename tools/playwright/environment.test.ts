@@ -4,8 +4,8 @@ import { assertLocalE2EEnvironment } from './environment.ts';
 
 const validEnvironment = {
   ADMIN_URL: 'http://127.0.0.1:3001',
+  API_KEY: 'local-test-identity-secret',
   APP_ENV: 'test',
-  AUTH_IDENTITY_SECRET: 'local-test-identity-secret',
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
   E2E_LOCAL_ONLY: '1',

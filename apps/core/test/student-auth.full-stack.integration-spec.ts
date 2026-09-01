@@ -12,10 +12,8 @@ import { ConfigService } from '@nestjs/config';
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
-const IDENTITY_SECRET =
-  process.env.AUTH_IDENTITY_SECRET ?? 'local-development-only-identity-secret';
-const STUDENT_BFF_SECRET =
-  process.env.STUDENT_BFF_SECRET ?? 'local-development-only-student-bff-secret';
+const IDENTITY_SECRET = process.env.API_KEY ?? 'local-development-only-shared-api-key';
+const STUDENT_BFF_SECRET = process.env.API_KEY ?? 'local-development-only-shared-api-key';
 const hasBetterAuthIntegration = process.env.BETTER_AUTH_INTEGRATION === 'true';
 
 (hasBetterAuthIntegration ? describe : describe.skip)(

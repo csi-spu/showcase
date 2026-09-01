@@ -8,7 +8,7 @@ import { AuthError } from '../src/modules/auth/application/auth.error';
 import { StudentAuthService } from '../src/modules/auth/application/student-auth.service';
 import { WorkContributorsService } from '../src/modules/works/application/work-contributors.service';
 
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 const ACCOUNT_ID = '57000000-0000-4000-8000-000000000001';
 const WORK_PUBLIC_ID = '57000000-0000-4000-8000-000000000002';
 const CANDIDATE_REFERENCE = '57000000-0000-4000-8000-000000000003';

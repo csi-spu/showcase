@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getAdminServerEnvironment } from './server-environment';
 
 const originalEnvironment = {
-  ADMIN_BFF_SECRET: process.env.ADMIN_BFF_SECRET,
+  API_KEY: process.env.API_KEY,
   CORE_URL: process.env.CORE_URL,
   NODE_ENV: process.env.NODE_ENV,
 };
@@ -19,13 +19,13 @@ function restore(name: keyof typeof originalEnvironment): void {
 
 describe('getAdminServerEnvironment', () => {
   afterEach(() => {
-    restore('ADMIN_BFF_SECRET');
+    restore('API_KEY');
     restore('CORE_URL');
     restore('NODE_ENV');
   });
 
   it('provides local-only defaults outside production', () => {
-    delete process.env.ADMIN_BFF_SECRET;
+    delete process.env.API_KEY;
     delete process.env.CORE_URL;
     mutableEnvironment.NODE_ENV = 'development';
 
@@ -36,7 +36,7 @@ describe('getAdminServerEnvironment', () => {
   });
 
   it('validates explicit values and reduces Core URL to its origin', () => {
-    process.env.ADMIN_BFF_SECRET = 'environment-specific-admin-secret-value';
+    process.env.API_KEY = 'environment-specific-admin-secret-value';
     process.env.CORE_URL = 'https://core.example.test/internal/path';
     mutableEnvironment.NODE_ENV = 'production';
 
@@ -47,7 +47,7 @@ describe('getAdminServerEnvironment', () => {
   });
 
   it('fails closed when production secrets are absent', () => {
-    delete process.env.ADMIN_BFF_SECRET;
+    delete process.env.API_KEY;
     delete process.env.CORE_URL;
     mutableEnvironment.NODE_ENV = 'production';
 
