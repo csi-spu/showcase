@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   browser-e2e:
-    name: Profile Consent browser E2E
+    name: Profile Consent and Work lifecycle browser E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -39,7 +39,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-profile-consent-diagnostics-${{ github.run_id }}
+          name: playwright-lifecycle-diagnostics-${{ github.run_id }}
           path: |
             test-results/
             playwright-report/

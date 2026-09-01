@@ -1,13 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { assertLocalE2EEnvironment } from './environment.ts';
+import { sanitizeSensitiveArtifacts } from './sensitive-artifacts.ts';
 
 const repositoryRoot = new URL('../../', import.meta.url).pathname;
 const localDefaults: Record<string, string> = {
   APP_ENV: 'test',
+  ADMIN_URL: 'http://127.0.0.1:3001',
   AUTH_IDENTITY_SECRET: 'local-development-only-identity-secret',
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
   E2E_LOCAL_ONLY: '1',
+  MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
   STUDENT_URL: 'http://127.0.0.1:3002',
   SUPABASE_URL: 'http://127.0.0.1:54321',
   VISITOR_URL: 'http://127.0.0.1:3000',
@@ -46,6 +49,8 @@ try {
     SUPABASE_PUBLISHABLE_KEY: status.ANON_KEY,
     SUPABASE_SECRET_KEY: status.SERVICE_ROLE_KEY,
     SUPABASE_URL: status.API_URL ?? requestedEnvironment.SUPABASE_URL,
+    MEDIA_PROVIDER_URL: requestedEnvironment.MEDIA_PROVIDER_URL,
+    ADMIN_URL: requestedEnvironment.ADMIN_URL,
   };
   assertLocalE2EEnvironment(environment);
 
@@ -54,6 +59,13 @@ try {
     ['exec', 'supabase', 'db', 'reset', '--local'],
     environment,
     'E2E_SETUP_DATABASE_RESET_FAILED',
+  );
+  run(
+    'node',
+    ['--experimental-strip-types', '--test', 'tools/playwright/fixtures.integration.ts'],
+    environment,
+    'E2E_SETUP_FIXTURE_INTEGRATION_FAILED',
+    true,
   );
 
   const requestedArgs = process.argv.slice(2);
@@ -72,6 +84,16 @@ try {
     stdio: 'inherit',
   });
   if (result.error !== undefined) fail('E2E_SETUP_PLAYWRIGHT_UNAVAILABLE');
+  const removedUnsafeArtifacts = sanitizeSensitiveArtifacts({
+    artifactDirectories: ['test-results', 'playwright-report'],
+    knownValues: [
+      environment.AUTH_IDENTITY_SECRET,
+      environment.DATABASE_URL,
+      environment.SUPABASE_PUBLISHABLE_KEY,
+      environment.SUPABASE_SECRET_KEY,
+    ].filter((value): value is string => value !== undefined),
+  });
+  if (removedUnsafeArtifacts > 0) fail('E2E_ARTIFACT_SENSITIVE_DATA_DETECTED');
   process.exitCode = result.status ?? 1;
 } catch (error: unknown) {
   fail(error instanceof Error ? error.message : 'E2E_SETUP_FAILED');
@@ -82,8 +104,13 @@ function run(
   args: string[],
   env: Record<string, string | undefined>,
   errorCode: string,
+  isOutputVisible = false,
 ): void {
-  const result = spawnSync(command, args, { cwd: repositoryRoot, env, stdio: 'ignore' });
+  const result = spawnSync(command, args, {
+    cwd: repositoryRoot,
+    env,
+    stdio: isOutputVisible ? 'inherit' : 'ignore',
+  });
   if (result.error !== undefined || result.status !== 0) fail(errorCode);
 }
 

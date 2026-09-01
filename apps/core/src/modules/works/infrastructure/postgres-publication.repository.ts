@@ -107,7 +107,6 @@ export class PostgresPublicationRepository implements PublicationRepository {
         }
         if (candidate.activity_state !== 'active') return { outcome: 'work_state_conflict' };
         const isFirstPublication =
-          Number(candidate.revision_number) === 1 &&
           candidate.publication_state === 'never_published' &&
           candidate.published_revision_id === null &&
           candidate.base_published_revision_id === null;

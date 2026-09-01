@@ -1,5 +1,9 @@
-import { test, expect } from './fixtures.ts';
+import { captureSanitizedFailureScreenshot, expect, test } from './fixtures.ts';
 import { randomUUID } from 'node:crypto';
+
+test.afterEach(async ({ page }, testInfo) => {
+  await captureSanitizedFailureScreenshot(page, testInfo);
+});
 
 test('Student grants and withdraws Profile Consent across the public boundary', async ({
   browser,
@@ -13,6 +17,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
     await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.initialPassword);
     await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
     await expect(page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' })).toBeVisible();
+    await scenario.protectBrowserContext(page.context());
     await expect(page.getByRole('link', { name: 'แก้ไขโปรไฟล์' })).toHaveCount(0);
     await page.goto('/profile');
     await expect(page).toHaveURL(/\/$/u);
@@ -40,6 +45,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
     await expect(page.getByRole('button', { name: 'ตั้งรหัสผ่าน' })).toBeEnabled();
     await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
     await expect(page.getByRole('heading', { name: 'จัดการผลงานของคุณ' })).toBeVisible();
+    await scenario.protectBrowserContext(page.context());
 
     const oldSessionContext = await browser.newContext({
       baseURL: process.env.STUDENT_URL ?? 'http://127.0.0.1:3002',

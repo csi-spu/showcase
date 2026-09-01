@@ -28,6 +28,14 @@ const SECOND_CONCURRENT_KEY = '83000000-0000-4000-8000-000000000022';
 const THIRD_REVISION_ID = '83000000-0000-4000-8000-000000000023';
 const THIRD_REVISION_PUBLIC_ID = '83000000-0000-4000-8000-000000000024';
 const CHANGE_REQUEST_KEY = '83000000-0000-4000-8000-000000000025';
+const FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID = '83000000-0000-4000-8000-000000000026';
+const FIRST_PUBLICATION_AFTER_CHANGE_WORK_PUBLIC_ID = '83000000-0000-4000-8000-000000000027';
+const FIRST_PUBLICATION_AFTER_CHANGE_REVISION_ID = '83000000-0000-4000-8000-000000000028';
+const FIRST_PUBLICATION_AFTER_CHANGE_REVISION_PUBLIC_ID = '83000000-0000-4000-8000-000000000029';
+const FIRST_PUBLICATION_REVISION_ID = '83000000-0000-4000-8000-000000000030';
+const FIRST_PUBLICATION_REVISION_PUBLIC_ID = '83000000-0000-4000-8000-000000000031';
+const FIRST_PUBLICATION_POSTER_ID = '83000000-0000-4000-8000-000000000032';
+const FIRST_PUBLICATION_KEY = '83000000-0000-4000-8000-000000000033';
 const NOW = new Date('2026-08-25T18:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -198,7 +206,8 @@ describe('PostgresPublicationRepository integration', () => {
       database.sql`
         select revision.status, work.publication_state,
           (select count(*)::integer from private.reviews where revision_id = revision.id) as reviews,
-          (select count(*)::integer from public.tags) as tags
+          (select count(*)::integer from public.tags
+            where normalized_identity in ('react', 'vue')) as tags
         from private.work_revisions as revision
         join public.works as work on work.id = revision.work_id
         where revision.id = ${REVISION_ID}
@@ -539,16 +548,121 @@ describe('PostgresPublicationRepository integration', () => {
     ]);
   });
 
+  it('allows a corrected Revision to become the first publication after a Change Request', async () => {
+    await database.sql.begin(async (transaction) => {
+      await transaction`
+        insert into public.works (
+          id, public_id, submitter_person_id, activity_state, publication_state, created_at, updated_at
+        ) values (
+          ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID},
+          ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_PUBLIC_ID},
+          ${STUDENT_PERSON_ID}, 'active', 'never_published', ${NOW}, ${NOW}
+        )
+      `;
+      await transaction`
+        insert into private.work_drafts (
+          work_id, title, summary, description, category, academic_year, semester,
+          submitter_study_year, version, created_at, updated_at
+        ) values (
+          ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}, 'ฉบับแก้ไข', 'สรุปฉบับแก้ไข',
+          'รายละเอียดฉบับแก้ไข', 'course_work', 2569, '1', 2, 2, ${NOW}, ${NOW}
+        )
+      `;
+      await transaction`
+        insert into private.work_revisions (
+          id, public_id, work_id, revision_number, status, draft_version, title, summary,
+          description, category, academic_year, semester, submitted_at, version
+        ) values
+          (
+            ${FIRST_PUBLICATION_AFTER_CHANGE_REVISION_ID},
+            ${FIRST_PUBLICATION_AFTER_CHANGE_REVISION_PUBLIC_ID},
+            ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}, 1, 'changes_requested', 1,
+            'ฉบับแรก', 'สรุปฉบับแรก', 'รายละเอียดฉบับแรก', 'course_work', 2569, '1',
+            ${NOW}, 2
+          ),
+          (
+            ${FIRST_PUBLICATION_REVISION_ID}, ${FIRST_PUBLICATION_REVISION_PUBLIC_ID},
+            ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}, 2, 'pending_review', 2,
+            'ฉบับแก้ไข', 'สรุปฉบับแก้ไข', 'รายละเอียดฉบับแก้ไข', 'course_work', 2569, '1',
+            ${new Date(NOW.getTime() + 1_000)}, 1
+          )
+      `;
+      await transaction`
+        insert into private.reviews (
+          revision_id, actor_account_id, decision, reason, feedback,
+          expected_revision_version, resulting_revision_version, idempotency_key,
+          request_payload, reviewed_at
+        ) values (
+          ${FIRST_PUBLICATION_AFTER_CHANGE_REVISION_ID}, ${ADMIN_ACCOUNT_ID},
+          'changes_requested', 'content', 'กรุณาแก้ไขรายละเอียดให้ตรวจสอบผลลัพธ์ได้',
+          1, 2, gen_random_uuid(), '{}'::jsonb, ${NOW}
+        )
+      `;
+      await transaction`
+        insert into private.work_revision_attributions (
+          revision_id, position, kind, person_id, attribution_name, study_year
+        ) values (
+          ${FIRST_PUBLICATION_REVISION_ID}, 1, 'submitter', ${STUDENT_PERSON_ID},
+          'ชื่อผู้ส่งฉบับแก้ไข', 2
+        )
+      `;
+      await transaction`
+        insert into private.work_media_assets (
+          id, work_id, media_kind, status, quarantine_object_key, authorize_idempotency_key,
+          master_object_key, declared_content_type, declared_extension, declared_byte_size,
+          inspected_byte_size, width, height, content_hash, dominant_color,
+          created_at, updated_at, expires_at
+        ) values (
+          ${FIRST_PUBLICATION_POSTER_ID}, ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}, 'poster',
+          'ready', ${`quarantine/${FIRST_PUBLICATION_POSTER_ID}`},
+          ${FIRST_PUBLICATION_POSTER_ID}, ${`media/${FIRST_PUBLICATION_POSTER_ID}/master.webp`},
+          'image/jpeg', 'jpg', 1024, 512, 1200, 1800, ${Buffer.alloc(32, 5)}, '#285078',
+          ${NOW}, ${NOW}, ${new Date('2026-09-01T18:00:00.000Z')}
+        )
+      `;
+      await transaction`
+        insert into private.work_media_variants (
+          asset_id, width, height, byte_size, content_hash, object_key
+        ) values (
+          ${FIRST_PUBLICATION_POSTER_ID}, 480, 720, 256, ${Buffer.alloc(32, 6)},
+          ${`media/${FIRST_PUBLICATION_POSTER_ID}/480.webp`}
+        )
+      `;
+      await transaction`
+        insert into private.work_revision_media (revision_id, media_kind, position, asset_id)
+        values (${FIRST_PUBLICATION_REVISION_ID}, 'poster', 1, ${FIRST_PUBLICATION_POSTER_ID})
+      `;
+    });
+
+    await expect(
+      repository.approveAndPublish({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        expectedRevisionVersion: 1,
+        idempotencyKey: FIRST_PUBLICATION_KEY,
+        now: new Date(NOW.getTime() + 2_000),
+        revisionPublicId: FIRST_PUBLICATION_REVISION_PUBLIC_ID,
+      }),
+    ).resolves.toMatchObject({ outcome: 'published' });
+    await expect(
+      repository.findPublicWork(FIRST_PUBLICATION_AFTER_CHANGE_WORK_PUBLIC_ID),
+    ).resolves.toMatchObject({
+      revisionNumber: 2,
+      title: 'ฉบับแก้ไข',
+    });
+  });
+
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
       await transaction`set local session_replication_role = replica`;
       await transaction`delete from private.outbox_events where aggregate_type = 'work_revision' and aggregate_id = ${REVISION_PUBLIC_ID}`;
       await transaction`delete from private.outbox_events where aggregate_type = 'work_revision' and aggregate_id = ${SECOND_REVISION_PUBLIC_ID}`;
       await transaction`delete from private.outbox_events where aggregate_type = 'work_revision' and aggregate_id = ${THIRD_REVISION_PUBLIC_ID}`;
+      await transaction`delete from private.outbox_events where aggregate_type = 'work_revision' and aggregate_id = ${FIRST_PUBLICATION_REVISION_PUBLIC_ID}`;
       await transaction`delete from private.published_revision_tags where revision_id = ${SECOND_REVISION_ID}`;
       await transaction`delete from private.published_revision_tags where revision_id = ${REVISION_ID}`;
       await transaction`delete from public.tags where normalized_identity in ('react', 'vue')`;
       await transaction`delete from private.reviews where revision_id in (${REVISION_ID}, ${SECOND_REVISION_ID}, ${THIRD_REVISION_ID})`;
+      await transaction`delete from private.reviews where revision_id in (${FIRST_PUBLICATION_AFTER_CHANGE_REVISION_ID}, ${FIRST_PUBLICATION_REVISION_ID})`;
       await transaction`delete from private.work_revision_links where revision_id = ${REVISION_ID}`;
       await transaction`delete from private.work_revision_tags where revision_id = ${REVISION_ID}`;
       await transaction`delete from private.work_revision_attributions where revision_id = ${REVISION_ID}`;
@@ -557,6 +671,8 @@ describe('PostgresPublicationRepository integration', () => {
       await transaction`delete from private.work_revision_media where revision_id = ${SECOND_REVISION_ID}`;
       await transaction`delete from private.work_revision_attributions where revision_id = ${THIRD_REVISION_ID}`;
       await transaction`delete from private.work_revision_media where revision_id = ${THIRD_REVISION_ID}`;
+      await transaction`delete from private.work_revision_attributions where revision_id = ${FIRST_PUBLICATION_REVISION_ID}`;
+      await transaction`delete from private.work_revision_media where revision_id = ${FIRST_PUBLICATION_REVISION_ID}`;
       await transaction`delete from private.work_revision_tags where revision_id = ${SECOND_REVISION_ID}`;
       await transaction`delete from private.work_draft_media where work_id = ${WORK_ID}`;
       await transaction`delete from private.work_draft_video_links where work_id = ${WORK_ID}`;
@@ -564,6 +680,11 @@ describe('PostgresPublicationRepository integration', () => {
       await transaction`delete from private.work_draft_links where work_id = ${WORK_ID}`;
       await transaction`delete from private.work_drafts where work_id = ${WORK_ID}`;
       await transaction`delete from private.work_revisions where id in (${REVISION_ID}, ${SECOND_REVISION_ID}, ${THIRD_REVISION_ID})`;
+      await transaction`delete from private.work_drafts where work_id = ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}`;
+      await transaction`delete from private.work_revisions where id in (${FIRST_PUBLICATION_AFTER_CHANGE_REVISION_ID}, ${FIRST_PUBLICATION_REVISION_ID})`;
+      await transaction`delete from private.work_media_variants where asset_id = ${FIRST_PUBLICATION_POSTER_ID}`;
+      await transaction`delete from private.work_media_assets where id = ${FIRST_PUBLICATION_POSTER_ID}`;
+      await transaction`delete from public.works where id = ${FIRST_PUBLICATION_AFTER_CHANGE_WORK_ID}`;
       await transaction`delete from private.work_media_variants where asset_id = ${SECOND_POSTER_ID}`;
       await transaction`delete from private.work_media_variants where asset_id = ${POSTER_ID}`;
       await transaction`delete from private.work_media_assets where id in (${POSTER_ID}, ${SECOND_POSTER_ID})`;
@@ -573,6 +694,7 @@ describe('PostgresPublicationRepository integration', () => {
       await transaction`delete from public.account_roles where account_id in (${STUDENT_ACCOUNT_ID}, ${CONTRIBUTOR_ACCOUNT_ID}, ${ADMIN_ACCOUNT_ID})`;
       await transaction`delete from public.accounts where id in (${STUDENT_ACCOUNT_ID}, ${CONTRIBUTOR_ACCOUNT_ID}, ${ADMIN_ACCOUNT_ID})`;
       await transaction`delete from public.students where person_id in (${STUDENT_PERSON_ID}, ${CONTRIBUTOR_PERSON_ID})`;
+      await transaction`delete from private.person_names where person_id in (${STUDENT_PERSON_ID}, ${CONTRIBUTOR_PERSON_ID})`;
       await transaction`delete from public.people where id in (${STUDENT_PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${ADMIN_PERSON_ID})`;
     });
   }

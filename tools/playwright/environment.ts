@@ -5,9 +5,11 @@ const LOCAL_DATABASE_PORT = 54322;
 const LOCAL_SUPABASE_PORT = 54321;
 
 export interface LocalE2EEnvironment {
+  adminUrl: string;
   authIdentitySecret: string;
   databaseUrl: string;
   coreUrl: string;
+  mediaProviderUrl: string;
   studentUrl: string;
   supabasePublishableKey: string;
   supabaseSecretKey: string;
@@ -30,7 +32,13 @@ export function assertLocalE2EEnvironment(
   const databaseUrl = requireLocalDatabaseUrl(input.DATABASE_URL);
   const supabaseUrl = requireLocalHttpUrl(input.SUPABASE_URL, LOCAL_SUPABASE_PORT, 'SUPABASE_URL');
   const coreUrl = requireLocalHttpUrl(input.CORE_URL, 4100, 'CORE_URL');
+  const mediaProviderUrl = requireLocalHttpUrl(
+    input.MEDIA_PROVIDER_URL,
+    4191,
+    'MEDIA_PROVIDER_URL',
+  );
   const studentUrl = requireLocalHttpUrl(input.STUDENT_URL, 3002, 'STUDENT_URL');
+  const adminUrl = requireLocalHttpUrl(input.ADMIN_URL, 3001, 'ADMIN_URL');
   const visitorUrl = requireLocalHttpUrl(input.VISITOR_URL, 3000, 'VISITOR_URL');
   const requireCredentials = options.requireCredentials ?? true;
   const supabaseSecretKey = requireCredentials
@@ -44,8 +52,10 @@ export function assertLocalE2EEnvironment(
     : (input.AUTH_IDENTITY_SECRET ?? 'local-credential-not-used-before-status');
 
   return {
+    adminUrl,
     authIdentitySecret,
     coreUrl,
+    mediaProviderUrl,
     databaseUrl,
     studentUrl,
     supabasePublishableKey,

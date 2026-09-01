@@ -23,6 +23,7 @@ import { PostgresWorkMediaRepository } from './infrastructure/postgres-work-medi
 import { R2WorkMediaStorage } from './infrastructure/r2-work-media.storage';
 import { SharpWorkMediaInspector } from './infrastructure/sharp-work-media.inspector';
 import { UnavailableWorkMediaStorage } from './infrastructure/unavailable-work-media.storage';
+import { LocalWorkMediaStorage } from './infrastructure/local-work-media.storage';
 import { PostgresWorksRepository } from './infrastructure/postgres-works.repository';
 import { StudentWorksController } from './transport/student-works.controller';
 import { WorksExceptionFilter } from './transport/works-exception.filter';
@@ -103,6 +104,9 @@ import { StudentWorkContributorsController } from './transport/student-work-cont
       inject: [ConfigService],
       provide: WORK_MEDIA_STORAGE,
       useFactory: (config: ConfigService): WorkMediaStorage => {
+        if (config.getOrThrow<string>('APP_ENV') === 'test') {
+          return new LocalWorkMediaStorage(config.getOrThrow<string>('MEDIA_PROVIDER_URL'));
+        }
         const accessKeyId = config.get<string>('R2_ACCESS_KEY_ID');
         const bucket = config.get<string>('R2_BUCKET_NAME');
         const endpoint = config.get<string>('R2_ENDPOINT');

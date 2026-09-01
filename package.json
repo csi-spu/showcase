@@ -17,6 +17,7 @@
     "db:stop": "supabase stop",
     "dev": "turbo run dev",
     "e2e": "node --experimental-strip-types tools/playwright/run.ts",
+    "e2e:work": "node --experimental-strip-types tools/playwright/run.ts --grep \"Work lifecycle\"",
     "e2e:headed": "node --experimental-strip-types tools/playwright/run.ts --headed",
     "e2e:debug": "node --experimental-strip-types tools/playwright/run.ts --debug",
     "e2e:unit": "node --experimental-strip-types --test tools/playwright/*.test.ts",
