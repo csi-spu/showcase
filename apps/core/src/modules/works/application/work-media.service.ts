@@ -286,7 +286,7 @@ export class WorkMediaService {
     try {
       await this.storage.deleteObject(key);
     } catch {
-      // R2 lifecycle is the backstop for abandoned quarantine objects.
+      // The media processor cleanup job is the backstop for abandoned quarantine objects.
     }
   }
 }

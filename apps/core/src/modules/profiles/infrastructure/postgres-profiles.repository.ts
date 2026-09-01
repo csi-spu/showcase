@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
+import { createSignedMediaUrl } from '../../../config/media-url';
 import type postgres from 'postgres';
 import type {
   PrivateProfileState,
@@ -70,12 +71,14 @@ type ProfileOperation = 'profile_consent_granted' | 'profile_consent_withdrawn' 
 @Injectable()
 export class PostgresProfilesRepository implements ProfilesRepository {
   private readonly publicMediaOrigin: string;
+  private readonly mediaSigningSecret: string;
 
   constructor(
     private readonly database: DatabaseClient,
     config: ConfigService,
   ) {
     this.publicMediaOrigin = config.get<string>('PUBLIC_MEDIA_ORIGIN') ?? 'https://media.invalid';
+    this.mediaSigningSecret = config.get<string>('MEDIA_SERVICE_HMAC_SECRET') ?? '';
   }
 
   async findPrivateProfile(accountId: string): Promise<PrivateProfileState | null> {
@@ -503,7 +506,10 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     operation: ProfileOperation,
     requestPayload: postgres.JSONValue,
   ): Promise<ProfileMutationResult | null> {
-    await transaction`select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))`;
+    await transaction`
+      select 1
+      from (select pg_advisory_xact_lock(hashtextextended(${idempotencyKey}::text, 0))) as advisory_lock
+    `;
     const rows = await transaction<{ is_same: boolean }[]>`
       select operation = ${operation}
         and request_payload = ${transaction.json(requestPayload)} as is_same
@@ -600,7 +606,12 @@ export class PostgresProfilesRepository implements ProfilesRepository {
     }
     return {
       height: row.photo_height,
-      url: new URL(row.photo_object_key, `${this.publicMediaOrigin}/`).toString(),
+      url: createSignedMediaUrl(
+        this.publicMediaOrigin,
+        this.mediaSigningSecret,
+        row.photo_object_key,
+        300,
+      ),
       width: row.photo_width,
     };
   }

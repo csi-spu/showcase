@@ -8,7 +8,7 @@ describe('development worker orchestration', () => {
     const rootTurbo = readJson<TurboConfig>(resolve(__dirname, '../../../../turbo.json'));
 
     expect(corePackage.scripts?.['media:dev']).toBe(
-      'node --watch -r ts-node/register -r tsconfig-paths/register src/modules/works/commands/process-work-media-development.ts',
+      'node --watch -r ts-node/register/transpile-only -r tsconfig-paths/register src/modules/works/commands/process-work-media-development.ts',
     );
     expect(coreTurbo.tasks?.dev?.with).toContain('@showcase/core#media:dev');
     expect(rootTurbo.tasks?.['media:dev']).toMatchObject({ cache: false, persistent: true });

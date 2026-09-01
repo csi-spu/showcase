@@ -1,5 +1,7 @@
 import postgres from 'postgres';
+import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { test as base } from '@playwright/test';
 import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import { assertLocalE2EEnvironment } from './environment.ts';
@@ -122,9 +124,6 @@ const environment = assertLocalE2EEnvironment({
   E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
   MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
   STUDENT_URL: process.env.STUDENT_URL,
-  SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
-  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-  SUPABASE_URL: process.env.SUPABASE_URL,
   VISITOR_URL: process.env.VISITOR_URL,
 });
 
@@ -263,45 +262,37 @@ async function createProfileConsentScenario(): Promise<
 }
 
 async function createAuthIdentity(identity: string, password: string): Promise<string> {
-  let response: Response;
   try {
-    response = await fetch(`${environment.supabaseUrl}/auth/v1/admin/users`, {
-      body: JSON.stringify({ email: identity, email_confirm: true, password }),
-      headers: {
-        apikey: environment.supabaseSecretKey,
-        authorization: `Bearer ${environment.supabaseSecretKey}`,
-        'content-type': 'application/json',
-      },
-      method: 'POST',
-      signal: AbortSignal.timeout(5_000),
-    });
+    const result = execFileSync(
+      process.execPath,
+      [
+        path.join(process.cwd(), 'tools/playwright/better-auth-fixture.mjs'),
+        'create',
+        identity,
+        password,
+      ],
+      { env: process.env, encoding: 'utf8' },
+    ).trim();
+    if (result.length === 0) throw new Error('empty identity');
+    return result;
   } catch (error: unknown) {
-    throw new Error('E2E_FIXTURE_AUTH_UNAVAILABLE', { cause: error });
+    throw new Error('E2E_FIXTURE_AUTH_CREATE_FAILED', { cause: error });
   }
-  if (!response.ok) throw new Error('E2E_FIXTURE_AUTH_CREATE_FAILED');
-  const body: unknown = await response.json();
-  if (!isRecord(body) || typeof body.id !== 'string') {
-    throw new Error('E2E_FIXTURE_AUTH_CREATE_FAILED');
-  }
-  return body.id;
 }
 
 async function cleanupResources(database: postgres.Sql, resources: OwnedResources): Promise<void> {
   let providerFailure = false;
   if (resources.providerUserId !== null) {
     try {
-      const response = await fetch(
-        `${environment.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(resources.providerUserId)}`,
-        {
-          headers: {
-            apikey: environment.supabaseSecretKey,
-            authorization: `Bearer ${environment.supabaseSecretKey}`,
-          },
-          method: 'DELETE',
-          signal: AbortSignal.timeout(5_000),
-        },
+      execFileSync(
+        process.execPath,
+        [
+          path.join(process.cwd(), 'tools/playwright/better-auth-fixture.mjs'),
+          'delete',
+          resources.providerUserId,
+        ],
+        { env: process.env, stdio: 'ignore' },
       );
-      providerFailure = !response.ok && response.status !== 404;
     } catch {
       providerFailure = true;
     }
@@ -355,10 +346,6 @@ function hashStudentId(studentId: string): string {
 
 function toSyntheticIdentity(studentId: string): string {
   return `${hashStudentId(studentId)}@auth.invalid`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 interface WorkOwnedResources {
@@ -568,17 +555,16 @@ async function verifyWorkFixtureResources(
     }
     for (const providerUserId of [resources.providerUserId, resources.adminProviderUserId]) {
       if (providerUserId === null) throw new Error('E2E_FIXTURE_AUTH_ASSERTION_FAILED');
-      const response = await fetch(
-        `${environment.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(providerUserId)}`,
-        {
-          headers: {
-            apikey: environment.supabaseSecretKey,
-            authorization: `Bearer ${environment.supabaseSecretKey}`,
-          },
-          signal: AbortSignal.timeout(5_000),
-        },
-      );
-      if ((shouldExist && !response.ok) || (!shouldExist && response.status !== 404)) {
+      const result = execFileSync(
+        process.execPath,
+        [
+          path.join(process.cwd(), 'tools/playwright/better-auth-fixture.mjs'),
+          'exists',
+          providerUserId,
+        ],
+        { env: process.env, encoding: 'utf8' },
+      ).trim();
+      if ((shouldExist && result.length === 0) || (!shouldExist && result.length > 0)) {
         throw new Error('E2E_FIXTURE_AUTH_ASSERTION_FAILED');
       }
     }
@@ -768,18 +754,15 @@ async function cleanupWorkResources(
   for (const providerUserId of [resources.providerUserId, resources.adminProviderUserId]) {
     if (providerUserId === null) continue;
     try {
-      const response = await fetch(
-        `${environment.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(providerUserId)}`,
-        {
-          headers: {
-            apikey: environment.supabaseSecretKey,
-            authorization: `Bearer ${environment.supabaseSecretKey}`,
-          },
-          method: 'DELETE',
-          signal: AbortSignal.timeout(5_000),
-        },
+      execFileSync(
+        process.execPath,
+        [
+          path.join(process.cwd(), 'tools/playwright/better-auth-fixture.mjs'),
+          'delete',
+          providerUserId,
+        ],
+        { env: process.env, stdio: 'ignore' },
       );
-      providerFailure ||= !response.ok && response.status !== 404;
     } catch {
       providerFailure = true;
     }

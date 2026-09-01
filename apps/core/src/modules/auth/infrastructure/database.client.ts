@@ -1,21 +1,22 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import postgres from 'postgres';
+import { PrismaClient } from '@prisma/client';
+import { createPrismaSqlClient, PrismaSql } from './prisma-sql';
 
 @Injectable()
 export class DatabaseClient implements OnApplicationShutdown {
-  readonly sql: postgres.Sql;
+  readonly prisma: PrismaClient;
+  readonly sql: PrismaSql;
 
   constructor(config: ConfigService) {
-    this.sql = postgres(config.getOrThrow<string>('DATABASE_URL'), {
-      connect_timeout: 5,
-      idle_timeout: 20,
-      max: 20,
-      prepare: true,
+    this.prisma = new PrismaClient({
+      datasources: { db: { url: config.getOrThrow<string>('DATABASE_URL') } },
+      log: ['error'],
     });
+    this.sql = createPrismaSqlClient(this.prisma);
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.sql.end({ timeout: 5 });
+    await this.prisma.$disconnect();
   }
 }

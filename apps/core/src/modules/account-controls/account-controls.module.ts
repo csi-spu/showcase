@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
-import { SupabaseAdminAuthAdapter } from '../auth/infrastructure/supabase-admin-auth.adapter';
+import {
+  BetterAuthAdminProvisioningProvider,
+  BetterAuthEngine,
+} from '../auth/infrastructure/better-auth.adapter';
 import {
   ACCOUNT_CONTROLS_REPOSITORY,
   ACCOUNT_PASSWORD_PROVIDER,
@@ -19,14 +21,9 @@ import { AccountControlsExceptionFilter } from './transport/account-controls-exc
     AccountControlsExceptionFilter,
     { provide: ACCOUNT_CONTROLS_REPOSITORY, useClass: PostgresAccountControlsRepository },
     {
-      inject: [ConfigService],
       provide: ACCOUNT_PASSWORD_PROVIDER,
-      useFactory: (config: ConfigService) =>
-        new SupabaseAdminAuthAdapter({
-          baseUrl: config.getOrThrow<string>('SUPABASE_URL'),
-          secretKey: config.getOrThrow<string>('SUPABASE_SECRET_KEY'),
-          timeoutMilliseconds: config.getOrThrow<number>('SUPABASE_AUTH_TIMEOUT_MS'),
-        }),
+      useFactory: (engine: BetterAuthEngine) => new BetterAuthAdminProvisioningProvider(engine),
+      inject: [BetterAuthEngine],
     },
   ],
   exports: [AccountControlsService],

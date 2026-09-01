@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import { createSignedMediaUrl } from '../../../config/media-url';
 import type {
   CatalogPosition,
   CatalogFilterOptions,
@@ -60,12 +61,14 @@ const MAX_SITEMAP_ENTRIES = 50_000;
 @Injectable()
 export class PostgresCatalogRepository implements CatalogRepository {
   private readonly publicMediaOrigin: string;
+  private readonly mediaSigningSecret: string;
 
   constructor(
     private readonly database: DatabaseClient,
     config: ConfigService,
   ) {
     this.publicMediaOrigin = config.get<string>('PUBLIC_MEDIA_ORIGIN') ?? 'https://media.invalid';
+    this.mediaSigningSecret = config.get<string>('MEDIA_SERVICE_HMAC_SECRET') ?? '';
   }
 
   async listWorks(input: {
@@ -476,7 +479,12 @@ export class PostgresCatalogRepository implements CatalogRepository {
           ? null
           : {
               height: row.photo_height,
-              url: new URL(row.photo_object_key, `${this.publicMediaOrigin}/`).toString(),
+              url: createSignedMediaUrl(
+                this.publicMediaOrigin,
+                this.mediaSigningSecret,
+                row.photo_object_key,
+                300,
+              ),
               width: row.photo_width,
             },
       publicId: row.public_id,

@@ -8,7 +8,7 @@
     "pnpm": "10.33.0"
   },
   "scripts": {
-    "bootstrap": "pnpm install --frozen-lockfile && node tools/bootstrap.mjs",
+    "bootstrap": "pnpm install --frozen-lockfile && pnpm --filter @showcase/core db:generate && node tools/bootstrap.mjs",
     "build": "turbo run build",
     "db:lint": "supabase db lint --local",
     "db:reset": "supabase db reset --local",

@@ -3,7 +3,7 @@ import type { WorkMediaContentType, WorkMediaStorage } from '../application/work
 export class UnavailableWorkMediaStorage implements WorkMediaStorage {
   createPresignedGet(_input: { expiresInSeconds: number; key: string }): Promise<string> {
     void _input;
-    return Promise.reject(new Error('R2_WORK_MEDIA_UNAVAILABLE'));
+    return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
 
   createPresignedPut(_input: {
@@ -12,19 +12,19 @@ export class UnavailableWorkMediaStorage implements WorkMediaStorage {
     key: string;
   }): Promise<string> {
     void _input;
-    return Promise.reject(new Error('R2_WORK_MEDIA_UNAVAILABLE'));
+    return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
   deleteObject(_key: string): Promise<void> {
     void _key;
-    return Promise.reject(new Error('R2_WORK_MEDIA_UNAVAILABLE'));
+    return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
   getObject(_key: string, _maximumBytes: number): Promise<Buffer> {
     void _key;
     void _maximumBytes;
-    return Promise.reject(new Error('R2_WORK_MEDIA_UNAVAILABLE'));
+    return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
   putObject(_input: { body: Buffer; contentType: 'image/webp'; key: string }): Promise<void> {
     void _input;
-    return Promise.reject(new Error('R2_WORK_MEDIA_UNAVAILABLE'));
+    return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
 }

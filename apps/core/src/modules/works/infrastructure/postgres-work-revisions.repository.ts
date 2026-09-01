@@ -21,7 +21,7 @@ import {
   type WorkRevisionContributor,
 } from '../domain/work-revision-policy';
 
-type Sql = postgres.Sql | postgres.TransactionSql;
+type Sql = postgres.Sql;
 type Operation = 'revision_submitted' | 'revision_withdrawn';
 
 interface LockedDraftRow {

@@ -13,9 +13,6 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
     E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
     MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
     STUDENT_URL: process.env.STUDENT_URL,
-    SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
-    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-    SUPABASE_URL: process.env.SUPABASE_URL,
     VISITOR_URL: process.env.VISITOR_URL,
   });
   const processor = startMediaProcessor();
@@ -51,12 +48,10 @@ async function prepareWorkLifecyclePreconditions(databaseUrl: string): Promise<v
     prepare: true,
   });
   try {
-    await database`select * from private.execute_issue_56_contributor_cutover()`;
+    await database`delete from private.authentication_rate_limits`;
+    await database`delete from private.attribution_source_lookup_rate_limits`;
   } catch (error: unknown) {
-    throw new Error(
-      'E2E_SETUP_WORK_PRECONDITIONS_FAILED: contributor cutover could not be completed',
-      { cause: error },
-    );
+    throw new Error('E2E_SETUP_WORK_PRECONDITIONS_FAILED', { cause: error });
   } finally {
     await database.end({ timeout: 5 });
   }

@@ -199,6 +199,7 @@ describe('PostgresProfilesRepository integration', () => {
       await transaction`delete from private.profile_photo_assets where person_id = ${PERSON_ID}`;
       await transaction`delete from public.account_roles where account_id = ${ACCOUNT_ID}`;
       await transaction`delete from public.accounts where id = ${ACCOUNT_ID}`;
+      await transaction`delete from private.person_names where person_id = ${PERSON_ID}`;
       await transaction`delete from public.students where person_id = ${PERSON_ID}`;
       await transaction`delete from public.people where id = ${PERSON_ID}`;
     });
