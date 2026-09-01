@@ -117,8 +117,8 @@ interface OwnedResources {
 
 const environment = assertLocalE2EEnvironment({
   ADMIN_URL: process.env.ADMIN_URL,
+  API_KEY: process.env.API_KEY,
   APP_ENV: process.env.APP_ENV,
-  AUTH_IDENTITY_SECRET: process.env.AUTH_IDENTITY_SECRET,
   CORE_URL: process.env.CORE_URL,
   DATABASE_URL: process.env.DATABASE_URL,
   E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,

@@ -13,7 +13,7 @@ import {
   type PublicProfileView,
 } from '../src/modules/profiles/application/profiles.ports';
 
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 const ACCOUNT_ID = '51000000-0000-4000-8000-000000000001';
 const PUBLIC_ID = '51000000-0000-4000-8000-000000000002';
 const IDEMPOTENCY_KEY = '51000000-0000-4000-8000-000000000003';

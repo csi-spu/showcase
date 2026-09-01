@@ -24,7 +24,7 @@ import type { RosterErrorRow } from '../src/modules/roster/domain/roster-error-c
 import type { RosterConflictResolution } from '../src/modules/roster/domain/roster-conflict-resolution';
 import { RosterWorker } from '../src/modules/roster/application/roster.worker';
 
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
 const SESSION_TOKEN = 'active-admin-session';
 const ADMIN_ACCOUNT_ID = '10000000-0000-4000-8000-000000000001';
 const BATCH_ID = '20000000-0000-4000-8000-000000000001';

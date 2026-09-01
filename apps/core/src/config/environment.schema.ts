@@ -1,11 +1,9 @@
 import { z } from 'zod';
 
 const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
-const LOCAL_IDENTITY_SECRET = 'local-development-only-identity-secret';
-const LOCAL_ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
+const LOCAL_API_KEY = 'local-development-only-shared-api-key';
 const LOCAL_CATALOG_CURSOR_SECRET = 'local-development-only-catalog-cursor-secret';
 const LOCAL_CLOUDFLARE_API_TOKEN = 'local-development-only-cloudflare-api-token';
-const LOCAL_STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const LOCAL_VISITOR_CACHE_SECRET = 'local-development-only-visitor-cache-secret';
 const LOCAL_VISITOR_BFF_SECRET = 'local-development-only-visitor-bff-secret';
 const LOCAL_BETTER_AUTH_SECRET = 'local-development-only-better-auth-secret';
@@ -15,9 +13,9 @@ const originSchema = z
 
 const environmentSchema = z
   .object({
-    ADMIN_BFF_SECRET: z.string().min(32).default(LOCAL_ADMIN_BFF_SECRET),
+    ADMIN_URL: originSchema.default('http://localhost:3001'),
+    API_KEY: z.string().min(32).default(LOCAL_API_KEY),
     APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-    AUTH_IDENTITY_SECRET: z.string().min(32).default(LOCAL_IDENTITY_SECRET),
     BETTER_AUTH_BASE_URL: originSchema.default('http://127.0.0.1:4100'),
     BETTER_AUTH_SECRET: z.string().min(32).default(LOCAL_BETTER_AUTH_SECRET),
     CATALOG_CURSOR_SECRET: z.string().min(32).default(LOCAL_CATALOG_CURSOR_SECRET),
@@ -26,11 +24,7 @@ const environmentSchema = z
       .string()
       .regex(/^[0-9a-f]{32}$/u)
       .default('00000000000000000000000000000000'),
-    CORS_ALLOWED_ORIGINS: z
-      .string()
-      .default('http://localhost:3000,http://localhost:3001,http://localhost:3002')
-      .transform((value) => value.split(',').map((origin) => origin.trim()))
-      .pipe(z.array(originSchema).min(1)),
+    CORE_URL: originSchema.default('http://127.0.0.1:4100'),
     DATABASE_URL: z.string().url().default(LOCAL_DATABASE_URL),
     GIT_SHA: z.string().min(7).default('development'),
     MEDIA_PROVIDER_URL: originSchema.default('http://127.0.0.1:4191'),
@@ -39,7 +33,7 @@ const environmentSchema = z
     MEDIA_SERVICE_URL: originSchema.optional(),
     MEDIA_SERVICE_HMAC_SECRET: z.string().min(32).optional(),
     PUBLIC_MEDIA_ORIGIN: originSchema.optional(),
-    STUDENT_BFF_SECRET: z.string().min(32).default(LOCAL_STUDENT_BFF_SECRET),
+    STUDENT_URL: originSchema.default('http://localhost:3002'),
     VISITOR_CACHE_SECRET: z.string().min(32).default(LOCAL_VISITOR_CACHE_SECRET),
     VISITOR_BFF_SECRET: z.string().min(32).default(LOCAL_VISITOR_BFF_SECRET),
     VISITOR_URL: originSchema.default('http://localhost:3000'),
@@ -47,23 +41,12 @@ const environmentSchema = z
   .superRefine((environment, context) => {
     if (
       ['production', 'staging'].includes(environment.APP_ENV) &&
-      environment.ADMIN_BFF_SECRET === LOCAL_ADMIN_BFF_SECRET
+      environment.API_KEY === LOCAL_API_KEY
     ) {
       context.addIssue({
         code: 'custom',
-        message: 'ADMIN_BFF_SECRET must be environment-specific outside local development',
-        path: ['ADMIN_BFF_SECRET'],
-      });
-    }
-
-    if (
-      ['production', 'staging'].includes(environment.APP_ENV) &&
-      environment.AUTH_IDENTITY_SECRET === LOCAL_IDENTITY_SECRET
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'AUTH_IDENTITY_SECRET must be environment-specific outside local development',
-        path: ['AUTH_IDENTITY_SECRET'],
+        message: 'API_KEY must be environment-specific outside local development',
+        path: ['API_KEY'],
       });
     }
 
@@ -97,17 +80,6 @@ const environmentSchema = z
         code: 'custom',
         message: 'CLOUDFLARE_ZONE_ID must be configured outside local development',
         path: ['CLOUDFLARE_ZONE_ID'],
-      });
-    }
-
-    if (
-      ['production', 'staging'].includes(environment.APP_ENV) &&
-      environment.STUDENT_BFF_SECRET === LOCAL_STUDENT_BFF_SECRET
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'STUDENT_BFF_SECRET must be environment-specific outside local development',
-        path: ['STUDENT_BFF_SECRET'],
       });
     }
 
@@ -159,7 +131,15 @@ const environmentSchema = z
         }
       }
     }
-  });
+  })
+  .transform((environment) => ({
+    ...environment,
+    ADMIN_BFF_SECRET: environment.API_KEY,
+    AUTH_IDENTITY_SECRET: environment.API_KEY,
+    STUDENT_BFF_SECRET: environment.API_KEY,
+    CORS_ALLOWED_ORIGINS: [environment.ADMIN_URL, environment.STUDENT_URL, environment.VISITOR_URL],
+    PUBLIC_MEDIA_ORIGIN: environment.PUBLIC_MEDIA_ORIGIN ?? environment.CORE_URL,
+  }));
 
 export type Environment = z.infer<typeof environmentSchema>;
 

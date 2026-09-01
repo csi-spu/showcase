@@ -12,7 +12,7 @@ describe('Admin authentication boundary', () => {
     expect(forms).toContain('<form action={formAction}');
     expect(forms).not.toMatch(/\bfetch\s*\(/);
     expect(forms).not.toContain('CORE_URL');
-    expect(forms).not.toContain('ADMIN_BFF_SECRET');
+    expect(forms).not.toContain('API_KEY');
   });
 
   it('uses the shared typography, bounded canvas, and CSI workspace identity', async () => {

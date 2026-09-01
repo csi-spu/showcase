@@ -8,7 +8,7 @@ const POSTGRES_CONTAINER = 'showcase-e2e-postgres';
 const localDefaults: Record<string, string> = {
   APP_ENV: 'test',
   ADMIN_URL: 'http://127.0.0.1:3001',
-  AUTH_IDENTITY_SECRET: 'local-development-only-identity-secret',
+  API_KEY: 'local-development-only-shared-api-key',
   BETTER_AUTH_SECRET: 'local-development-only-better-auth-secret',
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
@@ -88,7 +88,7 @@ try {
   const removedUnsafeArtifacts = sanitizeSensitiveArtifacts({
     artifactDirectories: ['test-results', 'playwright-report'],
     knownValues: [
-      environment.AUTH_IDENTITY_SECRET,
+      environment.API_KEY,
       environment.BETTER_AUTH_SECRET,
       environment.DATABASE_URL,
     ].filter((value): value is string => value !== undefined),

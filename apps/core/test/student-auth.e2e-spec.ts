@@ -24,7 +24,7 @@ import {
 } from '../src/modules/auth/application/auth.ports';
 import { configureApplication } from '../src/configure-application';
 
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 
 class E2eAuthProvider implements AuthProvider {
   currentPassword = '69000001';

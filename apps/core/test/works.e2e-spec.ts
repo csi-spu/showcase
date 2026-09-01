@@ -20,7 +20,7 @@ import {
   type WorksRepository,
 } from '../src/modules/works/application/works.ports';
 
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 const ACCOUNT_ID = '63000000-0000-4000-8000-000000000001';
 const PERSON_ID = '63000000-0000-4000-8000-000000000002';
 const PUBLIC_ID = '63000000-0000-4000-8000-000000000003';

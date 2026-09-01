@@ -19,8 +19,8 @@ import {
   type AttributionRemovalRequestView,
 } from '../src/modules/works/application/attribution-removal.ports';
 
-const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
-const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
+const ADMIN_BFF_SECRET = 'local-development-only-shared-api-key';
+const STUDENT_BFF_SECRET = 'local-development-only-shared-api-key';
 const STUDENT_ACCOUNT_ID = id(1);
 const ADMIN_ACCOUNT_ID = id(2);
 const WORK_PUBLIC_ID = id(3);

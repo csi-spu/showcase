@@ -37,8 +37,8 @@ export function assertLocalE2EEnvironment(
   const visitorUrl = requireLocalHttpUrl(input.VISITOR_URL, 3000, 'VISITOR_URL');
   const requireCredentials = options.requireCredentials ?? true;
   const authIdentitySecret = requireCredentials
-    ? requireSecret(input.AUTH_IDENTITY_SECRET, 'AUTH_IDENTITY_SECRET')
-    : (input.AUTH_IDENTITY_SECRET ?? 'local-credential-not-used-before-status');
+    ? requireSecret(input.API_KEY, 'API_KEY')
+    : (input.API_KEY ?? 'local-credential-not-used-before-status');
 
   return {
     adminUrl,
