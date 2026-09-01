@@ -32,6 +32,7 @@ const environmentSchema = z
       .pipe(z.array(originSchema).min(1)),
     DATABASE_URL: z.string().url().default(LOCAL_DATABASE_URL),
     GIT_SHA: z.string().min(7).default('development'),
+    MEDIA_PROVIDER_URL: originSchema.default('http://127.0.0.1:4191'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().max(65_535).default(4100),
     PUBLIC_MEDIA_ORIGIN: originSchema.optional(),

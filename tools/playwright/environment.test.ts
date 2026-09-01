@@ -3,11 +3,13 @@ import test from 'node:test';
 import { assertLocalE2EEnvironment } from './environment.ts';
 
 const validEnvironment = {
+  ADMIN_URL: 'http://127.0.0.1:3001',
   APP_ENV: 'test',
   AUTH_IDENTITY_SECRET: 'local-test-identity-secret',
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
   E2E_LOCAL_ONLY: '1',
+  MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
   STUDENT_URL: 'http://localhost:3002',
   SUPABASE_PUBLISHABLE_KEY: 'local-anon-key',
   SUPABASE_SECRET_KEY: 'local-service-key',

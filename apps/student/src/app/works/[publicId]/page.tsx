@@ -17,7 +17,11 @@ import { StudentWorkspaceShell } from '../../student-workspace-shell';
 import { WorkspacePage } from '../../workspace-page';
 import { WorkForm } from '../work-form';
 import { WorkRevisionDetails } from '../work-revision-details';
-import { WorkPublishedRevisionPanel, WorkRevisionPendingPanel } from '../work-revision-panel';
+import {
+  WorkChangeRequestPanel,
+  WorkPublishedRevisionPanel,
+  WorkRevisionPendingPanel,
+} from '../work-revision-panel';
 import { seedPublishedWorkDraftAction, withdrawWorkRevisionAction } from '../work.actions';
 
 export default async function EditWorkPage({
@@ -100,11 +104,16 @@ export default async function EditWorkPage({
           ) : null}
           {state.kind === 'draft' ? (
             canMutate ? (
-              <WorkForm
-                context={state.context}
-                initialStep={initialStep}
-                initialWork={state.work}
-              />
+              <>
+                {state.changeRequest === null ? null : (
+                  <WorkChangeRequestPanel review={state.changeRequest} />
+                )}
+                <WorkForm
+                  context={state.context}
+                  initialStep={initialStep}
+                  initialWork={state.work}
+                />
+              </>
             ) : null
           ) : state.kind === 'pending' ? (
             <WorkRevisionDetails
@@ -178,6 +187,7 @@ async function loadState(client: StudentWorksCoreClient, token: string, publicId
   if (authoring.draft !== null)
     return {
       context: await client.getAuthoringContext(token),
+      changeRequest: await readLatestChangeRequest(client, token, publicId),
       kind: 'draft' as const,
       work: authoring.draft,
     };
@@ -191,6 +201,21 @@ async function loadState(client: StudentWorksCoreClient, token: string, publicId
     publishedRevisionId: authoring.publishedRevisionId,
     revision,
   };
+}
+
+async function readLatestChangeRequest(
+  client: StudentWorksCoreClient,
+  token: string,
+  publicId: string,
+) {
+  try {
+    return await client.getLatestChangeRequest(token, publicId);
+  } catch (error: unknown) {
+    if (error instanceof StudentWorksCoreError && error.code === 'WORK_CHANGE_REQUEST_NOT_FOUND') {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function revisionDetailsLabels(
