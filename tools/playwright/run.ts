@@ -1,18 +1,20 @@
 import { spawnSync } from 'node:child_process';
+import { createConnection } from 'node:net';
 import { assertLocalE2EEnvironment } from './environment.ts';
 import { sanitizeSensitiveArtifacts } from './sensitive-artifacts.ts';
 
 const repositoryRoot = new URL('../../', import.meta.url).pathname;
+const POSTGRES_CONTAINER = 'showcase-e2e-postgres';
 const localDefaults: Record<string, string> = {
   APP_ENV: 'test',
   ADMIN_URL: 'http://127.0.0.1:3001',
   AUTH_IDENTITY_SECRET: 'local-development-only-identity-secret',
+  BETTER_AUTH_SECRET: 'local-development-only-better-auth-secret',
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
   E2E_LOCAL_ONLY: '1',
   MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
   STUDENT_URL: 'http://127.0.0.1:3002',
-  SUPABASE_URL: 'http://127.0.0.1:54321',
   VISITOR_URL: 'http://127.0.0.1:3000',
 };
 
@@ -29,37 +31,36 @@ if (['production', 'staging'].includes(process.env.APP_ENV ?? '')) {
 
 try {
   assertLocalE2EEnvironment(requestedEnvironment, { requireCredentials: false });
+  await ensureLocalPostgres(requestedEnvironment);
   run(
     'pnpm',
-    ['exec', 'supabase', 'start'],
+    [
+      '--filter',
+      '@showcase/core',
+      'exec',
+      'prisma',
+      'migrate',
+      'reset',
+      '--force',
+      '--skip-seed',
+      '--schema',
+      'prisma/schema.prisma',
+    ],
     requestedEnvironment,
-    'E2E_SETUP_SUPABASE_UNAVAILABLE',
+    'E2E_SETUP_DATABASE_RESET_FAILED',
   );
-
-  const statusOutput = runWithOutput(
-    'pnpm',
-    ['exec', 'supabase', 'status', '-o', 'env'],
+  run(
+    'node',
+    ['--experimental-strip-types', 'tools/playwright/prepare-database.ts'],
     requestedEnvironment,
-    'E2E_SETUP_SUPABASE_UNAVAILABLE',
+    'E2E_SETUP_DATABASE_PREPARE_FAILED',
   );
-  const status = parseStatusEnvironment(statusOutput);
   const environment: Record<string, string | undefined> = {
     ...requestedEnvironment,
-    DATABASE_URL: status.DB_URL ?? requestedEnvironment.DATABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY: status.ANON_KEY,
-    SUPABASE_SECRET_KEY: status.SERVICE_ROLE_KEY,
-    SUPABASE_URL: status.API_URL ?? requestedEnvironment.SUPABASE_URL,
     MEDIA_PROVIDER_URL: requestedEnvironment.MEDIA_PROVIDER_URL,
     ADMIN_URL: requestedEnvironment.ADMIN_URL,
   };
   assertLocalE2EEnvironment(environment);
-
-  run(
-    'pnpm',
-    ['exec', 'supabase', 'db', 'reset', '--local'],
-    environment,
-    'E2E_SETUP_DATABASE_RESET_FAILED',
-  );
   run(
     'node',
     ['--experimental-strip-types', '--test', 'tools/playwright/fixtures.integration.ts'],
@@ -88,9 +89,8 @@ try {
     artifactDirectories: ['test-results', 'playwright-report'],
     knownValues: [
       environment.AUTH_IDENTITY_SECRET,
+      environment.BETTER_AUTH_SECRET,
       environment.DATABASE_URL,
-      environment.SUPABASE_PUBLISHABLE_KEY,
-      environment.SUPABASE_SECRET_KEY,
     ].filter((value): value is string => value !== undefined),
   });
   if (removedUnsafeArtifacts > 0) fail('E2E_ARTIFACT_SENSITIVE_DATA_DETECTED');
@@ -114,38 +114,65 @@ function run(
   if (result.error !== undefined || result.status !== 0) fail(errorCode);
 }
 
-function runWithOutput(
-  command: string,
-  args: string[],
-  env: Record<string, string | undefined>,
-  errorCode: string,
-): string {
-  const result = spawnSync(command, args, { cwd: repositoryRoot, env, encoding: 'utf8' });
-  if (result.error !== undefined || result.status !== 0) fail(errorCode);
-  return result.stdout;
+async function ensureLocalPostgres(env: Record<string, string | undefined>): Promise<void> {
+  const databaseUrl = env.DATABASE_URL;
+  if (databaseUrl !== undefined && (await canConnect(databaseUrl))) return;
+
+  const inspect = spawnSync(
+    'docker',
+    ['inspect', '--format={{.State.Running}}', POSTGRES_CONTAINER],
+    { cwd: repositoryRoot, encoding: 'utf8', env },
+  );
+  if (inspect.status === 0) {
+    if (inspect.stdout.trim() !== 'true') {
+      run('docker', ['start', POSTGRES_CONTAINER], env, 'E2E_SETUP_POSTGRES_UNAVAILABLE');
+    }
+  } else {
+    run(
+      'docker',
+      [
+        'run',
+        '--detach',
+        '--name',
+        POSTGRES_CONTAINER,
+        '--env',
+        'POSTGRES_PASSWORD=postgres',
+        '--publish',
+        '127.0.0.1:54322:5432',
+        'postgres:17.6-alpine',
+      ],
+      env,
+      'E2E_SETUP_POSTGRES_UNAVAILABLE',
+    );
+  }
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const readiness = spawnSync(
+      'docker',
+      ['exec', POSTGRES_CONTAINER, 'pg_isready', '--username', 'postgres', '--dbname', 'postgres'],
+      { cwd: repositoryRoot, env, stdio: 'ignore' },
+    );
+    if (readiness.status === 0) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+  }
+  fail('E2E_SETUP_POSTGRES_UNAVAILABLE');
 }
 
-function parseStatusEnvironment(output: string): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const line of output.split(/\r?\n/u)) {
-    const match = /^(API_URL|DB_URL|ANON_KEY|SERVICE_ROLE_KEY)=(.*)$/u.exec(line.trim());
-    if (match === null) continue;
-    const key = match[1];
-    const value = match[2];
-    if (key === undefined || value === undefined) continue;
-    values[key] = value.replace(/^['"]|['"]$/gu, '');
-  }
-  if (
-    values.API_URL === undefined ||
-    values.DB_URL === undefined ||
-    values.SERVICE_ROLE_KEY === undefined
-  ) {
-    throw new Error('E2E_SETUP_SUPABASE_UNAVAILABLE: local status did not expose required targets');
-  }
-  if (values.ANON_KEY === undefined) {
-    throw new Error('E2E_SETUP_SUPABASE_UNAVAILABLE: local publishable key is missing');
-  }
-  return values;
+function canConnect(databaseUrl: string): Promise<boolean> {
+  const url = new URL(databaseUrl);
+  return new Promise((resolve) => {
+    const socket = createConnection({
+      host: url.hostname,
+      port: Number(url.port || '5432'),
+    });
+    const finish = (isConnected: boolean) => {
+      socket.destroy();
+      resolve(isConnected);
+    };
+    socket.setTimeout(1_000, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
 }
 
 function fail(message: string): never {

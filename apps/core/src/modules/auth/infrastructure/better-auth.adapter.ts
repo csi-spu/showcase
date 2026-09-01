@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { betterAuth } from 'better-auth';
 import { createLocalAccountIssuer } from 'better-auth/db';
 import { prismaAdapter } from '@better-auth/prisma-adapter';
@@ -19,6 +20,7 @@ type BetterAuthContext = {
     createAccount(input: Record<string, unknown>): Promise<unknown>;
     findSession(token: string): Promise<{ session: { userId: string; expiresAt: Date } } | null>;
     deleteSession(token: string): Promise<void>;
+    deleteUserSessions(userId: string): Promise<void>;
     findUserByEmail(
       email: string,
       options?: Record<string, unknown>,
@@ -49,8 +51,12 @@ function asBetterAuthInstance(value: unknown): BetterAuthInstance {
 
 export class BetterAuthEngine {
   readonly auth: BetterAuthInstance;
+  private readonly logger = new Logger(BetterAuthEngine.name);
+  private lastSessionCleanupAt = 0;
+  private readonly prisma: PrismaClient;
 
   constructor(prisma: PrismaClient, options: { baseUrl: string; secret: string }) {
+    this.prisma = prisma;
     this.auth = asBetterAuthInstance(
       betterAuth({
         appName: 'Student Showcase',
@@ -72,6 +78,7 @@ export class BetterAuthEngine {
       const token = typeof result.token === 'string' ? result.token : null;
       const providerUserId = typeof user.id === 'string' ? user.id : null;
       if (token === null || providerUserId === null) throw new Error('invalid response');
+      await this.cleanupExpiredSessions();
       return {
         accessToken: token,
         refreshToken: token,
@@ -86,6 +93,28 @@ export class BetterAuthEngine {
     }
   }
 
+  private async cleanupExpiredSessions(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastSessionCleanupAt < 60_000) return;
+    this.lastSessionCleanupAt = now;
+    try {
+      await this.prisma.$executeRaw`
+        delete from private.session where id in (
+          select id from private.session
+          where expires_at < ${new Date(now)}
+          order by expires_at
+          limit 5000
+        )
+      `;
+    } catch (error: unknown) {
+      this.logger.warn({
+        errorCode: 'BETTER_AUTH_SESSION_CLEANUP_FAILED',
+        operation: 'better_auth_session_cleanup',
+        reason: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
   async changePassword(accessToken: string, newPassword: string): Promise<void> {
     const context = await this.auth.$context;
     const session = await context.internalAdapter.findSession(accessToken);
@@ -94,6 +123,7 @@ export class BetterAuthEngine {
       session.session.userId,
       await context.password.hash(newPassword),
     );
+    await context.internalAdapter.deleteUserSessions(session.session.userId);
   }
 
   async refresh(refreshToken: string): Promise<ProviderSession> {
@@ -110,8 +140,15 @@ export class BetterAuthEngine {
     };
   }
 
-  async revoke(accessToken: string): Promise<void> {
+  async revoke(accessToken: string, scope: 'global' | 'local'): Promise<void> {
     const context = await this.auth.$context;
+    if (scope === 'global') {
+      const session = await context.internalAdapter.findSession(accessToken);
+      if (session !== null) {
+        await context.internalAdapter.deleteUserSessions(session.session.userId);
+      }
+      return;
+    }
     await context.internalAdapter.deleteSession(accessToken);
   }
 
@@ -175,6 +212,7 @@ export class BetterAuthEngine {
       providerUserId,
       await context.password.hash(newPassword),
     );
+    await context.internalAdapter.deleteUserSessions(providerUserId);
   }
 }
 
@@ -189,9 +227,8 @@ export class BetterAuthProvider implements AuthProvider {
   refresh(refreshToken: string) {
     return this.engine.refresh(refreshToken);
   }
-  revoke(accessToken: string, _scope: 'global' | 'local') {
-    void _scope;
-    return this.engine.revoke(accessToken);
+  revoke(accessToken: string, scope: 'global' | 'local') {
+    return this.engine.revoke(accessToken, scope);
   }
 }
 

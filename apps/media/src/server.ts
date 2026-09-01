@@ -61,7 +61,7 @@ async function handleRequest(
       );
       response.setHeader(
         'cache-control',
-        key.startsWith('work-media/') ? 'public, max-age=31536000, immutable' : 'private, no-store',
+        key.startsWith('work-media/') ? 'public, max-age=300' : 'private, no-store',
       );
       return send(response, 200, body);
     } catch {

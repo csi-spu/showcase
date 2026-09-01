@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseClient } from '../src/modules/auth/infrastructure/database.client';
 import { PostgresProfilePhotoRepository } from '../src/modules/profiles/infrastructure/postgres-profile-photo.repository';
 import { PostgresProfilesRepository } from '../src/modules/profiles/infrastructure/postgres-profiles.repository';
+import { verifyMediaSignature } from '../src/modules/works/infrastructure/self-hosted-media.storage';
 
 const PERSON_ID = '62000000-0000-4000-8000-000000000001';
 const ACCOUNT_ID = '62000000-0000-4000-8000-000000000002';
@@ -10,13 +11,17 @@ const OTHER_ACCOUNT_ID = '62000000-0000-4000-8000-000000000004';
 const UPLOAD_ID = '62000000-0000-4000-8000-000000000005';
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+const MEDIA_SECRET = 'profile-photo-integration-signing-secret';
 
 describe('PostgresProfilePhotoRepository integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
   const photos = new PostgresProfilePhotoRepository(database);
   const profiles = new PostgresProfilesRepository(
     database,
-    new ConfigService({ PUBLIC_MEDIA_ORIGIN: 'https://media.example.com' }),
+    new ConfigService({
+      MEDIA_SERVICE_HMAC_SECRET: MEDIA_SECRET,
+      PUBLIC_MEDIA_ORIGIN: 'https://media.example.com',
+    }),
   );
 
   beforeAll(async () => {
@@ -121,15 +126,27 @@ describe('PostgresProfilePhotoRepository integration', () => {
     await expect(photos.findPublicPhotoObjectKey(privateProfile!.profile!.publicId)).resolves.toBe(
       `profile-media/${UPLOAD_ID}.webp`,
     );
-    await expect(
-      profiles.findPublicProfile(privateProfile!.profile!.publicId),
-    ).resolves.toMatchObject({
+    const publicProfile = await profiles.findPublicProfile(privateProfile!.profile!.publicId);
+    expect(publicProfile).toMatchObject({
       photo: {
         height: 512,
-        url: `https://media.example.com/profile-media/${UPLOAD_ID}.webp`,
         width: 512,
       },
     });
+    const photoUrl = new URL(publicProfile!.photo!.url);
+    const objectKey = Buffer.from(photoUrl.pathname.replace('/objects/', ''), 'base64url').toString(
+      'utf8',
+    );
+    expect(objectKey).toBe(`profile-media/${UPLOAD_ID}.webp`);
+    expect(
+      verifyMediaSignature(
+        MEDIA_SECRET,
+        'GET',
+        objectKey,
+        photoUrl.searchParams.get('expires'),
+        photoUrl.searchParams.get('signature'),
+      ),
+    ).toBe(true);
   });
 
   async function cleanup(): Promise<void> {

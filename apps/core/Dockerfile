@@ -18,6 +18,7 @@ RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
 COPY . .
+RUN pnpm --filter @showcase/core db:generate
 RUN pnpm --filter @showcase/core build
 RUN pnpm deploy --filter @showcase/core --prod /prod/core
 

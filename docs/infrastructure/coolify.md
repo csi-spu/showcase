@@ -24,6 +24,7 @@ Use one hostname per application in each environment. Production shape:
 - Admin: `admin.<domain>`
 - Student: `student.<domain>`
 - Core: `core.<domain>`
+- Media: `media.<domain>`
 
 Staging uses isolated hostnames and must not share authentication cookies or BFF secrets with production. Force HTTPS. Route Core internal authentication endpoints only where the frontend containers can reach them; the BFF secret remains mandatory even on a private network.
 
@@ -36,6 +37,7 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 - Give readiness enough start period for framework boot but keep a bounded deployment timeout.
 - Set CPU and memory limits per app; measure before increasing.
 - Keep Core and frontend container filesystems ephemeral. Postgres and media are the two explicit stateful exceptions, each with an attached volume and automated backup.
+- Mount the media volume at `/data`. Docker-managed empty volumes inherit the image's `node` ownership; pre-provision host bind mounts as UID/GID `1000:1000`. Verify the running media container can create and remove a test file in `/data` before routing uploads.
 - Configure restarts for process failure, not application-level retry loops.
 
 Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_SECRET`, `ADMIN_BFF_SECRET`, `AUTH_IDENTITY_SECRET`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, `STUDENT_BFF_SECRET`, `VISITOR_BFF_SECRET`, `VISITOR_CACHE_SECRET`, and `VISITOR_URL`. Admin needs runtime `CORE_URL` and the same environment's `ADMIN_BFF_SECRET`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and the same environment's `STUDENT_BFF_SECRET`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
@@ -63,10 +65,10 @@ Copy each Coolify application UUID into the repository variable documented in `s
 First deployment validation:
 
 1. Leave `COOLIFY_STAGING_ENABLED` absent and push the initial harness commit to `main`.
-2. Confirm successful CI builds four GHCR images with the same full SHA tag and skips deployment.
+2. Confirm successful CI builds five GHCR images with the same full SHA tag and skips deployment.
 3. Finish staging applications, UUID variables, environment secrets, domains, and runtime configuration.
 4. Set `COOLIFY_STAGING_ENABLED=true` and manually run `Deploy staging` with the full SHA.
-5. Confirm staging Core becomes healthy before frontends deploy.
+5. Confirm staging Media becomes healthy before Core, workers, and frontends deploy.
 6. Confirm every public health endpoint returns 200 over HTTPS.
 7. Trigger production with that full SHA and approve the protected Environment.
 8. Confirm Coolify shows the exact same image tags in both environments.

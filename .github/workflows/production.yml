@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        app: [core, admin, student, visitor]
+        app: [core, admin, student, visitor, media]
     steps:
       - name: Sign in to GHCR
         uses: docker/login-action@v4
@@ -68,7 +68,7 @@ jobs:
       - run: echo "Production promotion approved for ${{ inputs.source_sha }}"
 
   deploy-core:
-    needs: approve-production
+    needs: deploy-media
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: core
@@ -78,7 +78,7 @@ jobs:
     secrets: inherit
 
   deploy-frontends:
-    needs: [deploy-core, deploy-cache-worker]
+    needs: [deploy-core, deploy-cache-worker, deploy-media-processor]
     strategy:
       fail-fast: false
       matrix:
@@ -103,6 +103,26 @@ jobs:
     with:
       app: core-cache-worker
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_CACHE_WORKER }}
+      environment: production
+      image_tag: sha-${{ inputs.source_sha }}
+    secrets: inherit
+
+  deploy-media-processor:
+    needs: deploy-core
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core-media-processor
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA_PROCESSOR }}
+      environment: production
+      image_tag: sha-${{ inputs.source_sha }}
+    secrets: inherit
+
+  deploy-media:
+    needs: approve-production
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: media
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA }}
       environment: production
       image_tag: sha-${{ inputs.source_sha }}
     secrets: inherit

@@ -11,9 +11,6 @@ const validEnvironment = {
   E2E_LOCAL_ONLY: '1',
   MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
   STUDENT_URL: 'http://localhost:3002',
-  SUPABASE_PUBLISHABLE_KEY: 'local-anon-key',
-  SUPABASE_SECRET_KEY: 'local-service-key',
-  SUPABASE_URL: 'http://127.0.0.1:54321',
   VISITOR_URL: 'http://localhost:3000',
 };
 
@@ -35,12 +32,12 @@ test('rejects a linked or remote database before privileged work', () => {
   );
 });
 
-test('rejects a remote Supabase Auth target', () => {
+test('rejects a non-loopback media target', () => {
   assert.throws(
     () =>
       assertLocalE2EEnvironment({
         ...validEnvironment,
-        SUPABASE_URL: 'https://project.supabase.co',
+        MEDIA_PROVIDER_URL: 'https://media.example.com',
       }),
     /E2E_SETUP_UNSAFE_TARGET/,
   );

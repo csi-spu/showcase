@@ -1147,6 +1147,12 @@ CREATE TABLE private.issue_56_contributor_cutover_state (
     CONSTRAINT issue_56_contributor_cutover_state_singleton_check CHECK (singleton)
 );
 
+-- This baseline already contains the post-cutover contributor tables and
+-- read-only legacy triggers. Fresh databases must therefore start in the
+-- completed state instead of attempting the retired one-time cutover.
+INSERT INTO private.issue_56_contributor_cutover_state (singleton, completed_at)
+VALUES (true, CURRENT_TIMESTAMP);
+
 
 --
 -- Name: outbox_events; Type: TABLE; Schema: private; Owner: -
@@ -5302,6 +5308,7 @@ CREATE TABLE private.session (
   user_id uuid NOT NULL REFERENCES private."user"(id) ON DELETE CASCADE
 );
 CREATE INDEX session_user_id_idx ON private.session(user_id);
+CREATE INDEX session_expires_at_idx ON private.session(expires_at);
 CREATE TABLE private.account (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id text NOT NULL,

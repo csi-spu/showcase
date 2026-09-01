@@ -2,7 +2,6 @@ import { URL } from 'node:url';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const LOCAL_DATABASE_PORT = 54322;
-const LOCAL_SUPABASE_PORT = 54321;
 
 export interface LocalE2EEnvironment {
   adminUrl: string;
@@ -11,9 +10,6 @@ export interface LocalE2EEnvironment {
   coreUrl: string;
   mediaProviderUrl: string;
   studentUrl: string;
-  supabasePublishableKey: string;
-  supabaseSecretKey: string;
-  supabaseUrl: string;
   visitorUrl: string;
 }
 
@@ -30,7 +26,6 @@ export function assertLocalE2EEnvironment(
   }
 
   const databaseUrl = requireLocalDatabaseUrl(input.DATABASE_URL);
-  const supabaseUrl = requireLocalHttpUrl(input.SUPABASE_URL, LOCAL_SUPABASE_PORT, 'SUPABASE_URL');
   const coreUrl = requireLocalHttpUrl(input.CORE_URL, 4100, 'CORE_URL');
   const mediaProviderUrl = requireLocalHttpUrl(
     input.MEDIA_PROVIDER_URL,
@@ -41,12 +36,6 @@ export function assertLocalE2EEnvironment(
   const adminUrl = requireLocalHttpUrl(input.ADMIN_URL, 3001, 'ADMIN_URL');
   const visitorUrl = requireLocalHttpUrl(input.VISITOR_URL, 3000, 'VISITOR_URL');
   const requireCredentials = options.requireCredentials ?? true;
-  const supabaseSecretKey = requireCredentials
-    ? requireSecret(input.SUPABASE_SECRET_KEY, 'SUPABASE_SECRET_KEY')
-    : (input.SUPABASE_SECRET_KEY ?? 'local-credential-not-used-before-status');
-  const supabasePublishableKey = requireCredentials
-    ? requireSecret(input.SUPABASE_PUBLISHABLE_KEY, 'SUPABASE_PUBLISHABLE_KEY')
-    : (input.SUPABASE_PUBLISHABLE_KEY ?? 'local-credential-not-used-before-status');
   const authIdentitySecret = requireCredentials
     ? requireSecret(input.AUTH_IDENTITY_SECRET, 'AUTH_IDENTITY_SECRET')
     : (input.AUTH_IDENTITY_SECRET ?? 'local-credential-not-used-before-status');
@@ -58,9 +47,6 @@ export function assertLocalE2EEnvironment(
     mediaProviderUrl,
     databaseUrl,
     studentUrl,
-    supabasePublishableKey,
-    supabaseSecretKey,
-    supabaseUrl,
     visitorUrl,
   };
 }

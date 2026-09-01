@@ -18,14 +18,15 @@ Core is the authoritative domain API and authentication service. Authenticated N
 
 ## Deployable surfaces
 
-Each `apps/*` workspace is independently deployable, health-checked, and horizontally scalable. Services do not rely on local disk or in-memory session affinity. Coolify routes four subdomains to four containers.
+Each `apps/*` workspace is independently deployable and health-checked. Core and the frontends are horizontally scalable and do not rely on local disk or in-memory session affinity. Media is intentionally stateful and uses a persistent `/data` volume; scale it only with storage coordination that preserves single-object consistency. Coolify routes five service domains to five containers.
 
-| Surface | Public exposure                                 | Stateful dependency | Health                                |
-| ------- | ----------------------------------------------- | ------------------- | ------------------------------------- |
-| Visitor | internet                                        | Core                | `/health`                             |
-| Admin   | internet, authentication required               | Core                | `/health`                             |
-| Student | internet, authentication required               | Core                | `/health`                             |
-| Core    | internal endpoints plus controlled public reads | self-hosted Postgres, BetterAuth, media service | `/v1/health/live`, `/v1/health/ready` |
+| Surface | Public exposure                                 | Stateful dependency                      | Health                                |
+| ------- | ----------------------------------------------- | ---------------------------------------- | ------------------------------------- |
+| Visitor | internet                                        | Core                                     | `/health`                             |
+| Admin   | internet, authentication required               | Core                                     | `/health`                             |
+| Student | internet, authentication required               | Core                                     | `/health`                             |
+| Core    | internal endpoints plus controlled public reads | self-hosted Postgres, BetterAuth, media  | `/v1/health/live`, `/v1/health/ready` |
+| Media   | HMAC-signed object requests                     | persistent filesystem mounted at `/data` | `/health`                             |
 
 ## Authentication flow
 

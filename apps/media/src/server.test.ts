@@ -8,7 +8,7 @@ import { createMediaServer } from './server.js';
 
 const SECRET = 'test-signing-secret-that-is-at-least-32-bytes';
 
-test('rejects expired and tampered URLs and caches immutable public media', async () => {
+test('rejects expired and tampered URLs and caches public media for five minutes', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
   const server = createMediaServer({ root, signingSecret: SECRET });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -26,7 +26,7 @@ test('rejects expired and tampered URLs and caches immutable public media', asyn
     const get = signedUrl(origin, 'GET', key, Math.floor(Date.now() / 1_000) + 60);
     const response = await fetch(get);
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=300');
     assert.equal((await fetch(`${get}tampered`)).status, 403);
     assert.equal(
       (await fetch(signedUrl(origin, 'GET', key, Math.floor(Date.now() / 1_000) - 1))).status,

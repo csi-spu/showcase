@@ -124,9 +124,6 @@ const environment = assertLocalE2EEnvironment({
   E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
   MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
   STUDENT_URL: process.env.STUDENT_URL,
-  SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
-  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-  SUPABASE_URL: process.env.SUPABASE_URL,
   VISITOR_URL: process.env.VISITOR_URL,
 });
 

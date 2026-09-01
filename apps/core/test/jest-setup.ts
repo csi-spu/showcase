@@ -8,6 +8,7 @@ jest.mock('better-auth', () => ({
         createAccount: jest.fn(),
         createUser: jest.fn(),
         deleteSession: jest.fn(),
+        deleteUserSessions: jest.fn(),
         deleteUser: jest.fn(),
         findSession: jest.fn(),
         findUserByEmail: jest.fn(),

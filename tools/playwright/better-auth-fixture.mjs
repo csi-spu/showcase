@@ -1,7 +1,9 @@
 import { createLocalAccountIssuer } from '../../apps/core/node_modules/better-auth/dist/db/index.mjs';
 import { betterAuth } from '../../apps/core/node_modules/better-auth/dist/index.mjs';
 import { prismaAdapter } from '../../apps/core/node_modules/@better-auth/prisma-adapter/dist/index.mjs';
-import { PrismaClient } from '../../apps/core/node_modules/@prisma/client/index.js';
+import prismaClientPackage from '../../apps/core/node_modules/@prisma/client/index.js';
+
+const { PrismaClient } = prismaClientPackage;
 
 const databaseUrl = process.env.DATABASE_URL;
 const secret = process.env.BETTER_AUTH_SECRET ?? 'local-development-only-better-auth-secret';
