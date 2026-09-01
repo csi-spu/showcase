@@ -424,6 +424,51 @@ describe('WorksService', () => {
     });
   });
 
+  it('replays equivalent Draft seed and save commands without a second state transition', async () => {
+    repository.mutationResult = { outcome: 'replayed', work: publishedDraft() };
+
+    const seedInput = {
+      actorAccountId: ACCOUNT_ID,
+      expectedPublishedRevisionId: REVISION_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      publicId: PUBLIC_ID,
+    };
+    await expect(service.seedPublishedDraft(seedInput)).resolves.toEqual(repository.mutationResult);
+    await expect(service.seedPublishedDraft(seedInput)).resolves.toEqual(repository.mutationResult);
+
+    const patchInput = {
+      actorAccountId: ACCOUNT_ID,
+      expectedVersion: 3,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      publicId: PUBLIC_ID,
+      summary: 'สรุปที่บันทึกแล้ว',
+    };
+    await expect(service.patchDraft(patchInput)).resolves.toEqual(repository.mutationResult);
+    await expect(service.patchDraft(patchInput)).resolves.toEqual(repository.mutationResult);
+  });
+
+  it('maps stale Draft seed and rebase versions to the same stable conflict', async () => {
+    repository.mutationResult = { outcome: 'version_conflict' };
+
+    await expect(
+      service.seedPublishedDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'WORK_VERSION_CONFLICT', status: 409 });
+    await expect(
+      service.rebaseDraft({
+        actorAccountId: ACCOUNT_ID,
+        expectedPublishedRevisionId: REVISION_ID,
+        expectedVersion: 3,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        publicId: PUBLIC_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'WORK_VERSION_CONFLICT', status: 409 });
+  });
+
   it('rebases only the Draft base through an optimistic explicit command', async () => {
     repository.mutationResult = { outcome: 'updated', work: publishedDraft() };
 

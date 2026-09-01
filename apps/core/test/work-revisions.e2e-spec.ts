@@ -26,6 +26,7 @@ const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const ADMIN_BFF_SECRET = 'local-development-only-admin-bff-secret';
 const ACCOUNT_ID = '74000000-0000-4000-8000-000000000001';
 const WORK_PUBLIC_ID = '74000000-0000-4000-8000-000000000002';
+const OTHER_WORK_PUBLIC_ID = '74000000-0000-4000-8000-000000000007';
 const REVISION_PUBLIC_ID = '74000000-0000-4000-8000-000000000003';
 const IDEMPOTENCY_KEY = '74000000-0000-4000-8000-000000000004';
 const REVIEW_PUBLIC_ID = '74000000-0000-4000-8000-000000000005';
@@ -36,8 +37,10 @@ class E2eWorkRevisionRepository implements WorkRevisionRepository {
   pending: WorkRevisionView | null = null;
   published: WorkRevisionView | null = null;
 
-  findSubmissionContext() {
-    return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566 });
+  findSubmissionContext(_actorAccountId: string, workPublicId: string) {
+    return Promise.resolve(
+      workPublicId === WORK_PUBLIC_ID ? { currentAcademicYear: 2569, entryYear: 2566 } : null,
+    );
   }
 
   findPendingRevision(): Promise<WorkRevisionView | null> {
@@ -185,6 +188,49 @@ describe('Work Revision submission and Review queue (e2e)', () => {
       .expect({ revision: revision() });
   });
 
+  it('rejects wrong BFF secrets and malformed lifecycle identifiers', async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions/pending`)
+      .set('Authorization', 'Bearer expired-session')
+      .set('x-student-bff-secret', STUDENT_BFF_SECRET)
+      .expect(401)
+      .expect({ error: { code: 'UNAUTHENTICATED' } });
+    await request(app.getHttpServer())
+      .get('/v1/internal/admin/review-queue')
+      .set('Authorization', 'Bearer expired-session')
+      .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
+      .expect(401)
+      .expect({ error: { code: 'UNAUTHENTICATED' } });
+    await request(app.getHttpServer())
+      .get(`/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions/pending`)
+      .set('Authorization', 'Bearer opaque-session')
+      .set('x-student-bff-secret', 'wrong-secret')
+      .expect(403)
+      .expect({ error: { code: 'FORBIDDEN' } });
+    await studentRequest('post', '/v1/internal/student/works/not-a-uuid/revisions')
+      .send(submitBody())
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await studentRequest('post', `/v1/internal/student/works/${OTHER_WORK_PUBLIC_ID}/revisions`)
+      .send(submitBody())
+      .expect(404)
+      .expect({ error: { code: 'WORK_NOT_FOUND' } });
+    await studentRequest(
+      'post',
+      `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions/not-a-uuid/withdraw`,
+    )
+      .send({ expectedRevisionVersion: 1, idempotencyKey: IDEMPOTENCY_KEY })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await request(app.getHttpServer())
+      .post('/v1/internal/admin/revisions/not-a-uuid/change-request')
+      .set('Authorization', 'Bearer admin-session')
+      .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
+      .send(changeRequestBody())
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+  });
+
   it('rejects unknown or invalid submission fields and returns stable completeness codes', async () => {
     await studentRequest('post', `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions`)
       .send({ ...submitBody(), studentId: '69000001' })
@@ -192,6 +238,10 @@ describe('Work Revision submission and Review queue (e2e)', () => {
       .expect({ error: { code: 'INVALID_REQUEST' } });
     await studentRequest('post', `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions`)
       .send({ ...submitBody(), studyYear: 9 })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await studentRequest('post', `/v1/internal/student/works/${WORK_PUBLIC_ID}/revisions`)
+      .send({ ...submitBody(), academicPeriod: { semester: '1', year: 'not-a-year' } })
       .expect(400)
       .expect({ error: { code: 'INVALID_REQUEST' } });
     repository.result = { outcome: 'media_not_ready' };

@@ -88,6 +88,13 @@ describe('ReviewsService', () => {
     await expect(service.requestChanges(decisionInput())).rejects.toMatchObject({ code });
   });
 
+  it('returns an equivalent Change Request retry as a replay', async () => {
+    repository.result = { outcome: 'replayed', review: changeRequest() };
+
+    await expect(service.requestChanges(decisionInput())).resolves.toEqual(repository.result);
+    expect(repository.lastDecision?.idempotencyKey).toBe(IDEMPOTENCY_KEY);
+  });
+
   it('returns Change Request feedback only through the Submitter repository seam', async () => {
     await expect(
       service.getLatestChangeRequest(STUDENT_ACCOUNT_ID, WORK_PUBLIC_ID),
