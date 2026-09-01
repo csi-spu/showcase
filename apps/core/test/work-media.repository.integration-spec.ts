@@ -17,6 +17,7 @@ const MEDIA_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000011';
 const RETRY_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000012';
 const EXPIRED_AUTHORIZE_KEY = '65000000-0000-4000-8000-000000000013';
 const ATTACH_KEY = '65000000-0000-4000-8000-000000000014';
+const ATTACH_NOT_READY_KEY = '65000000-0000-4000-8000-000000000015';
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const NOW = new Date('2026-08-25T12:00:00.000Z');
@@ -43,6 +44,10 @@ describe('PostgresWorkMediaRepository integration', () => {
       await transaction`
         insert into public.account_roles (account_id, role)
         values (${ACCOUNT_ID}, 'student'), (${OTHER_ACCOUNT_ID}, 'student')
+      `;
+      await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ชื่อ', 'ผู้ส่ง'), (${OTHER_PERSON_ID}, 'ชื่อ', 'บุคคลอื่น')
       `;
     });
     const created = await works.createWork({
@@ -216,7 +221,7 @@ describe('PostgresWorkMediaRepository integration', () => {
         actorAccountId: ACCOUNT_ID,
         assetId: ASSET_ID,
         expectedVersion: 2,
-        idempotencyKey: CREATE_KEY,
+        idempotencyKey: ATTACH_NOT_READY_KEY,
         mediaKind: 'poster',
         now: NOW,
         publicId,
@@ -299,6 +304,9 @@ describe('PostgresWorkMediaRepository integration', () => {
       await transaction`delete from public.account_roles where account_id in (${ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})`;
       await transaction`delete from public.accounts where id in (${ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})`;
       await transaction`delete from public.students where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
+      await transaction`
+        delete from private.person_names where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})
+      `;
       await transaction`delete from public.people where id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
     });
   }

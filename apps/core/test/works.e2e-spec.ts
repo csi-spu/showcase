@@ -24,6 +24,7 @@ const STUDENT_BFF_SECRET = 'local-development-only-student-bff-secret';
 const ACCOUNT_ID = '63000000-0000-4000-8000-000000000001';
 const PERSON_ID = '63000000-0000-4000-8000-000000000002';
 const PUBLIC_ID = '63000000-0000-4000-8000-000000000003';
+const OTHER_PUBLIC_ID = '63000000-0000-4000-8000-000000000005';
 const IDEMPOTENCY_KEY = '63000000-0000-4000-8000-000000000004';
 
 class E2eWorksRepository implements WorksRepository {
@@ -75,18 +76,22 @@ class E2eWorksRepository implements WorksRepository {
     return Promise.resolve({ currentAcademicYear: 2569, entryYear: 2566, personId: PERSON_ID });
   }
 
-  findOwnedDraft(): Promise<WorkDraftView | null> {
-    return Promise.resolve(this.work);
+  findOwnedDraft(_accountId: string, publicId: string): Promise<WorkDraftView | null> {
+    return Promise.resolve(publicId === PUBLIC_ID ? this.work : null);
   }
 
-  findOwnedWorkState() {
-    return Promise.resolve({
-      activityState: 'active' as const,
-      draft: this.work,
-      publicationState: 'published' as const,
-      publishedRevisionId: PUBLIC_ID,
-      publicId: PUBLIC_ID,
-    });
+  findOwnedWorkState(_accountId: string, publicId: string) {
+    return Promise.resolve(
+      publicId === PUBLIC_ID
+        ? {
+            activityState: 'active' as const,
+            draft: this.work,
+            publicationState: 'published' as const,
+            publishedRevisionId: PUBLIC_ID,
+            publicId: PUBLIC_ID,
+          }
+        : null,
+    );
   }
 
   listOwnedWorks(input: Parameters<WorksRepository['listOwnedWorks']>[0]): Promise<WorkListPage> {
@@ -229,6 +234,26 @@ describe('private Work Draft authoring (e2e)', () => {
       work: { publicId: PUBLIC_ID, version: 1 },
     });
     expect(JSON.stringify(response.body)).not.toMatch(/studentId|accountId|personId/i);
+  });
+
+  it('rejects wrong BFF secrets and malformed Work identifiers before repository access', async () => {
+    await request(app.getHttpServer())
+      .get(`/v1/internal/student/works/${PUBLIC_ID}`)
+      .set('Authorization', 'Bearer opaque-session')
+      .set('x-student-bff-secret', 'wrong-secret')
+      .expect(403)
+      .expect({ error: { code: 'FORBIDDEN' } });
+
+    await studentRequest('get', '/v1/internal/student/works/not-a-uuid')
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await studentRequest('get', `/v1/internal/student/works/${OTHER_PUBLIC_ID}`)
+      .expect(404)
+      .expect({ error: { code: 'WORK_NOT_FOUND' } });
+    await studentRequest('post', '/v1/internal/student/works/not-a-uuid/draft')
+      .send({ expectedPublishedRevisionId: PUBLIC_ID, idempotencyKey: IDEMPOTENCY_KEY })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
   });
 
   it('reads only the Submitter-owned private Draft and exposes no Visitor route', async () => {

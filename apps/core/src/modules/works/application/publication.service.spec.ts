@@ -75,6 +75,20 @@ describe('PublicationService', () => {
     ).rejects.toMatchObject({ code });
   });
 
+  it('returns an equivalent approval retry as a replay', async () => {
+    repository.result = { outcome: 'replayed', publication: publication() };
+
+    await expect(
+      service.approveAndPublish({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        expectedRevisionVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        revisionPublicId: REVISION_PUBLIC_ID,
+      }),
+    ).resolves.toEqual(repository.result);
+    expect(repository.lastApproval?.idempotencyKey).toBe(IDEMPOTENCY_KEY);
+  });
+
   it('returns only repository-authorized public Work and media', async () => {
     await expect(service.getPublicWork(WORK_PUBLIC_ID)).resolves.toEqual(publicWork());
     await expect(service.getPublicMedia(WORK_PUBLIC_ID, ASSET_ID, 480)).resolves.toEqual({

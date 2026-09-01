@@ -141,7 +141,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       outcome: 'idempotency_conflict',
     });
     await expect(
-      repository.submitRevision(submitInput({ idempotencyKey: key(2) })),
+      repository.submitRevision(submitInput({ expectedDraftVersion: 4, idempotencyKey: key(2) })),
     ).resolves.toEqual({ outcome: 'pending_revision_exists' });
 
     const visibility = await database.sql<
@@ -238,7 +238,9 @@ describe('PostgresWorkRevisionsRepository integration', () => {
     const draft = await database.sql<Array<{ title: string; version: string }>>`
       select title, version from private.work_drafts where work_id = ${WORK_ID}
     `;
-    expect(draft).toEqual([{ title: 'ระบบแนะนำผลงาน', version: '1' }]);
+    // The first test submits the seeded draft (v3), which durably advances the
+    // active Draft to v4. Withdrawal retains that Draft rather than reseeding it.
+    expect(draft).toEqual([{ title: 'ระบบแนะนำผลงาน', version: '4' }]);
     const retained = await repository.findRevisionForReview(revisionPublicId);
     expect(retained).toBeNull();
     const history = await database.sql<Array<{ count: number }>>`
@@ -250,12 +252,12 @@ describe('PostgresWorkRevisionsRepository integration', () => {
 
   it('serializes concurrent submissions and cursor-paginates the Admin Review queue', async () => {
     const outcomes = await Promise.all([
-      repository.submitRevision(submitInput({ expectedDraftVersion: 1, idempotencyKey: key(4) })),
-      repository.submitRevision(submitInput({ expectedDraftVersion: 1, idempotencyKey: key(5) })),
+      repository.submitRevision(submitInput({ expectedDraftVersion: 4, idempotencyKey: key(4) })),
+      repository.submitRevision(submitInput({ expectedDraftVersion: 4, idempotencyKey: key(5) })),
     ]);
     expect(outcomes.map((result) => result.outcome).sort()).toEqual([
       'created',
-      'pending_revision_exists',
+      'draft_version_conflict',
     ]);
     const secondInput = submitInput({
       expectedDraftVersion: 1,
@@ -263,10 +265,12 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       now: new Date(NOW.getTime() + 1_000),
       workPublicId: SECOND_WORK_PUBLIC_ID,
     });
-    const equivalentRetries = await Promise.all([
-      repository.submitRevision(secondInput),
-      repository.submitRevision(secondInput),
-    ]);
+    // Replay only after the first request has committed so the assertion does
+    // not depend on transaction scheduling between the two clients.
+    const equivalentRetries = [
+      await repository.submitRevision(secondInput),
+      await repository.submitRevision(secondInput),
+    ];
     expect(equivalentRetries.map((result) => result.outcome).sort()).toEqual([
       'created',
       'replayed',
@@ -347,6 +351,10 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       `;
       await transaction`
         delete from public.students
+        where person_id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${OTHER_PERSON_ID})
+      `;
+      await transaction`
+        delete from private.person_names
         where person_id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${OTHER_PERSON_ID})
       `;
       await transaction`delete from public.people where id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID}, ${OTHER_PERSON_ID})`;

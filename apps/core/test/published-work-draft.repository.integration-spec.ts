@@ -41,6 +41,10 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
         insert into public.account_roles (account_id, role) values (${ACCOUNT_ID}, 'student')
       `;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ชื่อ', 'ผู้ส่ง')
+      `;
+      await transaction`
         insert into public.works (
           id, public_id, submitter_person_id, activity_state, publication_state,
           created_at, updated_at
@@ -84,6 +88,11 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
       repository.seedDraft(seedInput()),
     ]);
     expect(retries.map((result) => result.outcome).sort()).toEqual(['created', 'replayed']);
+    // Simulate a client-visible response loss after the winning transaction committed.
+    await expect(repository.seedDraft(seedInput())).resolves.toMatchObject({ outcome: 'replayed' });
+    await expect(
+      repository.seedDraft(seedInput({ expectedPublishedRevisionId: SECOND_REVISION_ID })),
+    ).resolves.toEqual({ outcome: 'idempotency_conflict' });
     const state = await repository.findOwnedWorkState(ACCOUNT_ID, WORK_PUBLIC_ID);
     expect(state).toMatchObject({
       draft: {
@@ -149,6 +158,13 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
       repository.rebaseDraft(rebaseInput()),
     ]);
     expect(rebaseAttempts.map((result) => result.outcome).sort()).toEqual(['replayed', 'updated']);
+    // The retry cannot know whether the committed response reached the first caller.
+    await expect(repository.rebaseDraft(rebaseInput())).resolves.toMatchObject({
+      outcome: 'replayed',
+    });
+    await expect(repository.rebaseDraft(rebaseInput({ expectedVersion: 99 }))).resolves.toEqual({
+      outcome: 'idempotency_conflict',
+    });
     for (const rebased of rebaseAttempts) {
       expect(rebased).toMatchObject({
         work: {
@@ -235,6 +251,7 @@ describe('PostgresWorksRepository published Draft lifecycle integration', () => 
       await transaction`delete from public.account_roles where account_id = ${ACCOUNT_ID}`;
       await transaction`delete from public.accounts where id = ${ACCOUNT_ID}`;
       await transaction`delete from public.students where person_id = ${PERSON_ID}`;
+      await transaction`delete from private.person_names where person_id = ${PERSON_ID}`;
       await transaction`delete from public.people where id = ${PERSON_ID}`;
     });
   }

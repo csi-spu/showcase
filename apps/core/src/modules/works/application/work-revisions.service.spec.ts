@@ -107,6 +107,13 @@ describe('WorkRevisionsService', () => {
     await expect(service.submit(submissionInput())).rejects.toMatchObject({ code, status });
   });
 
+  it('returns an equivalent submit retry as a replay without changing the Revision result', async () => {
+    repository.result = { outcome: 'replayed', revision: revision() };
+
+    await expect(service.submit(submissionInput())).resolves.toEqual(repository.result);
+    expect(repository.lastSubmit?.idempotencyKey).toBe(IDEMPOTENCY_KEY);
+  });
+
   it('rejects Submitter Study Year outside 1-4 before persistence', async () => {
     await expect(service.submit({ ...submissionInput(), studyYear: 9 })).rejects.toMatchObject({
       code: 'WORK_SUBMITTER_ATTRIBUTION_INVALID',

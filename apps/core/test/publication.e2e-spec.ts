@@ -97,6 +97,31 @@ describe('first Work publication and public detail (e2e)', () => {
       .expect({ error: { code: 'WORK_REVISION_STATE_CONFLICT' } });
   });
 
+  it('rejects wrong BFF secrets and malformed publication/media identifiers', async () => {
+    await request(app.getHttpServer())
+      .post(`/v1/internal/admin/revisions/${REVISION_PUBLIC_ID}/approve-and-publish`)
+      .set('Authorization', 'Bearer admin-session')
+      .set('x-admin-bff-secret', 'wrong-secret')
+      .send(approvalBody())
+      .expect(403)
+      .expect({ error: { code: 'FORBIDDEN' } });
+    await request(app.getHttpServer())
+      .post('/v1/internal/admin/revisions/not-a-uuid/approve-and-publish')
+      .set('Authorization', 'Bearer admin-session')
+      .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
+      .send(approvalBody())
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await request(app.getHttpServer())
+      .get('/v1/public/works/not-a-uuid')
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    await request(app.getHttpServer())
+      .get(`/v1/public/works/${WORK_PUBLIC_ID}/media/not-a-uuid/variants/480`)
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+  });
+
   it('uses one cacheable stable public Work URL without leaking private identity', async () => {
     const response = await request(app.getHttpServer())
       .get(`/v1/public/works/${WORK_PUBLIC_ID}`)

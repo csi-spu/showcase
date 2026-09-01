@@ -1,6 +1,14 @@
 import { normalizeChangeRequest } from './review-decision-policy';
 
 describe('Change Request policy', () => {
+  it.each([10, 2_000])('accepts feedback at the %s-character boundary', (length) => {
+    const feedback = 'ก'.repeat(length);
+    expect(normalizeChangeRequest({ feedback, reason: 'content' })).toEqual({
+      feedback,
+      reason: 'content',
+    });
+  });
+
   it.each(['content', 'attribution', 'media', 'links_tags', 'policy', 'other'] as const)(
     'accepts reason %s with trimmed actionable feedback',
     (reason) => {

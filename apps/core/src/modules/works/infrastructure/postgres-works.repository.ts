@@ -270,9 +270,9 @@ export class PostgresWorksRepository implements WorksRepository {
       and (
         ${input.query} = ''
         or coalesce(draft.title, pending_revision.title, published_revision.title, '')
-          ilike ${searchPattern} escape '\'
+          ilike ${searchPattern} escape '\\'
         or coalesce(draft.summary, pending_revision.summary, published_revision.summary, '')
-          ilike ${searchPattern} escape '\'
+          ilike ${searchPattern} escape '\\'
       )
       and (
         ${input.category} = 'all'
@@ -393,9 +393,9 @@ export class PostgresWorksRepository implements WorksRepository {
       and (
         ${input.query} = ''
         or coalesce(draft.title, pending_revision.title, published_revision.title, '')
-          ilike ${searchPattern} escape '\'
+          ilike ${searchPattern} escape '\\'
         or coalesce(draft.summary, pending_revision.summary, published_revision.summary, '')
-          ilike ${searchPattern} escape '\'
+          ilike ${searchPattern} escape '\\'
       )
       and (
         ${input.category} = 'all'

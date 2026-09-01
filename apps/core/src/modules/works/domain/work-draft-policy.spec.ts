@@ -215,6 +215,46 @@ describe('Work Draft policy', () => {
     ).toEqual({ isValid: false });
   });
 
+  it('accepts every collection at its maximum cardinality', () => {
+    expect(
+      evaluateWorkDraft(
+        validDraft({
+          links: Array.from({ length: 5 }, (_, index) => ({
+            label: `เว็บไซต์ ${index + 1}`,
+            url: `https://example.com/${index + 1}`,
+          })),
+          tags: ['หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า'],
+          videoLinks: [
+            'https://youtu.be/dQw4w9WgXcQ',
+            'https://youtu.be/9bZkp7q19f0',
+            'https://youtu.be/3JZ_D3ELwOQ',
+          ],
+        }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({ isValid: true });
+  });
+
+  it('trims Unicode whitespace at text boundaries while preserving meaningful content', () => {
+    expect(
+      evaluateWorkDraft(
+        validDraft({
+          title: '\u2003ระบบแนะนำผลงาน\u00a0',
+          summary: '\u202fสรุปผลงาน\u202f',
+          description: '\tรายละเอียดผลงาน\n',
+        }),
+        { currentAcademicYear: 2569, entryYear: 2566 },
+      ),
+    ).toMatchObject({
+      isValid: true,
+      draft: {
+        title: 'ระบบแนะนำผลงาน',
+        summary: 'สรุปผลงาน',
+        description: 'รายละเอียดผลงาน',
+      },
+    });
+  });
+
   it('accepts the locked GitHub link only for github.com or its subdomains', () => {
     expect(
       evaluateWorkDraft(

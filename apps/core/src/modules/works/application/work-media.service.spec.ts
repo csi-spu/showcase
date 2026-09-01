@@ -25,8 +25,10 @@ class FakeRepository implements WorkMediaRepository {
   completed: Parameters<WorkMediaRepository['completeProcessing']>[0] | undefined;
   isAuthorizationConflict = false;
   isProcessingRejected = false;
+  releaseProcessingCalls = 0;
   cleanupCandidate: Awaited<ReturnType<WorkMediaRepository['claimExpired']>> = null;
   isCleanupCompleted = false;
+  releaseCleanupCalls = 0;
 
   authorizeUpload(): ReturnType<WorkMediaRepository['authorizeUpload']> {
     return Promise.resolve(
@@ -40,7 +42,7 @@ class FakeRepository implements WorkMediaRepository {
     return Promise.resolve({ assetId: ASSET_ID, status: 'uploaded' as const });
   }
 
-  findUploadStatus() {
+  findUploadStatus(): ReturnType<WorkMediaRepository['findUploadStatus']> {
     return Promise.resolve({
       assetId: ASSET_ID,
       height: 1600,
@@ -70,6 +72,7 @@ class FakeRepository implements WorkMediaRepository {
   }
 
   releaseProcessing() {
+    this.releaseProcessingCalls += 1;
     return Promise.resolve({ isRejected: this.isProcessingRejected });
   }
 
@@ -83,6 +86,7 @@ class FakeRepository implements WorkMediaRepository {
   }
 
   releaseCleanup() {
+    this.releaseCleanupCalls += 1;
     return Promise.resolve();
   }
 
@@ -93,7 +97,10 @@ class FakeRepository implements WorkMediaRepository {
 
 class FakeStorage implements WorkMediaStorage {
   deletedKeys: string[] = [];
+  storedKeys = new Set<string>();
   shouldFailGet = false;
+  shouldFailDelete = false;
+  ambiguousPutAt: number | null = null;
   failPutAt: number | null = null;
   putCount = 0;
 
@@ -110,14 +117,20 @@ class FakeStorage implements WorkMediaStorage {
     return Promise.resolve(Buffer.from('source'));
   }
 
-  putObject() {
+  putObject(input: { key: string }) {
     this.putCount += 1;
     if (this.putCount === this.failPutAt) return Promise.reject(new Error('provider unavailable'));
+    this.storedKeys.add(input.key);
+    if (this.putCount === this.ambiguousPutAt) {
+      return Promise.reject(new Error('provider response lost after durable write'));
+    }
     return Promise.resolve();
   }
 
   deleteObject(key: string) {
+    if (this.shouldFailDelete) return Promise.reject(new Error('provider unavailable'));
     this.deletedKeys.push(key);
+    this.storedKeys.delete(key);
     return Promise.resolve();
   }
 }
@@ -268,6 +281,78 @@ describe('WorkMediaService', () => {
     ).resolves.toEqual({ url: 'https://r2.example.test/processed-preview' });
   });
 
+  it('does not issue a preview URL for a non-ready upload', async () => {
+    const repository = new FakeRepository();
+    jest.spyOn(repository, 'findUploadStatus').mockResolvedValue({
+      assetId: ASSET_ID,
+      height: null,
+      masterObjectKey: null,
+      rejectionCode: null,
+      status: 'processing',
+      warnings: [],
+      width: null,
+    });
+    const storage = new FakeStorage();
+    const createPresignedGet = jest.spyOn(storage, 'createPresignedGet');
+    const service = new WorkMediaService(
+      repository,
+      storage,
+      processedInspector(),
+      { now: () => NOW },
+      { generate: () => ASSET_ID },
+    );
+
+    await expect(
+      service.getUploadStatus({
+        actorAccountId: ACCOUNT_ID,
+        assetId: ASSET_ID,
+        publicId: PUBLIC_ID,
+      }),
+    ).resolves.toEqual({
+      assetId: ASSET_ID,
+      rejectionCode: null,
+      status: 'processing',
+      warnings: [],
+      preview: null,
+    });
+    expect(createPresignedGet).not.toHaveBeenCalled();
+  });
+
+  it('retries an ambiguous provider failure without duplicating processed output', async () => {
+    const repository = new FakeRepository();
+    const storage = new FakeStorage();
+    storage.ambiguousPutAt = 2;
+    const service = new WorkMediaService(
+      repository,
+      storage,
+      processedInspector(),
+      { now: () => NOW },
+      { generate: () => ASSET_ID },
+    );
+
+    await expect(service.processNext()).rejects.toMatchObject({
+      code: 'WORK_MEDIA_SERVICE_UNAVAILABLE',
+      status: 503,
+    });
+    expect(repository.completed).toBeUndefined();
+    expect(repository.releaseProcessingCalls).toBe(1);
+
+    await expect(service.processNext()).resolves.toEqual({ assetId: ASSET_ID, status: 'ready' });
+    expect(repository.completed).toBeDefined();
+    expect(storage.putCount).toBe(5);
+    expect(storage.storedKeys).toEqual(
+      new Set([
+        `work-media/${ASSET_ID}/master.webp`,
+        `work-media/${ASSET_ID}/480.webp`,
+        `work-media/${ASSET_ID}/768.webp`,
+      ]),
+    );
+    expect(storage.deletedKeys).toEqual([
+      `work-media/${ASSET_ID}/master.webp`,
+      `work-quarantine/${ASSET_ID}`,
+    ]);
+  });
+
   it('bounds provider retries and rejects the upload after the repository retry budget is exhausted', async () => {
     const repository = new FakeRepository();
     repository.isProcessingRejected = true;
@@ -341,6 +426,30 @@ describe('WorkMediaService', () => {
     await expect(service.cleanupNext()).resolves.toEqual({ assetId: ASSET_ID, status: 'deleted' });
     expect(storage.deletedKeys).toEqual(repository.cleanupCandidate.objectKeys);
     expect(repository.isCleanupCompleted).toBe(true);
+  });
+
+  it('releases an abandoned cleanup claim when the provider delete fails', async () => {
+    const repository = new FakeRepository();
+    repository.cleanupCandidate = {
+      assetId: ASSET_ID,
+      objectKeys: [`work-media/${ASSET_ID}/master.webp`],
+    };
+    const storage = new FakeStorage();
+    storage.shouldFailDelete = true;
+    const service = new WorkMediaService(
+      repository,
+      storage,
+      processedInspector(),
+      { now: () => NOW },
+      { generate: () => ASSET_ID },
+    );
+
+    await expect(service.cleanupNext()).rejects.toMatchObject({
+      code: 'WORK_MEDIA_SERVICE_UNAVAILABLE',
+      status: 503,
+    });
+    expect(repository.isCleanupCompleted).toBe(false);
+    expect(repository.releaseCleanupCalls).toBe(1);
   });
 
   it('does not attach a non-ready upload or bypass the Submitter/version boundary', async () => {

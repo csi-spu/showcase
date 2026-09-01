@@ -38,6 +38,10 @@ describe('PostgresWorksRepository integration', () => {
         values (${ACCOUNT_ID}, 'student'), (${OTHER_ACCOUNT_ID}, 'student')
       `;
       await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ชื่อ', 'ผู้ส่ง'), (${OTHER_PERSON_ID}, 'ชื่อ', 'บุคคลอื่น')
+      `;
+      await transaction`
         update public.academic_settings
         set current_academic_year = 2569, updated_at = ${new Date('2026-08-25T10:00:00.000Z')}
         where singleton = true
@@ -163,24 +167,40 @@ describe('PostgresWorksRepository integration', () => {
       select public_id from public.works where submitter_person_id = ${PERSON_ID}
     `;
     const publicId = current[0]!.public_id;
-    const update = (idempotencyKey: string, title: string) =>
-      repository.updateDraft({
-        actorAccountId: ACCOUNT_ID,
-        draft: draft({ title }),
-        expectedVersion: 1,
-        idempotencyKey,
-        now: new Date('2026-08-25T10:05:00.000Z'),
-        publicId,
-      });
+    const updateInput = (idempotencyKey: string, title: string) => ({
+      actorAccountId: ACCOUNT_ID,
+      draft: draft({ title }),
+      expectedVersion: 1,
+      idempotencyKey,
+      now: new Date('2026-08-25T10:05:00.000Z'),
+      publicId,
+    });
+    const attempts = [
+      updateInput(UPDATE_KEY, 'ฉบับที่ชนะ'),
+      updateInput(CONCURRENT_UPDATE_KEY, 'ฉบับที่ขัดแย้ง'),
+    ];
 
-    const outcomes = await Promise.all([
-      update(UPDATE_KEY, 'ฉบับที่ชนะ'),
-      update(CONCURRENT_UPDATE_KEY, 'ฉบับที่ขัดแย้ง'),
-    ]);
+    const outcomes = await Promise.all(attempts.map((input) => repository.updateDraft(input)));
     const updated = outcomes.find((result) => result.outcome === 'updated');
     if (updated === undefined || !('work' in updated)) throw new Error('WORK_UPDATE_FAILED');
+    const winningIndex = outcomes.findIndex((result) => result.outcome === 'updated');
+    const winningInput = attempts[winningIndex];
+    if (winningInput === undefined) throw new Error('WORK_UPDATE_INPUT_NOT_FOUND');
     expect(updated.work.version).toBe(2);
     expect(outcomes.some((result) => result.outcome === 'version_conflict')).toBe(true);
+    // Model response loss after commit by discarding the first response and retrying the same input.
+    await expect(repository.updateDraft(winningInput)).resolves.toMatchObject({
+      outcome: 'replayed',
+      work: { version: 2 },
+    });
+    await expect(
+      repository.updateDraft({ ...winningInput, draft: draft({ title: 'ขัดแย้งหลัง commit' }) }),
+    ).resolves.toEqual({ outcome: 'idempotency_conflict' });
+    const operations = await database.sql<Array<{ count: number }>>`
+      select count(*)::integer as count from private.work_operations
+      where idempotency_key = ${winningInput.idempotencyKey}
+    `;
+    expect(operations).toEqual([{ count: 1 }]);
 
     const persisted = await repository.findOwnedDraft(ACCOUNT_ID, publicId);
     expect(persisted).toMatchObject({ version: 2 });
@@ -206,6 +226,9 @@ describe('PostgresWorksRepository integration', () => {
       `;
       await transaction`
         delete from public.students where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})
+      `;
+      await transaction`
+        delete from private.person_names where person_id in (${PERSON_ID}, ${OTHER_PERSON_ID})
       `;
       await transaction`delete from public.people where id in (${PERSON_ID}, ${OTHER_PERSON_ID})`;
     });
