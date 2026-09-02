@@ -90,27 +90,51 @@ jobs:
 
           poll_interval=5
           max_polls=$((DEPLOY_TIMEOUT_MINUTES * 60 / poll_interval))
-          consecutive_api_failures=0
+          poll_response_file=$(mktemp)
+          trap 'rm -f "$poll_response_file"' EXIT
 
           for poll in $(seq 1 "$max_polls"); do
-            if ! response=$(api "$COOLIFY_URL/api/v1/deployments/$deployment_uuid" 2>/dev/null); then
-              consecutive_api_failures=$((consecutive_api_failures + 1))
-              if [ "$consecutive_api_failures" -ge 5 ]; then
-                echo "Coolify API failed five consecutive times for $APP_NAME" >&2
-                exit 1
-              fi
+            if ! http_code=$(curl --silent --show-error --max-time 15 \
+              --header "Authorization: Bearer $COOLIFY_TOKEN" \
+              --header "Accept: application/json" \
+              --output "$poll_response_file" \
+              --write-out '%{http_code}' \
+              "$COOLIFY_URL/api/v1/deployments/$deployment_uuid"); then
+              echo "$APP_NAME: deployment status request failed ($poll/$max_polls)" >&2
               sleep "$poll_interval"
               continue
             fi
 
-            consecutive_api_failures=0
-            status=$(printf '%s' "$response" | parse_json | jq -r '.status // empty')
+            case "$http_code" in
+              200)
+                ;;
+              401|403)
+                echo "Coolify rejected deployment status access with HTTP $http_code for $APP_NAME" >&2
+                exit 1
+                ;;
+              404|408|409|425|429|5??)
+                echo "$APP_NAME: deployment status temporarily unavailable (HTTP $http_code, $poll/$max_polls)" >&2
+                sleep "$poll_interval"
+                continue
+                ;;
+              *)
+                echo "Unexpected Coolify HTTP status $http_code for $APP_NAME" >&2
+                exit 1
+                ;;
+            esac
+
+            if ! status=$(parse_json < "$poll_response_file" | jq -er '.status // empty' 2>/dev/null); then
+              echo "$APP_NAME: deployment status response was not valid JSON ($poll/$max_polls)" >&2
+              sleep "$poll_interval"
+              continue
+            fi
+
             case "$status" in
               finished)
                 echo "$APP_NAME deployed as $IMAGE_TAG"
                 exit 0
                 ;;
-              failed|cancelled|skipped)
+              failed|canceled|cancelled|skipped)
                 echo "$APP_NAME deployment ended with status: $status" >&2
                 exit 1
                 ;;
