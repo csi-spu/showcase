@@ -1,12 +1,13 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
-import type { RosterConflictAction } from './roster-conflict-state';
+import type { RosterConflictActionState, RosterConflictAction } from './roster-conflict-state';
 import { INITIAL_ROSTER_CONFLICT_STATE } from './roster-conflict-state';
 
 export function RosterConflictResolutionForm({
@@ -23,7 +24,14 @@ export function RosterConflictResolutionForm({
   idempotencyKey: string;
 }) {
   const t = useTranslations('Roster.conflicts');
-  const [state, formAction, pending] = useActionState(action, INITIAL_ROSTER_CONFLICT_STATE);
+  const [state, formAction, pending] = useActionState(
+    async (previousState: RosterConflictActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    INITIAL_ROSTER_CONFLICT_STATE,
+  );
   const [isAcceptingIncoming, setIsAcceptingIncoming] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

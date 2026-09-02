@@ -39,16 +39,17 @@ import {
   logoutAction,
 } from './student-auth.actions';
 import { AuthHeroCopy } from './auth-hero-copy';
+import { AuthSuccessToast } from './auth-success-toast';
 import { ChangePasswordForm, LoginForm, LogoutForm } from './student-auth-forms';
 import { StudentWorkspaceShell } from './student-workspace-shell';
 import { StudentBrand } from './student-brand';
 
 interface HomeProps {
-  searchParams: Promise<{ expired?: string }>;
+  searchParams: Promise<{ expired?: string; loggedIn?: string; passwordSet?: string }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { expired } = await searchParams;
+  const { expired, loggedIn, passwordSet } = await searchParams;
   const [state, t, dashboardT] = await Promise.all([
     getStudentAuthPageState(expired === '1'),
     getTranslations('Auth'),
@@ -80,6 +81,16 @@ export default async function Home({ searchParams }: HomeProps) {
     const canMutate = state.session.canUseStudentCapabilities && summary.canMutate;
     return (
       <StudentWorkspaceShell activePage="dashboard">
+        <AuthSuccessToast
+          message={
+            loggedIn === '1'
+              ? t('active.heading')
+              : passwordSet === '1'
+                ? t('change.success')
+                : null
+          }
+          redirectTo="/"
+        />
         <header className="relative isolate grid min-h-72 overflow-hidden rounded-surface border border-border/80 bg-card p-6 shadow-sm sm:p-8 lg:grid-cols-12 lg:items-center lg:p-10">
           <div className="relative z-10 grid gap-3 lg:col-span-7">
             <Badge variant="secondary">{dashboardT('eyebrow')}</Badge>

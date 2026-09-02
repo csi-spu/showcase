@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { UploadIcon } from 'lucide-react';
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { toast } from '@showcase/ui/toast';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription } from '@/components/ui/field';
@@ -106,6 +107,7 @@ export function WorkMediaUpload({
     if (!validation.isValid) {
       setErrorKey('invalid');
       setStatus('error');
+      toast.error(t('invalid'));
       return null;
     }
     let dimensions: { height: number; width: number };
@@ -114,6 +116,7 @@ export function WorkMediaUpload({
     } catch {
       setErrorKey('decodeFailed');
       setStatus('error');
+      toast.error(t('decodeFailed'));
       return null;
     }
     setSelectedDimensions(dimensions);
@@ -130,6 +133,7 @@ export function WorkMediaUpload({
       }
       setErrorKey(dimensionValidation.reason);
       setStatus('error');
+      toast.error(t(dimensionValidation.reason, dimensions));
       return null;
     }
     return uploadPreparedFile(file, validation, dimensions, uploadVersion);
@@ -153,11 +157,13 @@ export function WorkMediaUpload({
     if (!validation.isValid) {
       setErrorKey('invalid');
       setStatus('error');
+      toast.error(t('invalid'));
       return;
     }
     if (!dimensionValidation.isValid) {
       setErrorKey(dimensionValidation.reason);
       setStatus('error');
+      toast.error(t(dimensionValidation.reason, { height: result.height, width: result.width }));
       return;
     }
     await uploadPreparedFile(
@@ -191,6 +197,7 @@ export function WorkMediaUpload({
     if ('error' in authorization) {
       setErrorKey('uploadFailed');
       setStatus('error');
+      toast.error(t('uploadFailed'));
       return null;
     }
     const attached = await attachWorkMediaAction({
@@ -203,6 +210,7 @@ export function WorkMediaUpload({
     if ('error' in attached) {
       setErrorKey('processFailed');
       setStatus('error');
+      toast.error(t('processFailed'));
       return null;
     }
     onVersion(attached.version);
@@ -211,12 +219,14 @@ export function WorkMediaUpload({
     } catch {
       setErrorKey('uploadFailed');
       setStatus('error');
+      toast.error(t('uploadFailed'));
       return null;
     }
     const finalized = await finalizeWorkMediaAction({ assetId: authorization.assetId, publicId });
     if ('error' in finalized) {
       setErrorKey('processFailed');
       setStatus('error');
+      toast.error(t('processFailed'));
       return null;
     }
     setStatus('processing');
@@ -224,11 +234,13 @@ export function WorkMediaUpload({
     if (processed === null) {
       setErrorKey('processFailed');
       setStatus('error');
+      toast.error(t('processFailed'));
       return null;
     }
     if (processed.status === 'rejected') {
       setErrorKey(processed.errorKey);
       setStatus('error');
+      toast.error(t(processed.errorKey));
       return null;
     }
     const nextPreview = { ...processed.preview, assetId: authorization.assetId };
@@ -240,6 +252,7 @@ export function WorkMediaUpload({
     setHasPosterWidthWarning(processed.hasPosterWidthWarning);
     setStatus('ready');
     router.refresh();
+    toast.success(t('ready'));
     return attached.version;
   }
 

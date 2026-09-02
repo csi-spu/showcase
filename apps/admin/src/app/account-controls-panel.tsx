@@ -2,6 +2,7 @@
 
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { toast } from '@showcase/ui/toast';
 import {
   CalendarClockIcon,
   CheckCircle2Icon,
@@ -21,8 +22,10 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Textarea } from '@/components/ui/textarea';
 import type {
   AcademicYearAction,
+  AcademicYearActionState,
   AcademicYearSettingsState,
   StudentAccountAction,
+  StudentAccountActionState,
   StudentAccountControlsState,
 } from './account-controls-state';
 
@@ -42,17 +45,38 @@ export function AccountControlsPanel({
   studentIdempotencyKey: string;
 }) {
   const t = useTranslations('AccountControls');
-  const [yearState, yearFormAction] = useActionState(academicYearAction, {
-    error: null,
-    idempotencyKey: academicYearIdempotencyKey,
-    settings: academicYear,
-  });
-  const [studentState, studentFormAction] = useActionState(studentAction, {
-    error: null,
-    idempotencyKey: studentIdempotencyKey,
-    student: null,
-    temporaryPassword: null,
-  });
+  const [yearState, yearFormAction] = useActionState(
+    async (previousState: AcademicYearActionState, formData: FormData) => {
+      const nextState = await academicYearAction(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    {
+      error: null,
+      idempotencyKey: academicYearIdempotencyKey,
+      settings: academicYear,
+    },
+  );
+  const [studentState, studentFormAction] = useActionState(
+    async (previousState: StudentAccountActionState, formData: FormData) => {
+      const operation = formData.get('operation');
+      const nextState = await studentAction(previousState, formData);
+      if (nextState.error !== null) {
+        toast.error(t(`errors.${nextState.error}`));
+      } else if (operation === 'correctName') {
+        toast.success(t('name.success'));
+      } else if (operation === 'extend') {
+        toast.success(t('extension.success'));
+      }
+      return nextState;
+    },
+    {
+      error: null,
+      idempotencyKey: studentIdempotencyKey,
+      student: null,
+      temporaryPassword: null,
+    },
+  );
 
   return (
     <section

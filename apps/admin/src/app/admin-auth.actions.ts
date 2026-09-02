@@ -61,7 +61,7 @@ export async function changePasswordAction(
     return { error: 'unavailable' };
   }
   await setAdminSessionToken(result.sessionToken);
-  redirect('/');
+  redirect('/?passwordSet=1');
 }
 
 export async function logoutAction(): Promise<AuthActionState> {

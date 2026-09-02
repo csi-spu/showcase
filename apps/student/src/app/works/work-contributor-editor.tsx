@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import {
   LoaderCircleIcon,
   LockKeyholeIcon,
@@ -139,19 +140,24 @@ export function WorkContributorEditor({
     setMessage(null);
   };
 
-  const applyMutation = (result: {
-    contributors?: WorkContributor[];
-    error?: string;
-    version?: number;
-  }) => {
+  const applyMutation = (
+    result: {
+      contributors?: WorkContributor[];
+      error?: string;
+      version?: number;
+    },
+    successMessage: string,
+  ) => {
     if (result.error !== undefined) {
       setMessage(t(`attribution.errors.${result.error}`));
+      toast.error(t(`attribution.errors.${result.error}`));
       return false;
     }
     if (result.contributors === undefined || result.version === undefined) return false;
     onContributors(result.contributors);
     onVersion(result.version);
     closeEditor();
+    toast.success(successMessage);
     return true;
   };
 
@@ -170,7 +176,7 @@ export function WorkContributorEditor({
               candidateReference: selectedCandidate.candidateReference,
             })
           : await addExternalContributorAction({ ...common, attributionName: name });
-      applyMutation(result);
+      applyMutation(result, t('attribution.added'));
     });
   };
   const canAddContributor =
@@ -212,6 +218,7 @@ export function WorkContributorEditor({
                       idempotencyKey: crypto.randomUUID(),
                       publicId,
                     }),
+                    t('attribution.removed'),
                   );
                 })
               }

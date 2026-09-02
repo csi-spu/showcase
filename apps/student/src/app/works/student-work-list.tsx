@@ -1,8 +1,10 @@
 'use client';
 
 import { Button, buttonVariants } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { ArrowUpRightIcon, Clock3Icon, EllipsisIcon, ImageOffIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -144,6 +146,7 @@ function SecondaryActions({
   labels: Record<string, string>;
   work: WorkListItem;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<SavedDraftActionResult['error'] | null>(null);
   if (work.secondaryActions.length === 0 && work.primaryAction !== 'return_to_editing') return null;
@@ -174,9 +177,15 @@ function SecondaryActions({
                 });
                 if (result.outcome === 'error') {
                   setError(result.error);
+                  toast.error(
+                    result.error === 'conflict'
+                      ? labels.actionErrorConflict
+                      : labels.actionErrorUnavailable,
+                  );
                   return;
                 }
-                window.location.reload();
+                router.refresh();
+                toast.success(labels.restoredSuccess);
               })
             }
             type="button"
@@ -202,9 +211,15 @@ function SecondaryActions({
                     });
                     if (result.outcome === 'error') {
                       setError(result.error);
+                      toast.error(
+                        result.error === 'conflict'
+                          ? labels.actionErrorConflict
+                          : labels.actionErrorUnavailable,
+                      );
                       return;
                     }
-                    window.location.reload();
+                    router.refresh();
+                    toast.success(labels.archivedSuccess);
                   });
               }}
               type="button"

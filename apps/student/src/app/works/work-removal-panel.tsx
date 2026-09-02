@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -28,9 +29,15 @@ export function WorkRemovalPanel({
   workVersion: number;
 }) {
   const t = useTranslations('WorkRemoval');
-  const action = removalRequest === null ? createAction : cancelAction;
+  const isCancelling = removalRequest !== null;
+  const action = isCancelling ? cancelAction : createAction;
   const [state, formAction, pending] = useActionState(
-    action,
+    async (previousState: WorkRemovalActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      else if (nextState.success && isCancelling) toast.success(t('cancelledSuccess'));
+      return nextState;
+    },
     initialWorkRemovalActionState(idempotencyKey),
   );
 

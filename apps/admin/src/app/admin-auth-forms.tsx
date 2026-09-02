@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { KeyRoundIcon, LogInIcon, LogOutIcon, type LucideIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
@@ -9,12 +10,21 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import type { AuthAction, AuthErrorMessage } from './admin-auth-action-state';
+import type { AuthAction, AuthActionState, AuthErrorMessage } from './admin-auth-action-state';
 import { INITIAL_AUTH_ACTION_STATE } from './admin-auth-action-state';
+
+function useAuthActionWithErrorToast(action: AuthAction) {
+  const t = useTranslations('Auth.errors');
+  return useActionState(async (previousState: AuthActionState, formData: FormData) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.error !== null) toast.error(t(nextState.error));
+    return nextState;
+  }, INITIAL_AUTH_ACTION_STATE);
+}
 
 export function LoginForm({ action }: { action: AuthAction }) {
   const t = useTranslations('Auth');
-  const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
+  const [state, formAction] = useAuthActionWithErrorToast(action);
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label={t('login.groupLabel')}>
@@ -54,7 +64,7 @@ export function LoginForm({ action }: { action: AuthAction }) {
 
 export function ChangePasswordForm({ action }: { action: AuthAction }) {
   const t = useTranslations('Auth');
-  const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
+  const [state, formAction] = useAuthActionWithErrorToast(action);
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label={t('change.groupLabel')}>

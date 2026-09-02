@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { UploadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef } from 'react';
@@ -9,12 +10,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import type { RosterUploadAction } from './roster-upload-state';
+import type { RosterUploadActionState, RosterUploadAction } from './roster-upload-state';
 import { INITIAL_ROSTER_UPLOAD_STATE } from './roster-upload-state';
 
 export function RosterUploadForm({ action }: { action: RosterUploadAction }) {
   const t = useTranslations('Roster');
-  const [state, formAction] = useActionState(action, INITIAL_ROSTER_UPLOAD_STATE);
+  const [state, formAction] = useActionState(
+    async (previousState: RosterUploadActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    INITIAL_ROSTER_UPLOAD_STATE,
+  );
   const errorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (state.error !== null) errorRef.current?.focus();

@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
@@ -235,18 +236,20 @@ export function WorkForm({
       });
       if ('error' in result) {
         if (result.error !== 'unavailable') submissionIdempotencyKeyRef.current = null;
-        setError(
+        const mappedError =
           result.error === 'conflict'
             ? 'conflict'
             : result.error === 'unavailable'
               ? 'unavailable'
-              : 'invalid',
-        );
+              : 'invalid';
+        setError(mappedError);
+        toast.error(t(`draftSave.errors.${mappedError}.title`));
         return;
       }
       submissionIdempotencyKeyRef.current = null;
       router.push(`/works/${workPublicId}`);
       router.refresh();
+      toast.success(t('review.submitted'));
     });
   };
 

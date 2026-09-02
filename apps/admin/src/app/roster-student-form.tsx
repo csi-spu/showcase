@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { UserPlusIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef } from 'react';
@@ -9,12 +10,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import type { RosterStudentAction } from './roster-student-state';
+import type { RosterStudentActionState, RosterStudentAction } from './roster-student-state';
 import { INITIAL_ROSTER_STUDENT_STATE } from './roster-student-state';
 
 export function RosterStudentForm({ action }: { action: RosterStudentAction }) {
   const t = useTranslations('Roster.single');
-  const [state, formAction] = useActionState(action, INITIAL_ROSTER_STUDENT_STATE);
+  const [state, formAction] = useActionState(
+    async (previousState: RosterStudentActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    INITIAL_ROSTER_STUDENT_STATE,
+  );
   const errorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

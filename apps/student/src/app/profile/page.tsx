@@ -21,6 +21,7 @@ import {
 } from './profile-form';
 import { ProfileSecurityPanel } from './profile-security-panel';
 import { StudentWorkspaceShell } from '../student-workspace-shell';
+import { AuthSuccessToast } from '../auth-success-toast';
 
 interface ProfilePageProps {
   searchParams: Promise<{ passwordChanged?: string }>;
@@ -187,6 +188,10 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               heading={t('security.heading')}
               isPasswordChanged={passwordChanged === '1'}
               successMessage={t('security.success')}
+            />
+            <AuthSuccessToast
+              message={passwordChanged === '1' ? t('security.success') : null}
+              redirectTo="/profile"
             />
           </div>
         </div>

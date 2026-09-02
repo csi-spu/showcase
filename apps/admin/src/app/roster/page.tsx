@@ -16,6 +16,7 @@ import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { getAdminRosterBatch, getAdminRosterConflicts } from '@/lib/admin-roster-page-state';
 import { AdminWorkspacePage } from '../admin-workspace-page';
 import { AdminWorkspaceShell } from '../admin-workspace-shell';
+import { AuthSuccessToast } from '../auth-success-toast';
 import { resolveRosterPageMode } from '../roster-page-mode';
 import { RosterBatchStatus } from '../roster-batch-status';
 import { RosterConflictList } from '../roster-conflict-list';
@@ -58,6 +59,10 @@ export default async function RosterPage({
       >
         {mode === 'result' ? (
           <div className="grid max-w-5xl gap-6">
+            <AuthSuccessToast
+              message={resolved === '1' ? t('conflicts.resolvedSuccess') : null}
+              redirectTo={`/roster?batchId=${batchId}`}
+            />
             {resolved === '1' ? (
               <Alert variant="success">
                 <CheckCircle2Icon aria-hidden="true" />

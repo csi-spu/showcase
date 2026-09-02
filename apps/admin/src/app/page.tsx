@@ -16,6 +16,7 @@ import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
 import { AdminBrand } from './admin-brand';
 import { AdminDashboard } from './admin-dashboard';
 import { AdminWorkspaceShell } from './admin-workspace-shell';
+import { AuthSuccessToast } from './auth-success-toast';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -25,11 +26,11 @@ import {
 import { ChangePasswordForm, LoginForm, LogoutForm } from './admin-auth-forms';
 
 interface HomeProps {
-  searchParams: Promise<{ expired?: string }>;
+  searchParams: Promise<{ expired?: string; passwordSet?: string }>;
 }
 
 export default async function Home({ searchParams }: HomeProps) {
-  const { expired } = await searchParams;
+  const { expired, passwordSet } = await searchParams;
   const [state, authT, dashboardT, homeT] = await Promise.all([
     getAdminAuthPageState(expired === '1'),
     getTranslations('Auth'),
@@ -40,6 +41,7 @@ export default async function Home({ searchParams }: HomeProps) {
   if (state.kind === 'active') {
     return (
       <AdminWorkspaceShell activePage="dashboard">
+        <AuthSuccessToast message={passwordSet === '1' ? authT('change.success') : null} />
         <AdminDashboard
           labels={{
             accountDescription: dashboardT('accountDescription'),

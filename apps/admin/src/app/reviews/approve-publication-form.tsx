@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { CheckCircle2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
@@ -29,11 +30,18 @@ export function ApprovePublicationForm({
   idempotencyKey: string;
 }) {
   const t = useTranslations('Review');
-  const [state, formAction] = useActionState(action, {
-    error: null,
-    idempotencyKey,
-    publication: null,
-  });
+  const [state, formAction] = useActionState(
+    async (previousState: ApprovePublicationActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`approval.errors.${nextState.error}`));
+      return nextState;
+    },
+    {
+      error: null,
+      idempotencyKey,
+      publication: null,
+    },
+  );
   const errorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (state.error !== null) errorRef.current?.focus();

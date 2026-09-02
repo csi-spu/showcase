@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { CheckCircle2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useEffect, useRef, useState } from 'react';
@@ -32,11 +33,18 @@ export function ChangeRequestForm({
   idempotencyKey: string;
 }) {
   const t = useTranslations('Review');
-  const [state, formAction] = useActionState(action, {
-    error: null,
-    idempotencyKey,
-    isComplete: false,
-  });
+  const [state, formAction] = useActionState(
+    async (previousState: ChangeRequestActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    {
+      error: null,
+      idempotencyKey,
+      isComplete: false,
+    },
+  );
   const [feedback, setFeedback] = useState('');
   const [reason, setReason] = useState('content');
   const errorRef = useRef<HTMLDivElement>(null);

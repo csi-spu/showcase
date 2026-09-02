@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { CheckCircle2Icon } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -33,11 +34,18 @@ export function AdminCorrectionForm({
   idempotencyKey: string;
 }) {
   const t = useTranslations('Correction');
-  const [state, formAction] = useActionState(action, {
-    error: null,
-    idempotencyKey,
-    revisionPublicId: null,
-  });
+  const [state, formAction] = useActionState(
+    async (previousState: AdminCorrectionActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+      return nextState;
+    },
+    {
+      error: null,
+      idempotencyKey,
+      revisionPublicId: null,
+    },
+  );
   const [values, setValues] = useState(() => ({
     academicYear: String(base.content.academicPeriod.year),
     category: base.content.category,
