@@ -17,5 +17,7 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0011](0011-use-roster-name-as-the-only-account-backed-person-name.md)       | Use Roster Name as the only Account-backed Person name  |
 | [0012](0012-enrich-contributor-candidates-with-consented-profile-summary.md) | Enrich Contributor Candidates with profile context      |
 | [0013](0013-search-contributor-candidates-by-student-id-prefix.md)           | Search Contributor Candidates by Student ID prefix      |
+| [0014](0014-self-hosted-stateful-infrastructure.md)                          | Self-host Postgres, authentication, and media           |
+| [0015](0015-deploy-affected-images-directly-to-production.md)                | Deploy affected images directly to production           |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

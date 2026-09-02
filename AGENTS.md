@@ -102,7 +102,7 @@ Core owns application data and authentication boundaries. Browser applications m
 
 - Branch from `main`; merge through a reviewed pull request.
 - Keep commits scoped and independently understandable.
-- `main` is protected and deployable. A merge deploys staging, then automatically promotes the same commit to production once the staging deploy succeeds — no manual workflow trigger. `production.yml` still accepts a manual `workflow_dispatch` with an explicit `source_sha` for re-promoting or rolling forward to an already-staged commit outside the normal flow.
+- `main` is protected and deployable. After CI succeeds, a merge builds and deploys only affected immutable application images to production through the protected `production` Environment. `production.yml` also accepts a manual `workflow_dispatch` with an explicit `source_sha` and application list for redeploying existing images.
 - CI builds immutable SHA-tagged images. Coolify pulls those exact tags; CI does not SSH to hosts and Coolify does not build from git.
 - Primary rollback is a git revert and normal redeploy. Emergency image rollback must be followed by a repository revert.
 

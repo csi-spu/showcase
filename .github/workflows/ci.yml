@@ -72,6 +72,9 @@ jobs:
       - name: Test agent skill validator
         run: pnpm skills:test
 
+      - name: Test delivery workflow
+        run: pnpm ci:workflow:test
+
       - name: Lint affected packages
         run: pnpm turbo run lint --affected --concurrency=2
 
@@ -83,3 +86,35 @@ jobs:
 
       - name: Build affected packages
         run: pnpm turbo run build --affected --concurrency=2
+
+      - name: Create deployment plan
+        if: github.event_name == 'push'
+        env:
+          PLAN_PATH: ${{ runner.temp }}/deployment-plan.json
+          SOURCE_SHA: ${{ github.sha }}
+          TURBO_DRY_RUN_PATH: ${{ runner.temp }}/turbo-build.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TURBO_SCM_BASE" ] || [ "$TURBO_SCM_BASE" = "0000000000000000000000000000000000000000" ]; then
+            node tools/ci/create-deployment-plan.mjs \
+              --source-sha "$SOURCE_SHA" \
+              --output "$PLAN_PATH" \
+              --all
+          else
+            pnpm turbo run build --filter="...[$TURBO_SCM_BASE]" --dry-run=json > "$TURBO_DRY_RUN_PATH"
+            node tools/ci/create-deployment-plan.mjs \
+              --source-sha "$SOURCE_SHA" \
+              --output "$PLAN_PATH" \
+              --turbo-json "$TURBO_DRY_RUN_PATH"
+          fi
+          jq . "$PLAN_PATH"
+
+      - name: Upload deployment plan
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployment-plan
+          path: ${{ runner.temp }}/deployment-plan.json
+          if-no-files-found: error
+          retention-days: 30

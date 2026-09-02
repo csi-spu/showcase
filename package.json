@@ -10,6 +10,7 @@
   "scripts": {
     "bootstrap": "pnpm install --frozen-lockfile && pnpm --filter @showcase/core db:generate && node tools/bootstrap.mjs",
     "build": "turbo run build",
+    "ci:workflow:test": "node --test tools/ci/*.test.mjs",
     "db:lint": "supabase db lint --local",
     "db:reset": "supabase db reset --local",
     "db:start": "supabase start",
@@ -29,7 +30,7 @@
     "test": "turbo run test",
     "test:ci": "turbo run test:ci",
     "typecheck": "turbo run typecheck",
-    "check": "pnpm format:check && pnpm skills:check && pnpm skills:test && pnpm lint && pnpm typecheck && pnpm test:ci"
+    "check": "pnpm format:check && pnpm skills:check && pnpm skills:test && pnpm ci:workflow:test && pnpm lint && pnpm typecheck && pnpm test:ci"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

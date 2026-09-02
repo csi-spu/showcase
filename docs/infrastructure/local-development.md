@@ -4,7 +4,7 @@
 
 Application processes run on the host for fast reload. Supabase CLI runs local Postgres, Auth, and Studio in Docker. Realtime, Supabase Storage, Edge Runtime, Analytics, and public signup are disabled because Phase 1 does not use them.
 
-R2 has no committed production credential or bucket fallback. Media adapter unit tests use fakes; provider integration tests use a dedicated non-production R2 bucket with short-lived, least-privilege credentials. Local development without profile-photo or Work-media uploads needs no R2 access; Core reports those upload capabilities as unavailable.
+The self-hosted Media service uses a disposable local storage root and a development-only signing secret. Media adapter unit tests use local fakes. Local development without profile-photo or Work-media uploads may omit Media configuration; Core reports those upload capabilities as unavailable.
 
 ## Ports
 
@@ -14,6 +14,7 @@ R2 has no committed production credential or bucket fallback. Media adapter unit
 |  3001 | Admin             |
 |  3002 | Student           |
 |  4100 | Core              |
+|  4191 | Media             |
 | 54321 | Supabase API/Auth |
 | 54322 | Postgres          |
 | 54323 | Studio            |
@@ -31,7 +32,7 @@ Committed ports are a team contract. Resolve local conflicts instead of changing
 
 Update each `.env.example` with a non-secret placeholder whenever code adds an environment key. Existing local files are never overwritten by bootstrap.
 
-Frontend Core URLs remain server-only as `CORE_URL`. Do not introduce `NEXT_PUBLIC_CORE_URL`: it would bake environment routing into the container and break immutable promotion from staging to production.
+Frontend Core URLs remain server-only as `CORE_URL`. Do not introduce `NEXT_PUBLIC_CORE_URL`: it would bake environment routing into the container and prevent one immutable image from remaining runtime-configurable.
 
 ## Lifecycle
 
@@ -46,4 +47,4 @@ pnpm db:stop
 
 ## Integration credentials
 
-For profile-photo upload testing, create a separate development bucket and API token restricted to object read, write, and delete operations in that bucket. Put its S3 endpoint, access key, secret, bucket, and controlled public media origin in the Core local env. Configure bucket CORS to allow `PUT` from the exact Student development origin with the `Content-Type` header. Do not reuse staging or production credentials and do not expose secret values through a `NEXT_PUBLIC_*` variable.
+For profile-photo or Work-media upload testing, run Media with a disposable storage root, a development-only `MEDIA_SERVICE_HMAC_SECRET`, and `STUDENT_URL=http://localhost:3002`. Configure Core with the same signing secret plus the local private and public Media origins. Do not reuse production credentials or expose the signing secret through a `NEXT_PUBLIC_*` variable.

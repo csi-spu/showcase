@@ -12,21 +12,21 @@ Adding a service increases operational surface. Confirm it cannot be a feature m
 
 ## CI and image
 
-1. Add the service to the staging build matrix.
+1. Add the service to `tools/ci/create-deployment-plan.mjs` and its contract tests.
 2. Use image name `ghcr.io/csi-spu/showcase-<service>` and immutable SHA tags.
-3. Add it to production image verification.
+3. Add its selective build, manual image verification, and production deployment jobs.
 4. Add deployment after every service it depends on.
-5. Add its Coolify UUID variables for both environments.
+5. Add its production Coolify UUID variable.
 
 ## Coolify
 
-Create one Docker Image application per environment. Configure registry read access, container port, health path, domain, runtime environment, resource limits, and auto-deploy disabled. Store runtime secrets only in Coolify.
+Create one production Docker Image application. Configure registry read access, container port, health path, domain, runtime environment, resource limits, and auto-deploy disabled. Store runtime secrets only in Coolify.
 
 ## Acceptance
 
 - Focused lint, typecheck, test, and build pass.
 - Container runs locally as non-root and health becomes ready.
 - PR affected selection includes the new workspace.
-- Staging image has SBOM/provenance and exact SHA tag.
-- Staging deployment succeeds before production wiring is enabled.
+- Production image has SBOM/provenance and exact SHA tag.
+- Protected Environment approval gates the first production deployment.
 - Rollback path and owner are documented.
