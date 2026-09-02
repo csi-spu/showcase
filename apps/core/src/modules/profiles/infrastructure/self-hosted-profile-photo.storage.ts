@@ -12,7 +12,7 @@ export class SelfHostedProfilePhotoStorage implements ProfilePhotoStorage {
   }
 
   createPresignedGet(input: { expiresInSeconds: number; key: string }) {
-    return this.delegate.createPresignedGet(input);
+    return this.delegate.createInternalPresignedGet(input);
   }
   createPresignedPut(input: {
     contentType: ProfilePhotoContentType;
