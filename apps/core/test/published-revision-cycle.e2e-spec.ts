@@ -321,6 +321,7 @@ function publicWork(number: 1 | 2): PublicWorkView {
         attributionName: number === 1 ? 'ชื่อผู้ส่งเดิม' : 'ชื่อผู้ส่งฉบับใหม่',
         canRequestRemoval: false,
         contributionRole: null,
+        hasPhoto: false,
         profilePublicId: null,
         studyYear: number === 1 ? 2 : 3,
       },

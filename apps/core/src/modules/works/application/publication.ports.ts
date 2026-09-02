@@ -15,6 +15,7 @@ export interface PublicWorkAttributionView {
   attributionName: string;
   canRequestRemoval: boolean;
   contributionRole: string | null;
+  hasPhoto: boolean;
   profilePublicId: string | null;
   studyYear: number | null;
 }

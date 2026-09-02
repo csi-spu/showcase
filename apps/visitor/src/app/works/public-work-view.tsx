@@ -1,7 +1,7 @@
 import { cn } from '@showcase/ui/cn';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowUpRightIcon, UserRoundIcon } from 'lucide-react';
+import { ArrowUpRightIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ImageCarousel } from '@/components/ui/image-carousel';
@@ -172,15 +172,17 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
       <section className="grid gap-4">
         <h2 className="text-xl font-semibold tracking-tight">{labels.attributions}</h2>
         {work.attributions.length > 0 ? (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {work.attributions.map((attribution, index) => (
               <li
-                className="grid justify-items-center gap-3 rounded-media border border-border bg-card p-5 text-center transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/30"
+                className="group relative grid justify-items-center gap-4 overflow-hidden rounded-media border border-border bg-card p-6 pt-8 text-center shadow-[0_1px_2px_rgba(16,12,20,0.04)] transition-[border-color,transform,box-shadow] duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-[0_1.5rem_3rem_-1.75rem_color-mix(in_oklch,var(--primary),transparent_55%)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 key={`${index}:${attribution.attributionName}`}
               >
-                <span className="grid size-16 place-items-center rounded-full bg-primary-soft text-primary ring-4 ring-primary/10">
-                  <UserRoundIcon aria-hidden="true" className="size-7" />
-                </span>
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(120%_100%_at_50%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+                />
+                <AttributionAvatar attribution={attribution} />
                 <div className="grid justify-items-center gap-1.5">
                   {attribution.profilePublicId === null ? (
                     <p className="text-lg font-semibold break-words">
@@ -188,7 +190,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
                     </p>
                   ) : (
                     <Link
-                      className="text-lg font-semibold break-words text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                      className="text-lg font-semibold break-words underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
                       href={`/people/${attribution.profilePublicId}`}
                     >
                       {attribution.attributionName}
@@ -256,6 +258,54 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         </section>
       )}
     </article>
+  );
+}
+
+const AVATAR_PALETTE = [
+  'oklch(0.58 0.19 340)',
+  'oklch(0.6 0.15 280)',
+  'oklch(0.62 0.16 220)',
+  'oklch(0.6 0.14 165)',
+  'oklch(0.65 0.16 60)',
+  'oklch(0.6 0.19 25)',
+] as const;
+
+function initialsOf(name: string): string {
+  const graphemes = Array.from(name.trim());
+  return graphemes.slice(0, 2).join('').toUpperCase() || '?';
+}
+
+function hashSeed(value: string): number {
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
+  return hash;
+}
+
+function AttributionAvatar({ attribution }: { attribution: PublicWork['attributions'][number] }) {
+  if (attribution.profilePublicId !== null && attribution.hasPhoto) {
+    return (
+      <span className="relative size-20 shrink-0 overflow-hidden rounded-full border-2 border-background shadow-[0_0.5rem_1.5rem_-0.5rem_rgba(16,12,20,0.35)] ring-2 ring-border">
+        <Image
+          alt={attribution.attributionName}
+          className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05] motion-reduce:transform-none"
+          fill
+          sizes="80px"
+          src={`/people/${attribution.profilePublicId}/photo`}
+          unoptimized
+        />
+      </span>
+    );
+  }
+
+  const accent = AVATAR_PALETTE[hashSeed(attribution.attributionPublicId) % AVATAR_PALETTE.length];
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-20 shrink-0 place-items-center rounded-full border-2 border-background text-xl font-semibold text-white shadow-[0_0.5rem_1.5rem_-0.5rem_rgba(16,12,20,0.35)] ring-2 ring-border"
+      style={{ backgroundColor: accent }}
+    >
+      {initialsOf(attribution.attributionName)}
+    </span>
   );
 }
 
