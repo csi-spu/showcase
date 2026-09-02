@@ -257,7 +257,7 @@ export class AdminReviewsCoreClient {
     sessionToken: string,
     workPublicId: string,
   ): Promise<AdminCorrectionBase> {
-    const revision = await this.client.request({
+    const revision: AdminReviewRevision = await this.client.request({
       method: 'GET',
       path: `/v1/internal/admin/works/${workPublicId}/correction-base`,
       responseSchema: revisionSchema,
