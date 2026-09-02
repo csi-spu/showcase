@@ -19,6 +19,7 @@ import { useActionState, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { ImageCropper, type ImageCropResult } from '@/components/image-cropper';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
@@ -62,6 +63,9 @@ type ProfileEditorKey = 'bio' | `link:${string}`;
 const PROFILE_LINK_LIMIT = 5;
 const PROFILE_BIO_EDIT_BUTTON_ID = 'profile-bio-edit-button';
 const PROFILE_PHOTO_INPUT_ID = 'profile-photo';
+const PROFILE_PHOTO_CROP_ASPECT_RATIO = 1;
+const PROFILE_PHOTO_CROP_MINIMUM_DIMENSION = 512;
+const PROFILE_PHOTO_CROP_MAXIMUM_DIMENSION = 1_024;
 const PRESET_LINKS = [
   { key: 'portfolio', label: 'Portfolio' },
   { key: 'linkedin', label: 'LinkedIn' },
@@ -166,6 +170,7 @@ export function ProfileForm({
   const router = useRouter();
   const [draft, setDraft] = useState(() => createDraft(profile));
   const [photoId, setPhotoId] = useState(profile?.photoId ?? '');
+  const [photoCropCandidate, setPhotoCropCandidate] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [photoError, setPhotoError] = useState<ProfileActionError | null>(null);
   const [isPhotoSaved, setIsPhotoSaved] = useState(false);
@@ -193,7 +198,7 @@ export function ProfileForm({
   );
   const nextCustomLinkId = useRef(draft.links.length);
 
-  async function uploadPhoto(file: File | undefined) {
+  function selectPhoto(file: File | undefined) {
     setPhotoError(null);
     setIsPhotoSaved(false);
     if (file === undefined) return;
@@ -203,6 +208,25 @@ export function ProfileForm({
       !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
     ) {
       setPhotoError('photo');
+      return;
+    }
+    setPhotoCropCandidate(file);
+  }
+
+  async function uploadCroppedPhoto(result: ImageCropResult): Promise<void> {
+    const sourceName = photoCropCandidate?.name.replace(/\.[^.]+$/u, '') ?? 'profile';
+    const file = new File([result.blob], `${sourceName}-cropped.jpg`, {
+      lastModified: photoCropCandidate?.lastModified ?? 0,
+      type: 'image/jpeg',
+    });
+    setPhotoCropCandidate(null);
+    await uploadPhoto(file);
+  }
+
+  async function uploadPhoto(file: File) {
+    if (file.size <= 0 || file.size > 2_097_152 || file.type !== 'image/jpeg') {
+      setPhotoError('photo');
+      toast.error(t('errors.photo'));
       return;
     }
     setIsUploading(true);
@@ -282,7 +306,11 @@ export function ProfileForm({
         className="sr-only"
         disabled={!canEditProfile || isUploading}
         id={PROFILE_PHOTO_INPUT_ID}
-        onChange={(event) => void uploadPhoto(event.currentTarget.files?.[0])}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          selectPhoto(file);
+        }}
         type="file"
       />
 
@@ -400,6 +428,22 @@ export function ProfileForm({
           <SubmitButton label={t('save')} pendingLabel={t('saving')} />
         </div>
       ) : null}
+      {photoCropCandidate === null ? null : (
+        <ImageCropper
+          aspectRatio={PROFILE_PHOTO_CROP_ASPECT_RATIO}
+          cancelLabel={t('cropCancel')}
+          confirmLabel={t('cropConfirm')}
+          description={t('cropDescription')}
+          errorLabel={t('cropLoadFailed')}
+          file={photoCropCandidate}
+          loadingLabel={t('cropLoading')}
+          maximumDimension={PROFILE_PHOTO_CROP_MAXIMUM_DIMENSION}
+          minimumDimension={PROFILE_PHOTO_CROP_MINIMUM_DIMENSION}
+          onCancel={() => setPhotoCropCandidate(null)}
+          onCrop={uploadCroppedPhoto}
+          title={t('cropTitle')}
+        />
+      )}
     </form>
   );
 }

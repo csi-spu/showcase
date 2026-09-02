@@ -135,7 +135,9 @@ function mapError(error: unknown): ProfileActionError {
   if (['INVALID_PROFILE', 'INVALID_REQUEST', 'PROFILE_INCOMPLETE'].includes(error.code)) {
     return 'invalid';
   }
-  if (error.code.startsWith('PROFILE_PHOTO')) return 'photo';
+  if (error.code === 'INVALID_PROFILE_PHOTO' || error.code.startsWith('PROFILE_PHOTO')) {
+    return 'photo';
+  }
   return error.code === 'AUTH_SERVICE_UNAVAILABLE' ? 'network' : 'unavailable';
 }
 

@@ -1,6 +1,7 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 import {
@@ -12,8 +13,19 @@ import {
 import type { ProfileActionState } from './profile-action-state';
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }));
+const cropper = vi.hoisted(() => ({ getCroppedCanvas: vi.fn() }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
+vi.mock('react-cropper', () => ({
+  default: forwardRef(function CropperMock(
+    { aspectRatio, ready, src }: { aspectRatio: number; ready: () => void; src: string },
+    ref: React.ForwardedRef<unknown>,
+  ) {
+    useImperativeHandle(ref, () => ({ cropper: { getCroppedCanvas: cropper.getCroppedCanvas } }));
+    useEffect(() => ready(), [ready, src]);
+    return <div aria-label="เครื่องมือครอป" data-aspect-ratio={aspectRatio} data-source={src} />;
+  }),
+}));
 
 const action = vi.fn(async (): Promise<ProfileActionState> => ({ error: null, success: true }));
 
@@ -372,14 +384,20 @@ describe('Student Public Profile UI', () => {
     );
   });
 
-  it('finalizes and saves a selected profile photo immediately', async () => {
+  it('crops a selected profile photo to a square before uploading and saving it', async () => {
+    const croppedBlob = new Blob(['cropped-profile-photo'], { type: 'image/jpeg' });
+    cropper.getCroppedCanvas.mockReturnValue({
+      height: 1_024,
+      toBlob: (callback: BlobCallback) => callback(croppedBlob),
+      width: 1_024,
+    });
     const updateAction = vi.fn(async (): Promise<ProfileActionState> => ({
       error: null,
       success: true,
     }));
     const createPhotoUpload = vi.fn().mockResolvedValue({
       data: {
-        headers: { 'content-type': 'image/png' },
+        headers: { 'content-type': 'image/jpeg' },
         uploadId: '71000000-0000-4000-8000-000000000004',
         uploadUrl: 'https://upload.example.test/profile',
       },
@@ -391,7 +409,9 @@ describe('Student Public Profile UI', () => {
         version: 1,
       },
     });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
     const { container } = renderProfile(
       <>
         <ProfilePhotoButton
@@ -415,6 +435,27 @@ describe('Student Public Profile UI', () => {
       new File([new Uint8Array(1_024)], 'profile.png', { type: 'image/png' }),
     );
 
+    expect(await screen.findByRole('heading', { name: 'ครอปรูปโปรไฟล์' })).toBeTruthy();
+    expect((await screen.findByLabelText('เครื่องมือครอป')).getAttribute('data-aspect-ratio')).toBe(
+      '1',
+    );
+    expect(createPhotoUpload).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'ครอปและอัปโหลด' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'ครอปและอัปโหลด' }));
+
+    expect(cropper.getCroppedCanvas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxHeight: 1_024,
+        maxWidth: 1_024,
+        minHeight: 512,
+        minWidth: 512,
+      }),
+    );
     await waitFor(() => {
       expect(finalizePhotoUpload).toHaveBeenCalledWith({
         expectedVersion: 0,
@@ -422,6 +463,19 @@ describe('Student Public Profile UI', () => {
         uploadId: '71000000-0000-4000-8000-000000000004',
       });
     });
+    expect(createPhotoUpload).toHaveBeenCalledWith({
+      byteSize: croppedBlob.size,
+      contentType: 'image/jpeg',
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://upload.example.test/profile',
+      expect.objectContaining({
+        body: expect.any(File),
+        credentials: 'omit',
+        headers: { 'content-type': 'image/jpeg' },
+        method: 'PUT',
+      }),
+    );
     expect(updateAction).not.toHaveBeenCalled();
     expect(screen.getByText('บันทึกรูปโปรไฟล์แล้ว')).toBeTruthy();
     expect(

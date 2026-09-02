@@ -1,9 +1,9 @@
 'use client';
 
+import { Button } from '@showcase/ui/button';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Cropper, { type ReactCropperElement } from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
-import { Button } from '@showcase/ui/button';
 import {
   Sheet,
   SheetContent,
@@ -13,13 +13,13 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 
-export type WorkMediaCropResult = {
+export type ImageCropResult = {
   blob: Blob;
   height: number;
   width: number;
 };
 
-export function WorkMediaCropper({
+export function ImageCropper({
   aspectRatio,
   cancelLabel,
   confirmLabel,
@@ -27,6 +27,8 @@ export function WorkMediaCropper({
   errorLabel,
   file,
   loadingLabel,
+  maximumDimension = 2_560,
+  minimumDimension = 320,
   onCancel,
   onCrop,
   title,
@@ -38,8 +40,10 @@ export function WorkMediaCropper({
   errorLabel: string;
   file: File;
   loadingLabel: string;
+  maximumDimension?: number;
+  minimumDimension?: number;
   onCancel: () => void;
-  onCrop: (result: WorkMediaCropResult) => Promise<void>;
+  onCrop: (result: ImageCropResult) => Promise<void>;
   title: string;
 }) {
   const cropperRef = useRef<ReactCropperElement>(null);
@@ -77,10 +81,10 @@ export function WorkMediaCropper({
     const canvas = cropperRef.current?.cropper.getCroppedCanvas({
       imageSmoothingEnabled: true,
       imageSmoothingQuality: 'high',
-      maxHeight: 2_560,
-      maxWidth: 2_560,
-      minHeight: 320,
-      minWidth: 320,
+      maxHeight: maximumDimension,
+      maxWidth: maximumDimension,
+      minHeight: minimumDimension,
+      minWidth: minimumDimension,
     });
     if (canvas === undefined || canvas === null) {
       setHasError(true);
