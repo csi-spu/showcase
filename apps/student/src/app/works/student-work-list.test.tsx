@@ -7,6 +7,7 @@ vi.mock('./work.actions', () => ({
   archiveSavedDraftAction: vi.fn(),
   restoreSavedDraftAction: vi.fn(),
 }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe('StudentWorkList', () => {
   afterEach(cleanup);

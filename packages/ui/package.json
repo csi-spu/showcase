@@ -15,7 +15,8 @@
     "./label": "./src/label.tsx",
     "./separator": "./src/separator.tsx",
     "./styles.css": "./src/styles.css",
-    "./textarea": "./src/textarea.tsx"
+    "./textarea": "./src/textarea.tsx",
+    "./toast": "./src/toast.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
@@ -27,6 +28,7 @@
     "@base-ui/react": "^1.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0"
   },
   "peerDependencies": {

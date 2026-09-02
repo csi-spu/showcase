@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, buttonVariants } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { ExternalLinkIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState } from 'react';
@@ -16,6 +17,24 @@ type RevisionAction = (
   previousState: WorkRevisionActionState,
   formData: FormData,
 ) => Promise<WorkRevisionActionState>;
+
+function useRevisionActionWithToast(
+  action: RevisionAction,
+  idempotencyKey: string,
+  successMessage: string,
+  tone: 'success' | 'warning' = 'success',
+) {
+  const t = useTranslations('WorkRevision');
+  return useActionState(async (previousState: WorkRevisionActionState, formData: FormData) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+    else if (nextState.success) {
+      if (tone === 'success') toast.success(successMessage);
+      else toast.warning(successMessage);
+    }
+    return nextState;
+  }, initialWorkRevisionActionState(idempotencyKey));
+}
 
 export function WorkChangeRequestPanel({ review }: { review: WorkChangeRequest }) {
   const t = useTranslations('WorkRevision');
@@ -44,9 +63,10 @@ export function WorkRevisionPendingPanel({
   revision: WorkRevision;
 }) {
   const t = useTranslations('WorkRevision');
-  const [state, formAction] = useActionState(
+  const [state, formAction] = useRevisionActionWithToast(
     action,
-    initialWorkRevisionActionState(idempotencyKey),
+    idempotencyKey,
+    t('withdrawnSuccess'),
   );
   return (
     <section className="grid gap-5 rounded-surface border border-border bg-card p-5 shadow-sm">
@@ -85,9 +105,10 @@ export function WorkPublishedRevisionPanel({
   publicationState?: 'published' | 'unpublished';
 }) {
   const t = useTranslations('WorkRevision');
-  const [state, formAction] = useActionState(
+  const [state, formAction] = useRevisionActionWithToast(
     action,
-    initialWorkRevisionActionState(idempotencyKey),
+    idempotencyKey,
+    t('published.createdSuccess'),
   );
   return (
     <section className="grid gap-5 rounded-surface border border-information/30 bg-information-background p-5 shadow-sm">
@@ -135,9 +156,11 @@ export function WorkRevisionRebasePanel({
   publishedRevisionId: string;
 }) {
   const t = useTranslations('WorkRevision');
-  const [state, formAction] = useActionState(
+  const [state, formAction] = useRevisionActionWithToast(
     action,
-    initialWorkRevisionActionState(idempotencyKey),
+    idempotencyKey,
+    t('rebase.success'),
+    'warning',
   );
   return (
     <Alert className="mb-8 border-warning/30 bg-warning-background text-warning">

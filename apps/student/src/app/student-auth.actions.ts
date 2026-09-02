@@ -31,14 +31,14 @@ export async function loginAction(
     return { error: mapCoreError(error) };
   }
   await setStudentSessionToken(result.sessionToken);
-  redirect('/');
+  redirect('/?loggedIn=1');
 }
 
 export async function changePasswordAction(
   previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  return changePasswordAndRedirect(previousState, formData, '/');
+  return changePasswordAndRedirect(previousState, formData, '/?passwordSet=1');
 }
 
 export async function changePasswordFromProfileAction(

@@ -9,6 +9,7 @@
 @source './label.tsx';
 @source './separator.tsx';
 @source './textarea.tsx';
+@source './toast.tsx';
 
 :root {
   color-scheme: light;

@@ -66,6 +66,8 @@ export default async function StudentWorksPage({
     actionErrorConflict: t('actionErrorConflict'),
     actionErrorUnavailable: t('actionErrorUnavailable'),
     archiveConfirm: t('archiveConfirm'),
+    archivedSuccess: t('archivedSuccess'),
+    restoredSuccess: t('restoredSuccess'),
     more: t('more'),
     placeholder: t('placeholder'),
     posterFallback: t('posterFallback'),

@@ -2,6 +2,7 @@
 
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { toast } from '@showcase/ui/toast';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState, type ChangeEventHandler } from 'react';
@@ -12,12 +13,21 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/com
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { evaluateStudentPassword } from '@/lib/student-password-policy';
-import type { AuthAction, AuthErrorMessage } from './student-auth-action-state';
+import type { AuthAction, AuthActionState, AuthErrorMessage } from './student-auth-action-state';
 import { INITIAL_AUTH_ACTION_STATE } from './student-auth-action-state';
+
+function useAuthActionWithErrorToast(action: AuthAction) {
+  const t = useTranslations('Auth.errors');
+  return useActionState(async (previousState: AuthActionState, formData: FormData) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.error !== null) toast.error(t(nextState.error));
+    return nextState;
+  }, INITIAL_AUTH_ACTION_STATE);
+}
 
 export function LoginForm({ action }: { action: AuthAction }) {
   const t = useTranslations('Auth');
-  const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
+  const [state, formAction] = useAuthActionWithErrorToast(action);
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
@@ -60,7 +70,7 @@ export function ChangePasswordForm({
   submitLabel?: string | undefined;
 }) {
   const t = useTranslations('Auth');
-  const [state, formAction] = useActionState(action, INITIAL_AUTH_ACTION_STATE);
+  const [state, formAction] = useAuthActionWithErrorToast(action);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

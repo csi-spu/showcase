@@ -1,3 +1,4 @@
+import { Toaster } from '@showcase/ui/toast';
 import type { Metadata } from 'next';
 import { IBM_Plex_Sans_Thai } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
@@ -25,6 +26,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html className={ibmPlexSansThai.variable} lang={locale}>
       <body className="font-sans antialiased">
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <Toaster position="top-right" />
       </body>
     </html>
   );

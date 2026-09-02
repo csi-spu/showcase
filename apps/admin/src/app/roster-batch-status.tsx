@@ -4,6 +4,7 @@ import { CheckCircle2Icon, Clock3Icon, DownloadIcon, TriangleAlertIcon } from 'l
 import { getTranslations } from 'next-intl/server';
 import type { AdminRosterBatch } from '@/lib/admin-roster-core';
 import { RosterBatchAutoRefresh } from './roster-batch-auto-refresh';
+import { RosterBatchStatusToast } from './roster-batch-status-toast';
 
 export async function RosterBatchStatus({ batch }: { batch: AdminRosterBatch }) {
   const t = await getTranslations('Roster');
@@ -68,6 +69,10 @@ export function RosterBatchStatusView({
       : 'bg-information-background text-information';
   return (
     <section aria-labelledby="roster-status-title" className="flex flex-col gap-6">
+      <RosterBatchStatusToast
+        message={labels.status}
+        tone={isComplete ? 'success' : hasErrors ? 'warning' : null}
+      />
       <div className={`flex items-start gap-3 rounded-surface p-4 ${statusClass}`}>
         <StatusIcon aria-hidden="true" className="mt-0.5 size-5" />
         <div>

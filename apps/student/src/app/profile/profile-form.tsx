@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import {
   CameraIcon,
   ExternalLinkIcon,
@@ -183,6 +184,9 @@ export function ProfileForm({
         setVersionOverride(expectedVersion + 1);
         setCurrentIdempotencyKey(crypto.randomUUID());
         router.refresh();
+        toast.success(t('saved'));
+      } else if (nextState.error !== null) {
+        toast.error(t(`errors.${nextState.error}`));
       }
       return nextState;
     },
@@ -223,6 +227,7 @@ export function ProfileForm({
       });
       if ('error' in finalized) {
         setPhotoError(finalized.error);
+        toast.error(t(`errors.${finalized.error}`));
         return;
       }
       setPhotoId(finalized.data.photoId);
@@ -230,8 +235,10 @@ export function ProfileForm({
       setCurrentPhotoIdempotencyKey(crypto.randomUUID());
       setIsPhotoSaved(true);
       router.refresh();
+      toast.success(t('photoSaved'));
     } catch {
       setPhotoError('network');
+      toast.error(t('errors.network'));
     } finally {
       setIsUploading(false);
     }
@@ -595,9 +602,12 @@ export function ConsentPanel({
       );
       if (!nextState.success) {
         setIsGranted(isServerGranted);
+        if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
         return nextState;
       }
       router.refresh();
+      if (nextIsGranted) toast.success(t('consent.granted'));
+      else toast.warning(t('consent.withdrawn'));
       return nextState;
     },
     INITIAL_PROFILE_ACTION_STATE,

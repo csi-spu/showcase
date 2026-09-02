@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { toast } from '@showcase/ui/toast';
 import { ArrowLeftIcon, CheckIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState } from 'react';
@@ -19,6 +20,16 @@ type RecoveryAction = (
   previousState: RecoveryActionState,
   formData: FormData,
 ) => Promise<RecoveryActionState>;
+
+function useRecoveryActionWithToast(action: RecoveryAction, idempotencyKey: string) {
+  const t = useTranslations('Recovery');
+  return useActionState(async (previousState: RecoveryActionState, formData: FormData) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
+    else if (nextState.success) toast.success(t('saved'));
+    return nextState;
+  }, initialRecoveryActionState(idempotencyKey));
+}
 
 export function WorkRecoveryPanel({
   action,
@@ -66,10 +77,7 @@ export function RecoveryDecisionForm({
   request: AdminRemovalRequest;
 }) {
   const t = useTranslations('Recovery');
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialRecoveryActionState(idempotencyKey),
-  );
+  const [state, formAction, pending] = useRecoveryActionWithToast(action, idempotencyKey);
   const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
@@ -220,10 +228,7 @@ export function AttributionRemovalDecisionForm({
   request: AdminAttributionRemovalRequest;
 }) {
   const t = useTranslations('Recovery');
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialRecoveryActionState(idempotencyKey),
-  );
+  const [state, formAction, pending] = useRecoveryActionWithToast(action, idempotencyKey);
   const [isDeclining, setIsDeclining] = useState(false);
   return (
     <form
@@ -382,10 +387,7 @@ function TransitionForm({
   state: AdminWorkRecovery;
 }) {
   const t = useTranslations('Recovery');
-  const [state, formAction, pending] = useActionState(
-    action,
-    initialRecoveryActionState(idempotencyKey),
-  );
+  const [state, formAction, pending] = useRecoveryActionWithToast(action, idempotencyKey);
   return (
     <form
       action={formAction}
