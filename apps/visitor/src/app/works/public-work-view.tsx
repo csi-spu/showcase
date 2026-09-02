@@ -11,6 +11,7 @@ import { WorkPosterFallback } from '../catalog-artwork';
 import { VideoEmbed } from '../video-embed';
 import { requestAttributionRemovalAction } from './[publicId]/attribution-removal.actions';
 import { AttributionRemovalForm } from './[publicId]/attribution-removal-form';
+import { AttributionAvatar } from './attribution-avatar';
 
 interface PublicWorkLabels {
   academicPeriod: string;
@@ -51,7 +52,11 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
 
   return (
     <article className="mx-auto grid w-full max-w-6xl gap-10 lg:gap-14">
-      <section className="relative isolate min-h-[28rem] overflow-hidden rounded-media border border-border sm:min-h-[32rem] lg:min-h-[38rem]">
+      <section className="relative isolate min-h-[28rem] overflow-hidden rounded-media border border-border shadow-[0_2rem_5rem_-2.5rem_color-mix(in_oklch,var(--primary),transparent_60%)] sm:min-h-[32rem] lg:min-h-[38rem]">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-[radial-gradient(120%_100%_at_50%_0%,color-mix(in_oklch,var(--primary),transparent_70%)_0%,transparent_75%)]"
+        />
         <div className="absolute inset-0 bg-muted">
           {gallery.length > 0 ? (
             <ImageCarousel
@@ -94,9 +99,19 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         />
 
         <div className="pointer-events-none relative grid gap-8 p-6 pb-14 sm:p-8 sm:pb-16 lg:grid-cols-12 lg:items-end lg:gap-10 lg:p-12 lg:pb-16">
-          <div className="pointer-events-auto lg:col-span-4">
+          <div className="pointer-events-auto relative lg:col-span-4">
             {poster ? (
-              <PosterFrame alt={labels.posterAlt} media={poster} workPublicId={work.workPublicId} />
+              <div className="relative isolate">
+                <div
+                  aria-hidden="true"
+                  className="absolute -inset-4 -z-10 rounded-media bg-[radial-gradient(60%_60%_at_50%_40%,color-mix(in_oklch,var(--primary),transparent_45%)_0%,transparent_75%)] blur-xl"
+                />
+                <PosterFrame
+                  alt={labels.posterAlt}
+                  media={poster}
+                  workPublicId={work.workPublicId}
+                />
+              </div>
             ) : (
               <div
                 className="relative mx-auto aspect-[3/4] w-48 overflow-hidden rounded-media border border-border shadow-[0_1.5rem_4rem_-2rem_rgba(0,0,0,0.55)] sm:w-56 lg:mx-0 lg:w-full lg:max-w-[17rem]"
@@ -112,10 +127,7 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
 
           <div className="pointer-events-auto grid content-end gap-4 lg:col-span-8">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/80">
-              <Badge
-                className="border-white/30 bg-white/10 text-white backdrop-blur-sm"
-                variant="outline"
-              >
+              <Badge className="border-primary/40 bg-primary/25 text-white backdrop-blur-sm">
                 {labels.category}
               </Badge>
               <span>{labels.academicPeriod}</span>
@@ -169,58 +181,67 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         </div>
       </section>
 
-      <section className="grid gap-4">
-        <h2 className="text-xl font-semibold tracking-tight">{labels.attributions}</h2>
+      <section className="relative isolate grid gap-4 overflow-hidden rounded-media border border-border bg-card p-6 shadow-[0_1.5rem_3rem_-2rem_color-mix(in_oklch,var(--primary),transparent_75%)] sm:p-8">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(120%_100%_at_0%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+        />
+        <h2 className="relative text-xl font-bold tracking-tight text-primary">
+          {labels.attributions}
+        </h2>
         {work.attributions.length > 0 ? (
-          <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="flex flex-wrap justify-center gap-4">
             {work.attributions.map((attribution, index) => (
               <li
-                className="group relative grid justify-items-center gap-4 overflow-hidden rounded-media border border-border bg-card p-6 pt-8 text-center shadow-[0_1px_2px_rgba(16,12,20,0.04)] transition-[border-color,transform,box-shadow] duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-[0_1.5rem_3rem_-1.75rem_color-mix(in_oklch,var(--primary),transparent_55%)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                className="group relative isolate grid aspect-square w-[calc(50%-0.5rem)] overflow-hidden rounded-media border border-border bg-muted shadow-[0_1px_2px_rgba(16,12,20,0.04)] transition-[border-color,transform,box-shadow] duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-[0_1.5rem_3rem_-1.75rem_color-mix(in_oklch,var(--primary),transparent_55%)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:w-[calc(33.333%-0.75rem)] lg:w-[calc(25%-0.75rem)] xl:w-[calc(20%-1rem)]"
                 key={`${index}:${attribution.attributionName}`}
               >
+                <AttributionAvatar attribution={attribution} />
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(120%_100%_at_50%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+                  className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(10,8,14,0.92)_0%,rgba(10,8,14,0.5)_50%,rgba(10,8,14,0.05)_75%)]"
                 />
-                <AttributionAvatar attribution={attribution} />
-                <div className="grid justify-items-center gap-1.5">
+                {attribution.canRequestRemoval ? (
+                  <AttributionRemovalForm
+                    action={requestAttributionRemovalAction.bind(
+                      null,
+                      work.workPublicId,
+                      attribution.attributionPublicId,
+                    )}
+                    idempotencyKey={crypto.randomUUID()}
+                    labels={labels.removal}
+                  />
+                ) : null}
+                <div className="relative grid content-end justify-items-center gap-1.5 p-5 pt-10 text-center">
                   {attribution.profilePublicId === null ? (
-                    <p className="text-lg font-semibold break-words">
+                    <p className="text-lg font-semibold break-words text-white [text-shadow:0_1px_8px_rgb(0_0_0_/_45%)]">
                       {attribution.attributionName}
                     </p>
                   ) : (
                     <Link
-                      className="text-lg font-semibold break-words underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                      className="text-lg font-semibold break-words text-white underline-offset-4 [text-shadow:0_1px_8px_rgb(0_0_0_/_45%)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
                       href={`/people/${attribution.profilePublicId}`}
                     >
                       {attribution.attributionName}
                     </Link>
                   )}
                   {attribution.contributionRole ? (
-                    <Badge variant="secondary">{attribution.contributionRole}</Badge>
+                    <Badge
+                      className="border-white/30 bg-white/10 text-white backdrop-blur-sm"
+                      variant="outline"
+                    >
+                      {attribution.contributionRole}
+                    </Badge>
                   ) : null}
-                </div>
-                {attribution.studyYear === null && !attribution.affiliation ? null : (
-                  <div className="grid gap-0.5 text-sm text-muted-foreground">
-                    {attribution.studyYear === null ? null : (
-                      <p>{labels.studyYear(attribution.studyYear)}</p>
-                    )}
-                    {attribution.affiliation ? <p>{attribution.affiliation}</p> : null}
-                  </div>
-                )}
-                {attribution.canRequestRemoval ? (
-                  <div className="w-full border-t border-border pt-3">
-                    <AttributionRemovalForm
-                      action={requestAttributionRemovalAction.bind(
-                        null,
-                        work.workPublicId,
-                        attribution.attributionPublicId,
+                  {attribution.studyYear === null && !attribution.affiliation ? null : (
+                    <div className="grid gap-0.5 text-sm text-white/80">
+                      {attribution.studyYear === null ? null : (
+                        <p>{labels.studyYear(attribution.studyYear)}</p>
                       )}
-                      idempotencyKey={crypto.randomUUID()}
-                      labels={labels.removal}
-                    />
-                  </div>
-                ) : null}
+                      {attribution.affiliation ? <p>{attribution.affiliation}</p> : null}
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -229,83 +250,60 @@ export function PublicWorkView({ labels, work }: { labels: PublicWorkLabels; wor
         )}
       </section>
 
-      <section className="grid gap-4">
-        <h2 className="text-xl font-semibold tracking-tight">{labels.description}</h2>
-        <p className="max-w-[72ch] whitespace-pre-wrap text-base leading-8 text-pretty">
-          {work.description}
-        </p>
-      </section>
+      <div
+        className={cn(
+          'grid gap-6',
+          work.videoLinks.length === 0 ? '' : 'lg:grid-cols-[1fr_auto] lg:items-stretch',
+        )}
+      >
+        <section className="relative isolate grid gap-4 overflow-hidden rounded-media border border-border bg-card p-6 shadow-[0_1.5rem_3rem_-2rem_color-mix(in_oklch,var(--primary),transparent_75%)] sm:p-8">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(120%_100%_at_0%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+          />
+          <h2 className="relative text-xl font-bold tracking-tight text-primary">
+            {labels.description}
+          </h2>
+          <p className="relative whitespace-pre-wrap text-base leading-8 font-medium text-foreground text-pretty">
+            {work.description}
+          </p>
+        </section>
 
-      {work.videoLinks.length === 0 ? null : (
-        <section className="grid gap-4">
-          <h2 className="text-xl font-semibold tracking-tight">{labels.videos}</h2>
-          <div className="flex flex-wrap justify-center gap-4 sm:justify-start">
-            {work.videoLinks.map((video, index) => (
-              <VideoEmbed
-                key={`${video.provider}-${video.providerVideoId}`}
-                title={labels.videoAlt(index + 1)}
-                video={video}
-              />
-            ))}
+        {work.videoLinks.length === 0 ? null : (
+          <section className="relative isolate grid content-center justify-items-center gap-4 overflow-hidden rounded-media border border-border bg-card p-6 shadow-[0_1.5rem_3rem_-2rem_color-mix(in_oklch,var(--primary),transparent_75%)] sm:p-8">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(120%_100%_at_50%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+            />
+            <h2 className="relative text-xl font-bold tracking-tight text-primary">
+              {labels.videos}
+            </h2>
+            <div className="relative flex flex-wrap justify-center gap-6">
+              {work.videoLinks.map((video, index) => (
+                <VideoEmbed
+                  key={`${video.provider}-${video.providerVideoId}`}
+                  title={labels.videoAlt(index + 1)}
+                  video={video}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {work.links.length === 0 ? null : (
+        <section className="relative isolate grid gap-4 overflow-hidden rounded-media border border-border bg-card p-6 shadow-[0_1.5rem_3rem_-2rem_color-mix(in_oklch,var(--primary),transparent_75%)] sm:p-8">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(120%_100%_at_0%_0%,color-mix(in_oklch,var(--primary),transparent_88%)_0%,transparent_75%)]"
+          />
+          <h2 className="relative text-xl font-semibold tracking-tight">{labels.links}</h2>
+          <div className="relative mx-auto w-full max-w-[68ch]">
+            <LinkList links={work.links} />
           </div>
         </section>
       )}
-
-      {work.links.length === 0 ? null : (
-        <section className="grid gap-4">
-          <h2 className="text-xl font-semibold tracking-tight">{labels.links}</h2>
-          <LinkList links={work.links} />
-        </section>
-      )}
     </article>
-  );
-}
-
-const AVATAR_PALETTE = [
-  'oklch(0.58 0.19 340)',
-  'oklch(0.6 0.15 280)',
-  'oklch(0.62 0.16 220)',
-  'oklch(0.6 0.14 165)',
-  'oklch(0.65 0.16 60)',
-  'oklch(0.6 0.19 25)',
-] as const;
-
-function initialsOf(name: string): string {
-  const graphemes = Array.from(name.trim());
-  return graphemes.slice(0, 2).join('').toUpperCase() || '?';
-}
-
-function hashSeed(value: string): number {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
-  return hash;
-}
-
-function AttributionAvatar({ attribution }: { attribution: PublicWork['attributions'][number] }) {
-  if (attribution.profilePublicId !== null && attribution.hasPhoto) {
-    return (
-      <span className="relative size-20 shrink-0 overflow-hidden rounded-full border-2 border-background shadow-[0_0.5rem_1.5rem_-0.5rem_rgba(16,12,20,0.35)] ring-2 ring-border">
-        <Image
-          alt={attribution.attributionName}
-          className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05] motion-reduce:transform-none"
-          fill
-          sizes="80px"
-          src={`/people/${attribution.profilePublicId}/photo`}
-          unoptimized
-        />
-      </span>
-    );
-  }
-
-  const accent = AVATAR_PALETTE[hashSeed(attribution.attributionPublicId) % AVATAR_PALETTE.length];
-  return (
-    <span
-      aria-hidden="true"
-      className="grid size-20 shrink-0 place-items-center rounded-full border-2 border-background text-xl font-semibold text-white shadow-[0_0.5rem_1.5rem_-0.5rem_rgba(16,12,20,0.35)] ring-2 ring-border"
-      style={{ backgroundColor: accent }}
-    >
-      {initialsOf(attribution.attributionName)}
-    </span>
   );
 }
 

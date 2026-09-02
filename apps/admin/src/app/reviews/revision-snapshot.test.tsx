@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminReviewRevision } from '@/lib/admin-reviews-core';
 import { RevisionSnapshot } from './revision-snapshot';
 
@@ -22,6 +22,27 @@ describe('Admin Revision snapshot', () => {
       'signed-preview',
     );
     expect(screen.getByText('ชื่อผู้ส่ง')).toBeTruthy();
+  });
+
+  describe('media retry', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('retries one failed media request and then shows a text fallback', async () => {
+      render(<RevisionSnapshot labels={labels()} revision={revision()} />);
+
+      const posterImage = screen.getByRole('img', { name: 'โปสเตอร์' });
+      expect(posterImage.getAttribute('src')).not.toContain('retry=1');
+
+      fireEvent.error(posterImage);
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      const retriedImage = screen.getByRole('img', { name: 'โปสเตอร์' });
+      expect(retriedImage.getAttribute('src')).toContain('retry=1');
+
+      fireEvent.error(retriedImage);
+      expect(screen.queryByRole('img', { name: 'โปสเตอร์' })).toBeNull();
+      expect(screen.getByText('โปสเตอร์', { selector: 'div' })).toBeTruthy();
+    });
   });
 });
 

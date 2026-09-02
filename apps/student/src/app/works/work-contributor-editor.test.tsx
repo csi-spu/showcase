@@ -84,11 +84,13 @@ describe('WorkContributorEditor', () => {
   });
 
   it('shows consented profile context and a fallback avatar in the suggestion dropdown', async () => {
+    vi.useFakeTimers();
     renderEditor();
     openContributorEditor();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'สม' } });
+    await act(async () => vi.advanceTimersByTimeAsync(300));
 
-    const suggestions = await screen.findByRole('listbox', {
+    const suggestions = screen.getByRole('listbox', {
       name: 'รายชื่อผู้ร่วมผลงานที่แนะนำ',
     });
     expect(within(suggestions).getByText('ปีที่เข้า 2566')).toBeTruthy();
@@ -97,7 +99,15 @@ describe('WorkContributorEditor', () => {
     });
     expect(profileImage.getAttribute('src')).toContain(`/people/${PUBLIC_PROFILE_ID}/photo`);
     expect(within(suggestions).getByTestId('contributor-avatar-fallback')).toBeTruthy();
+
     fireEvent.error(profileImage);
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    const retriedImage = within(suggestions).getByRole('img', {
+      name: 'รูปโปรไฟล์ของ สมชาย ใจดี',
+    });
+    expect(retriedImage.getAttribute('src')).toContain('retry=1');
+
+    fireEvent.error(retriedImage);
     expect(within(suggestions).getAllByTestId('contributor-avatar-fallback')).toHaveLength(2);
     expect(suggestions.textContent).not.toMatch(/[0-9]{8}/u);
   });

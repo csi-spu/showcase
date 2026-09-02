@@ -494,6 +494,9 @@ function RoleField({
   );
 }
 
+const CONTRIBUTOR_AVATAR_RETRY_DELAY_MIN_MS = 300;
+const CONTRIBUTOR_AVATAR_RETRY_JITTER_MS = 200;
+
 function ContributorAvatar({
   candidate,
   fullName,
@@ -504,19 +507,49 @@ function ContributorAvatar({
   size?: 'default' | 'large';
 }) {
   const t = useTranslations('Work');
-  const [hasImageFailed, setHasImageFailed] = useState(false);
+  const [state, setState] = useState<{
+    attempt: 0 | 1;
+    phase: 'loading' | 'retry_wait' | 'failed';
+  }>({ attempt: 0, phase: 'loading' });
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dimension = size === 'large' ? 56 : 44;
   const className =
     size === 'large' ? 'size-14 rounded-full object-cover' : 'size-11 rounded-full object-cover';
-  if (candidate.publicProfile?.hasPhoto === true && !hasImageFailed) {
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    },
+    [],
+  );
+
+  const handleError = () => {
+    if (state.attempt === 1) {
+      setState({ attempt: 1, phase: 'failed' });
+      return;
+    }
+    if (retryTimer.current !== null) return;
+    setState({ attempt: 0, phase: 'retry_wait' });
+    retryTimer.current = setTimeout(
+      () => {
+        retryTimer.current = null;
+        setState({ attempt: 1, phase: 'loading' });
+      },
+      CONTRIBUTOR_AVATAR_RETRY_DELAY_MIN_MS +
+        Math.floor(Math.random() * (CONTRIBUTOR_AVATAR_RETRY_JITTER_MS + 1)),
+    );
+  };
+
+  if (candidate.publicProfile?.hasPhoto === true && state.phase !== 'failed') {
+    const path = `/people/${candidate.publicProfile.publicId}/photo`;
     return (
       <Image
         alt={t('attribution.profileImage', { name: fullName })}
         className={`${className} shrink-0 bg-muted`}
         height={dimension}
-        onError={() => setHasImageFailed(true)}
+        onError={handleError}
         sizes={`${dimension}px`}
-        src={`/people/${candidate.publicProfile.publicId}/photo`}
+        src={state.attempt === 0 ? path : `${path}?retry=1`}
         unoptimized
         width={dimension}
       />
