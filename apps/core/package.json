@@ -6,7 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "files": [
-    "dist"
+    "dist",
+    "generated/prisma-client"
   ],
   "scripts": {
     "build": "nest build",
