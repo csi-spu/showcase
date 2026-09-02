@@ -6,6 +6,7 @@ describe('SelfHostedMediaStorage', () => {
 
   it('signs method, key, and a short expiry without exposing the secret', async () => {
     const storage = new SelfHostedMediaStorage(
+      'https://media.internal.test',
       'https://media.example.test',
       'test-signing-secret-that-is-at-least-32-bytes',
     );
@@ -36,9 +37,29 @@ describe('SelfHostedMediaStorage', () => {
     ).toBe(false);
   });
 
+  it('signs presigned GET requests against the private service origin', async () => {
+    const storage = new SelfHostedMediaStorage(
+      'https://media.internal.test',
+      'https://media.example.test',
+      'test-signing-secret-that-is-at-least-32-bytes',
+    );
+    const url = new URL(
+      await storage.createPresignedGet({
+        expiresInSeconds: 60,
+        key: 'work-media/asset/master.webp',
+      }),
+    );
+
+    expect(url.origin).toBe('https://media.internal.test');
+  });
+
   it('rejects expired and tampered signatures', async () => {
     const secret = 'test-signing-secret-that-is-at-least-32-bytes';
-    const storage = new SelfHostedMediaStorage('https://media.example.test', secret);
+    const storage = new SelfHostedMediaStorage(
+      'https://media.internal.test',
+      'https://media.example.test',
+      secret,
+    );
     const key = 'work-media/asset/master.webp';
     const url = new URL(await storage.createPresignedGet({ expiresInSeconds: 10, key }));
     jest.advanceTimersByTime(11_000);

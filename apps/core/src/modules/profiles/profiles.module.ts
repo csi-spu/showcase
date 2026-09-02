@@ -48,7 +48,8 @@ import { StudentProfilesController } from './transport/student-profiles.controll
         if (serviceUrl === undefined || signingSecret === undefined) {
           return new UnavailableProfilePhotoStorage();
         }
-        return new SelfHostedProfilePhotoStorage(serviceUrl, signingSecret);
+        const publicMediaOrigin = config.getOrThrow<string>('PUBLIC_MEDIA_ORIGIN');
+        return new SelfHostedProfilePhotoStorage(serviceUrl, publicMediaOrigin, signingSecret);
       },
     },
     {
