@@ -11,6 +11,7 @@ import { toast } from '@showcase/ui/toast';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription } from '@/components/ui/field';
+import { ImageCropper, type ImageCropResult } from '@/components/image-cropper';
 import {
   type WorkMediaContentType,
   type WorkMediaExtension,
@@ -19,7 +20,6 @@ import {
   validateWorkMediaFile,
 } from '@/lib/student-work-media';
 import type { WorkDraft } from '@/lib/student-works-core';
-import { WorkMediaCropper, type WorkMediaCropResult } from './work-media-cropper';
 import {
   attachWorkMediaAction,
   finalizeWorkMediaAction,
@@ -139,7 +139,7 @@ export function WorkMediaUpload({
     return uploadPreparedFile(file, validation, dimensions, uploadVersion);
   }
 
-  async function uploadCroppedMedia(result: WorkMediaCropResult): Promise<void> {
+  async function uploadCroppedMedia(result: ImageCropResult): Promise<void> {
     const sourceName = cropCandidate?.name.replace(/\.[^.]+$/u, '') ?? 'poster';
     const file = new File([result.blob], `${sourceName}-cropped.jpg`, {
       lastModified: cropCandidate?.lastModified ?? 0,
@@ -381,7 +381,7 @@ export function WorkMediaUpload({
         </CardContent>
       </Card>
       {cropCandidate === null ? null : (
-        <WorkMediaCropper
+        <ImageCropper
           {...(mediaKind === 'poster' ? { aspectRatio: POSTER_CROP_ASPECT_RATIO } : {})}
           cancelLabel={t('cropCancel')}
           confirmLabel={t('cropConfirm')}

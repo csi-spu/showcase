@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dependencies = vi.hoisted(() => ({
+  CoreError: class extends Error {
+    constructor(
+      readonly code: string,
+      readonly status: number,
+    ) {
+      super(code);
+    }
+  },
   finalizePhotoUpload: vi.fn(),
   getProfile: vi.fn(),
   readToken: vi.fn(),
@@ -24,10 +32,7 @@ vi.mock('@/lib/student-profile-core', () => ({
     getProfile = dependencies.getProfile;
     updateProfile = dependencies.updateProfile;
   },
-  StudentProfileCoreError: class extends Error {
-    code = 'TEST';
-    status = 500;
-  },
+  StudentProfileCoreError: dependencies.CoreError,
 }));
 
 import { finalizePhotoUploadAction } from './profile.actions';
@@ -78,5 +83,19 @@ describe('finalizePhotoUploadAction', () => {
       photoId: '71000000-0000-4000-8000-000000000004',
     });
     expect(dependencies.revalidate).toHaveBeenCalledWith('/profile');
+  });
+
+  it('reports an invalid finalized image as a photo error', async () => {
+    dependencies.finalizePhotoUpload.mockRejectedValue(
+      new dependencies.CoreError('INVALID_PROFILE_PHOTO', 422),
+    );
+
+    await expect(
+      finalizePhotoUploadAction({
+        expectedVersion: 3,
+        idempotencyKey: '71000000-0000-4000-8000-000000000005',
+        uploadId: '71000000-0000-4000-8000-000000000004',
+      }),
+    ).resolves.toEqual({ error: 'photo' });
   });
 });
