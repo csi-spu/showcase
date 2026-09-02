@@ -77,12 +77,12 @@ describe('PostgresCacheInvalidationRepository integration', () => {
   }
 
   async function cacheVersion(): Promise<string> {
-    const rows = await database.sql<Array<{ version: string }>>`
+    const rows = await database.sql<Array<{ version: bigint }>>`
       select version from private.public_cache_version where singleton
     `;
     const row = rows[0];
     if (row === undefined) throw new Error('EXPECTED_PUBLIC_CACHE_VERSION');
-    return row.version;
+    return row.version.toString();
   }
 
   async function cleanup(): Promise<void> {

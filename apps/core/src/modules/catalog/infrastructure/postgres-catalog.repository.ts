@@ -151,12 +151,12 @@ export class PostgresCatalogRepository implements CatalogRepository {
   }
 
   async getCacheVersion(): Promise<string> {
-    const rows = await this.database.sql<Array<{ version: string }>>`
+    const rows = await this.database.sql<Array<{ version: bigint }>>`
       select version from private.public_cache_version where singleton
     `;
     const row = rows[0];
     if (row === undefined) throw new Error('PUBLIC_CACHE_VERSION_MISSING');
-    return row.version;
+    return row.version.toString();
   }
 
   async listPeople(input: {
