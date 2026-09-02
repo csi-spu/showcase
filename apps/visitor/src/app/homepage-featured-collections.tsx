@@ -12,6 +12,7 @@ import {
   PersonPortrait,
   WorkPosterFallback,
 } from './catalog-artwork';
+import { WorkPosterImage } from './work-poster-image';
 
 interface SectionLabels {
   artworkAlt: string;
@@ -271,9 +272,13 @@ function FeaturedWorkCard({
         {work.poster === null ? (
           <WorkPosterFallback title={work.title} variant={fallbackVariant} />
         ) : (
-          <FeaturedPoster
+          <WorkPosterImage
             alt={posterAlt(work.title)}
+            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transform-none"
+            fallback={<WorkPosterFallback title={work.title} variant={fallbackVariant} />}
+            loading="lazy"
             poster={work.poster}
+            sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 33vw"
             workPublicId={work.workPublicId}
           />
         )}
@@ -297,44 +302,6 @@ function FeaturedWorkCard({
         </div>
       </Link>
     </article>
-  );
-}
-
-function FeaturedPoster({
-  alt,
-  poster,
-  workPublicId,
-}: {
-  alt: string;
-  poster: NonNullable<WorkCatalogCard['poster']>;
-  workPublicId: string;
-}) {
-  const largest = poster.variants.at(-1);
-  if (largest === undefined) return null;
-
-  return (
-    <picture>
-      <source
-        sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 33vw"
-        srcSet={poster.variants
-          .map(
-            (variant) =>
-              `/works/${workPublicId}/media/${poster.assetId}/${variant.width} ${variant.width}w`,
-          )
-          .join(', ')}
-        type="image/webp"
-      />
-      <Image
-        alt={alt}
-        className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transform-none"
-        height={largest.height}
-        loading="lazy"
-        sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 33vw"
-        src={`/works/${workPublicId}/media/${poster.assetId}/${largest.width}`}
-        unoptimized
-        width={largest.width}
-      />
-    </picture>
   );
 }
 

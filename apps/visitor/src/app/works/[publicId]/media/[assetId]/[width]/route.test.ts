@@ -34,23 +34,91 @@ describe('published Work media route', () => {
       params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
     });
     expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns not-found instead of crashing when the upstream fetch rejects', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  it('retries one transient upstream failure before serving the image', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://r2.example.test/signed-public-media',
     );
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new DOMException('connection reset', 'NetworkError'))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { 'Content-Type': 'image/webp' },
+        }),
+      );
 
     const response = await GET(new Request('http://localhost'), {
       params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
     });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a non-cacheable service error when both upstream attempts reject', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://r2.example.test/signed-public-media',
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(
+        new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+      );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a transient upstream status before serving the image', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://r2.example.test/signed-public-media',
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { 'Content-Type': 'image/webp' },
+        }),
+      );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats an authorized upstream not-found as a non-cacheable service error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://r2.example.test/signed-public-media',
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 404 }));
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it('returns a service error and logs when Core cannot authorize the media URL', async () => {
@@ -69,6 +137,7 @@ describe('published Work media route', () => {
 
   it('returns a service error when the upstream body stream fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://r2.example.test/signed-public-media',
     );
@@ -89,7 +158,8 @@ describe('published Work media route', () => {
     expect(response.status).toBe(503);
   });
 
-  it('stops reading a variant that exceeds the public media limit', async () => {
+  it('returns a service error when a variant exceeds the public media limit', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://media.example.test/oversized.webp',
     );
@@ -101,6 +171,7 @@ describe('published Work media route', () => {
     const response = await GET(new Request('http://localhost'), {
       params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
     });
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
 });
