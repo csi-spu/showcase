@@ -47,7 +47,7 @@ describe('PostgresProfilesRepository integration', () => {
     await database.onApplicationShutdown();
   });
 
-  it('proves roster-like Account creation grants neither Public Profile nor Profile Consent', async () => {
+  it('leaves Public Profile and Profile Consent untouched for an Account with no profile activity yet', async () => {
     await expect(repository.findPrivateProfile(ACCOUNT_ID)).resolves.toMatchObject({
       firstName: 'ณัฐดนัย',
       lastName: 'สุขใจ',

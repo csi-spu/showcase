@@ -3,6 +3,8 @@ const LINK_LABEL_MAX_LENGTH = 50;
 const LINK_URL_MAX_LENGTH = 2_048;
 const LINK_LIMIT = 5;
 
+export const CURRENT_CONSENT_TEXT_VERSION = 'phase-1-v1';
+
 export interface PublicProfileLinkInput {
   label: string;
   url: string;

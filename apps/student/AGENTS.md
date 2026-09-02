@@ -12,7 +12,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Read root `AGENTS.md`, `CONTEXT.md`, and relevant ADRs first.
 - The first authenticated session may only complete the required password change until that requirement is satisfied.
-- Profile Consent must be explicit; roster import and Account activation never imply public visibility.
+- Profile Consent defaults to granted when roster import creates an Account; withdrawal must remain an explicit, always-available action, and a withdrawal must never be silently re-granted by a later roster import or Account activation.
 - One Submitter can edit a Work. Contributors only accept attribution and never gain edit rights.
 - Distinguish Published Revision, current draft, pending Review, and Change Request in state and copy.
 - Place upload controls and forms behind the smallest possible client boundary.
