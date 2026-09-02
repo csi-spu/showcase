@@ -6,16 +6,19 @@ const REQUEST_TIMEOUT_MS = 5_000;
 
 export class SelfHostedMediaStorage implements WorkMediaStorage {
   private readonly baseUrl: string;
+  private readonly publicBaseUrl: string;
 
   constructor(
     baseUrl: string,
+    publicBaseUrl: string,
     private readonly signingSecret: string,
   ) {
     this.baseUrl = new URL(baseUrl).origin.replace(/\/$/u, '');
+    this.publicBaseUrl = new URL(publicBaseUrl).origin.replace(/\/$/u, '');
   }
 
   createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
-    return Promise.resolve(this.signedUrl('GET', input.key, input.expiresInSeconds));
+    return Promise.resolve(this.signedUrl(this.baseUrl, 'GET', input.key, input.expiresInSeconds));
   }
 
   createPresignedPut(input: {
@@ -24,11 +27,13 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
     key: string;
   }): Promise<string> {
     void input.contentType;
-    return Promise.resolve(this.signedUrl('PUT', input.key, input.expiresInSeconds));
+    return Promise.resolve(
+      this.signedUrl(this.publicBaseUrl, 'PUT', input.key, input.expiresInSeconds),
+    );
   }
 
   async deleteObject(key: string): Promise<void> {
-    const response = await fetch(this.signedUrl('DELETE', key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'DELETE', key, 60), {
       method: 'DELETE',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -36,7 +41,7 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
   }
 
   async getObject(key: string, maximumBytes: number): Promise<Buffer> {
-    const response = await fetch(this.signedUrl('GET', key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'GET', key, 60), {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error('MEDIA_GET_FAILED');
@@ -48,7 +53,7 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
   }
 
   async putObject(input: { body: Buffer; contentType: 'image/webp'; key: string }): Promise<void> {
-    const response = await fetch(this.signedUrl('PUT', input.key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'PUT', input.key, 60), {
       body: new Uint8Array(input.body),
       headers: { 'content-type': input.contentType },
       method: 'PUT',
@@ -57,14 +62,14 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
     if (!response.ok) throw new Error('MEDIA_PUT_FAILED');
   }
 
-  private signedUrl(method: string, key: string, expiresInSeconds: number): string {
+  private signedUrl(base: string, method: string, key: string, expiresInSeconds: number): string {
     if (key.length === 0 || key.length > MAX_KEY_LENGTH) throw new Error('MEDIA_KEY_TOO_LONG');
     const expires = Math.floor(Date.now() / 1_000) + Math.max(1, Math.floor(expiresInSeconds));
     const encodedKey = Buffer.from(key, 'utf8').toString('base64url');
     const signature = createHmac('sha256', this.signingSecret)
       .update(`${method}\n${key}\n${expires}`)
       .digest('base64url');
-    return `${this.baseUrl}/objects/${encodedKey}?expires=${expires}&signature=${signature}`;
+    return `${base}/objects/${encodedKey}?expires=${expires}&signature=${signature}`;
   }
 }
 

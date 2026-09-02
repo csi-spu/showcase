@@ -7,8 +7,8 @@ import { SelfHostedMediaStorage } from '../../works/infrastructure/self-hosted-m
 export class SelfHostedProfilePhotoStorage implements ProfilePhotoStorage {
   private readonly delegate: SelfHostedMediaStorage;
 
-  constructor(baseUrl: string, signingSecret: string) {
-    this.delegate = new SelfHostedMediaStorage(baseUrl, signingSecret);
+  constructor(baseUrl: string, publicBaseUrl: string, signingSecret: string) {
+    this.delegate = new SelfHostedMediaStorage(baseUrl, publicBaseUrl, signingSecret);
   }
 
   createPresignedGet(input: { expiresInSeconds: number; key: string }) {

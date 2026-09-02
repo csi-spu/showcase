@@ -112,7 +112,8 @@ import { StudentWorkContributorsController } from './transport/student-work-cont
         if (serviceUrl === undefined || signingSecret === undefined) {
           return new UnavailableWorkMediaStorage();
         }
-        return new SelfHostedMediaStorage(serviceUrl, signingSecret);
+        const publicMediaOrigin = config.getOrThrow<string>('PUBLIC_MEDIA_ORIGIN');
+        return new SelfHostedMediaStorage(serviceUrl, publicMediaOrigin, signingSecret);
       },
     },
     { provide: WORK_MEDIA_CLOCK, useValue: { now: () => new Date() } satisfies WorkMediaClock },
