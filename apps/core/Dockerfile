@@ -21,6 +21,7 @@ COPY . .
 RUN pnpm --filter @showcase/core db:generate
 RUN pnpm --filter @showcase/core build
 RUN pnpm deploy --filter @showcase/core --prod /prod/core
+RUN cd /prod/core && node -e "require('./generated/prisma-client')"
 
 FROM node:22.18.0-alpine3.22 AS runner
 ARG GIT_SHA

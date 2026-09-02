@@ -4,6 +4,7 @@ node_modules/
 # Builds and tests
 .next/
 dist/
+apps/core/generated/
 coverage/
 .turbo/
 *.tsbuildinfo

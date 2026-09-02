@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/unbound-method */
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../../../generated/prisma-client';
 import { BetterAuthEngine } from './better-auth.adapter';
 
 const USER_ID = '40000000-0000-4000-8000-000000000001';

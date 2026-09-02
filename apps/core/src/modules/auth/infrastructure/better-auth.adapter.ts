@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { betterAuth } from 'better-auth';
 import { createLocalAccountIssuer } from 'better-auth/db';
 import { prismaAdapter } from '@better-auth/prisma-adapter';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../../../generated/prisma-client';
 import { AuthProvider, AuthProviderError, type ProviderSession } from '../application/auth.ports';
 import type {
   AdminProvisioningProvider,
