@@ -82,7 +82,7 @@ describe('PublicShell', () => {
     expect(html).toContain('aria-label="เปิดเมนู"');
     expect(html).toContain('aria-label="ค้นหาผลงาน..."');
     expect(html).toContain('data-quick-search-trigger="navigation"');
-    expect(html).toContain('md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+    expect(html).toContain('flex min-w-0 shrink items-center gap-8');
     expect(html.indexOf('data-slot="navigation-menu"')).toBeLessThan(
       html.indexOf('data-quick-search-trigger="navigation"'),
     );

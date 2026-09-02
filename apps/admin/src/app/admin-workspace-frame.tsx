@@ -70,108 +70,112 @@ export function AdminWorkspaceFrame({
   const isSidebarCollapsed = isCollapsed && !isPointerExpanded;
 
   return (
-    <main
-      className={cn(
-        'admin-canvas mx-auto grid min-h-svh w-full max-w-[1600px] bg-background transition-[grid-template-columns] duration-200 motion-reduce:transition-none lg:items-start',
-        isSidebarCollapsed
-          ? 'lg:grid-cols-[4rem_minmax(0,1fr)]'
-          : 'lg:grid-cols-[16rem_minmax(0,1fr)]',
-      )}
-    >
-      <aside
+    <div className="min-h-svh w-full bg-background">
+      <main
         className={cn(
-          'hidden flex-col justify-between border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground backdrop-blur lg:sticky lg:top-0 lg:flex lg:h-svh',
-          isSidebarCollapsed ? 'px-2 py-5' : 'px-5 py-6',
+          'admin-canvas mx-auto grid w-full max-w-[1600px] transition-[grid-template-columns] duration-200 motion-reduce:transition-none lg:items-start',
+          isSidebarCollapsed
+            ? 'lg:grid-cols-[4rem_minmax(0,1fr)]'
+            : 'lg:grid-cols-[16rem_minmax(0,1fr)]',
         )}
-        onPointerEnter={() => setIsPointerExpanded(isCollapsed)}
-        onPointerLeave={() => setIsPointerExpanded(false)}
-        role="complementary"
       >
-        <div className="flex min-h-0 flex-col gap-6">
-          <div className={cn('min-h-12', isSidebarCollapsed ? 'grid place-items-center' : 'px-2')}>
-            {isSidebarCollapsed ? <AdminBrandMark /> : <AdminBrand />}
-            {isSidebarCollapsed ? null : (
-              <p className="mt-2 truncate text-sm text-muted-foreground">{workspace}</p>
-            )}
-          </div>
-          <WorkspaceNavigation
-            activePage={activePage}
-            groups={groups}
-            isCollapsed={isSidebarCollapsed}
-            showsCollapsedTooltips={isSidebarCollapsed}
-            label={navigationLabel}
-          />
-        </div>
-        <div className="flex flex-col gap-3">
-          {isSidebarCollapsed ? (
-            collapsedLogout
-          ) : (
-            <>
-              <Separator />
-              <Badge className="w-fit gap-1.5" variant="secondary">
-                <PulseDot tone="success" />
-                {status}
-              </Badge>
-              <p className="text-xs leading-5 text-muted-foreground">{department}</p>
-              {logout}
-            </>
+        <aside
+          className={cn(
+            'hidden flex-col justify-between border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground backdrop-blur lg:sticky lg:top-0 lg:flex lg:h-svh',
+            isSidebarCollapsed ? 'px-2 py-5' : 'px-5 py-6',
           )}
-          <Button
-            aria-label={isCollapsed ? expandLabel : collapseLabel}
-            className={cn(isSidebarCollapsed ? 'w-full' : 'self-end')}
-            onClick={() => {
-              setIsCollapsed((value) => !value);
-              setIsPointerExpanded(false);
-            }}
-            size="icon-sm"
-            title={isCollapsed ? expandLabel : collapseLabel}
-            variant="ghost"
-          >
-            {isCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
-          </Button>
-        </div>
-      </aside>
-
-      <div className="min-w-0">
-        <AdminMobileNavigation
-          closeLabel={mobileLabels.close}
-          description={mobileLabels.description}
-          label={mobileLabels.open}
-          title={mobileLabels.title}
+          onPointerEnter={() => setIsPointerExpanded(isCollapsed)}
+          onPointerLeave={() => setIsPointerExpanded(false)}
+          role="complementary"
         >
-          <div className="flex min-h-0 flex-1 flex-col justify-between gap-6 overflow-y-auto p-6">
-            <div className="flex flex-col gap-6">
-              <AdminBrand />
-              <WorkspaceNavigation
-                activePage={activePage}
-                groups={groups}
-                isCollapsed={false}
-                label={navigationLabel}
-                showsCollapsedTooltips={false}
-              />
+          <div className="flex min-h-0 flex-col gap-6">
+            <div
+              className={cn('min-h-12', isSidebarCollapsed ? 'grid place-items-center' : 'px-2')}
+            >
+              {isSidebarCollapsed ? <AdminBrandMark /> : <AdminBrand />}
+              {isSidebarCollapsed ? null : (
+                <p className="mt-2 truncate text-sm text-muted-foreground">{workspace}</p>
+              )}
             </div>
-            <div className="flex flex-col gap-4">
-              <Separator />
-              {logout}
+            <WorkspaceNavigation
+              activePage={activePage}
+              groups={groups}
+              isCollapsed={isSidebarCollapsed}
+              showsCollapsedTooltips={isSidebarCollapsed}
+              label={navigationLabel}
+            />
+          </div>
+          <div className="flex flex-col gap-3">
+            {isSidebarCollapsed ? (
+              collapsedLogout
+            ) : (
+              <>
+                <Separator />
+                <Badge className="w-fit gap-1.5" variant="secondary">
+                  <PulseDot tone="success" />
+                  {status}
+                </Badge>
+                <p className="text-xs leading-5 text-muted-foreground">{department}</p>
+                {logout}
+              </>
+            )}
+            <Button
+              aria-label={isCollapsed ? expandLabel : collapseLabel}
+              className={cn(isSidebarCollapsed ? 'w-full' : 'self-end')}
+              onClick={() => {
+                setIsCollapsed((value) => !value);
+                setIsPointerExpanded(false);
+              }}
+              size="icon-sm"
+              title={isCollapsed ? expandLabel : collapseLabel}
+              variant="ghost"
+            >
+              {isCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+            </Button>
+          </div>
+        </aside>
+
+        <div className="min-w-0">
+          <AdminMobileNavigation
+            closeLabel={mobileLabels.close}
+            description={mobileLabels.description}
+            label={mobileLabels.open}
+            title={mobileLabels.title}
+          >
+            <div className="flex min-h-0 flex-1 flex-col justify-between gap-6 overflow-y-auto p-6">
+              <div className="flex flex-col gap-6">
+                <AdminBrand />
+                <WorkspaceNavigation
+                  activePage={activePage}
+                  groups={groups}
+                  isCollapsed={false}
+                  label={navigationLabel}
+                  showsCollapsedTooltips={false}
+                />
+              </div>
+              <div className="flex flex-col gap-4">
+                <Separator />
+                {logout}
+              </div>
             </div>
-          </div>
-        </AdminMobileNavigation>
-        <header className="sticky top-0 z-30 hidden min-h-16 items-center justify-between border-b border-border/80 bg-background px-8 lg:flex">
-          <div className="flex min-w-0 items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{workspace}</span>
-            <span aria-hidden="true" className="text-border">
-              /
-            </span>
-            <span className="truncate font-medium">{activeLabel}</span>
-          </div>
-          <Badge className="gap-1.5" variant="outline">
-            <PulseDot tone="success" />
-            {status}
-          </Badge>
-        </header>
-        <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">{children}</section>
-      </div>
-    </main>
+          </AdminMobileNavigation>
+          <header className="sticky top-0 z-30 hidden min-h-16 items-center justify-between border-b border-border/80 bg-background px-8 lg:flex">
+            <div className="flex min-w-0 items-center gap-3 text-sm">
+              <span className="text-muted-foreground">{workspace}</span>
+              <span aria-hidden="true" className="text-border">
+                /
+              </span>
+              <span className="truncate font-medium">{activeLabel}</span>
+            </div>
+            <Badge className="gap-1.5" variant="outline">
+              <PulseDot tone="success" />
+              {status}
+            </Badge>
+          </header>
+          <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">{children}</section>
+        </div>
+      </main>
+    </div>
   );
 }
 

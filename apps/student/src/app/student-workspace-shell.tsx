@@ -74,7 +74,7 @@ export async function StudentWorkspaceShell({
     : t('profile.fallback');
 
   return (
-    <SidebarProvider className="student-canvas mx-auto max-w-[1600px]">
+    <SidebarProvider className="student-canvas">
       <Sidebar
         animateOnHover
         className="border-border/80 bg-sidebar/95 backdrop-blur"
@@ -127,24 +127,28 @@ export async function StudentWorkspaceShell({
       </Sidebar>
 
       <SidebarInset className="min-w-0 bg-transparent">
-        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-4 border-b border-border/80 bg-background px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <SidebarTrigger
-              aria-label={t('navigation.openMenu')}
-              title={t('navigation.openMenu')}
-            />
-            <StudentBrand className="md:hidden" />
-            <div className="hidden min-w-0 items-center gap-3 text-sm md:flex">
-              <span className="text-muted-foreground">{t('workspace')}</span>
-              <span aria-hidden="true" className="text-border">
-                /
-              </span>
-              <span className="truncate font-medium">{activeLabel}</span>
+        <header className="sticky top-0 z-30 flex min-h-16 items-center border-b border-border/80 bg-background px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-[1600px] items-center gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarTrigger
+                aria-label={t('navigation.openMenu')}
+                title={t('navigation.openMenu')}
+              />
+              <StudentBrand className="md:hidden" />
+              <div className="hidden min-w-0 items-center gap-3 text-sm md:flex">
+                <span className="text-muted-foreground">{t('workspace')}</span>
+                <span aria-hidden="true" className="text-border">
+                  /
+                </span>
+                <span className="truncate font-medium">{activeLabel}</span>
+              </div>
             </div>
           </div>
         </header>
         <section className="p-4 pb-12 sm:p-8 sm:pb-16 lg:p-12 lg:pb-20">
-          <BlurFade offset={8}>{children}</BlurFade>
+          <div className="mx-auto w-full max-w-[1600px]">
+            <BlurFade offset={8}>{children}</BlurFade>
+          </div>
         </section>
       </SidebarInset>
     </SidebarProvider>

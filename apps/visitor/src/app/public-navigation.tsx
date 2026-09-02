@@ -12,6 +12,7 @@ import {
   FileTextIcon,
   HouseIcon,
   LayoutGridIcon,
+  LogInIcon,
   MenuIcon,
   TrophyIcon,
   UsersRoundIcon,
@@ -119,86 +120,94 @@ export function PublicNavigation() {
     >
       <nav
         aria-label={t('ariaLabel')}
-        className="pointer-events-auto mx-auto flex min-h-16 w-full max-w-[1344px] items-center justify-between gap-4 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+        className="pointer-events-auto mx-auto flex min-h-16 w-full max-w-[1344px] items-center justify-between gap-4"
       >
-        <Link
-          aria-label={t('homeAriaLabel')}
-          className="group flex min-w-0 shrink items-center focus-visible:rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary md:justify-self-start"
-          href="/"
-        >
-          <Image
-            alt=""
-            aria-hidden="true"
-            className={cn(
-              'h-auto w-[clamp(6rem,16vw,9.5rem)] origin-left transition-transform duration-300 group-hover:scale-[1.02] motion-reduce:transition-none',
-              !scrollState.isAtTop && 'scale-[0.9] group-hover:scale-[0.92]',
-            )}
-            height={363}
-            loading="eager"
-            sizes="(max-width: 640px) 112px, 192px"
-            src="/brand/csi-computer-science-software-development-innovation.png"
-            width={1280}
-          />
-        </Link>
+        <div className="flex min-w-0 shrink items-center gap-8">
+          <Link
+            aria-label={t('homeAriaLabel')}
+            className="group flex min-w-0 shrink-0 items-center focus-visible:rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+            href="/"
+          >
+            <Image
+              alt=""
+              aria-hidden="true"
+              className={cn(
+                'h-auto w-[clamp(6rem,16vw,9.5rem)] origin-left transition-transform duration-300 group-hover:scale-[1.02] motion-reduce:transition-none',
+                !scrollState.isAtTop && 'scale-[0.9] group-hover:scale-[0.92]',
+              )}
+              height={363}
+              loading="eager"
+              sizes="(max-width: 640px) 112px, 192px"
+              src="/brand/csi-computer-science-software-development-innovation.png"
+              width={1280}
+            />
+          </Link>
 
-        <NavigationMenu
-          align="end"
-          className="hidden shrink-0 md:flex md:justify-self-center"
-          closeDelay={180}
-          delay={80}
-        >
-          <NavigationMenuList>
-            <NavigationMenuItem>
-              <NavigationMenuLink
-                active={isNavigationItemActive(pathname, '/')}
-                className={cn(navigationMenuTriggerStyle(), 'min-h-10 px-4')}
-                render={<Link href="/" />}
-              >
-                {t('home')}
-              </NavigationMenuLink>
-            </NavigationMenuItem>
-            <NavigationMenuItem>
-              <NavigationMenuTrigger
-                className={cn(
-                  'min-h-10 px-4',
-                  isNavigationItemActive(pathname, '/works') && 'bg-muted/50',
-                )}
-              >
-                {t('works')}
-              </NavigationMenuTrigger>
-              <NavigationMenuContent keepMounted>
-                <ul className="grid w-[22rem] list-none gap-1 p-2">
-                  <NavigationCategoryLink
-                    description={t('allWorksDescription')}
-                    href="/works"
-                    title={t('allWorks')}
-                  />
-                  {WORK_CATEGORIES.map((category) => (
+          <NavigationMenu
+            align="start"
+            className="hidden shrink-0 md:flex"
+            closeDelay={180}
+            delay={80}
+          >
+            <NavigationMenuList>
+              <NavigationMenuItem>
+                <NavigationMenuLink
+                  active={isNavigationItemActive(pathname, '/')}
+                  className={cn(navigationMenuTriggerStyle(), 'min-h-10 px-4')}
+                  render={<Link href="/" />}
+                >
+                  {t('home')}
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <NavigationMenuTrigger
+                  className={cn(
+                    'min-h-10 px-4',
+                    isNavigationItemActive(pathname, '/works') && 'bg-muted/50',
+                  )}
+                >
+                  {t('works')}
+                </NavigationMenuTrigger>
+                <NavigationMenuContent keepMounted>
+                  <ul className="grid w-[22rem] list-none gap-1 p-2">
                     <NavigationCategoryLink
-                      description={t(category.descriptionKey)}
-                      href={category.href}
-                      key={category.href}
-                      title={t(category.titleKey)}
+                      description={t('allWorksDescription')}
+                      href="/works"
+                      title={t('allWorks')}
                     />
-                  ))}
-                </ul>
-              </NavigationMenuContent>
-            </NavigationMenuItem>
-            <NavigationMenuItem>
-              <NavigationMenuLink
-                active={isNavigationItemActive(pathname, '/people')}
-                className={cn(navigationMenuTriggerStyle(), 'min-h-10 px-4')}
-                render={<Link href="/people" />}
-              >
-                {t('people')}
-              </NavigationMenuLink>
-            </NavigationMenuItem>
-          </NavigationMenuList>
-        </NavigationMenu>
-        <QuickSearchTrigger
-          className="ml-auto md:ml-0 md:justify-self-end"
-          placement="navigation"
-        />
+                    {WORK_CATEGORIES.map((category) => (
+                      <NavigationCategoryLink
+                        description={t(category.descriptionKey)}
+                        href={category.href}
+                        key={category.href}
+                        title={t(category.titleKey)}
+                      />
+                    ))}
+                  </ul>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+              <NavigationMenuItem>
+                <NavigationMenuLink
+                  active={isNavigationItemActive(pathname, '/people')}
+                  className={cn(navigationMenuTriggerStyle(), 'min-h-10 px-4')}
+                  render={<Link href="/people" />}
+                >
+                  {t('people')}
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+            </NavigationMenuList>
+          </NavigationMenu>
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
+          <QuickSearchTrigger placement="navigation" />
+          <Link
+            className={cn(buttonVariants({ size: 'default' }), 'hidden md:inline-flex')}
+            href="/login"
+          >
+            {t('login')}
+          </Link>
+        </div>
         <MobileNavigation pathname={pathname} />
       </nav>
     </motion.header>
@@ -237,6 +246,7 @@ function MobileNavigation({ pathname }: { pathname: string | null }) {
       label: t(titleKey),
     })),
     { href: '/people', icon: UsersRoundIcon, label: t('people') },
+    { href: '/login', icon: LogInIcon, label: t('login') },
   ];
 
   return (
