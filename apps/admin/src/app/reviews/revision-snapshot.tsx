@@ -1,7 +1,11 @@
 'use client';
 
 import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
 import type { AdminReviewRevision } from '@/lib/admin-reviews-core';
+
+const MEDIA_RETRY_DELAY_MIN_MS = 300;
+const MEDIA_RETRY_JITTER_MS = 200;
 
 interface RevisionSnapshotLabels {
   academicPeriod: string;
@@ -99,16 +103,12 @@ export function RevisionSnapshot({
               {media.width.toLocaleString('th-TH')}×{media.height.toLocaleString('th-TH')}
             </p>
             <div className="overflow-hidden rounded-media border border-border bg-muted">
-              <Image
+              <RevisionMediaImage
                 alt={
                   media.kind === 'poster' ? labels.poster : `${labels.gallery} ${media.position}`
                 }
-                className="h-auto w-full object-contain"
                 height={media.height}
-                loader={({ src }) => src}
-                sizes="(max-width: 1280px) calc(100vw - 64px), 720px"
                 src={media.preview.url}
-                unoptimized
                 width={media.width}
               />
             </div>
@@ -127,6 +127,69 @@ export function RevisionSnapshot({
         ))}
       </SnapshotList>
     </article>
+  );
+}
+
+function RevisionMediaImage({
+  alt,
+  height,
+  src,
+  width,
+}: {
+  alt: string;
+  height: number;
+  src: string;
+  width: number;
+}) {
+  const [state, setState] = useState<{
+    attempt: 0 | 1;
+    phase: 'loading' | 'retry_wait' | 'failed';
+  }>({ attempt: 0, phase: 'loading' });
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    },
+    [],
+  );
+
+  if (state.phase === 'failed') {
+    return (
+      <div className="grid aspect-square place-items-center bg-muted text-sm text-muted-foreground">
+        {alt}
+      </div>
+    );
+  }
+
+  const handleError = () => {
+    if (state.attempt === 1) {
+      setState({ attempt: 1, phase: 'failed' });
+      return;
+    }
+    if (retryTimer.current !== null) return;
+    setState({ attempt: 0, phase: 'retry_wait' });
+    retryTimer.current = setTimeout(
+      () => {
+        retryTimer.current = null;
+        setState({ attempt: 1, phase: 'loading' });
+      },
+      MEDIA_RETRY_DELAY_MIN_MS + Math.floor(Math.random() * (MEDIA_RETRY_JITTER_MS + 1)),
+    );
+  };
+
+  return (
+    <Image
+      alt={alt}
+      className="h-auto w-full object-contain"
+      height={height}
+      loader={({ src: loaderSrc }) => loaderSrc}
+      onError={handleError}
+      sizes="(max-width: 1280px) calc(100vw - 64px), 720px"
+      src={state.attempt === 0 ? src : `${src}${src.includes('?') ? '&' : '?'}retry=1`}
+      unoptimized
+      width={width}
+    />
   );
 }
 

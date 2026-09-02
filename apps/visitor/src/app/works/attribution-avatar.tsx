@@ -1,8 +1,11 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PublicWork } from '@/lib/public-work-core';
+
+const RETRY_DELAY_MIN_MS = 300;
+const RETRY_JITTER_MS = 200;
 
 const AVATAR_PALETTE = [
   'oklch(0.58 0.19 340)',
@@ -29,17 +32,45 @@ export function AttributionAvatar({
 }: {
   attribution: PublicWork['attributions'][number];
 }) {
-  const [hasImageFailed, setHasImageFailed] = useState(false);
+  const [state, setState] = useState<{
+    attempt: 0 | 1;
+    phase: 'loading' | 'retry_wait' | 'failed';
+  }>({ attempt: 0, phase: 'loading' });
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (attribution.profilePublicId !== null && attribution.hasPhoto && !hasImageFailed) {
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    },
+    [],
+  );
+
+  const handleError = () => {
+    if (state.attempt === 1) {
+      setState({ attempt: 1, phase: 'failed' });
+      return;
+    }
+    if (retryTimer.current !== null) return;
+    setState({ attempt: 0, phase: 'retry_wait' });
+    retryTimer.current = setTimeout(
+      () => {
+        retryTimer.current = null;
+        setState({ attempt: 1, phase: 'loading' });
+      },
+      RETRY_DELAY_MIN_MS + Math.floor(Math.random() * (RETRY_JITTER_MS + 1)),
+    );
+  };
+
+  if (attribution.profilePublicId !== null && attribution.hasPhoto && state.phase !== 'failed') {
+    const path = `/people/${attribution.profilePublicId}/photo`;
     return (
       <Image
         alt={attribution.attributionName}
         className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05] motion-reduce:transform-none"
         fill
-        onError={() => setHasImageFailed(true)}
+        onError={handleError}
         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-        src={`/people/${attribution.profilePublicId}/photo`}
+        src={state.attempt === 0 ? path : `${path}?retry=1`}
         unoptimized
       />
     );
