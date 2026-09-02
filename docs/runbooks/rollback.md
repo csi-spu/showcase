@@ -15,8 +15,8 @@
 1. Identify the first bad full SHA and affected surfaces.
 2. Confirm whether migrations or runtime configuration changed.
 3. Revert through Git with a reviewed or emergency-authorized change.
-4. Let CI build the revert commit and verify staging.
-5. Promote the revert commit's images to production.
+4. Let CI build the revert commit, deploy it to staging, and verify it there.
+5. Production auto-promotes the same images once the staging deploy succeeds; confirm the `Deploy production` run completes rather than triggering it manually.
 6. Verify readiness, error rate, login, and the affected user path.
 7. Record incident timeline and follow-up issue.
 
