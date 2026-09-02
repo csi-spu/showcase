@@ -1,10 +1,10 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRightIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import type { WorkCatalogCard } from '@/lib/public-catalog-core';
 import { CARD_SCRIM_CLASS, CatalogEmptyState, WorkPosterFallback } from '../catalog-artwork';
+import { WorkPosterImage } from '../work-poster-image';
 
 interface CatalogWorkGridLabels {
   empty: string;
@@ -35,10 +35,14 @@ export function CatalogWorkGrid({
                 {work.poster === null ? (
                   <WorkPosterFallback title={work.title} variant={index % 3} />
                 ) : (
-                  <CatalogPoster
+                  <WorkPosterImage
                     alt={labels.posterAlt(work.title)}
-                    isPriority={index === 0}
+                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transition-none motion-reduce:transform-none"
+                    fallback={<WorkPosterFallback title={work.title} variant={index % 3} />}
+                    {...(index === 0 ? {} : { loading: 'lazy' as const })}
                     poster={work.poster}
+                    preload={index === 0}
+                    sizes="(max-width: 767px) 100vw, (max-width: 1199px) 50vw, 33vw"
                     workPublicId={work.workPublicId}
                   />
                 )}
@@ -66,48 +70,5 @@ export function CatalogWorkGrid({
         </li>
       ))}
     </ol>
-  );
-}
-
-function CatalogPoster({
-  alt,
-  isPriority,
-  poster,
-  workPublicId,
-}: {
-  alt: string;
-  isPriority: boolean;
-  poster: NonNullable<WorkCatalogCard['poster']>;
-  workPublicId: string;
-}) {
-  const largest = poster.variants.at(-1);
-  if (largest === undefined) return null;
-  const sizes = '(max-width: 767px) 100vw, (max-width: 1199px) 50vw, 33vw';
-  return (
-    <div className="absolute inset-0" style={{ backgroundColor: poster.dominantColor }}>
-      <picture>
-        <source
-          sizes={sizes}
-          srcSet={poster.variants
-            .map(
-              (variant) =>
-                `/works/${workPublicId}/media/${poster.assetId}/${variant.width} ${variant.width}w`,
-            )
-            .join(', ')}
-          type="image/webp"
-        />
-        <Image
-          alt={alt}
-          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transition-none motion-reduce:transform-none"
-          height={largest.height}
-          loading={isPriority ? undefined : 'lazy'}
-          preload={isPriority}
-          sizes={sizes}
-          src={`/works/${workPublicId}/media/${poster.assetId}/${largest.width}`}
-          unoptimized
-          width={largest.width}
-        />
-      </picture>
-    </div>
   );
 }

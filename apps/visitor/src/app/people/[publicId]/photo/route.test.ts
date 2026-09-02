@@ -18,24 +18,52 @@ describe('public profile photo route', () => {
     });
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(getPhotoUrl).toHaveBeenCalledWith(PUBLIC_ID);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns not-found instead of crashing when the upstream fetch rejects', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  it('retries one transient upstream failure before serving the photo', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
       'https://media.example.test/profile-media/photo.webp',
     );
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new DOMException('connection reset', 'NetworkError'))
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { 'Content-Type': 'image/webp' },
+        }),
+      );
 
     const response = await GET(new Request('http://localhost'), {
       params: Promise.resolve({ publicId: PUBLIC_ID }),
     });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a non-cacheable service error when both upstream attempts reject', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
+      'https://media.example.test/profile-media/photo.webp',
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(
+        new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+      );
+
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ publicId: PUBLIC_ID }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('returns a service error when Core cannot authorize the photo URL', async () => {
@@ -54,6 +82,7 @@ describe('public profile photo route', () => {
 
   it('returns a service error when the upstream photo body fails while reading', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
       'https://media.example.test/profile-media/photo.webp',
     );
