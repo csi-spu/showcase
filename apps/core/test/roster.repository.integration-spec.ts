@@ -115,9 +115,7 @@ describe('PostgresRosterRepository integration', () => {
           where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}) as students
     `;
     expect(records).toEqual([{ accounts: 1, people: 1, students: 1 }]);
-    const defaultConsent = await database.sql<
-      { activeConsents: number; profiles: number }[]
-    >`
+    const defaultConsent = await database.sql<{ activeConsents: number; profiles: number }[]>`
       select
         (select count(*)::integer from public.public_profiles as profile
           join public.accounts as account on account.person_id = profile.person_id
