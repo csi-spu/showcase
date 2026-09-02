@@ -152,6 +152,7 @@ function publicWork(): PublicWorkView {
         attributionName: 'ชื่อผู้ส่ง',
         canRequestRemoval: false,
         contributionRole: null,
+        hasPhoto: false,
         profilePublicId: null,
         studyYear: 2,
       },

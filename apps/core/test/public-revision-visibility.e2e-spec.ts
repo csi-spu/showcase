@@ -121,6 +121,7 @@ function publicRevision(revisionNumber: number, title: string, assetId: string):
         attributionName: 'ชื่อผู้ส่ง snapshot',
         canRequestRemoval: false,
         contributionRole: null,
+        hasPhoto: false,
         profilePublicId: null,
         studyYear: 3,
       },

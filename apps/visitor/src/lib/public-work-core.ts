@@ -16,6 +16,7 @@ const publicWorkSchema = z
             attributionName: z.string().min(1).max(100),
             canRequestRemoval: z.boolean(),
             contributionRole: z.string().nullable(),
+            hasPhoto: z.boolean(),
             profilePublicId: z.uuid().nullable(),
             studyYear: z.number().int().min(1).max(8).nullable(),
           })

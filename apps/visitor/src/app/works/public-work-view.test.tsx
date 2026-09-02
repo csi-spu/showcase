@@ -95,6 +95,7 @@ function publicWork() {
         attributionName: 'ชื่อผู้ส่ง snapshot',
         canRequestRemoval: false,
         contributionRole: null,
+        hasPhoto: true,
         profilePublicId: '87000000-0000-4000-8000-000000000004',
         studyYear: 2,
       },
