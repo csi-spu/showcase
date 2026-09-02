@@ -1,6 +1,10 @@
 name: Deploy production
 
 on:
+  workflow_run:
+    workflows: [Deploy staging]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -17,7 +21,22 @@ permissions:
   packages: read
 
 jobs:
+  resolve-sha:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+    steps:
+      - id: resolve
+        env:
+          SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
+        run: echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
   verify-source:
+    needs: resolve-sha
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -28,7 +47,7 @@ jobs:
 
       - name: Verify full SHA belongs to main
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_SHA: ${{ needs.resolve-sha.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -40,7 +59,7 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
 
   verify-images:
-    needs: verify-source
+    needs: [resolve-sha, verify-source]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -57,28 +76,28 @@ jobs:
       - name: Verify staged image exists
         env:
           APP: ${{ matrix.app }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_SHA: ${{ needs.resolve-sha.outputs.source_sha }}
         run: docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/showcase-$APP:sha-$SOURCE_SHA"
 
   approve-production:
-    needs: verify-images
+    needs: [resolve-sha, verify-images]
     environment: production
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "Production promotion approved for ${{ inputs.source_sha }}"
+      - run: echo "Production promotion approved for ${{ needs.resolve-sha.outputs.source_sha }}"
 
   deploy-core:
-    needs: deploy-media
+    needs: [resolve-sha, deploy-media]
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: core
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_CORE }}
       environment: production
-      image_tag: sha-${{ inputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
     secrets: inherit
 
   deploy-frontends:
-    needs: [deploy-core, deploy-cache-worker, deploy-media-processor]
+    needs: [resolve-sha, deploy-core, deploy-cache-worker, deploy-media-processor]
     strategy:
       fail-fast: false
       matrix:
@@ -94,35 +113,35 @@ jobs:
       app: ${{ matrix.app }}
       application_uuid: ${{ matrix.application_uuid }}
       environment: production
-      image_tag: sha-${{ inputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
     secrets: inherit
 
   deploy-cache-worker:
-    needs: deploy-core
+    needs: [resolve-sha, deploy-core]
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: core-cache-worker
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_CACHE_WORKER }}
       environment: production
-      image_tag: sha-${{ inputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
     secrets: inherit
 
   deploy-media-processor:
-    needs: deploy-core
+    needs: [resolve-sha, deploy-core]
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: core-media-processor
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA_PROCESSOR }}
       environment: production
-      image_tag: sha-${{ inputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
     secrets: inherit
 
   deploy-media:
-    needs: approve-production
+    needs: [resolve-sha, approve-production]
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: media
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA }}
       environment: production
-      image_tag: sha-${{ inputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
     secrets: inherit
