@@ -15,12 +15,12 @@ flowchart LR
 
 ## Workflows
 
-| File                 | Responsibility                                                           |
-| -------------------- | ------------------------------------------------------------------------ |
-| `ci.yml`             | formatting plus affected package quality gates                           |
-| `build-image.yml`    | reusable OCI build, SBOM, provenance, GHCR push                          |
-| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, poll terminal status                 |
-| `staging.yml`        | run after successful main CI, build once, and guard staging deployment   |
+| File                 | Responsibility                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`             | formatting plus affected package quality gates                                                                            |
+| `build-image.yml`    | reusable OCI build, SBOM, provenance, GHCR push                                                                           |
+| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, poll terminal status                                                                  |
+| `staging.yml`        | run after successful main CI, build once, and guard staging deployment                                                    |
 | `production.yml`     | run after a successful staging deploy; verify existing images and promote them unchanged, with no manual trigger required |
 
 CI checks out full Git history because Turbo affected calculation depends on the real base/head range. Formatting is repository-wide and cheap; application gates are package-aware.
