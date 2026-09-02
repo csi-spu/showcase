@@ -119,9 +119,7 @@ export default async function LoginPage() {
           </div>
 
           <div className="grid gap-4 justify-items-center">
-            <p className="max-w-sm text-base leading-relaxed font-medium text-pretty">
-              {t('cta')}
-            </p>
+            <p className="max-w-sm text-base leading-relaxed font-medium text-pretty">{t('cta')}</p>
             <a
               className={buttonVariants({
                 className:
