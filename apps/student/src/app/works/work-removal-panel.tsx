@@ -35,7 +35,7 @@ export function WorkRemovalPanel({
     async (previousState: WorkRemovalActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
-      else if (nextState.success) toast.success(t(isCancelling ? 'cancelledSuccess' : 'saved'));
+      else if (nextState.success && isCancelling) toast.success(t('cancelledSuccess'));
       return nextState;
     },
     initialWorkRemovalActionState(idempotencyKey),

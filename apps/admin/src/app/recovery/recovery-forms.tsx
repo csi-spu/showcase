@@ -26,7 +26,6 @@ function useRecoveryActionWithToast(action: RecoveryAction, idempotencyKey: stri
   return useActionState(async (previousState: RecoveryActionState, formData: FormData) => {
     const nextState = await action(previousState, formData);
     if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
-    else if (nextState.success) toast.success(t('saved'));
     return nextState;
   }, initialRecoveryActionState(idempotencyKey));
 }

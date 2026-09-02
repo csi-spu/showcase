@@ -34,7 +34,6 @@ export function ApprovePublicationForm({
     async (previousState: ApprovePublicationActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.error !== null) toast.error(t(`approval.errors.${nextState.error}`));
-      else if (nextState.publication !== null) toast.success(t('approval.success'));
       return nextState;
     },
     {

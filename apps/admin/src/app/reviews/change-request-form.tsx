@@ -37,7 +37,6 @@ export function ChangeRequestForm({
     async (previousState: ChangeRequestActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
-      else if (nextState.isComplete) toast.success(t('form.success'));
       return nextState;
     },
     {

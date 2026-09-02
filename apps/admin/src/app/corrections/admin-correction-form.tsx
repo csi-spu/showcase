@@ -38,7 +38,6 @@ export function AdminCorrectionForm({
     async (previousState: AdminCorrectionActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
-      else if (nextState.revisionPublicId !== null) toast.success(t('success'));
       return nextState;
     },
     {

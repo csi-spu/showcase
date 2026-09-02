@@ -184,7 +184,6 @@ export function ProfileForm({
         setVersionOverride(expectedVersion + 1);
         setCurrentIdempotencyKey(crypto.randomUUID());
         router.refresh();
-        toast.success(t('saved'));
       } else if (nextState.error !== null) {
         toast.error(t(`errors.${nextState.error}`));
       }

@@ -49,7 +49,6 @@ export function AccountControlsPanel({
     async (previousState: AcademicYearActionState, formData: FormData) => {
       const nextState = await academicYearAction(previousState, formData);
       if (nextState.error !== null) toast.error(t(`errors.${nextState.error}`));
-      else toast.success(t('year.success'));
       return nextState;
     },
     {
@@ -68,8 +67,6 @@ export function AccountControlsPanel({
         toast.success(t('name.success'));
       } else if (operation === 'extend') {
         toast.success(t('extension.success'));
-      } else if (operation === 'reset') {
-        toast.success(t('reset.success'));
       }
       return nextState;
     },
