@@ -33,7 +33,7 @@ Core owns application data and authentication boundaries. Browser applications m
 - A `Change Request` requires a reason and actionable feedback.
 - Admin edits are audited and still require an explicit approve-and-publish action; the same Admin may perform both.
 - `Student ID` is private authentication data. Never expose it in public responses, logs, URLs, analytics, or client bundles.
-- `Public Profile` visibility requires explicit `Profile Consent`; roster import never grants consent.
+- `Public Profile` visibility is governed by `Profile Consent`, which defaults to granted when a roster-activated `Account` is created; a `Student` may withdraw consent at any time, and a withdrawal is never silently re-granted.
 - Archive and unpublish are recoverable. No hard delete through normal UI flows.
 
 ## Code conventions

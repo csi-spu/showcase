@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import { CURRENT_CONSENT_TEXT_VERSION } from '../../profiles/domain/public-profile-policy';
 import {
   isPreparedRosterRow,
   type ClaimedRosterRow,
@@ -339,6 +341,13 @@ export class PostgresRosterRepository implements RosterRepository {
           account_id, event_type, occurred_at
         ) values (${account.id}, 'student_roster_provisioned', ${input.now})
       `;
+      await this.grantDefaultProfileConsent(transaction, {
+        accountId: account.id,
+        firstNameTh: input.firstNameTh,
+        lastNameTh: input.lastNameTh,
+        now: input.now,
+        personId: person.id,
+      });
       await this.finishRow(transaction, input.batchId, input.rowId, 'created', input.now);
       return 'created';
     });
@@ -767,6 +776,73 @@ export class PostgresRosterRepository implements RosterRepository {
       )}
       on conflict (account_id, prefix_length)
       do update set prefix_hash = excluded.prefix_hash
+    `;
+  }
+
+  private async grantDefaultProfileConsent(
+    transaction: postgres.TransactionSql,
+    input: {
+      accountId: string;
+      firstNameTh: string;
+      lastNameTh: string;
+      now: Date;
+      personId: string;
+    },
+  ): Promise<void> {
+    const displayName = `${input.firstNameTh} ${input.lastNameTh}`;
+    const profiles = await transaction<{ public_id: string }[]>`
+      insert into public.public_profiles (
+        person_id, display_name, bio, photo_id, version, created_at, updated_at
+      ) values (
+        ${input.personId}, ${displayName}, null, null, 1, ${input.now}, ${input.now}
+      )
+      returning public_id
+    `;
+    const profile = profiles[0];
+    if (profile === undefined) throw new Error('ROSTER_PROFILE_WRITE_FAILED');
+
+    await transaction`
+      insert into public.profile_consents (
+        person_id, consent_text_version, granted_at
+      ) values (
+        ${input.personId}, ${CURRENT_CONSENT_TEXT_VERSION}, ${input.now}
+      )
+      on conflict (person_id) where withdrawn_at is null do nothing
+    `;
+
+    const idempotencyKey = randomUUID();
+    await transaction`
+      insert into private.profile_operations (
+        idempotency_key,
+        person_id,
+        actor_account_id,
+        operation,
+        expected_version,
+        resulting_version,
+        request_payload,
+        occurred_at
+      ) values (
+        ${idempotencyKey},
+        ${input.personId},
+        ${input.accountId},
+        'profile_consent_granted',
+        1,
+        1,
+        ${transaction.json({ source: 'roster_default_consent' })},
+        ${input.now}
+      )
+    `;
+    await transaction`
+      insert into private.outbox_events (
+        aggregate_type, aggregate_id, event_type, payload, occurred_at
+      ) values (
+        'public_profile',
+        ${idempotencyKey},
+        'public_profile_visible',
+        ${transaction.json({ publicId: profile.public_id })},
+        ${input.now}
+      )
+      on conflict (aggregate_type, aggregate_id, event_type) do nothing
     `;
   }
 

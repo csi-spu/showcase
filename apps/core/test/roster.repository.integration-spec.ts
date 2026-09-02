@@ -115,6 +115,19 @@ describe('PostgresRosterRepository integration', () => {
           where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}) as students
     `;
     expect(records).toEqual([{ accounts: 1, people: 1, students: 1 }]);
+    const defaultConsent = await database.sql<
+      { activeConsents: number; profiles: number }[]
+    >`
+      select
+        (select count(*)::integer from public.public_profiles as profile
+          join public.accounts as account on account.person_id = profile.person_id
+          where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}) as profiles,
+        (select count(*)::integer from public.profile_consents as consent
+          join public.accounts as account on account.person_id = consent.person_id
+          where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+            and consent.withdrawn_at is null) as "activeConsents"
+    `;
+    expect(defaultConsent).toEqual([{ activeConsents: 1, profiles: 1 }]);
     const prefixes = await database.sql<{ count: number }[]>`
       select count(*)::integer as count
       from private.student_id_search_prefixes as prefix
