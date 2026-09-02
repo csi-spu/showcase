@@ -37,7 +37,7 @@ describe('SelfHostedMediaStorage', () => {
     ).toBe(false);
   });
 
-  it('signs presigned GET requests against the private service origin', async () => {
+  it('signs browser-consumable GET requests against the public media origin', async () => {
     const storage = new SelfHostedMediaStorage(
       'https://media.internal.test',
       'https://media.example.test',
@@ -50,7 +50,7 @@ describe('SelfHostedMediaStorage', () => {
       }),
     );
 
-    expect(url.origin).toBe('https://media.internal.test');
+    expect(url.origin).toBe('https://media.example.test');
   });
 
   it('rejects expired and tampered signatures', async () => {

@@ -18,6 +18,12 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
   }
 
   createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
+    return Promise.resolve(
+      this.signedUrl(this.publicBaseUrl, 'GET', input.key, input.expiresInSeconds),
+    );
+  }
+
+  createInternalPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
     return Promise.resolve(this.signedUrl(this.baseUrl, 'GET', input.key, input.expiresInSeconds));
   }
 
