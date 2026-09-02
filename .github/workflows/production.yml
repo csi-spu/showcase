@@ -2,14 +2,19 @@ name: Deploy production
 
 on:
   workflow_run:
-    workflows: [Deploy staging]
+    workflows: [CI]
     types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Full main-branch commit SHA already verified in staging
+        description: Full main-branch commit SHA with existing GHCR images
         required: true
+        type: string
+      apps:
+        description: JSON array of images to deploy from that SHA
+        required: true
+        default: '["core","admin","student","visitor","media"]'
         type: string
 
 concurrency:
@@ -17,26 +22,74 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
   packages: read
 
 jobs:
-  resolve-sha:
+  resolve-plan:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 5
     outputs:
+      apps: ${{ steps.resolve.outputs.apps }}
+      matrix: ${{ steps.resolve.outputs.matrix }}
       source_sha: ${{ steps.resolve.outputs.source_sha }}
     steps:
-      - id: resolve
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download CI deployment plan
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v7
+        with:
+          name: deployment-plan
+          path: ${{ runner.temp }}/deployment-plan
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Create manual deployment plan
+        if: github.event_name == 'workflow_dispatch'
         env:
-          SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
-        run: echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          APPS: ${{ inputs.apps }}
+          PLAN_PATH: ${{ runner.temp }}/deployment-plan/deployment-plan.json
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$PLAN_PATH")"
+          node tools/ci/create-deployment-plan.mjs \
+            --source-sha "$SOURCE_SHA" \
+            --output "$PLAN_PATH" \
+            --apps-json "$APPS"
+
+      - name: Resolve and validate deployment plan
+        id: resolve
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.workflow_run.head_sha }}
+          PLAN_PATH: ${{ runner.temp }}/deployment-plan/deployment-plan.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e --arg source_sha "$EXPECTED_SHA" '
+            .version == 1 and
+            .sourceSha == $source_sha and
+            (.apps | type == "array") and
+            (.matrix | type == "array") and
+            ([.matrix[].app] == .apps)
+          ' "$PLAN_PATH" > /dev/null
+          echo "source_sha=$(jq -r '.sourceSha' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
+          echo "apps=$(jq -c '.apps' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(jq -c '{include: .matrix}' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
+          jq . "$PLAN_PATH"
 
   verify-source:
-    needs: resolve-sha
+    needs: resolve-plan
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -47,7 +100,7 @@ jobs:
 
       - name: Verify full SHA belongs to main
         env:
-          SOURCE_SHA: ${{ needs.resolve-sha.outputs.source_sha }}
+          SOURCE_SHA: ${{ needs.resolve-plan.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -58,13 +111,30 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
 
+  build:
+    if: github.event_name == 'workflow_run' && needs.resolve-plan.outputs.apps != '[]'
+    needs: [resolve-plan, verify-source]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-plan.outputs.matrix) }}
+    uses: ./.github/workflows/build-image.yml
+    with:
+      app: ${{ matrix.app }}
+      dockerfile: ${{ matrix.dockerfile }}
+      source_sha: ${{ needs.resolve-plan.outputs.source_sha }}
+
   verify-images:
-    needs: [resolve-sha, verify-source]
+    if: github.event_name == 'workflow_dispatch'
+    needs: [resolve-plan, verify-source]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
-        app: [core, admin, student, visitor, media]
+        app: ${{ fromJSON(needs.resolve-plan.outputs.apps) }}
     steps:
       - name: Sign in to GHCR
         uses: docker/login-action@v4
@@ -73,75 +143,158 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify staged image exists
+      - name: Verify immutable image exists
         env:
           APP: ${{ matrix.app }}
-          SOURCE_SHA: ${{ needs.resolve-sha.outputs.source_sha }}
+          SOURCE_SHA: ${{ needs.resolve-plan.outputs.source_sha }}
         run: docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/showcase-$APP:sha-$SOURCE_SHA"
 
   approve-production:
-    needs: [resolve-sha, verify-images]
+    needs: [resolve-plan, verify-source, build, verify-images]
+    if: >-
+      always() &&
+      needs.resolve-plan.outputs.apps != '[]' &&
+      needs.verify-source.result == 'success' &&
+      ((github.event_name == 'workflow_run' && needs.build.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && needs.verify-images.result == 'success'))
     environment: production
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "Production promotion approved for ${{ needs.resolve-sha.outputs.source_sha }}"
-
-  deploy-core:
-    needs: [resolve-sha, deploy-media]
-    uses: ./.github/workflows/deploy-coolify.yml
-    with:
-      app: core
-      application_uuid: ${{ vars.COOLIFY_PRODUCTION_CORE }}
-      environment: production
-      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
-    secrets: inherit
-
-  deploy-frontends:
-    needs: [resolve-sha, deploy-core, deploy-cache-worker, deploy-media-processor]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - app: admin
-            application_uuid: ${{ vars.COOLIFY_PRODUCTION_ADMIN }}
-          - app: student
-            application_uuid: ${{ vars.COOLIFY_PRODUCTION_STUDENT }}
-          - app: visitor
-            application_uuid: ${{ vars.COOLIFY_PRODUCTION_VISITOR }}
-    uses: ./.github/workflows/deploy-coolify.yml
-    with:
-      app: ${{ matrix.app }}
-      application_uuid: ${{ matrix.application_uuid }}
-      environment: production
-      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
-    secrets: inherit
-
-  deploy-cache-worker:
-    needs: [resolve-sha, deploy-core]
-    uses: ./.github/workflows/deploy-coolify.yml
-    with:
-      app: core-cache-worker
-      application_uuid: ${{ vars.COOLIFY_PRODUCTION_CACHE_WORKER }}
-      environment: production
-      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
-    secrets: inherit
-
-  deploy-media-processor:
-    needs: [resolve-sha, deploy-core]
-    uses: ./.github/workflows/deploy-coolify.yml
-    with:
-      app: core-media-processor
-      application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA_PROCESSOR }}
-      environment: production
-      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
-    secrets: inherit
+      - run: echo "Production deployment approved for ${{ needs.resolve-plan.outputs.source_sha }}"
 
   deploy-media:
-    needs: [resolve-sha, approve-production]
+    needs: [resolve-plan, approve-production]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'media')
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: media
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA }}
       environment: production
-      image_tag: sha-${{ needs.resolve-sha.outputs.source_sha }}
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-core:
+    needs: [resolve-plan, approve-production, deploy-media]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'core')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_CORE }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-cache-worker:
+    needs: [resolve-plan, approve-production, deploy-core]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      needs.deploy-core.result == 'success' &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'core')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core-cache-worker
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_CACHE_WORKER }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-media-processor:
+    needs: [resolve-plan, approve-production, deploy-core]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      needs.deploy-core.result == 'success' &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'core')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core-media-processor
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_MEDIA_PROCESSOR }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-admin:
+    needs:
+      [
+        resolve-plan,
+        approve-production,
+        deploy-media,
+        deploy-core,
+        deploy-cache-worker,
+        deploy-media-processor,
+      ]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
+      (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'admin')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: admin
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_ADMIN }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-student:
+    needs:
+      [
+        resolve-plan,
+        approve-production,
+        deploy-media,
+        deploy-core,
+        deploy-cache-worker,
+        deploy-media-processor,
+      ]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
+      (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'student')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: student
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_STUDENT }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-visitor:
+    needs:
+      [
+        resolve-plan,
+        approve-production,
+        deploy-media,
+        deploy-core,
+        deploy-cache-worker,
+        deploy-media-processor,
+      ]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
+      (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'visitor')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: visitor
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_VISITOR }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
     secrets: inherit

@@ -2,7 +2,7 @@
 
 ## Resource layout
 
-Create two environments, `staging` and `production`. Each contains these Docker Image applications and workers:
+Create one `production` environment containing these Docker Image applications and workers. Add staging later as a separate delivery decision when the team is ready to operate it:
 
 | App                  | Image name                         | Container port | Health path        |
 | -------------------- | ---------------------------------- | -------------: | ------------------ |
@@ -26,7 +26,7 @@ Use one hostname per application in each environment. Production shape:
 - Core: `core.<domain>`
 - Media: `media.<domain>`
 
-Staging uses isolated hostnames and must not share authentication cookies or BFF secrets with production. Force HTTPS. Route Core internal authentication endpoints only where the frontend containers can reach them; the BFF secret remains mandatory even on a private network.
+Force HTTPS. Route Core internal authentication endpoints only where the frontend containers can reach them; the BFF secret remains mandatory even on a private network.
 
 ## Runtime settings
 
@@ -42,6 +42,8 @@ Staging uses isolated hostnames and must not share authentication cookies or BFF
 
 Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `ADMIN_URL`, `STUDENT_URL`, `VISITOR_URL`, `CORE_URL`, `DATABASE_URL`, `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_SECRET`, `API_KEY`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, `VISITOR_BFF_SECRET`, and `VISITOR_CACHE_SECRET`. Core derives `ADMIN_BFF_SECRET`, `STUDENT_BFF_SECRET`, and `AUTH_IDENTITY_SECRET` from `API_KEY`, and derives `CORS_ALLOWED_ORIGINS` from `ADMIN_URL`, `STUDENT_URL`, and `VISITOR_URL`. Admin needs runtime `CORE_URL` and its own `API_KEY` set to the same value as Core's `API_KEY`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and its own `API_KEY` set to the same value as Core's `API_KEY`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET`. Keep these values server-only; never prefix them with `NEXT_PUBLIC_`.
 
+Media needs `NODE_ENV=production`, `HOST`, `PORT=4191`, `STORAGE_ROOT=/data`, `MEDIA_SERVICE_HMAC_SECRET`, and exact `STUDENT_URL`. `STUDENT_URL` is the only browser origin allowed to use signed upload URLs; Media rejects other origins and validates preflight requests against the signed `PUT` method.
+
 Create a fifth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares Core's database and media-service environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
 
 Create a sixth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
@@ -52,7 +54,7 @@ Visitor samples one percent of LCP, CLS, and INP observations without public ide
 
 The media processor deletes quarantine objects older than one day in bounded batches and alerts on cleanup failure. Do not apply age-based deletion to `work-media/`: that prefix contains immutable media attached to retained Drafts and future Revisions. Core deletes expired unattached processed objects after seven days from authoritative database claims.
 
-Create a seventh stateful Coolify resource for the media service at `media.<domain>`, with an attached persistent volume, automated off-site volume backup, and Cloudflare proxying. Create a separate single-instance Postgres resource with an attached volume, automated periodic `pg_dump`, and an exercised staging restore procedure. Backups inherit production secret/data access controls and retention policy.
+Create a seventh stateful Coolify resource for the media service at `media.<domain>`, with an attached persistent volume, automated off-site volume backup, and Cloudflare proxying. Create a separate single-instance Postgres resource with an attached volume, automated periodic `pg_dump`, and an exercised restore procedure. Backups inherit production secret/data access controls and retention policy.
 
 The reverse proxies in front of Admin and Student must overwrite, not append from untrusted clients, the client address header supplied to each application. Each application forwards the normalized address to Core only after authenticating with its distinct BFF secret so login rate limiting remains source-aware and session audiences remain isolated.
 
@@ -64,14 +66,13 @@ Copy each Coolify application UUID into the repository variable documented in `s
 
 First deployment validation:
 
-1. Leave `COOLIFY_STAGING_ENABLED` absent and push the initial harness commit to `main`.
-2. Confirm successful CI builds five GHCR images with the same full SHA tag and skips deployment.
-3. Finish staging applications, UUID variables, environment secrets, domains, and runtime configuration.
-4. Set `COOLIFY_STAGING_ENABLED=true` and manually run `Deploy staging` with the full SHA.
-5. Confirm staging Media becomes healthy before Core, workers, and frontends deploy.
-6. Confirm every public health endpoint returns 200 over HTTPS.
-7. Trigger production with that full SHA and approve the protected Environment.
-8. Confirm Coolify shows the exact same image tags in both environments.
+1. Finish production applications, UUID variables, Environment secrets, domains, and runtime configuration.
+2. Set Media's exact `STUDENT_URL` before deploying the CORS-enabled image.
+3. Push the initial harness commit to `main` and confirm CI builds all five GHCR images with the same full SHA tag.
+4. Approve the protected production Environment.
+5. Confirm Media becomes healthy before Core, workers, and frontends deploy.
+6. Confirm every public health endpoint returns 200 over HTTPS and a signed Student upload completes.
+7. Confirm each affected Coolify application uses the expected immutable SHA tag.
 
 ## Host access
 

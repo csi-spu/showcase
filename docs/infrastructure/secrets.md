@@ -4,12 +4,12 @@
 
 A value has one authoritative home.
 
-| Tier                                         | Stores                                     | Must not store                   |
-| -------------------------------------------- | ------------------------------------------ | -------------------------------- |
-| GitHub repository variables                  | non-secret Coolify application UUIDs       | tokens, provider credentials     |
-| GitHub `staging` / `production` Environments | deployment-control credentials             | application runtime secrets      |
-| Coolify application environment              | runtime configuration and provider secrets | GitHub token, source credentials |
-| Developer ignored env files                  | local-only values                          | shared production credentials    |
+| Tier                            | Stores                                     | Must not store                   |
+| ------------------------------- | ------------------------------------------ | -------------------------------- |
+| GitHub repository variables     | non-secret Coolify application UUIDs       | tokens, provider credentials     |
+| GitHub `production` Environment | deployment-control credentials             | application runtime secrets      |
+| Coolify application environment | runtime configuration and provider secrets | GitHub token, source credentials |
+| Developer ignored env files     | local-only values                          | shared production credentials    |
 
 Never commit real credentials, print them in CI, include them in Docker build arguments, or paste them into issues.
 
@@ -22,11 +22,9 @@ Each GitHub Environment contains secrets named:
 
 Repository variables identify applications:
 
-- `COOLIFY_STAGING_ENABLED`, exact value `true` only after staging provisioning is complete
-- `COOLIFY_STAGING_CORE`, `COOLIFY_STAGING_CACHE_WORKER`, `COOLIFY_STAGING_MEDIA_PROCESSOR`, `COOLIFY_STAGING_ADMIN`, `COOLIFY_STAGING_STUDENT`, `COOLIFY_STAGING_VISITOR`, `COOLIFY_STAGING_MEDIA`
 - `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_CACHE_WORKER`, `COOLIFY_PRODUCTION_MEDIA_PROCESSOR`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_VISITOR`, `COOLIFY_PRODUCTION_MEDIA`
 
-Protect the `production` Environment with required reviewers and restrict it to `main`. Leave `COOLIFY_STAGING_ENABLED` absent while provisioning; staging may deploy automatically after CI succeeds on `main` only after the variable is set to `true`.
+Protect the `production` Environment with required reviewers and restrict it to `main`. Successful `main` CI runs build only affected images before requesting this approval.
 
 ## Core runtime configuration
 
@@ -53,7 +51,7 @@ Current required keys:
 - `VISITOR_BFF_SECRET`, an environment-specific high-entropy secret used by Visitor to authenticate opaque source keys for public mutation rate limits
 - `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
 
-The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
+Media receives `STUDENT_URL` as the exact allowed browser upload origin. It rejects other origins and validates each preflight against the signed `PUT` URL. The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
 
 Admin receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Admin sends it as the `x-admin-bff-secret` header. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 
@@ -72,9 +70,9 @@ The command displays the random temporary password once. Transfer it through the
 ## Rotation
 
 1. Create the replacement credential with least privilege.
-2. Update every affected Coolify environment without deleting the old credential yet.
+2. Update every affected Coolify application without deleting the old credential yet.
 3. restart or deploy the affected application and verify readiness plus a provider operation.
 4. Revoke the old credential.
-5. Record operator, time, affected environments, and verification in the private operations log.
+5. Record operator, time, affected applications, and verification in the private operations log.
 
 If a secret may have entered Git history or logs, revoke first. Rewriting Git history is not a substitute for revocation.

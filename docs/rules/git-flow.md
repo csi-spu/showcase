@@ -29,6 +29,6 @@ Keep commits scoped and buildable when practical. Commit messages describe inten
 
 ## Release
 
-Merge to `main` builds and deploys staging. After verification, run `Deploy production` with the full staged commit SHA. Production requires protected Environment approval and promotes existing images unchanged.
+After CI succeeds on `main`, the production workflow builds only affected immutable application images and deploys only those applications. Production requires protected Environment approval. A manual deployment must provide the full `main` commit SHA and exact JSON application list whose images already exist.
 
 Normal rollback is a revert pull request or an emergency revert commit on `main`, followed by the normal pipeline. Coolify image rollback is an escape hatch and must be reconciled with Git immediately.

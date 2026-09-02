@@ -4,46 +4,46 @@
 
 ```mermaid
 flowchart LR
-  PR[Pull request] --> CI[Affected lint, typecheck, tests, build]
-  CI --> Main[Reviewed merge to main]
-  Main --> Images[Build 4 SHA images in GHCR]
-  Images --> StagingCore[Deploy Core staging]
-  StagingCore --> StagingWeb[Deploy 3 frontends staging]
-  StagingWeb --> ProdCore[Auto-promote same Core image]
-  ProdCore --> ProdWeb[Auto-promote same frontend images]
+  PR[Pull request] --> CI[Affected quality gates]
+  Main[Merge to main] --> CI
+  CI --> Plan[Turbo affected deployment plan]
+  Plan --> Images[Build selected immutable images]
+  Images --> Approval[Protected production approval]
+  Approval --> Deploy[Deploy selected Coolify applications]
 ```
 
 ## Workflows
 
-| File                 | Responsibility                                                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`             | formatting plus affected package quality gates                                                                            |
-| `build-image.yml`    | reusable OCI build, SBOM, provenance, GHCR push                                                                           |
-| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, poll terminal status                                                                  |
-| `staging.yml`        | run after successful main CI, build once, and guard staging deployment                                                    |
-| `production.yml`     | run after a successful staging deploy; verify existing images and promote them unchanged, with no manual trigger required |
+| File                 | Responsibility                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `ci.yml`             | quality gates plus the trusted deployment-plan artifact for successful `main` pushes |
+| `build-image.yml`    | reusable OCI build, SBOM, provenance, and GHCR push                                  |
+| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, and poll terminal status                         |
+| `production.yml`     | build and deploy only applications named by the CI plan after production approval    |
 
-CI checks out full Git history because Turbo affected calculation depends on the real base/head range. Formatting is repository-wide and cheap; application gates are package-aware.
+CI checks out full Git history because Turbo affected calculation depends on the real push base and head. Formatting and delivery-workflow contract tests are repository-wide and cheap; application gates remain package-aware.
+
+## Affected application plan
+
+For a successful push to `main`, CI asks Turbo for `build` tasks affected since `github.event.before`. Turbo expands shared-package changes to dependent applications. `tools/ci/create-deployment-plan.mjs` filters that graph to the five deployable images: `core`, `admin`, `student`, `visitor`, and `media`. A first push with an unavailable base marks all five affected. A change with no deployable application impact produces an empty plan and no production build or deployment.
+
+Repository files copied into every application build context are Turbo global dependencies. Changing one marks every deployable application affected. A Core image change deploys `core`, `core-cache-worker`, and `core-media-processor` because those three Coolify resources run the same image.
+
+CI uploads the versioned JSON plan as a workflow artifact. The production workflow downloads it only from the successful triggering CI run, verifies its source SHA, and uses its matrix directly. This preserves the exact multi-commit push range that CI evaluated instead of guessing a parent commit in the later `workflow_run` event.
 
 ## Image contract
 
-Image names are `ghcr.io/csi-spu/showcase-<app>:sha-<40-character-commit-sha>`. No environment moving tag participates in a deployment. The image includes the source SHA and runs as a non-root user with a container health check.
+Image names are `ghcr.io/csi-spu/showcase-<app>:sha-<40-character-commit-sha>`. No moving tag participates in deployment. Each selected image includes the source SHA and is built as a non-root container with SBOM and provenance attestations.
 
-Staging builds once. Production verifies all four tags already exist and deploys those same artifacts. Runtime configuration belongs in Coolify, and public frontend build variables are avoided.
+The production workflow builds selected images once after CI. Runtime configuration belongs in Coolify, and public frontend build variables remain avoided.
 
-## Staging provisioning guard
+## Production deployment
 
-`COOLIFY_STAGING_ENABLED` is a non-secret repository variable. Missing or any value other than the exact string `true` keeps staging deployment jobs skipped while CI and immutable image builds continue. Enable it only after the staging Coolify applications, UUID variables, environment secrets, domains, and runtime configuration are complete.
+The production workflow starts after successful `main` push CI, verifies the source commit belongs to `main`, builds the selected matrix, and then enters the protected `production` Environment approval gate. Media deploys first when selected, Core and its two workers follow when selected, then selected frontends deploy independently. A failed dependency prevents downstream deployment; an unrelated skipped application does not.
 
-Automated staging starts through `workflow_run` only after the `CI` workflow succeeds for a push to `main`. A failed or pull-request CI run never builds or deploys staging images.
+`workflow_dispatch` remains available for redeploying existing images. It requires a full `main` commit SHA and an exact JSON application list such as `["media"]`. The workflow validates the list, verifies only those immutable images exist, requests production approval, and deploys only those applications. It never rebuilds a manual source SHA.
 
-For the first deployment after provisioning, run `Deploy staging` manually with the full main-branch SHA built by the initial push. The workflow verifies that the SHA belongs to `main` and that all four immutable images already exist; it does not rebuild or overwrite their tags.
-
-## Production auto-promotion
-
-`production.yml` triggers via `workflow_run` on every completed `Deploy staging` run and reuses that run's `head_sha`; when the staging run's conclusion is `success`, it verifies the four immutable images still exist and promotes them to production unchanged, with no manual step. `workflow_dispatch` with an explicit `source_sha` remains available for re-promoting or rolling forward to an already-staged commit outside the normal flow (for example, immediately after enabling `COOLIFY_STAGING_ENABLED`, per the section above).
-
-Because a `Deploy staging` run still reports `success` when its deploy jobs are skipped (`COOLIFY_STAGING_ENABLED` unset or not `true`), leaving staging disabled does not block production auto-promotion — it only means production promotes a commit that was never actually deployed to staging first. Keep `COOLIFY_STAGING_ENABLED` set to `true` in normal operation so staging deploys, and therefore this auto-promotion gate, are meaningful.
+Staging is intentionally not part of the current delivery path. Adding it later requires a new decision and an isolated Coolify environment; do not create a long-lived staging branch.
 
 ## Deployment contract
 
@@ -56,8 +56,4 @@ Coolify applications use the Docker Image resource type, with `docker_registry_i
 
 CI never SSHes into the host. Coolify auto-deploy from Git and image-tag watching stay disabled so GitHub Actions is the only deployment coordinator.
 
-## Ordering and failure
-
-All images must build before deployment begins. Core deploys first because every frontend depends on it. Frontends deploy in parallel after Core succeeds. A failed Core deploy stops frontend rollout. One failed frontend does not cancel the other frontend deployments, but the workflow remains failed.
-
-Schema changes must obey backward compatibility so old and new containers can overlap during a rolling deployment. See `docs/rules/backward-compatibility.md`.
+Schema changes must remain backward-compatible with the running containers during rolling deployment. See `docs/rules/backward-compatibility.md`.

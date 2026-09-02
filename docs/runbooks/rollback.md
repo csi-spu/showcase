@@ -5,7 +5,7 @@
 | Failure                                | Preferred response                                                             |
 | -------------------------------------- | ------------------------------------------------------------------------------ |
 | New container fails readiness          | let Coolify preserve old healthy container; inspect failed deployment          |
-| Application regression                 | revert the offending commit and run normal staging/production flow             |
+| Application regression                 | revert the offending commit and run the normal selective production flow       |
 | Immediate production harm              | pin previous known-good SHA in Coolify, then create the Git revert immediately |
 | Runtime configuration error            | restore prior Coolify value and restart affected app                           |
 | Forward-only migration incompatibility | apply a corrective forward migration; do not blindly reverse destructive SQL   |
@@ -15,10 +15,9 @@
 1. Identify the first bad full SHA and affected surfaces.
 2. Confirm whether migrations or runtime configuration changed.
 3. Revert through Git with a reviewed or emergency-authorized change.
-4. Let CI build the revert commit, deploy it to staging, and verify it there.
-5. Production auto-promotes the same images once the staging deploy succeeds; confirm the `Deploy production` run completes rather than triggering it manually.
-6. Verify readiness, error rate, login, and the affected user path.
-7. Record incident timeline and follow-up issue.
+4. Let CI build and deploy the affected revert images through the protected production workflow.
+5. Verify readiness, error rate, login, and the affected user path.
+6. Record incident timeline and follow-up issue.
 
 ## Emergency image rollback
 
