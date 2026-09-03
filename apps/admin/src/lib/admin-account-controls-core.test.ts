@@ -18,6 +18,7 @@ describe('AdminAccountControlsCoreClient', () => {
         firstNameTh: 'สมชาย',
         lastNameTh: 'ใจดี',
         state: 'alumnus',
+        status: 'active',
         version: 2,
       }),
     );
@@ -55,6 +56,7 @@ describe('AdminAccountControlsCoreClient', () => {
             firstNameTh: 'สมชาย',
             lastNameTh: 'ใจดี',
             state: 'student',
+            status: 'active',
             version: 3,
           },
           temporaryPassword: 'one-time-random-password',
@@ -99,6 +101,7 @@ describe('AdminAccountControlsCoreClient', () => {
       firstNameTh: 'สมหญิง',
       lastNameTh: 'มั่นใจ',
       state: 'student',
+      status: 'active',
       version: 3,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(response));
@@ -136,6 +139,7 @@ describe('AdminAccountControlsCoreClient', () => {
               firstNameTh: 'สมชาย',
               lastNameTh: 'ใจดี',
               state: 'student',
+              status: 'active',
               version: 1,
             },
           ],
