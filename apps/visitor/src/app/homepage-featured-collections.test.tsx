@@ -165,12 +165,17 @@ describe('Homepage featured collections', () => {
     expect(html.match(/data-featured-layout="carousel"/g)).toHaveLength(1);
     expect(html).toContain('aria-roledescription="carousel"');
     expect(html).toContain('เลื่อนไปผลงานถัดไป');
-    // The rail repeats a short collection so Embla has enough slides to wrap;
-    // the repeats are inert so each work stays announced and focusable once.
+    // The rail repeats a short collection so Embla has enough slides to wrap.
+    // Repeats are hidden from assistive technology so each work is announced
+    // once, but they stay interactive: `inert` would make every card past the
+    // first pass unclickable once the rail scrolled.
     const slides = html.match(/data-slot="carousel-item"/g)?.length ?? 0;
     expect(slides).toBeGreaterThan(6);
     expect(slides % 6).toBe(0);
-    expect(html.match(/inert=""/g)).toHaveLength(slides - 6);
+    expect(html).not.toContain('inert=""');
+    const hiddenSlides =
+      html.match(/data-slot="carousel-item"[^>]*aria-hidden="true"/g)?.length ?? 0;
+    expect(hiddenSlides).toBe(slides - 6);
   });
 
   it('places work card badges at the head of the poster, above the title block', () => {
