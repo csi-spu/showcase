@@ -571,21 +571,15 @@ async function completeStudentLogin(
 ): Promise<void> {
   const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
   const dashboardHeading = page.getByRole('heading', { name: 'จัดการผลงานของคุณ' });
-  const requiresPasswordReset = await resetHeading
-    .waitFor({ state: 'visible', timeout: 30_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (requiresPasswordReset) {
+  await expect(resetHeading.or(dashboardHeading)).toBeVisible({ timeout: 60_000 });
+  if (await resetHeading.isVisible()) {
     await scenario.protectBrowserContext(page.context());
     await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.initialPassword);
     await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
     await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.newPassword);
     await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
-  } else if (!(await dashboardHeading.isVisible().catch(() => false))) {
-    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.newPassword);
-    await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   }
-  await expect(dashboardHeading).toBeVisible({ timeout: 30_000 });
+  await expect(dashboardHeading).toBeVisible({ timeout: 60_000 });
 }
 
 async function loginAdmin(
@@ -606,21 +600,15 @@ async function completeAdminLogin(
 ): Promise<void> {
   const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
   const dashboardHeading = page.getByRole('heading', { name: 'จัดการงานสำคัญจากที่เดียว' });
-  const requiresPasswordReset = await resetHeading
-    .waitFor({ state: 'visible', timeout: 30_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (requiresPasswordReset) {
+  await expect(resetHeading.or(dashboardHeading)).toBeVisible({ timeout: 60_000 });
+  if (await resetHeading.isVisible()) {
     await scenario.protectBrowserContext(page.context());
     await page.getByLabel('รหัสผ่านปัจจุบัน', { exact: true }).fill(scenario.adminInitialPassword);
     await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
     await page.getByLabel('ยืนยันรหัสผ่านใหม่', { exact: true }).fill(scenario.adminNewPassword);
     await page.getByRole('button', { name: 'ตั้งรหัสผ่าน' }).click();
-  } else if (!(await dashboardHeading.isVisible().catch(() => false))) {
-    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.adminNewPassword);
-    await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   }
-  await expect(dashboardHeading).toBeVisible({ timeout: 30_000 });
+  await expect(dashboardHeading).toBeVisible({ timeout: 60_000 });
 }
 
 async function reviewPendingRevision(

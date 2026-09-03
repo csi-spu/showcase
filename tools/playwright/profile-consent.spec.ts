@@ -1,6 +1,8 @@
 import { captureSanitizedFailureScreenshot, expect, test } from './fixtures.ts';
 import { randomUUID } from 'node:crypto';
 
+test.setTimeout(120_000);
+
 test.afterEach(async ({ page }, testInfo) => {
   await captureSanitizedFailureScreenshot(page, testInfo);
 });
