@@ -19,15 +19,18 @@ const releaseName = process.env.GIT_SHA && `showcase-visitor@${process.env.GIT_S
 const canUploadSourceMaps = Boolean(
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && releaseName,
 );
+const nextIntlConfig = withNextIntl(nextConfig);
 
-export default withSentryConfig(withNextIntl(nextConfig), {
-  ...(process.env.SENTRY_AUTH_TOKEN ? { authToken: process.env.SENTRY_AUTH_TOKEN } : {}),
-  ...(process.env.SENTRY_ORG ? { org: process.env.SENTRY_ORG } : {}),
-  project: 'showcase-visitor',
-  ...(releaseName ? { release: { name: releaseName } } : {}),
-  silent: !process.env.CI,
-  sourcemaps: { disable: !canUploadSourceMaps },
-  suppressOnRouterTransitionStartWarning: true,
-  telemetry: false,
-  widenClientFileUpload: true,
-});
+export default process.env.NEXT_PUBLIC_SENTRY_DSN
+  ? withSentryConfig(nextIntlConfig, {
+      ...(process.env.SENTRY_AUTH_TOKEN ? { authToken: process.env.SENTRY_AUTH_TOKEN } : {}),
+      ...(process.env.SENTRY_ORG ? { org: process.env.SENTRY_ORG } : {}),
+      project: 'showcase-visitor',
+      ...(releaseName ? { release: { name: releaseName } } : {}),
+      silent: !process.env.CI,
+      sourcemaps: { disable: !canUploadSourceMaps },
+      suppressOnRouterTransitionStartWarning: true,
+      telemetry: false,
+      widenClientFileUpload: true,
+    })
+  : nextIntlConfig;
