@@ -31,6 +31,12 @@ if (['production', 'staging'].includes(process.env.APP_ENV ?? '')) {
 
 try {
   assertLocalE2EEnvironment(requestedEnvironment, { requireCredentials: false });
+  run(
+    'pnpm',
+    ['--filter', '@showcase/observability', 'build'],
+    requestedEnvironment,
+    'E2E_SETUP_OBSERVABILITY_BUILD_FAILED',
+  );
   await ensureLocalPostgres(requestedEnvironment);
   run(
     'pnpm',
