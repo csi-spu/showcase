@@ -22,10 +22,10 @@ export default async function Home() {
     await Promise.all([
       getTranslations('Home'),
       getTranslations('QuickSearch'),
-      catalogClient.listWorks({ category: 'course_work', limit: '3', sort: 'recent' }),
-      catalogClient.listWorks({ category: 'competition_entry', limit: '3', sort: 'recent' }),
-      catalogClient.listWorks({ category: 'academic_article', limit: '3', sort: 'recent' }),
-      catalogClient.listPeople({ limit: '4', sort: 'name' }),
+      catalogClient.listWorks({ category: 'course_work', limit: '12', sort: 'recent' }),
+      catalogClient.listWorks({ category: 'competition_entry', limit: '12', sort: 'recent' }),
+      catalogClient.listWorks({ category: 'academic_article', limit: '12', sort: 'recent' }),
+      catalogClient.listPeople({ limit: '12', sort: 'name' }),
     ]);
 
   return (
@@ -122,19 +122,54 @@ export default async function Home() {
           labels={{
             academicArticles: {
               artworkAlt: t('featured.academicArticles.artworkAlt'),
+              carouselNext: t('featured.carouselNext'),
+              carouselPrevious: t('featured.carouselPrevious'),
+              carouselRegion: t('featured.carouselRegion', {
+                title: t('featured.academicArticles.title'),
+              }),
               description: t('featured.academicArticles.description'),
+              eyebrow: t('featured.academicArticles.eyebrow'),
               title: t('featured.academicArticles.title'),
               viewAll: t('featured.academicArticles.viewAll'),
             },
+            categoryBadge: {
+              academic_article: t('featured.categoryBadge.academic_article'),
+              competition_entry: t('featured.categoryBadge.competition_entry'),
+              course_work: t('featured.categoryBadge.course_work'),
+            },
+            combined: {
+              artworkAlt: t('featured.combined.artworkAlt'),
+              carouselNext: t('featured.carouselNext'),
+              carouselPrevious: t('featured.carouselPrevious'),
+              carouselRegion: t('featured.carouselRegion', {
+                title: t('featured.combined.title'),
+              }),
+              description: t('featured.combined.description'),
+              eyebrow: t('featured.combined.eyebrow'),
+              title: t('featured.combined.title'),
+              viewAll: t('featured.combined.viewAll'),
+            },
             competitionEntries: {
               artworkAlt: t('featured.competitionEntries.artworkAlt'),
+              carouselNext: t('featured.carouselNext'),
+              carouselPrevious: t('featured.carouselPrevious'),
+              carouselRegion: t('featured.carouselRegion', {
+                title: t('featured.competitionEntries.title'),
+              }),
               description: t('featured.competitionEntries.description'),
+              eyebrow: t('featured.competitionEntries.eyebrow'),
               title: t('featured.competitionEntries.title'),
               viewAll: t('featured.competitionEntries.viewAll'),
             },
             courseWorks: {
               artworkAlt: t('featured.courseWorks.artworkAlt'),
+              carouselNext: t('featured.carouselNext'),
+              carouselPrevious: t('featured.carouselPrevious'),
+              carouselRegion: t('featured.carouselRegion', {
+                title: t('featured.courseWorks.title'),
+              }),
               description: t('featured.courseWorks.description'),
+              eyebrow: t('featured.courseWorks.eyebrow'),
               title: t('featured.courseWorks.title'),
               viewAll: t('featured.courseWorks.viewAll'),
             },
@@ -143,7 +178,13 @@ export default async function Home() {
             personPhotoAlt: (name) => t('featured.personPhotoAlt', { name }),
             people: {
               artworkAlt: t('featured.people.artworkAlt'),
+              carouselNext: t('featured.carouselNext'),
+              carouselPrevious: t('featured.carouselPrevious'),
+              carouselRegion: t('featured.carouselRegion', {
+                title: t('featured.people.title'),
+              }),
               description: t('featured.people.description'),
+              eyebrow: t('featured.people.eyebrow'),
               title: t('featured.people.title'),
               viewAll: t('featured.people.viewAll'),
             },
