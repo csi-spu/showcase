@@ -13,6 +13,7 @@ import type {
   ExtendStudentAccessResult,
   ListPage,
   SetAdminStatusResult,
+  SetStudentStatusResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
 } from './account-controls.ports';
@@ -58,6 +59,7 @@ const STUDENT = {
   entryYear: 2569,
   firstNameTh: 'สมชาย',
   lastNameTh: 'ใจดี',
+  status: 'active',
   version: 2,
 } satisfies StudentAccountControls;
 
@@ -293,6 +295,79 @@ describe('AccountControlsService Student Access Period', () => {
       }),
     ).rejects.toMatchObject({ status: 422 });
     expect(repository.correctStudentNameInput).toBeNull();
+  });
+
+  it('suspends a Student with normalized reason, actor, optimistic version, and idempotency', async () => {
+    repository.setStudentStatusResult = {
+      outcome: 'updated',
+      student: { ...STUDENT, status: 'suspended', version: 3 },
+    };
+
+    // Suspension is independent of the derived access state: a suspended
+    // Account still reports the Alumnus/Student period it falls in.
+    await expect(
+      service.setStudentStatus({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        expectedVersion: 2,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: '  เหตุผลที่ตรวจสอบได้  ',
+        status: 'suspended',
+        studentAccountId: STUDENT_ACCOUNT_ID,
+      }),
+    ).resolves.toEqual({
+      ...STUDENT,
+      canUseStudentCapabilities: false,
+      state: 'alumnus',
+      status: 'suspended',
+      version: 3,
+    });
+    expect(repository.setStudentStatusInput).toEqual({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      expectedVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+      reason: 'เหตุผลที่ตรวจสอบได้',
+      status: 'suspended',
+      studentAccountId: STUDENT_ACCOUNT_ID,
+    });
+  });
+
+  it.each(['', '   ', 'x'.repeat(2001)])(
+    'rejects an invalid Student status reason before calling the repository',
+    async (reason) => {
+      await expect(
+        service.setStudentStatus({
+          actorAccountId: ACTOR_ACCOUNT_ID,
+          expectedVersion: 2,
+          idempotencyKey: IDEMPOTENCY_KEY,
+          reason,
+          status: 'suspended',
+          studentAccountId: STUDENT_ACCOUNT_ID,
+        }),
+      ).rejects.toEqual(
+        expect.objectContaining({ code: 'STUDENT_STATUS_REASON_INVALID', status: 422 }),
+      );
+      expect(repository.setStudentStatusInput).toBeNull();
+    },
+  );
+
+  it.each([
+    ['idempotency_conflict', 'ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409],
+    ['not_found', 'STUDENT_ACCOUNT_NOT_FOUND', 404],
+    ['version_conflict', 'ACCOUNT_CONTROL_VERSION_CONFLICT', 409],
+  ] as const)('maps %s Student status outcome to a stable error', async (outcome, code, status) => {
+    repository.setStudentStatusResult = { outcome };
+
+    await expect(
+      service.setStudentStatus({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        expectedVersion: 2,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: 'เหตุผลที่ตรวจสอบได้',
+        status: 'suspended',
+        studentAccountId: STUDENT_ACCOUNT_ID,
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
   });
 });
 
@@ -629,6 +704,8 @@ class TestRepository implements AccountControlsRepository {
   listAdminsResult: ListPage<AdminAccountControls> = { items: [], nextCursor: null };
   setAdminStatusInput: Parameters<AccountControlsRepository['setAdminStatus']>[0] | null = null;
   setAdminStatusResult: SetAdminStatusResult = { outcome: 'not_found' };
+  setStudentStatusInput: Parameters<AccountControlsRepository['setStudentStatus']>[0] | null = null;
+  setStudentStatusResult: SetStudentStatusResult = { outcome: 'not_found' };
 
   getAcademicYear(): Promise<AcademicYearSettings> {
     return Promise.resolve(this.settings);
@@ -653,6 +730,13 @@ class TestRepository implements AccountControlsRepository {
   ): Promise<SetAdminStatusResult> {
     this.setAdminStatusInput = input;
     return Promise.resolve(this.setAdminStatusResult);
+  }
+
+  setStudentStatus(
+    input: Parameters<AccountControlsRepository['setStudentStatus']>[0],
+  ): Promise<SetStudentStatusResult> {
+    this.setStudentStatusInput = input;
+    return Promise.resolve(this.setStudentStatusResult);
   }
 
   updateAcademicYear(

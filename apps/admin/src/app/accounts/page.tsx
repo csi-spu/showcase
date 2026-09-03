@@ -6,13 +6,13 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AddAdminSheet } from '../add-admin-sheet';
 import { AddStudentSheet } from '../add-student-sheet';
-import { AdminRowSheet } from '../admin-row-sheet';
+import { AdminRowActions } from '../admin-row-actions';
 import { manageStudentAccountAction } from '../account-controls.actions';
 import { createAdminAction, setAdminStatusAction } from '../accounts.actions';
 import { AdminWorkspacePage } from '../admin-workspace-page';
 import { AdminWorkspaceShell } from '../admin-workspace-shell';
 import { createRosterStudentAction } from '../roster.actions';
-import { StudentRowSheet } from '../student-row-sheet';
+import { StudentRowActions } from '../student-row-actions';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/status-badge';
 import {
@@ -112,6 +112,7 @@ export default async function AccountsPage({
                     <TableHead>{t('columns.name')}</TableHead>
                     <TableHead>{t('columns.entryYear')}</TableHead>
                     <TableHead>{t('columns.accessEnds')}</TableHead>
+                    <TableHead>{t('columns.status')}</TableHead>
                     <TableHead>{t('columns.state')}</TableHead>
                   </>
                 ) : (
@@ -121,13 +122,16 @@ export default async function AccountsPage({
                     <TableHead>{t('columns.status')}</TableHead>
                   </>
                 )}
-                <TableHead className="w-32 text-right">{t('columns.actions')}</TableHead>
+                <TableHead className="text-right">{t('columns.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isEmpty ? (
                 <TableRow>
-                  <TableCell className="h-32 text-center text-muted-foreground" colSpan={4}>
+                  <TableCell
+                    className="h-32 text-center text-muted-foreground"
+                    colSpan={tab === 'students' ? 6 : 4}
+                  >
                     {t(`empty.${tab}`)}
                   </TableCell>
                 </TableRow>
@@ -138,12 +142,17 @@ export default async function AccountsPage({
                   <TableCell>{student.entryYear}</TableCell>
                   <TableCell>{student.accessEndsAcademicYear}</TableCell>
                   <TableCell>
-                    <StatusBadge tone={student.state === 'student' ? 'success' : 'warning'}>
+                    <StatusBadge tone={student.status === 'active' ? 'success' : 'warning'}>
+                      {t(`status.${student.status}`)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge tone={student.state === 'student' ? 'success' : 'neutral'}>
                       {t(`studentState.${student.state}`)}
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <StudentRowSheet
+                    <StudentRowActions
                       action={manageStudentAccountAction}
                       idempotencyKey={randomUUID()}
                       student={student}
@@ -163,7 +172,7 @@ export default async function AccountsPage({
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <AdminRowSheet
+                    <AdminRowActions
                       action={setAdminStatusAction}
                       admin={admin}
                       idempotencyKey={randomUUID()}

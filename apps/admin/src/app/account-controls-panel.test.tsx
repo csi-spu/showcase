@@ -15,6 +15,7 @@ const STUDENT = {
   firstNameTh: 'สมชาย',
   lastNameTh: 'ใจดี',
   state: 'alumnus' as const,
+  status: 'active' as const,
   version: 2,
 };
 

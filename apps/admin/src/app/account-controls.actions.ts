@@ -66,6 +66,20 @@ export async function manageStudentAccountAction(
         temporaryPassword: null,
       };
     }
+    if (input.operation === 'setStatus') {
+      const student = await coreClient().setStudentStatus(sessionToken, input.studentAccountId, {
+        action: input.action,
+        expectedVersion: input.expectedVersion,
+        idempotencyKey: input.idempotencyKey,
+        reason: input.reason,
+      });
+      return {
+        error: null,
+        idempotencyKey: randomUUID(),
+        student,
+        temporaryPassword: null,
+      };
+    }
     if (input.operation === 'correctName') {
       const student = await coreClient().correctStudentName(sessionToken, input.studentAccountId, {
         expectedVersion: input.expectedVersion,
