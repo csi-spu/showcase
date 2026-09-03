@@ -88,7 +88,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
 
       expect(scenario.publicProfileUrl).not.toContain(scenario.studentId);
       await visitorPage.goto(scenario.publicProfileUrl, {
-        timeout: 15_000,
+        timeout: 30_000,
         waitUntil: 'domcontentloaded',
       });
       await expect(

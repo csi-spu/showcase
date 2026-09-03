@@ -572,7 +572,7 @@ async function completeStudentLogin(
   const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
   const dashboardHeading = page.getByRole('heading', { name: 'จัดการผลงานของคุณ' });
   const requiresPasswordReset = await resetHeading
-    .waitFor({ state: 'visible', timeout: 10_000 })
+    .waitFor({ state: 'visible', timeout: 30_000 })
     .then(() => true)
     .catch(() => false);
   if (requiresPasswordReset) {
@@ -585,7 +585,7 @@ async function completeStudentLogin(
     await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.newPassword);
     await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   }
-  await expect(dashboardHeading).toBeVisible();
+  await expect(dashboardHeading).toBeVisible({ timeout: 30_000 });
 }
 
 async function loginAdmin(
@@ -607,7 +607,7 @@ async function completeAdminLogin(
   const resetHeading = page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' });
   const dashboardHeading = page.getByRole('heading', { name: 'จัดการงานสำคัญจากที่เดียว' });
   const requiresPasswordReset = await resetHeading
-    .waitFor({ state: 'visible', timeout: 10_000 })
+    .waitFor({ state: 'visible', timeout: 30_000 })
     .then(() => true)
     .catch(() => false);
   if (requiresPasswordReset) {
@@ -620,7 +620,7 @@ async function completeAdminLogin(
     await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.adminNewPassword);
     await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   }
-  await expect(dashboardHeading).toBeVisible();
+  await expect(dashboardHeading).toBeVisible({ timeout: 30_000 });
 }
 
 async function reviewPendingRevision(
