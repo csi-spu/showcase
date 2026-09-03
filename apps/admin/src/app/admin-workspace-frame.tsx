@@ -20,8 +20,7 @@ import { PulseDot } from '@/components/ui/status-badge';
 import { AdminBrand, AdminBrandMark } from './admin-brand';
 import { AdminMobileNavigation } from './admin-mobile-navigation';
 
-export type AdminWorkspacePage =
-  'account-controls' | 'academic-year' | 'dashboard' | 'roster' | 'works';
+export type AdminWorkspacePage = 'accounts' | 'academic-year' | 'dashboard' | 'roster' | 'works';
 
 export interface AdminNavigationGroup {
   items: Array<{ href: string; label: string; page: AdminWorkspacePage }>;
@@ -29,7 +28,7 @@ export interface AdminNavigationGroup {
 }
 
 const PAGE_ICONS: Record<AdminWorkspacePage, LucideIcon> = {
-  'account-controls': UserRoundCogIcon,
+  accounts: UserRoundCogIcon,
   'academic-year': CalendarClockIcon,
   dashboard: LayoutDashboardIcon,
   roster: FileSpreadsheetIcon,

@@ -1,8 +1,11 @@
 export type AccountControlErrorMessage =
   | 'backward'
   | 'completed'
+  | 'forbidden'
   | 'inProgress'
   | 'invalid'
+  | 'lastActiveAdmin'
+  | 'loginTaken'
   | 'notFound'
   | 'providerUnavailable'
   | 'shortening'

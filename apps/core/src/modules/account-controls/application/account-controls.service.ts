@@ -5,14 +5,23 @@ import {
   AUTH_TOKEN_GENERATOR,
 } from '../../auth/application/auth.ports';
 import type { Clock, IdentityProtector, TokenGenerator } from '../../auth/application/auth.ports';
+import {
+  AdminProvisioningError,
+  AdminProvisioningService,
+} from '../../auth/application/admin-provisioning.service';
 import { ACCOUNT_CONTROLS_REPOSITORY, ACCOUNT_PASSWORD_PROVIDER } from './account-controls.ports';
 import type {
   AccountControlsRepository,
   AccountPasswordProvider,
   AcademicYearSettings,
+  AdminAccountControls,
+  ListPage,
   StudentAccountControls,
 } from './account-controls.ports';
 import { evaluateStudentAccess } from '../../auth/domain/student-access-policy';
+
+const LIST_DEFAULT_LIMIT = 20;
+const LIST_MAX_LIMIT = 100;
 
 export class AccountControlsError extends Error {
   constructor(
@@ -34,10 +43,100 @@ export class AccountControlsService {
     @Inject(AUTH_CLOCK) private readonly clock: Clock,
     @Inject(AUTH_IDENTITY_PROTECTOR) private readonly identityProtector: IdentityProtector,
     @Inject(AUTH_TOKEN_GENERATOR) private readonly tokenGenerator: TokenGenerator,
+    private readonly adminProvisioning: AdminProvisioningService,
   ) {}
 
   getAcademicYear(): Promise<AcademicYearSettings> {
     return this.repository.getAcademicYear();
+  }
+
+  listStudents(input: {
+    cursor: string | null;
+    limit: number | null;
+    search: string | null;
+  }): Promise<ListPage<StudentAccountControlsResult>> {
+    return this.repository
+      .listStudents({
+        cursor: input.cursor,
+        limit: clampLimit(input.limit),
+        search: normalizeSearch(input.search),
+      })
+      .then((page) => ({
+        items: page.items.map((student) => this.toStudentResult(student)),
+        nextCursor: page.nextCursor,
+      }));
+  }
+
+  listAdmins(input: {
+    cursor: string | null;
+    limit: number | null;
+    search: string | null;
+  }): Promise<ListPage<AdminAccountControls>> {
+    return this.repository.listAdmins({
+      cursor: input.cursor,
+      limit: clampLimit(input.limit),
+      search: normalizeSearch(input.search),
+    });
+  }
+
+  async createAdmin(input: {
+    adminLogin: string;
+    firstNameTh: string;
+    lastNameTh: string;
+  }): Promise<{ admin: { adminLogin: string }; temporaryPassword: string }> {
+    try {
+      const result = await this.adminProvisioning.provision(input);
+      return {
+        admin: { adminLogin: result.adminLogin },
+        temporaryPassword: result.temporaryPassword,
+      };
+    } catch (error: unknown) {
+      if (error instanceof AdminProvisioningError) {
+        throw new AccountControlsError(error.code, mapAdminProvisioningStatus(error.code));
+      }
+      throw error;
+    }
+  }
+
+  async setAdminStatus(input: {
+    actorAccountId: string;
+    adminAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    reason: string;
+    status: 'active' | 'suspended';
+  }): Promise<AdminAccountControls> {
+    if (input.actorAccountId === input.adminAccountId) {
+      throw new AccountControlsError('ADMIN_SELF_STATUS_CHANGE_FORBIDDEN', 403);
+    }
+    const reason = input.reason.trim();
+    if (reason.length === 0 || reason.length > 2_000) {
+      throw new AccountControlsError('ADMIN_STATUS_REASON_INVALID', 422);
+    }
+    const result = await this.repository.setAdminStatus({
+      ...input,
+      now: this.clock.now(),
+      reason,
+    });
+    if (result.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (result.outcome === 'not_found') {
+      throw new AccountControlsError('ADMIN_ACCOUNT_NOT_FOUND', 404);
+    }
+    if (result.outcome === 'self_status_change') {
+      throw new AccountControlsError('ADMIN_SELF_STATUS_CHANGE_FORBIDDEN', 403);
+    }
+    if (result.outcome === 'last_active_admin') {
+      throw new AccountControlsError('ADMIN_LAST_ACTIVE_ACCOUNT', 409);
+    }
+    if (result.outcome === 'version_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_VERSION_CONFLICT', 409);
+    }
+    if (!('admin' in result)) {
+      throw new AccountControlsError('ACCOUNT_CONTROLS_SERVICE_UNAVAILABLE', 503);
+    }
+    return result.admin;
   }
 
   async findStudent(studentId: string): Promise<StudentAccountControlsResult> {
@@ -224,3 +323,21 @@ export class AccountControlsService {
 
 export type StudentAccountControlsResult = StudentAccountControls &
   ReturnType<typeof evaluateStudentAccess>;
+
+function clampLimit(limit: number | null): number {
+  if (limit === null || !Number.isInteger(limit) || limit < 1) return LIST_DEFAULT_LIMIT;
+  return Math.min(limit, LIST_MAX_LIMIT);
+}
+
+function normalizeSearch(search: string | null): string | null {
+  if (search === null) return null;
+  const trimmed = search.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+function mapAdminProvisioningStatus(code: string): number {
+  if (code === 'ADMIN_LOGIN_TAKEN') return 409;
+  if (code === 'INVALID_ADMIN_LOGIN' || code === 'INVALID_ADMIN_NAME') return 422;
+  if (code === 'ADMIN_PROVIDER_UNAVAILABLE') return 503;
+  return 503;
+}

@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { AccountControlsService } from '../src/modules/account-controls/application/account-controls.service';
+import { AdminProvisioningService } from '../src/modules/auth/application/admin-provisioning.service';
 import { StudentAuthService } from '../src/modules/auth/application/student-auth.service';
 import type {
   AuthProvider,
@@ -13,6 +14,9 @@ import { PostgresAuthRepository } from '../src/modules/auth/infrastructure/postg
 const ADMIN_PERSON_ID = '51000000-0000-4000-8000-000000000001';
 const ADMIN_ACCOUNT_ID = '51000000-0000-4000-8000-000000000002';
 const ADMIN_PROVIDER_USER_ID = '51000000-0000-4000-8000-000000000003';
+const SECOND_ADMIN_PERSON_ID = '51000000-0000-4000-8000-000000000021';
+const SECOND_ADMIN_ACCOUNT_ID = '51000000-0000-4000-8000-000000000022';
+const SECOND_ADMIN_PROVIDER_USER_ID = '51000000-0000-4000-8000-000000000023';
 const STUDENT_PERSON_ID = '52000000-0000-4000-8000-000000000001';
 const STUDENT_ACCOUNT_ID = '52000000-0000-4000-8000-000000000002';
 const STUDENT_PROVIDER_USER_ID = '52000000-0000-4000-8000-000000000003';
@@ -30,6 +34,9 @@ const STUDENT_FLOW_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000005';
 const PARALLEL_RESET_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000006';
 const NAME_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000007';
 const SECOND_NAME_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000008';
+const SUSPEND_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000009';
+const REACTIVATE_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000010';
+const STALE_VERSION_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000011';
 const NOW = new Date('2026-08-25T06:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -62,7 +69,8 @@ describe('PostgresAccountControlsRepository integration', () => {
     await database.sql.begin(async (transaction) => {
       await transaction`
         insert into public.people (id)
-        values (${ADMIN_PERSON_ID}), (${STUDENT_PERSON_ID}), (${NAME_STUDENT_PERSON_ID})
+        values (${ADMIN_PERSON_ID}), (${SECOND_ADMIN_PERSON_ID}),
+          (${STUDENT_PERSON_ID}), (${NAME_STUDENT_PERSON_ID})
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year)
@@ -73,22 +81,30 @@ describe('PostgresAccountControlsRepository integration', () => {
           id, person_id, provider_user_id, credential_state, created_at, updated_at
         ) values
           (${ADMIN_ACCOUNT_ID}, ${ADMIN_PERSON_ID}, ${ADMIN_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
+          (${SECOND_ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_PERSON_ID}, ${SECOND_ADMIN_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
           (${STUDENT_ACCOUNT_ID}, ${STUDENT_PERSON_ID}, ${STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
           (${NAME_STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_PERSON_ID}, ${NAME_STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW})
       `;
       await transaction`
         insert into public.account_roles (account_id, role)
-        values (${ADMIN_ACCOUNT_ID}, 'admin'), (${STUDENT_ACCOUNT_ID}, 'student'),
-          (${NAME_STUDENT_ACCOUNT_ID}, 'student')
+        values (${ADMIN_ACCOUNT_ID}, 'admin'), (${SECOND_ADMIN_ACCOUNT_ID}, 'admin'),
+          (${STUDENT_ACCOUNT_ID}, 'student'), (${NAME_STUDENT_ACCOUNT_ID}, 'student')
       `;
       await transaction`
         insert into private.person_names (person_id, first_name_th, last_name_th)
-        values (${STUDENT_PERSON_ID}, 'สมชาย', 'ใจดี'),
+        values (${ADMIN_PERSON_ID}, 'ผู้ดูแล', 'ระบบ'),
+          (${SECOND_ADMIN_PERSON_ID}, 'ผู้ดูแล', 'สำรอง'),
+          (${STUDENT_PERSON_ID}, 'สมชาย', 'ใจดี'),
           (${NAME_STUDENT_PERSON_ID}, 'สมชาย', 'เดิมดี')
       `;
       await transaction`
-        insert into public.public_profiles (person_id, public_id, bio, version)
-        values (${NAME_STUDENT_PERSON_ID}, ${NAME_PROFILE_PUBLIC_ID}, null, 1)
+        insert into public.public_profiles (
+          person_id, public_id, display_name, bio, version,
+          created_at, updated_at, normalized_display_name
+        ) values (
+          ${NAME_STUDENT_PERSON_ID}, ${NAME_PROFILE_PUBLIC_ID}, 'สมชาย เดิมดี', null, 1,
+          ${NOW}, ${NOW}, 'สมชาย เดิมดี'
+        )
       `;
       await transaction`
         insert into public.profile_consents (person_id, consent_text_version, granted_at)
@@ -246,6 +262,117 @@ describe('PostgresAccountControlsRepository integration', () => {
       updatedAt: NOW,
       version: 12,
     });
+  });
+
+  it('lists Students and Admins with cursor pagination and a Thai name search', async () => {
+    const firstPage = await repository.listStudents({ cursor: null, limit: 1, search: null });
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.nextCursor).not.toBeNull();
+    const secondPage = await repository.listStudents({
+      cursor: firstPage.nextCursor,
+      limit: 1,
+      search: null,
+    });
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.items[0]?.accountId).not.toBe(firstPage.items[0]?.accountId);
+
+    const searched = await repository.listStudents({ cursor: null, limit: 10, search: 'สมชาย' });
+    expect(searched.items.map((student) => student.accountId).sort()).toEqual(
+      [STUDENT_ACCOUNT_ID, NAME_STUDENT_ACCOUNT_ID].sort(),
+    );
+    await expect(
+      repository.listStudents({ cursor: null, limit: 10, search: 'ไม่มีชื่อนี้แน่นอน' }),
+    ).resolves.toEqual({ items: [], nextCursor: null });
+
+    const admins = await repository.listAdmins({ cursor: null, limit: 10, search: 'ผู้ดูแล' });
+    expect(admins.items.map((admin) => admin.accountId).sort()).toEqual(
+      [ADMIN_ACCOUNT_ID, SECOND_ADMIN_ACCOUNT_ID].sort(),
+    );
+    expect(admins.items.every((admin) => admin.status === 'active')).toBe(true);
+  });
+
+  it('suspends and reactivates an Admin Account idempotently, and forbids self-suspend', async () => {
+    await expect(
+      repository.setAdminStatus({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        adminAccountId: ADMIN_ACCOUNT_ID,
+        expectedVersion: 1,
+        idempotencyKey: SUSPEND_IDEMPOTENCY_KEY,
+        now: NOW,
+        reason: 'ทดสอบห้ามระงับตัวเอง',
+        status: 'suspended',
+      }),
+    ).resolves.toEqual({ outcome: 'self_status_change' });
+
+    const sessionIdHash = '5'.repeat(64);
+    await database.sql`
+      insert into private.authentication_sessions (
+        session_id_hash, account_id, audience, provider_access_token, provider_refresh_token,
+        provider_token_expires_at, created_at, last_activity_at, absolute_expires_at
+      ) values (
+        ${sessionIdHash}, ${SECOND_ADMIN_ACCOUNT_ID}, 'admin', 'admin-access-token',
+        'admin-refresh-token', ${new Date(NOW.getTime() + 3_600_000)}, ${NOW}, ${NOW},
+        ${new Date(NOW.getTime() + 7 * 24 * 3_600_000)}
+      )
+    `;
+
+    const suspendInput = {
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      adminAccountId: SECOND_ADMIN_ACCOUNT_ID,
+      expectedVersion: 1,
+      idempotencyKey: SUSPEND_IDEMPOTENCY_KEY,
+      now: NOW,
+      reason: 'ระงับชั่วคราวตามคำขอ',
+      status: 'suspended' as const,
+    };
+    await expect(repository.setAdminStatus(suspendInput)).resolves.toEqual({
+      admin: {
+        accountId: SECOND_ADMIN_ACCOUNT_ID,
+        createdAt: NOW,
+        firstNameTh: 'ผู้ดูแล',
+        lastNameTh: 'สำรอง',
+        status: 'suspended',
+        version: 2,
+      },
+      outcome: 'updated',
+    });
+    await expect(repository.setAdminStatus(suspendInput)).resolves.toEqual({
+      admin: {
+        accountId: SECOND_ADMIN_ACCOUNT_ID,
+        createdAt: NOW,
+        firstNameTh: 'ผู้ดูแล',
+        lastNameTh: 'สำรอง',
+        status: 'suspended',
+        version: 2,
+      },
+      outcome: 'replayed',
+    });
+    await expect(
+      repository.setAdminStatus({ ...suspendInput, reason: 'เหตุผลอื่นที่ไม่ตรงกับ audit เดิม' }),
+    ).resolves.toEqual({ outcome: 'idempotency_conflict' });
+
+    const sessionAfterSuspend = await database.sql<{ revocation_reason: string | null }[]>`
+      select revocation_reason from private.authentication_sessions
+      where session_id_hash = ${sessionIdHash}
+    `;
+    expect(sessionAfterSuspend).toEqual([{ revocation_reason: 'admin_suspended' }]);
+
+    await expect(
+      repository.setAdminStatus({
+        ...suspendInput,
+        expectedVersion: 2,
+        idempotencyKey: REACTIVATE_IDEMPOTENCY_KEY,
+        reason: 'คืนสิทธิ์หลังตรวจสอบแล้ว',
+        status: 'active',
+      }),
+    ).resolves.toMatchObject({ admin: { status: 'active', version: 3 }, outcome: 'updated' });
+    await expect(
+      repository.setAdminStatus({
+        ...suspendInput,
+        expectedVersion: 99,
+        idempotencyKey: STALE_VERSION_IDEMPOTENCY_KEY,
+      }),
+    ).resolves.toEqual({ outcome: 'version_conflict' });
   });
 
   it('corrects Roster Name idempotently with audit and public cache invalidation', async () => {
@@ -442,12 +569,20 @@ describe('PostgresAccountControlsRepository integration', () => {
       generate: (byteLength) => (byteLength === 18 ? temporaryPassword : 'student-session-token'),
     };
     const passwordProvider = { resetPassword: jest.fn().mockResolvedValue(undefined) };
+    const adminProvisioning = new AdminProvisioningService(
+      { adminLoginExists: jest.fn(), createAdminAccount: jest.fn() },
+      { createIdentity: jest.fn(), deleteIdentity: jest.fn() },
+      { now: () => NOW },
+      identityProtector,
+      tokenGenerator,
+    );
     const controls = new AccountControlsService(
       repository,
       passwordProvider,
       { now: () => NOW },
       identityProtector,
       tokenGenerator,
+      adminProvisioning,
     );
 
     await expect(
@@ -533,12 +668,16 @@ describe('PostgresAccountControlsRepository integration', () => {
         where actor_account_id = ${ADMIN_ACCOUNT_ID}
       `;
       await transaction`
+        delete from private.admin_status_change_audit_events
+        where admin_account_id in (${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID})
+      `;
+      await transaction`
         delete from private.authentication_audit_events
-        where account_id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
+        where account_id in (${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
       `;
       await transaction`
         delete from private.authentication_sessions
-        where account_id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
+        where account_id in (${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID})
       `;
       await transaction`
         delete from private.authentication_rate_limits
@@ -555,11 +694,15 @@ describe('PostgresAccountControlsRepository integration', () => {
       `;
       await transaction`
         delete from private.person_names
-        where person_id in (${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
+        where person_id in (
+          ${ADMIN_PERSON_ID}, ${SECOND_ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID}
+        )
       `;
       await transaction`
         delete from public.account_roles
-        where account_id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID})
+        where account_id in (
+          ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID}
+        )
       `;
       await transaction`
         update public.academic_settings
@@ -568,14 +711,18 @@ describe('PostgresAccountControlsRepository integration', () => {
       `;
       await transaction`
         delete from public.accounts
-        where id in (${ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID})
+        where id in (
+          ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_ACCOUNT_ID}
+        )
       `;
       await transaction`
         delete from public.students where person_id in (${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
       `;
       await transaction`
         delete from public.people
-        where id in (${ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID})
+        where id in (
+          ${ADMIN_PERSON_ID}, ${SECOND_ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID}, ${NAME_STUDENT_PERSON_ID}
+        )
       `;
     });
   }

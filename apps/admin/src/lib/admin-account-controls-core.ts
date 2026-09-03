@@ -31,9 +31,45 @@ const passwordResetSchema = z
   })
   .strict();
 
+const adminAccountControlsSchema = z
+  .object({
+    accountId: z.uuid(),
+    createdAt: z.iso.datetime(),
+    firstNameTh: z.string().min(1),
+    lastNameTh: z.string().min(1),
+    status: z.enum(['active', 'suspended']),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+const studentListPageSchema = z
+  .object({
+    items: z.array(studentAccountControlsSchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
+const adminListPageSchema = z
+  .object({
+    items: z.array(adminAccountControlsSchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
+const createAdminResultSchema = z
+  .object({
+    admin: z.object({ adminLogin: z.string().min(1) }).strict(),
+    temporaryPassword: z.string().min(12).max(128),
+  })
+  .strict();
+
 export type AdminAcademicYear = z.infer<typeof academicYearSchema>;
 export type AdminStudentAccountControls = z.infer<typeof studentAccountControlsSchema>;
 export type AdminPasswordReset = z.infer<typeof passwordResetSchema>;
+export type AdminAccountControls = z.infer<typeof adminAccountControlsSchema>;
+export type AdminStudentListPage = z.infer<typeof studentListPageSchema>;
+export type AdminAdminListPage = z.infer<typeof adminListPageSchema>;
+export type AdminCreateAdminResult = z.infer<typeof createAdminResultSchema>;
 
 interface AdminAccountControlsCoreConfig {
   adminBffSecret: string;
@@ -135,6 +171,70 @@ export class AdminAccountControlsCoreClient {
       sessionToken,
     });
   }
+
+  listStudents(
+    sessionToken: string,
+    input: { cursor: string | null; search: string | null },
+  ): Promise<AdminStudentListPage> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/account-controls/students${toQueryString(input)}`,
+      responseSchema: studentListPageSchema,
+      sessionToken,
+    });
+  }
+
+  listAdmins(
+    sessionToken: string,
+    input: { cursor: string | null; search: string | null },
+  ): Promise<AdminAdminListPage> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/account-controls/admins${toQueryString(input)}`,
+      responseSchema: adminListPageSchema,
+      sessionToken,
+    });
+  }
+
+  createAdmin(
+    sessionToken: string,
+    input: { adminLogin: string; firstNameTh: string; lastNameTh: string },
+  ): Promise<AdminCreateAdminResult> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: '/v1/internal/admin/account-controls/admins',
+      responseSchema: createAdminResultSchema,
+      sessionToken,
+    });
+  }
+
+  setAdminStatus(
+    sessionToken: string,
+    accountId: string,
+    input: {
+      action: 'active' | 'suspended';
+      expectedVersion: number;
+      idempotencyKey: string;
+      reason: string;
+    },
+  ): Promise<AdminAccountControls> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/account-controls/admins/${accountId}/status`,
+      responseSchema: adminAccountControlsSchema,
+      sessionToken,
+    });
+  }
+}
+
+function toQueryString(input: { cursor: string | null; search: string | null }): string {
+  const params = new URLSearchParams();
+  if (input.cursor !== null) params.set('cursor', input.cursor);
+  if (input.search !== null) params.set('search', input.search);
+  const query = params.toString();
+  return query.length === 0 ? '' : `?${query}`;
 }
 
 export { CoreClientError as AdminAccountControlsCoreError };

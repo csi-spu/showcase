@@ -4,10 +4,13 @@ import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import type {
   AccountControlsRepository,
   AcademicYearSettings,
+  AdminAccountControls,
   BeginPasswordResetResult,
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
+  ListPage,
+  SetAdminStatusResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
 } from '../application/account-controls.ports';
@@ -15,6 +18,7 @@ import {
   evaluateAccessExtension,
   evaluateAcademicYearChange,
 } from '../domain/account-control-policy';
+import { decodeListCursor, encodeListCursor } from './list-cursor';
 
 interface AcademicYearRow {
   current_academic_year: number | null;
@@ -67,6 +71,28 @@ interface PersonNameCorrectionAuditRow {
   student_account_id: string;
 }
 
+interface StudentListRow extends StudentAccountRow {
+  created_at: Date;
+}
+
+interface AdminRow {
+  account_id: string;
+  control_version: number;
+  created_at: Date;
+  first_name_th: string;
+  last_name_th: string;
+  status: 'active' | 'suspended';
+}
+
+interface AdminStatusAuditRow {
+  actor_account_id: string;
+  admin_account_id: string;
+  expected_version: number;
+  reason: string;
+  resulting_version: number;
+  status: 'active' | 'suspended';
+}
+
 @Injectable()
 export class PostgresAccountControlsRepository implements AccountControlsRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -81,6 +107,174 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     return rows[0] === undefined
       ? { currentAcademicYear: null, updatedAt: new Date(0), version: 0 }
       : this.mapAcademicYear(rows[0]);
+  }
+
+  async listStudents(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<StudentAccountControls>> {
+    const cursor = input.cursor === null ? null : decodeListCursor(input.cursor);
+    const rows = await this.database.sql<StudentListRow[]>`
+      select
+        student.access_ends_academic_year,
+        account.id as account_id,
+        account.control_version,
+        account.created_at,
+        settings.current_academic_year,
+        student.entry_year,
+        person_name.first_name_th,
+        person_name.last_name_th,
+        account.provider_user_id
+      from public.accounts as account
+      join public.account_roles as student_role
+        on student_role.account_id = account.id and student_role.role = 'student'
+      join public.students as student on student.person_id = account.person_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      left join public.academic_settings as settings on settings.singleton = true
+      where (
+          ${input.search}::text is null
+          or lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+            like '%' || lower(${input.search}) || '%'
+        )
+        and (
+          ${cursor === null}
+          or (account.created_at, account.id) < (${cursor?.createdAt ?? null}, ${cursor?.accountId ?? null})
+        )
+      order by account.created_at desc, account.id desc
+      limit ${input.limit + 1}
+    `;
+    return this.toListPage(rows, input.limit, (row) => this.mapStudent(row));
+  }
+
+  async listAdmins(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<AdminAccountControls>> {
+    const cursor = input.cursor === null ? null : decodeListCursor(input.cursor);
+    const rows = await this.database.sql<AdminRow[]>`
+      select
+        account.id as account_id,
+        account.control_version,
+        account.created_at,
+        account.status,
+        person_name.first_name_th,
+        person_name.last_name_th
+      from public.accounts as account
+      join public.account_roles as admin_role
+        on admin_role.account_id = account.id and admin_role.role = 'admin'
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      where (
+          ${input.search}::text is null
+          or lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+            like '%' || lower(${input.search}) || '%'
+        )
+        and (
+          ${cursor === null}
+          or (account.created_at, account.id) < (${cursor?.createdAt ?? null}, ${cursor?.accountId ?? null})
+        )
+      order by account.created_at desc, account.id desc
+      limit ${input.limit + 1}
+    `;
+    return this.toListPage(rows, input.limit, (row) => this.mapAdmin(row));
+  }
+
+  async setAdminStatus(input: {
+    actorAccountId: string;
+    adminAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    now: Date;
+    reason: string;
+    status: 'active' | 'suspended';
+  }): Promise<SetAdminStatusResult> {
+    if (input.actorAccountId === input.adminAccountId) {
+      return { outcome: 'self_status_change' };
+    }
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const audits = await transaction<AdminStatusAuditRow[]>`
+        select actor_account_id, admin_account_id, expected_version, reason, resulting_version, status
+        from private.admin_status_change_audit_events
+        where idempotency_key = ${input.idempotencyKey}
+        limit 1
+      `;
+      const audit = audits[0];
+      if (audit !== undefined) {
+        if (
+          audit.actor_account_id !== input.actorAccountId ||
+          audit.admin_account_id !== input.adminAccountId ||
+          audit.expected_version !== input.expectedVersion ||
+          audit.reason !== input.reason ||
+          audit.status !== input.status
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayed = await this.findAdminByAccount(transaction, input.adminAccountId);
+        return replayed === null
+          ? { outcome: 'not_found' }
+          : { admin: replayed, outcome: 'replayed' };
+      }
+
+      const admin = await this.findAdminByAccount(transaction, input.adminAccountId, true);
+      if (admin === null) return { outcome: 'not_found' };
+      if (admin.version !== input.expectedVersion) return { outcome: 'version_conflict' };
+      if (admin.status === input.status) return { admin, outcome: 'unchanged' };
+      if (input.status === 'suspended' && admin.status === 'active') {
+        const activeAdmins = await transaction<{ count: number }[]>`
+          select count(*)::integer as count
+          from (
+            select account.id
+            from public.accounts as account
+            join public.account_roles as admin_role
+              on admin_role.account_id = account.id and admin_role.role = 'admin'
+            where account.status = 'active'
+            for update of account
+          ) as locked_active_admin
+        `;
+        if ((activeAdmins[0]?.count ?? 0) <= 1) {
+          return { outcome: 'last_active_admin' };
+        }
+      }
+
+      const resultingVersion = admin.version + 1;
+      await transaction`
+        update public.accounts
+        set status = ${input.status}, control_version = ${resultingVersion}, updated_at = ${input.now}
+        where id = ${input.adminAccountId}
+      `;
+      if (input.status === 'suspended') {
+        await transaction`
+          update private.authentication_sessions
+          set revoked_at = ${input.now}, revocation_reason = 'admin_suspended'
+          where account_id = ${input.adminAccountId} and revoked_at is null
+        `;
+      }
+      await transaction`
+        insert into private.admin_status_change_audit_events (
+          idempotency_key, actor_account_id, admin_account_id,
+          previous_status, status, reason, expected_version, resulting_version, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${input.adminAccountId},
+          ${admin.status}, ${input.status}, ${input.reason}, ${input.expectedVersion},
+          ${resultingVersion}, ${input.now}
+        )
+      `;
+      await transaction`
+        insert into private.authentication_audit_events (
+          account_id, event_type, occurred_at
+        ) values (
+          ${input.adminAccountId},
+          ${input.status === 'suspended' ? 'admin_status_suspended' : 'admin_status_reactivated'},
+          ${input.now}
+        )
+      `;
+      return {
+        admin: { ...admin, status: input.status, version: resultingVersion },
+        outcome: 'updated',
+      };
+    });
   }
 
   async updateAcademicYear(input: {
@@ -658,6 +852,71 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     return row === undefined
       ? null
       : { ...this.mapStudent(row), providerUserId: row.provider_user_id };
+  }
+
+  private async findAdminByAccount(
+    transaction: postgres.TransactionSql,
+    accountId: string,
+    shouldLock = false,
+  ): Promise<AdminAccountControls | null> {
+    const rows = shouldLock
+      ? await transaction<AdminRow[]>`
+          select
+            account.id as account_id,
+            account.control_version,
+            account.created_at,
+            account.status,
+            person_name.first_name_th,
+            person_name.last_name_th
+          from public.accounts as account
+          join public.account_roles as admin_role
+            on admin_role.account_id = account.id and admin_role.role = 'admin'
+          join private.person_names as person_name on person_name.person_id = account.person_id
+          where account.id = ${accountId}
+          for update of account
+        `
+      : await transaction<AdminRow[]>`
+          select
+            account.id as account_id,
+            account.control_version,
+            account.created_at,
+            account.status,
+            person_name.first_name_th,
+            person_name.last_name_th
+          from public.accounts as account
+          join public.account_roles as admin_role
+            on admin_role.account_id = account.id and admin_role.role = 'admin'
+          join private.person_names as person_name on person_name.person_id = account.person_id
+          where account.id = ${accountId}
+        `;
+    const row = rows[0];
+    return row === undefined ? null : this.mapAdmin(row);
+  }
+
+  private toListPage<Row extends { account_id: string; created_at: Date }, Mapped>(
+    rows: Row[],
+    limit: number,
+    map: (row: Row) => Mapped,
+  ): ListPage<Mapped> {
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    return {
+      items: page.map(map),
+      nextCursor:
+        hasMore && last !== undefined ? encodeListCursor(last.created_at, last.account_id) : null,
+    };
+  }
+
+  private mapAdmin(row: AdminRow): AdminAccountControls {
+    return {
+      accountId: row.account_id,
+      createdAt: row.created_at,
+      firstNameTh: row.first_name_th,
+      lastNameTh: row.last_name_th,
+      status: row.status,
+      version: row.control_version,
+    };
   }
 
   private async hasPendingPasswordReset(

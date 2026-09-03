@@ -1143,6 +1143,8 @@ model accounts {
   academic_year_change_audit_events                                                                        academic_year_change_audit_events[]
   admin_auth_identities                                                                                    admin_auth_identities?
   admin_correction_audits                                                                                  admin_correction_audits[]
+  admin_status_change_audit_events_admin_status_change_audit_events_actor_account_idToaccounts             admin_status_change_audit_events[]        @relation("admin_status_change_audit_events_actor_account_idToaccounts")
+  admin_status_change_audit_events_admin_status_change_audit_events_admin_account_idToaccounts             admin_status_change_audit_events[]        @relation("admin_status_change_audit_events_admin_account_idToaccounts")
   attribution_account_lookup_rate_limits                                                                   attribution_account_lookup_rate_limits?
   attribution_invitation_operations                                                                        attribution_invitation_operations[]
   attribution_invitation_sessions                                                                          attribution_invitation_sessions[]
@@ -1371,5 +1373,24 @@ model verification {
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@index([identifier])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model admin_status_change_audit_events {
+  id                                                                   BigInt   @id @default(autoincrement())
+  idempotency_key                                                      String   @unique @db.Uuid
+  actor_account_id                                                     String   @db.Uuid
+  admin_account_id                                                     String   @db.Uuid
+  previous_status                                                      String
+  status                                                               String
+  reason                                                               String
+  expected_version                                                     Int
+  resulting_version                                                    Int
+  occurred_at                                                          DateTime @db.Timestamptz(6)
+  accounts_admin_status_change_audit_events_actor_account_idToaccounts accounts @relation("admin_status_change_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_admin_status_change_audit_events_admin_account_idToaccounts accounts @relation("admin_status_change_audit_events_admin_account_idToaccounts", fields: [admin_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([admin_account_id, occurred_at(sort: Desc)], map: "admin_status_change_target_time_idx")
   @@schema("private")
 }
