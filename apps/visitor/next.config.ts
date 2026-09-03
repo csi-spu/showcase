@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
@@ -14,4 +15,22 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 };
 
-export default withNextIntl(nextConfig);
+const releaseName = process.env.GIT_SHA && `showcase-visitor@${process.env.GIT_SHA}`;
+const canUploadSourceMaps = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && releaseName,
+);
+const nextIntlConfig = withNextIntl(nextConfig);
+
+export default process.env.NEXT_PUBLIC_SENTRY_DSN
+  ? withSentryConfig(nextIntlConfig, {
+      ...(process.env.SENTRY_AUTH_TOKEN ? { authToken: process.env.SENTRY_AUTH_TOKEN } : {}),
+      ...(process.env.SENTRY_ORG ? { org: process.env.SENTRY_ORG } : {}),
+      project: 'showcase-visitor',
+      ...(releaseName ? { release: { name: releaseName } } : {}),
+      silent: !process.env.CI,
+      sourcemaps: { disable: !canUploadSourceMaps },
+      suppressOnRouterTransitionStartWarning: true,
+      telemetry: false,
+      widenClientFileUpload: true,
+    })
+  : nextIntlConfig;

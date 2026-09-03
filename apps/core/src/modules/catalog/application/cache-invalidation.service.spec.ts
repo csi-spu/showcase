@@ -2,11 +2,18 @@ import type {
   CacheInvalidationRepository,
   PublicCacheInvalidator,
 } from './cache-invalidation.ports';
+import { reportOperationalError } from '../../../observability/sentry';
 import { CacheInvalidationService, cacheInvalidationTags } from './cache-invalidation.service';
+
+jest.mock('../../../observability/sentry', () => ({ reportOperationalError: jest.fn() }));
 
 const NOW = new Date('2026-08-26T08:00:00.000Z');
 
 describe('CacheInvalidationService', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('maps a Work event to bounded entity, collection, sitemap, and media tags', () => {
     expect(
       cacheInvalidationTags({
@@ -64,6 +71,7 @@ describe('CacheInvalidationService', () => {
     });
     const service = new CacheInvalidationService(repository, invalidator);
     await service.processNext(NOW);
+    expect(reportOperationalError).not.toHaveBeenCalled();
     expect(repository.fail.mock.calls.at(-1)).toEqual([
       42,
       new Date('2026-08-26T08:00:05.000Z'),
@@ -79,6 +87,11 @@ describe('CacheInvalidationService', () => {
     });
     await service.processNext(NOW);
     expect(repository.fail.mock.calls.at(-1)).toEqual([42, null, 'CDN_DOWN', expect.any(Date)]);
+    expect(reportOperationalError).toHaveBeenCalledWith(expect.any(Error), {
+      errorCode: 'CACHE_INVALIDATION_TERMINAL_FAILURE',
+      operation: 'public_cache_invalidation_failed',
+      runtime: 'cache-worker',
+    });
   });
 
   it('coalesces multiple deliveries into one provider purge', async () => {

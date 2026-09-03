@@ -14,15 +14,28 @@ COPY apps/visitor/package.json apps/visitor/package.json
 COPY apps/core/package.json apps/core/package.json
 COPY packages/core-client/package.json packages/core-client/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
+COPY packages/observability/package.json packages/observability/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
 COPY . .
 ARG GIT_SHA
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_ORG
+ARG SENTRY_UPLOAD_SOURCE_MAPS=false
 ENV GIT_SHA=$GIT_SHA
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV SENTRY_ORG=$SENTRY_ORG
 ENV NODE_ENV=production
-RUN pnpm --filter @showcase/student build
+RUN pnpm --filter @showcase/observability build
+RUN --mount=type=secret,id=sentry-auth-token \
+    if [ "$SENTRY_UPLOAD_SOURCE_MAPS" = "true" ]; then \
+      export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry-auth-token)" && \
+      test -n "$SENTRY_AUTH_TOKEN" && test -n "$SENTRY_ORG" && \
+      test -n "$NEXT_PUBLIC_SENTRY_DSN"; \
+    fi && \
+    pnpm --filter @showcase/student build
 
 FROM node:22.18.0-alpine3.22 AS runner
 ARG GIT_SHA

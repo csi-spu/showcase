@@ -35,7 +35,9 @@ CI uploads the versioned JSON plan as a workflow artifact. The production workfl
 
 Image names are `ghcr.io/csi-spu/showcase-<app>:sha-<40-character-commit-sha>`. No moving tag participates in deployment. Each selected image includes the source SHA and is built as a non-root container with SBOM and provenance attestations.
 
-The production workflow builds selected images once after CI. Runtime configuration belongs in Coolify, and public frontend build variables remain avoided.
+The production workflow builds selected images once after CI. Runtime configuration belongs in Coolify except the three public Sentry browser DSNs accepted by ADR 0016. Those DSNs are baked into their matching frontend image; no private credential is a build argument.
+
+Every production image build uploads source maps to its matching Sentry project before publishing the image. GitHub passes `SENTRY_AUTH_TOKEN` only as a BuildKit secret and passes the non-secret `SENTRY_ORG` variable separately. A missing configuration value or failed upload fails that image build. Release names use `showcase-<app>@<full-source-sha>`.
 
 ## Production deployment
 

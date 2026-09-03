@@ -1,12 +1,16 @@
+import './instrument.js';
+
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { flushMediaSentry, reportMediaError } from './sentry.js';
 
 const MAX_OBJECT_BYTES = 5 * 1_024 * 1_024;
 
 interface MediaServerOptions {
   allowedUploadOrigin: string;
+  reportError?: (error: unknown) => void;
   root: string;
   signingSecret: string;
 }
@@ -14,6 +18,9 @@ interface MediaServerOptions {
 export function createMediaServer(options: MediaServerOptions) {
   return createServer((request, response) => {
     void handleRequest(request, response, options).catch((error: unknown) => {
+      if (!(error instanceof BodyTooLargeError)) {
+        (options.reportError ?? reportMediaError)(error);
+      }
       send(
         response,
         error instanceof BodyTooLargeError ? 413 : 500,
@@ -188,9 +195,18 @@ if (process.argv[1]?.endsWith('server.js') === true) {
   const allowedUploadOrigin = new URL(studentUrl).origin;
   if (allowedUploadOrigin !== studentUrl) throw new Error('STUDENT_URL_MUST_BE_AN_ORIGIN');
   const port = Number(process.env.PORT ?? '4191');
-  createMediaServer({
+  const server = createMediaServer({
     allowedUploadOrigin,
     root: process.env.STORAGE_ROOT ?? '/data',
     signingSecret: secret,
-  }).listen(port, process.env.HOST ?? '0.0.0.0');
+  });
+  server.listen(port, process.env.HOST ?? '0.0.0.0');
+
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => {
+      server.close(() => {
+        void flushMediaSentry();
+      });
+    });
+  }
 }

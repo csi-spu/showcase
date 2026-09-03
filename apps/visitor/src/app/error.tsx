@@ -1,11 +1,16 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
 import { PublicFeedback } from './public-page';
 import { PublicShell } from './public-shell';
 
-export default function Error({ retry }: { error: Error; retry: () => void }) {
+export default function Error({ error, reset }: { error: Error; reset: () => void }) {
   const t = useTranslations('States');
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
 
   return (
     <PublicShell>
@@ -14,7 +19,7 @@ export default function Error({ retry }: { error: Error; retry: () => void }) {
           actionLabel={t('errorAction')}
           code="ERROR"
           description={t('errorDescription')}
-          onAction={retry}
+          onAction={reset}
           role="alert"
           title={t('errorTitle')}
         />

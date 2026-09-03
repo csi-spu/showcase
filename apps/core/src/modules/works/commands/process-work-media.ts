@@ -1,8 +1,11 @@
+import '../../../instrument';
+
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import sharp from 'sharp';
 import { WorkMediaService } from '../application/work-media.service';
 import { WorkMediaProcessorModule } from './work-media-processor.module';
+import { flushSentry, reportOperationalError } from '../../../observability/sentry';
 
 const MAX_JOBS_PER_RUN = 20;
 const POLL_INTERVAL_MILLISECONDS = 2_000;
@@ -117,14 +120,20 @@ function waitForNextPoll(milliseconds: number, signal: AbortSignal): Promise<voi
   });
 }
 
-export function reportWorkMediaProcessorFailure(error: unknown): void {
+export async function reportWorkMediaProcessorFailure(error: unknown): Promise<void> {
   const logger = new Logger('WorkMediaProcessor');
   logger.error({
     ...describeProcessorError(error),
     errorCode: 'WORK_MEDIA_PROCESSOR_FAILED',
     operation: 'work_media_processor_run',
   });
+  reportOperationalError(error, {
+    errorCode: 'WORK_MEDIA_PROCESSOR_FAILED',
+    operation: 'work_media_processor_run',
+    runtime: 'media-processor',
+  });
   process.exitCode = 1;
+  await flushSentry();
 }
 
 function describeProcessorError(error: unknown): {

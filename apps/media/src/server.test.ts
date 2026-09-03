@@ -145,6 +145,40 @@ test('rejects browser upload preflight from an unconfigured origin', async () =>
   }
 });
 
+test('reports unexpected storage failures but not expected authorization responses', async () => {
+  const reportedErrors: unknown[] = [];
+  const server = createMediaServer({
+    allowedUploadOrigin: STUDENT_ORIGIN,
+    reportError: (error) => reportedErrors.push(error),
+    root: '/dev/null',
+    signingSecret: SECRET,
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string')
+    throw new Error('MEDIA_TEST_ADDRESS_MISSING');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const key = 'work-media/asset/master.webp';
+  try {
+    const failedUpload = await fetch(
+      signedUrl(origin, 'PUT', key, Math.floor(Date.now() / 1_000) + 60),
+      { body: new Uint8Array([1]), method: 'PUT' },
+    );
+    assert.equal(failedUpload.status, 500);
+    assert.equal(reportedErrors.length, 1);
+
+    const forbidden = await fetch(`${origin}/objects/${Buffer.from(key).toString('base64url')}`, {
+      method: 'GET',
+    });
+    assert.equal(forbidden.status, 403);
+    assert.equal(reportedErrors.length, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+  }
+});
+
 function signedUrl(origin: string, method: string, key: string, expires: number): string {
   const signature = createHmac('sha256', SECRET)
     .update(`${method}\n${key}\n${expires}`)

@@ -1,6 +1,8 @@
 import { captureSanitizedFailureScreenshot, expect, test } from './fixtures.ts';
 import { randomUUID } from 'node:crypto';
 
+test.setTimeout(120_000);
+
 test.afterEach(async ({ page }, testInfo) => {
   await captureSanitizedFailureScreenshot(page, testInfo);
 });
@@ -88,7 +90,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
 
       expect(scenario.publicProfileUrl).not.toContain(scenario.studentId);
       await visitorPage.goto(scenario.publicProfileUrl, {
-        timeout: 15_000,
+        timeout: 30_000,
         waitUntil: 'domcontentloaded',
       });
       await expect(

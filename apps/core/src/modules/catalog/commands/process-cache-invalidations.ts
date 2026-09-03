@@ -1,7 +1,10 @@
+import '../../../instrument';
+
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../../app.module';
 import { CacheInvalidationService } from '../application/cache-invalidation.service';
+import { flushSentry, reportOperationalError } from '../../../observability/sentry';
 
 const IDLE_POLL_MILLISECONDS = 1_000;
 const PROVIDER_RATE_LIMIT_MILLISECONDS = 12_000;
@@ -34,7 +37,7 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-void main().catch((error: unknown) => {
+void main().catch(async (error: unknown) => {
   const logger = new Logger('PublicCacheInvalidationWorker');
   logger.error({
     databaseErrorCode:
@@ -48,5 +51,11 @@ void main().catch((error: unknown) => {
     errorName: error instanceof Error ? error.name : 'UNKNOWN',
     operation: 'public_cache_invalidation_worker_run',
   });
+  reportOperationalError(error, {
+    errorCode: 'PUBLIC_CACHE_INVALIDATION_WORKER_FAILED',
+    operation: 'public_cache_invalidation_worker_run',
+    runtime: 'cache-worker',
+  });
   process.exitCode = 1;
+  await flushSentry();
 });

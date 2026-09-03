@@ -1,9 +1,14 @@
-import { ArgumentsHost, Logger } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
 import type { Response } from 'express';
+import { reportOperationalError } from '../../../observability/sentry';
+import { AuthError } from '../application/auth.error';
 import { AuthExceptionFilter } from './auth-exception.filter';
+
+jest.mock('../../../observability/sentry', () => ({ reportOperationalError: jest.fn() }));
 
 describe('AuthExceptionFilter', () => {
   afterEach(() => {
+    jest.clearAllMocks();
     jest.restoreAllMocks();
   });
 
@@ -35,5 +40,35 @@ describe('AuthExceptionFilter', () => {
       }),
     );
     expect(JSON.stringify(logger.mock.calls)).not.toContain('provider-token');
+    expect(reportOperationalError).toHaveBeenCalledWith(expect.any(Error), {
+      errorCode: 'AUTH_INTERNAL_ERROR',
+      operation: 'authentication_request',
+      runtime: 'api',
+    });
+  });
+
+  it('captures operational 5xx errors but excludes expected 4xx control flow', () => {
+    const json = jest.fn();
+    const status = jest.fn();
+    const response = { json, setHeader: jest.fn(), status } as unknown as Response;
+    status.mockReturnValue(response);
+    const host = {
+      switchToHttp: () => ({ getResponse: () => response }),
+    } as unknown as ArgumentsHost;
+    const filter = new AuthExceptionFilter();
+
+    filter.catch(new BadRequestException(), host);
+    filter.catch(new AuthError('UNAUTHENTICATED', 401), host);
+
+    expect(reportOperationalError).not.toHaveBeenCalled();
+
+    const unavailable = new AuthError('AUTH_PROVIDER_UNAVAILABLE', 503);
+    filter.catch(unavailable, host);
+
+    expect(reportOperationalError).toHaveBeenCalledWith(unavailable, {
+      errorCode: 'AUTH_PROVIDER_UNAVAILABLE',
+      operation: 'authentication_request_rejected',
+      runtime: 'api',
+    });
   });
 });

@@ -27,6 +27,16 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
       waitForService(new URL('/health', environment.studentUrl), 'STUDENT'),
       waitForService(new URL('/health', environment.visitorUrl), 'VISITOR'),
     ]);
+    await warmRoute(new URL('/', environment.adminUrl), 'ADMIN');
+    await warmRoute(new URL('/', environment.studentUrl), 'STUDENT');
+    await warmRoute(
+      new URL('/people/00000000-0000-4000-8000-000000000000', environment.visitorUrl),
+      'VISITOR_PROFILE',
+    );
+    await warmRoute(
+      new URL('/works/00000000-0000-4000-8000-000000000000', environment.visitorUrl),
+      'VISITOR_WORK',
+    );
     if (baseURL !== undefined && baseURL !== environment.studentUrl) {
       throw new Error('E2E_SETUP_CONFIGURATION_MISMATCH: Student base URL is not local');
     }
@@ -84,4 +94,15 @@ async function waitForService(url: URL, service: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`E2E_SETUP_${service}_UNAVAILABLE: readiness endpoint did not become healthy`);
+}
+
+async function warmRoute(url: URL, service: string): Promise<void> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+    await response.arrayBuffer();
+    if (response.status < 500) return;
+  } catch (error: unknown) {
+    throw new Error(`E2E_SETUP_${service}_UNAVAILABLE: route did not compile`, { cause: error });
+  }
+  throw new Error(`E2E_SETUP_${service}_UNAVAILABLE: route did not compile`);
 }

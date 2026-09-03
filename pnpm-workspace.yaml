@@ -13,6 +13,7 @@ onlyBuiltDependencies:
   - '@nestjs/core'
   - '@parcel/watcher'
   - '@scarf/scarf'
+  - '@sentry/cli'
   - '@swc/core'
   - 'sharp'
   - 'unrs-resolver'

@@ -1,6 +1,14 @@
 import { parseEnvironment } from './environment.schema';
 
 describe('parseEnvironment auth configuration', () => {
+  it('accepts an optional Sentry DSN without requiring monitoring in local development', () => {
+    expect(parseEnvironment({}).SENTRY_DSN).toBeUndefined();
+    expect(parseEnvironment({ SENTRY_DSN: '' }).SENTRY_DSN).toBeUndefined();
+    expect(
+      parseEnvironment({ SENTRY_DSN: 'https://public@example.ingest.sentry.io/123' }).SENTRY_DSN,
+    ).toBe('https://public@example.ingest.sentry.io/123');
+  });
+
   it('rejects the local shared API key placeholder in staging', () => {
     expect(() =>
       parseEnvironment({

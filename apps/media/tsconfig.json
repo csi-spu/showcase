@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "outDir": "dist",
     "rootDir": "src",
+    "sourceMap": true,
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

@@ -19,5 +19,6 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0013](0013-search-contributor-candidates-by-student-id-prefix.md)           | Search Contributor Candidates by Student ID prefix      |
 | [0014](0014-self-hosted-stateful-infrastructure.md)                          | Self-host Postgres, authentication, and media           |
 | [0015](0015-deploy-affected-images-directly-to-production.md)                | Deploy affected images directly to production           |
+| [0016](0016-use-sentry-cloud-for-error-monitoring.md)                        | Use Sentry Cloud for bounded error monitoring           |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

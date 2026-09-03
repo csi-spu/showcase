@@ -33,6 +33,7 @@ const environmentSchema = z
     MEDIA_SERVICE_URL: originSchema.optional(),
     MEDIA_SERVICE_HMAC_SECRET: z.string().min(32).optional(),
     PUBLIC_MEDIA_ORIGIN: originSchema.optional(),
+    SENTRY_DSN: z.preprocess((value) => (value === '' ? undefined : value), z.url().optional()),
     STUDENT_URL: originSchema.default('http://localhost:3002'),
     VISITOR_CACHE_SECRET: z.string().min(32).default(LOCAL_VISITOR_CACHE_SECRET),
     VISITOR_BFF_SECRET: z.string().min(32).default(LOCAL_VISITOR_BFF_SECRET),

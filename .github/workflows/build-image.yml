@@ -15,6 +15,19 @@ on:
         description: Full commit SHA to build
         required: true
         type: string
+      sentry_dsn:
+        description: Public runtime DSN; used only by browser applications at build time
+        required: false
+        type: string
+        default: ''
+      sentry_org:
+        description: Sentry organization slug used for source-map upload
+        required: true
+        type: string
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        description: Sentry organization token used only during the image build
+        required: true
 
 jobs:
   build:
@@ -47,6 +60,11 @@ jobs:
           push: true
           build-args: |
             GIT_SHA=${{ inputs.source_sha }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ inputs.sentry_dsn }}
+            SENTRY_ORG=${{ inputs.sentry_org }}
+            SENTRY_UPLOAD_SOURCE_MAPS=true
+          secrets: |
+            sentry-auth-token=${{ secrets.SENTRY_AUTH_TOKEN }}
           tags: ghcr.io/${{ github.repository_owner }}/showcase-${{ inputs.app }}:sha-${{ inputs.source_sha }}
           cache-from: type=gha,scope=${{ inputs.app }}
           cache-to: type=gha,mode=max,scope=${{ inputs.app }}
