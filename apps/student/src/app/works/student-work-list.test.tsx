@@ -63,7 +63,7 @@ describe('StudentWorkList', () => {
     expect(document.querySelector('[data-slot="card-footer"]')).toBeNull();
   });
 
-  it('does not offer secondary actions for a Published Work', () => {
+  it('offers creating a new Revision to edit a Published Work', () => {
     render(
       <StudentWorkList
         canEdit
@@ -78,9 +78,12 @@ describe('StudentWorkList', () => {
       />,
     );
 
-    expect(screen.getByRole('link', { name: 'ดูผลงานสาธารณะ: ผลงาน' })).toBeTruthy();
-    expect(screen.queryByText('เพิ่มเติม')).toBeNull();
-    expect(screen.queryByText('สร้างฉบับแก้ไข')).toBeNull();
+    const cardLink = screen.getByRole('link', { name: 'ดูผลงานสาธารณะ: ผลงาน' });
+    const menuTrigger = screen.getByText('เพิ่มเติม').closest('summary');
+    const editLink = screen.getByRole('link', { name: 'สร้างฉบับแก้ไข' });
+
+    expect(cardLink.contains(menuTrigger)).toBe(false);
+    expect(editLink.getAttribute('href')).toBe('/works/64000000-0000-4000-8000-000000000001');
   });
 
   it('shows a recoverable error when restoring a saved draft fails', async () => {

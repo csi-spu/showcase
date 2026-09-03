@@ -111,9 +111,7 @@ export function StudentWorkList({
                 {card}
               </Link>
             )}
-            {canEdit && work.publicationState !== 'published' ? (
-              <SecondaryActions labels={labels} work={work} />
-            ) : null}
+            {canEdit ? <SecondaryActions labels={labels} work={work} /> : null}
           </li>
         );
       })}
