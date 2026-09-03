@@ -32,6 +32,7 @@ import {
   ListAccountsQueryDto,
   ResetStudentPasswordDto,
   SetAdminStatusDto,
+  SetStudentStatusDto,
   StudentAccountLookupDto,
   UpdateAcademicYearDto,
 } from './account-controls.dto';
@@ -130,6 +131,24 @@ export class AdminAccountControlsController {
   ): Promise<StudentAccountControlsResult> {
     await this.authorize(authorization);
     return this.controls.findStudent(body.studentId);
+  }
+
+  @Post('students/:accountId/status')
+  @Header('Cache-Control', 'no-store')
+  async setStudentStatus(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) studentAccountId: string,
+    @Body() body: SetStudentStatusDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<StudentAccountControlsResult> {
+    const actor = await this.authorize(authorization);
+    return this.controls.setStudentStatus({
+      actorAccountId: actor.accountId,
+      expectedVersion: body.expectedVersion,
+      idempotencyKey: body.idempotencyKey,
+      reason: body.reason,
+      status: body.action,
+      studentAccountId,
+    });
   }
 
   @Post('students/:accountId/access-extension')

@@ -22,6 +22,7 @@ const STUDENT = {
   firstNameTh: 'สมชาย',
   lastNameTh: 'ใจดี',
   state: 'alumnus' as const,
+  status: 'active' as const,
   version: 2,
 };
 const ADMIN_ACCOUNT_ID = '40000000-0000-4000-8000-000000000001';
@@ -69,6 +70,7 @@ describe('Admin Account Controls API (e2e)', () => {
       temporaryPassword: 'one-time-random-password',
     }),
     setAdminStatus: jest.fn().mockResolvedValue({ ...ADMIN, status: 'suspended', version: 2 }),
+    setStudentStatus: jest.fn().mockResolvedValue({ ...STUDENT, status: 'suspended', version: 3 }),
     updateAcademicYear: jest
       .fn()
       .mockResolvedValue({ currentAcademicYear: 2578, updatedAt: UPDATED_AT, version: 5 }),
@@ -213,6 +215,47 @@ describe('Admin Account Controls API (e2e)', () => {
     });
   });
 
+  it('suspends a Student with a server-owned actor and a required reason', async () => {
+    const response = await authorized(
+      request(app.getHttpServer()).post(
+        `/v1/internal/admin/account-controls/students/${STUDENT_ACCOUNT_ID}/status`,
+      ),
+    )
+      .send({
+        action: 'suspended',
+        expectedVersion: 2,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: 'ระงับบัญชีตามคำขอจากคณะ',
+      })
+      .expect(201)
+      .expect('Cache-Control', 'no-store');
+
+    expect(response.body).toMatchObject({ status: 'suspended', version: 3 });
+    expect(controls.setStudentStatus).toHaveBeenCalledWith({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      expectedVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      reason: 'ระงับบัญชีตามคำขอจากคณะ',
+      status: 'suspended',
+      studentAccountId: STUDENT_ACCOUNT_ID,
+    });
+
+    // An unknown status or a missing reason must never reach the service.
+    for (const body of [
+      { action: 'archived', expectedVersion: 2, idempotencyKey: IDEMPOTENCY_KEY, reason: 'ระงับ' },
+      { action: 'suspended', expectedVersion: 2, idempotencyKey: IDEMPOTENCY_KEY },
+    ]) {
+      await authorized(
+        request(app.getHttpServer()).post(
+          `/v1/internal/admin/account-controls/students/${STUDENT_ACCOUNT_ID}/status`,
+        ),
+      )
+        .send(body)
+        .expect(400);
+    }
+    expect(controls.setStudentStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('lists Students and Admins, creates an Admin, and changes Admin status', async () => {
     const studentPage = await authorized(
       request(app.getHttpServer()).get(
@@ -288,6 +331,9 @@ describe('Admin Account Controls API (e2e)', () => {
       request(app.getHttpServer()).post(
         `/v1/internal/admin/account-controls/admins/${ADMIN_ACCOUNT_ID}/status`,
       ),
+      request(app.getHttpServer()).post(
+        `/v1/internal/admin/account-controls/students/${STUDENT_ACCOUNT_ID}/status`,
+      ),
     ]) {
       await test.set('x-admin-bff-secret', ADMIN_BFF_SECRET).expect(401);
     }
@@ -295,6 +341,7 @@ describe('Admin Account Controls API (e2e)', () => {
     expect(controls.listAdmins).not.toHaveBeenCalled();
     expect(controls.createAdmin).not.toHaveBeenCalled();
     expect(controls.setAdminStatus).not.toHaveBeenCalled();
+    expect(controls.setStudentStatus).not.toHaveBeenCalled();
   });
 
   it('rejects unknown fields and invalid Student IDs before account lookup', async () => {

@@ -20,6 +20,7 @@ const studentAccountControlsSchema = z
     firstNameTh: z.string().min(1),
     lastNameTh: z.string().min(1),
     state: z.enum(['alumnus', 'student', 'unavailable']),
+    status: z.enum(['active', 'suspended']),
     version: z.number().int().positive(),
   })
   .strict();
@@ -205,6 +206,25 @@ export class AdminAccountControlsCoreClient {
       method: 'POST',
       path: '/v1/internal/admin/account-controls/admins',
       responseSchema: createAdminResultSchema,
+      sessionToken,
+    });
+  }
+
+  setStudentStatus(
+    sessionToken: string,
+    accountId: string,
+    input: {
+      action: 'active' | 'suspended';
+      expectedVersion: number;
+      idempotencyKey: string;
+      reason: string;
+    },
+  ): Promise<AdminStudentAccountControls> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/account-controls/students/${accountId}/status`,
+      responseSchema: studentAccountControlsSchema,
       sessionToken,
     });
   }

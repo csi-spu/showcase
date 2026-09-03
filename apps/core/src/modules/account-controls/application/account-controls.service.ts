@@ -98,6 +98,38 @@ export class AccountControlsService {
     }
   }
 
+  async setStudentStatus(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    reason: string;
+    status: 'active' | 'suspended';
+    studentAccountId: string;
+  }): Promise<StudentAccountControlsResult> {
+    const reason = input.reason.trim();
+    if (reason.length === 0 || reason.length > 2_000) {
+      throw new AccountControlsError('STUDENT_STATUS_REASON_INVALID', 422);
+    }
+    const result = await this.repository.setStudentStatus({
+      ...input,
+      now: this.clock.now(),
+      reason,
+    });
+    if (result.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (result.outcome === 'not_found') {
+      throw new AccountControlsError('STUDENT_ACCOUNT_NOT_FOUND', 404);
+    }
+    if (result.outcome === 'version_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_VERSION_CONFLICT', 409);
+    }
+    if (!('student' in result)) {
+      throw new AccountControlsError('ACCOUNT_CONTROLS_SERVICE_UNAVAILABLE', 503);
+    }
+    return this.toStudentResult(result.student);
+  }
+
   async setAdminStatus(input: {
     actorAccountId: string;
     adminAccountId: string;

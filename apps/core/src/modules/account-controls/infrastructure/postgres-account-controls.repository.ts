@@ -11,6 +11,7 @@ import type {
   ExtendStudentAccessResult,
   ListPage,
   SetAdminStatusResult,
+  SetStudentStatusResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
 } from '../application/account-controls.ports';
@@ -43,6 +44,7 @@ interface StudentAccountRow {
   first_name_th: string;
   last_name_th: string;
   provider_user_id: string;
+  status: 'active' | 'suspended';
 }
 
 interface AccessExtensionAuditRow {
@@ -82,6 +84,15 @@ interface AdminRow {
   first_name_th: string;
   last_name_th: string;
   status: 'active' | 'suspended';
+}
+
+interface StudentStatusAuditRow {
+  actor_account_id: string;
+  expected_version: number;
+  reason: string;
+  resulting_version: number;
+  status: 'active' | 'suspended';
+  student_account_id: string;
 }
 
 interface AdminStatusAuditRow {
@@ -125,7 +136,8 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
         student.entry_year,
         person_name.first_name_th,
         person_name.last_name_th,
-        account.provider_user_id
+        account.provider_user_id,
+        account.status
       from public.accounts as account
       join public.account_roles as student_role
         on student_role.account_id = account.id and student_role.role = 'student'
@@ -178,6 +190,85 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       limit ${input.limit + 1}
     `;
     return this.toListPage(rows, input.limit, (row) => this.mapAdmin(row));
+  }
+
+  async setStudentStatus(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    now: Date;
+    reason: string;
+    status: 'active' | 'suspended';
+    studentAccountId: string;
+  }): Promise<SetStudentStatusResult> {
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const audits = await transaction<StudentStatusAuditRow[]>`
+        select actor_account_id, expected_version, reason, resulting_version, status, student_account_id
+        from private.student_status_change_audit_events
+        where idempotency_key = ${input.idempotencyKey}
+        limit 1
+      `;
+      const audit = audits[0];
+      if (audit !== undefined) {
+        if (
+          audit.actor_account_id !== input.actorAccountId ||
+          audit.student_account_id !== input.studentAccountId ||
+          audit.expected_version !== input.expectedVersion ||
+          audit.reason !== input.reason ||
+          audit.status !== input.status
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayed = await this.findStudentByAccount(transaction, input.studentAccountId);
+        return replayed === null
+          ? { outcome: 'not_found' }
+          : { outcome: 'replayed', student: replayed };
+      }
+
+      const student = await this.findStudentByAccount(transaction, input.studentAccountId, true);
+      if (student === null) return { outcome: 'not_found' };
+      if (student.version !== input.expectedVersion) return { outcome: 'version_conflict' };
+      if (student.status === input.status) return { outcome: 'unchanged', student };
+
+      const resultingVersion = student.version + 1;
+      await transaction`
+        update public.accounts
+        set status = ${input.status}, control_version = ${resultingVersion}, updated_at = ${input.now}
+        where id = ${input.studentAccountId}
+      `;
+      // A suspension has to end the Student's access now, not at the next login.
+      if (input.status === 'suspended') {
+        await transaction`
+          update private.authentication_sessions
+          set revoked_at = ${input.now}, revocation_reason = 'admin_suspended'
+          where account_id = ${input.studentAccountId} and revoked_at is null
+        `;
+      }
+      await transaction`
+        insert into private.student_status_change_audit_events (
+          idempotency_key, actor_account_id, student_account_id,
+          previous_status, status, reason, expected_version, resulting_version, occurred_at
+        ) values (
+          ${input.idempotencyKey}, ${input.actorAccountId}, ${input.studentAccountId},
+          ${student.status}, ${input.status}, ${input.reason}, ${input.expectedVersion},
+          ${resultingVersion}, ${input.now}
+        )
+      `;
+      await transaction`
+        insert into private.authentication_audit_events (
+          account_id, event_type, occurred_at
+        ) values (
+          ${input.studentAccountId},
+          ${input.status === 'suspended' ? 'student_status_suspended' : 'student_status_reactivated'},
+          ${input.now}
+        )
+      `;
+      return {
+        outcome: 'updated',
+        student: { ...student, status: input.status, version: resultingVersion },
+      };
+    });
   }
 
   async setAdminStatus(input: {
@@ -394,7 +485,8 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
         student.entry_year,
         person_name.first_name_th,
         person_name.last_name_th,
-        account.provider_user_id
+        account.provider_user_id,
+        account.status
       from private.student_auth_identities as identity
       join public.accounts as account on account.id = identity.account_id
       join public.account_roles as student_role
@@ -820,7 +912,8 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
             student.entry_year,
             person_name.first_name_th,
             person_name.last_name_th,
-            account.provider_user_id
+            account.provider_user_id,
+            account.status
           from public.accounts as account
           join public.account_roles as student_role
             on student_role.account_id = account.id and student_role.role = 'student'
@@ -839,7 +932,8 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
             student.entry_year,
             person_name.first_name_th,
             person_name.last_name_th,
-            account.provider_user_id
+            account.provider_user_id,
+            account.status
           from public.accounts as account
           join public.account_roles as student_role
             on student_role.account_id = account.id and student_role.role = 'student'
@@ -962,6 +1056,7 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       entryYear: row.entry_year,
       firstNameTh: row.first_name_th,
       lastNameTh: row.last_name_th,
+      status: row.status,
       version: row.control_version,
     };
   }

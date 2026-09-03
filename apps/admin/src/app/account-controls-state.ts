@@ -27,6 +27,7 @@ export interface StudentAccountControlsState {
   firstNameTh: string;
   lastNameTh: string;
   state: 'alumnus' | 'student' | 'unavailable';
+  status: 'active' | 'suspended';
   version: number;
 }
 

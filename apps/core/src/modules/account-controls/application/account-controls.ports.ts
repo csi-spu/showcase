@@ -14,6 +14,7 @@ export interface StudentAccountControls {
   entryYear: number;
   firstNameTh: string;
   lastNameTh: string;
+  status: 'active' | 'suspended';
   version: number;
 }
 
@@ -41,6 +42,10 @@ export type SetAdminStatusResult =
         | 'version_conflict';
     }
   | { admin: AdminAccountControls; outcome: 'replayed' | 'unchanged' | 'updated' };
+
+export type SetStudentStatusResult =
+  | { outcome: 'idempotency_conflict' | 'not_found' | 'version_conflict' }
+  | { outcome: 'replayed' | 'unchanged' | 'updated'; student: StudentAccountControls };
 
 export type UpdateAcademicYearResult =
   | { outcome: 'backward' | 'idempotency_conflict' | 'version_conflict' }
@@ -120,6 +125,16 @@ export interface AccountControlsRepository {
     limit: number;
     search: string | null;
   }): Promise<ListPage<StudentAccountControls>>;
+  setStudentStatus(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    now: Date;
+    reason: string;
+    status: 'active' | 'suspended';
+    studentAccountId: string;
+  }): Promise<SetStudentStatusResult>;
+
   setAdminStatus(input: {
     actorAccountId: string;
     adminAccountId: string;
