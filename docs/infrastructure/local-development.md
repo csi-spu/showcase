@@ -34,6 +34,8 @@ Update each `.env.example` with a non-secret placeholder whenever code adds an e
 
 Frontend Core URLs remain server-only as `CORE_URL`. Do not introduce `NEXT_PUBLIC_CORE_URL`: it would bake environment routing into the container and prevent one immutable image from remaining runtime-configurable.
 
+Sentry is optional locally. Leave `NEXT_PUBLIC_SENTRY_DSN` and server `SENTRY_DSN` empty to disable event delivery. Local builds skip source-map upload unless `SENTRY_UPLOAD_SOURCE_MAPS=true`; never use the production auth token for local work. The public browser DSN exception is limited to error routing and documented by ADR 0016.
+
 ## Lifecycle
 
 ```sh

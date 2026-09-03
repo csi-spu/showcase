@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { reportOperationalError } from '../../../observability/sentry';
 import {
   CACHE_INVALIDATION_REPOSITORY,
   PUBLIC_CACHE_INVALIDATOR,
@@ -64,6 +65,7 @@ export class CacheInvalidationService {
       });
     } catch (error: unknown) {
       const failedAt = new Date();
+      const terminalJobs = jobs.filter((job) => retryAt(now, job.attemptCount) === null);
       await Promise.all(
         jobs.map((job) =>
           this.repository.fail(
@@ -74,13 +76,18 @@ export class CacheInvalidationService {
           ),
         ),
       );
+      if (terminalJobs.length > 0) {
+        reportOperationalError(error, {
+          errorCode: 'CACHE_INVALIDATION_TERMINAL_FAILURE',
+          operation: 'public_cache_invalidation_failed',
+          runtime: 'cache-worker',
+        });
+      }
       this.logger.warn({
         errorCode: cacheInvalidationErrorCode(error),
         eventCount: jobs.length,
         eventIds: jobs.map((job) => job.eventId),
-        terminalEventIds: jobs
-          .filter((job) => retryAt(now, job.attemptCount) === null)
-          .map((job) => job.eventId),
+        terminalEventIds: terminalJobs.map((job) => job.eventId),
         operation: 'public_cache_invalidation_failed',
       });
     }

@@ -1,10 +1,16 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import * as Sentry from '@sentry/nextjs';
 import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
 
-export default function ProfileError({ reset }: { error: Error; reset: () => void }) {
+export default function ProfileError({ error, reset }: { error: Error; reset: () => void }) {
   const t = useTranslations('ProfilePage');
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <main className="grid min-h-svh place-items-center p-6">
       <section className="grid max-w-xl gap-4 rounded-surface border border-border bg-card p-8">

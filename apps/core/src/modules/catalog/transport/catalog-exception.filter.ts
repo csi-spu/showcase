@@ -2,6 +2,7 @@ import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } fr
 import type { Response } from 'express';
 import { CatalogError } from '../application/catalog.service';
 import { safeErrorLogFields } from '../../../observability/error-log';
+import { reportOperationalError } from '../../../observability/sentry';
 
 @Catch()
 export class CatalogExceptionFilter implements ExceptionFilter {
@@ -16,6 +17,11 @@ export class CatalogExceptionFilter implements ExceptionFilter {
     }
     if (error instanceof CatalogError) {
       if (error.status >= 500) {
+        reportOperationalError(error, {
+          errorCode: error.code,
+          operation: 'public_catalog_query_rejected',
+          runtime: 'api',
+        });
         this.logger.warn({
           ...safeErrorLogFields(error),
           errorCode: error.code,
@@ -26,6 +32,11 @@ export class CatalogExceptionFilter implements ExceptionFilter {
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
+    reportOperationalError(error, {
+      errorCode: 'CATALOG_INTERNAL_ERROR',
+      operation: 'public_catalog_query',
+      runtime: 'api',
+    });
     this.logger.error({
       ...safeErrorLogFields(error),
       errorCode: 'CATALOG_INTERNAL_ERROR',

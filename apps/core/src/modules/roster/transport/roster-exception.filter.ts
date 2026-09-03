@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AuthError } from '../../auth/application/auth.error';
 import { RosterImportError } from '../application/roster-import.service';
 import { safeErrorLogFields } from '../../../observability/error-log';
+import { reportOperationalError } from '../../../observability/sentry';
 
 @Catch()
 export class RosterExceptionFilter implements ExceptionFilter {
@@ -16,6 +17,11 @@ export class RosterExceptionFilter implements ExceptionFilter {
     }
     if (error instanceof AuthError || error instanceof RosterImportError) {
       if (error.status >= 500) {
+        reportOperationalError(error, {
+          errorCode: error.code,
+          operation: 'roster_request_rejected',
+          runtime: 'api',
+        });
         this.logger.warn({
           ...safeErrorLogFields(error),
           errorCode: error.code,
@@ -26,6 +32,11 @@ export class RosterExceptionFilter implements ExceptionFilter {
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
+    reportOperationalError(error, {
+      errorCode: 'ROSTER_INTERNAL_ERROR',
+      operation: 'roster_request',
+      runtime: 'api',
+    });
     this.logger.error({
       ...safeErrorLogFields(error),
       errorCode: 'ROSTER_INTERNAL_ERROR',

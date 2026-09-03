@@ -13,13 +13,29 @@ COPY apps/visitor/package.json apps/visitor/package.json
 COPY apps/core/package.json apps/core/package.json
 COPY packages/core-client/package.json packages/core-client/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
+COPY packages/observability/package.json packages/observability/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
 COPY . .
+ARG GIT_SHA
+ARG SENTRY_ORG
+ARG SENTRY_UPLOAD_SOURCE_MAPS=false
+ENV GIT_SHA=$GIT_SHA
+ENV SENTRY_ORG=$SENTRY_ORG
+ENV SENTRY_PROJECT=showcase-core
+ENV SENTRY_RELEASE=showcase-core@$GIT_SHA
+RUN pnpm --filter @showcase/observability build
 RUN pnpm --filter @showcase/core db:generate
 RUN pnpm --filter @showcase/core build
+RUN --mount=type=secret,id=sentry-auth-token \
+    if [ "$SENTRY_UPLOAD_SOURCE_MAPS" = "true" ]; then \
+      export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry-auth-token)" && \
+      test -n "$SENTRY_AUTH_TOKEN" && test -n "$SENTRY_ORG" && \
+      pnpm --filter @showcase/core exec sentry-cli sourcemaps inject dist && \
+      pnpm --filter @showcase/core exec sentry-cli sourcemaps upload --release="$SENTRY_RELEASE" dist; \
+    fi
 RUN pnpm deploy --filter @showcase/core --prod /prod/core
 RUN cd /prod/core && node -e "require('./generated/prisma-client')"
 

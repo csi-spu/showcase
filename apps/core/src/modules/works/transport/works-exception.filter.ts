@@ -11,6 +11,7 @@ import { WorkRecoveryError } from '../application/work-recovery.service';
 import { AttributionRemovalError } from '../application/attribution-removal.service';
 import { WorkContributorError } from '../application/work-contributors.service';
 import { safeErrorLogFields } from '../../../observability/error-log';
+import { reportOperationalError } from '../../../observability/sentry';
 
 @Catch()
 export class WorksExceptionFilter implements ExceptionFilter {
@@ -35,6 +36,13 @@ export class WorksExceptionFilter implements ExceptionFilter {
       error instanceof WorkRevisionError ||
       error instanceof WorkRecoveryError
     ) {
+      if (error.status >= 500) {
+        reportOperationalError(error, {
+          errorCode: error.code,
+          operation: 'work_request_rejected',
+          runtime: 'api',
+        });
+      }
       this.logger.warn({
         ...safeErrorLogFields(error),
         errorCode: error.code,
@@ -44,6 +52,11 @@ export class WorksExceptionFilter implements ExceptionFilter {
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
+    reportOperationalError(error, {
+      errorCode: 'WORKS_INTERNAL_ERROR',
+      operation: 'work_authoring_request',
+      runtime: 'api',
+    });
     this.logger.error({
       ...safeErrorLogFields(error),
       errorCode: 'WORKS_INTERNAL_ERROR',

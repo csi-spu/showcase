@@ -1,5 +1,6 @@
-import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import { ConfigService } from '@nestjs/config';
+import { reportOperationalError } from '../../../observability/sentry';
+import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import {
   type ClaimedRosterRow,
   type CreateRosterBatchInput,
@@ -17,6 +18,8 @@ import {
 import type { RosterErrorRow } from '../domain/roster-error-csv';
 import { RosterImportError, RosterImportService } from './roster-import.service';
 import { RosterWorker } from './roster.worker';
+
+jest.mock('../../../observability/sentry', () => ({ reportOperationalError: jest.fn() }));
 
 const NOW = new Date('2026-08-25T06:00:00.000Z');
 const ADMIN_ACCOUNT_ID = '10000000-0000-4000-8000-000000000001';
@@ -204,6 +207,10 @@ describe('RosterImportService and RosterWorker', () => {
     toSyntheticIdentity: (value) => `${value.padEnd(64, '0')}@auth.invalid`,
   };
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('creates a one-row Batch with Entry Year derived inside Core', async () => {
     const repository = new MemoryRosterRepository();
     const service = new RosterImportService(repository, clock, identityProtector);
@@ -378,6 +385,7 @@ describe('RosterImportService and RosterWorker', () => {
 
     await worker.processNextChunk();
     await worker.processNextChunk();
+    expect(reportOperationalError).not.toHaveBeenCalled();
     await worker.processNextChunk();
 
     await expect(service.getBatch('batch-1')).resolves.toMatchObject({
@@ -386,6 +394,11 @@ describe('RosterImportService and RosterWorker', () => {
       status: 'completed_with_errors',
     });
     expect(ensureIdentity).toHaveBeenCalledTimes(3);
+    expect(reportOperationalError).toHaveBeenCalledWith(expect.any(Error), {
+      errorCode: 'ROSTER_AUTH_PROVIDER_UNAVAILABLE',
+      operation: 'roster_row_provisioning_failed',
+      runtime: 'roster-worker',
+    });
     expect(repository.errors).toEqual([
       {
         errorCode: 'ROSTER_AUTH_PROVIDER_UNAVAILABLE',

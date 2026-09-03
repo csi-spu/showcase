@@ -2,6 +2,7 @@ import { ArgumentsHost, BadRequestException, Catch, ExceptionFilter, Logger } fr
 import { Response } from 'express';
 import { AuthError } from '../application/auth.error';
 import { safeErrorLogFields } from '../../../observability/error-log';
+import { reportOperationalError } from '../../../observability/sentry';
 
 @Catch()
 export class AuthExceptionFilter implements ExceptionFilter {
@@ -15,6 +16,11 @@ export class AuthExceptionFilter implements ExceptionFilter {
     }
 
     if (!(error instanceof AuthError)) {
+      reportOperationalError(error, {
+        errorCode: 'AUTH_INTERNAL_ERROR',
+        operation: 'authentication_request',
+        runtime: 'api',
+      });
       this.logger.error({
         ...safeErrorLogFields(error),
         errorCode: 'AUTH_INTERNAL_ERROR',
@@ -25,6 +31,11 @@ export class AuthExceptionFilter implements ExceptionFilter {
     }
 
     if (error.status >= 500) {
+      reportOperationalError(error, {
+        errorCode: error.code,
+        operation: 'authentication_request_rejected',
+        runtime: 'api',
+      });
       this.logger.warn({
         ...safeErrorLogFields(error),
         errorCode: error.code,

@@ -6,7 +6,7 @@ A value has one authoritative home.
 
 | Tier                            | Stores                                     | Must not store                   |
 | ------------------------------- | ------------------------------------------ | -------------------------------- |
-| GitHub repository variables     | non-secret Coolify application UUIDs       | tokens, provider credentials     |
+| GitHub repository variables     | non-secret Coolify UUIDs, Sentry org/DSNs  | tokens, provider credentials     |
 | GitHub `production` Environment | deployment-control credentials             | application runtime secrets      |
 | Coolify application environment | runtime configuration and provider secrets | GitHub token, source credentials |
 | Developer ignored env files     | local-only values                          | shared production credentials    |
@@ -20,9 +20,13 @@ Each GitHub Environment contains secrets named:
 - `COOLIFY_URL`
 - `COOLIFY_TOKEN`
 
+The repository contains the build-only secret `SENTRY_AUTH_TOKEN`. Grant only the organization/project and release scopes required to create releases and upload source maps. Never copy it to Coolify or a frontend environment.
+
 Repository variables identify applications:
 
 - `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_CACHE_WORKER`, `COOLIFY_PRODUCTION_MEDIA_PROCESSOR`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_VISITOR`, `COOLIFY_PRODUCTION_MEDIA`
+- `SENTRY_ORG`
+- `SENTRY_DSN_ADMIN`, `SENTRY_DSN_STUDENT`, `SENTRY_DSN_VISITOR`
 
 Protect the `production` Environment with required reviewers and restrict it to `main`. Successful `main` CI runs build only affected images before requesting this approval.
 
@@ -50,6 +54,7 @@ Current required keys:
 - `VISITOR_CACHE_SECRET`, an environment-specific high-entropy secret shared only with the Visitor cache-revalidation endpoint
 - `VISITOR_BFF_SECRET`, an environment-specific high-entropy secret used by Visitor to authenticate opaque source keys for public mutation rate limits
 - `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
+- `SENTRY_DSN`, the public Core project DSN; use the same value for Core-image workers
 
 Media receives `STUDENT_URL` as the exact allowed browser upload origin. It rejects other origins and validates each preflight against the signed `PUT` URL. The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
 
@@ -58,6 +63,8 @@ Admin receives `CORE_URL` and its own `API_KEY` at container runtime, set to the
 Student receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Student sends it as the `x-student-bff-secret` header. Because Core derives `ADMIN_BFF_SECRET`, `STUDENT_BFF_SECRET`, and `AUTH_IDENTITY_SECRET` from one `API_KEY`, rotating it is a combined Core+Admin+Student change, not an independent one. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
 
 Visitor receives `CORE_URL` and matching `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET` values at container runtime. Rotate either shared secret on Core and Visitor together. Visitor sends `VISITOR_BFF_SECRET` only to the same-environment HTTPS Core origin; neither secret enters browser code or logs. `VISITOR_BFF_SECRET` authenticates only an HMAC source key, never a raw address.
+
+Media receives the public Media project `SENTRY_DSN` at runtime. A DSN can submit events but cannot administer the Sentry project; treat the auth token, not the DSN, as the credential. Configure Sentry project access, server-side scrubbing, IP handling, retention, and alerts separately for all five projects.
 
 Provision an Admin from an authorized Core container after migrations are current:
 

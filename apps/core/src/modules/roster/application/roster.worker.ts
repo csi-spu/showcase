@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { reportOperationalError } from '../../../observability/sentry';
 import type { Clock } from '../../auth/application/auth.ports';
 import { AUTH_CLOCK } from '../../auth/application/auth.ports';
 import {
@@ -21,6 +22,7 @@ const POLL_MILLISECONDS = 1_000;
 export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(RosterWorker.name);
   private isProcessing = false;
+  private hasReportedProcessingFailure = false;
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
@@ -62,7 +64,16 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
     this.isProcessing = true;
     try {
       await this.processNextChunk();
-    } catch {
+      this.hasReportedProcessingFailure = false;
+    } catch (error: unknown) {
+      if (!this.hasReportedProcessingFailure) {
+        reportOperationalError(error, {
+          errorCode: 'ROSTER_WORKER_FAILED',
+          operation: 'roster_processing',
+          runtime: 'roster-worker',
+        });
+        this.hasReportedProcessingFailure = true;
+      }
       this.logger.error({ errorCode: 'ROSTER_WORKER_FAILED', operation: 'roster_processing' });
     } finally {
       this.isProcessing = false;
@@ -87,8 +98,15 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
         providerUserId: row.providerUserId,
         syntheticIdentity: row.syntheticIdentity,
       });
-    } catch {
+    } catch (error: unknown) {
       await this.recordRetryableFailure(row, attemptCount, 'ROSTER_AUTH_PROVIDER_UNAVAILABLE', now);
+      if (attemptCount >= MAX_ATTEMPTS) {
+        reportOperationalError(error, {
+          errorCode: 'ROSTER_AUTH_PROVIDER_UNAVAILABLE',
+          operation: 'roster_row_provisioning_failed',
+          runtime: 'roster-worker',
+        });
+      }
       return;
     }
 
@@ -105,8 +123,15 @@ export class RosterWorker implements OnModuleInit, OnApplicationShutdown {
         studentIdPrefixHashes: row.studentIdPrefixHashes,
         syntheticIdentity: row.syntheticIdentity,
       });
-    } catch {
+    } catch (error: unknown) {
       await this.recordRetryableFailure(row, attemptCount, 'ROSTER_PROCESSING_FAILED', now);
+      if (attemptCount >= MAX_ATTEMPTS) {
+        reportOperationalError(error, {
+          errorCode: 'ROSTER_PROCESSING_FAILED',
+          operation: 'roster_row_persistence_failed',
+          runtime: 'roster-worker',
+        });
+      }
     }
   }
 

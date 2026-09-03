@@ -124,7 +124,11 @@ jobs:
     with:
       app: ${{ matrix.app }}
       dockerfile: ${{ matrix.dockerfile }}
+      sentry_dsn: ${{ matrix.app == 'admin' && vars.SENTRY_DSN_ADMIN || matrix.app == 'student' && vars.SENTRY_DSN_STUDENT || matrix.app == 'visitor' && vars.SENTRY_DSN_VISITOR || '' }}
+      sentry_org: ${{ vars.SENTRY_ORG }}
       source_sha: ${{ needs.resolve-plan.outputs.source_sha }}
+    secrets:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   verify-images:
     if: github.event_name == 'workflow_dispatch'

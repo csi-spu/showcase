@@ -4,6 +4,7 @@ import { AuthError } from '../../auth/application/auth.error';
 import { ProfileError } from '../application/profiles.service';
 import { ProfilePhotoError } from '../application/profile-photo.service';
 import { safeErrorLogFields } from '../../../observability/error-log';
+import { reportOperationalError } from '../../../observability/sentry';
 
 @Catch()
 export class ProfilesExceptionFilter implements ExceptionFilter {
@@ -22,6 +23,11 @@ export class ProfilesExceptionFilter implements ExceptionFilter {
       error instanceof ProfilePhotoError
     ) {
       if (error.status >= 500) {
+        reportOperationalError(error, {
+          errorCode: error.code,
+          operation: 'profiles_request_rejected',
+          runtime: 'api',
+        });
         this.logger.warn({
           ...safeErrorLogFields(error),
           errorCode: error.code,
@@ -32,6 +38,11 @@ export class ProfilesExceptionFilter implements ExceptionFilter {
       response.status(error.status).json({ error: { code: error.code } });
       return;
     }
+    reportOperationalError(error, {
+      errorCode: 'PROFILES_INTERNAL_ERROR',
+      operation: 'profiles_request',
+      runtime: 'api',
+    });
     this.logger.error({
       ...safeErrorLogFields(error),
       errorCode: 'PROFILES_INTERNAL_ERROR',

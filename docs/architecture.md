@@ -12,9 +12,16 @@ flowchart LR
   Core --> Media[Self-hosted media service]
   Student -. authorized signed PUT .-> Media
   Visitor -. cacheable media GET .-> Media
+  Visitor -. redacted errors .-> Sentry[Sentry Cloud]
+  Admin -. redacted errors .-> Sentry
+  Student -. redacted errors .-> Sentry
+  Core -. redacted errors .-> Sentry
+  Media -. redacted errors .-> Sentry
 ```
 
 Core is the authoritative domain API and authentication service. Authenticated Next.js frontends are browser-facing BFFs: Server Components perform reads, Server Actions perform mutations, and host-only cookies never leave their frontend hostname. Frontends do not query the database. Media operations use short-lived HMAC-signed URLs issued by Core and validated by the dedicated storage service.
+
+All five deployable applications report errors to separate Sentry Cloud projects through a shared privacy scrubber. Error monitoring excludes user context, request content, credentials, Student IDs, free-form exception messages, tracing, replay, profiling, logs, and metrics. Sentry availability is outside health and readiness decisions.
 
 ## Deployable surfaces
 
