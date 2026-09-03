@@ -17,6 +17,31 @@ export interface StudentAccountControls {
   version: number;
 }
 
+export interface AdminAccountControls {
+  accountId: string;
+  createdAt: Date;
+  firstNameTh: string;
+  lastNameTh: string;
+  status: 'active' | 'suspended';
+  version: number;
+}
+
+export interface ListPage<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+export type SetAdminStatusResult =
+  | {
+      outcome:
+        | 'idempotency_conflict'
+        | 'last_active_admin'
+        | 'not_found'
+        | 'self_status_change'
+        | 'version_conflict';
+    }
+  | { admin: AdminAccountControls; outcome: 'replayed' | 'unchanged' | 'updated' };
+
 export type UpdateAcademicYearResult =
   | { outcome: 'backward' | 'idempotency_conflict' | 'version_conflict' }
   | { outcome: 'replayed' | 'updated'; settings: AcademicYearSettings };
@@ -85,6 +110,25 @@ export interface AccountControlsRepository {
     now: Date;
   }): Promise<void>;
   getAcademicYear(): Promise<AcademicYearSettings>;
+  listAdmins(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<AdminAccountControls>>;
+  listStudents(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<StudentAccountControls>>;
+  setAdminStatus(input: {
+    actorAccountId: string;
+    adminAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    now: Date;
+    reason: string;
+    status: 'active' | 'suspended';
+  }): Promise<SetAdminStatusResult>;
   updateAcademicYear(input: {
     actorAccountId: string;
     currentAcademicYear: number;

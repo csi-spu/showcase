@@ -61,7 +61,7 @@ export function AdminDashboard({ labels }: { labels: AdminDashboardLabels }) {
         <DashboardAction
           className="xl:col-span-7"
           description={labels.accountDescription}
-          href="/account-controls"
+          href="/accounts"
           icon={UserRoundCogIcon}
           title={labels.accountTitle}
         />

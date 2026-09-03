@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -19,11 +20,18 @@ import {
   AccountControlsService,
   type StudentAccountControlsResult,
 } from '../application/account-controls.service';
-import type { AcademicYearSettings } from '../application/account-controls.ports';
+import type {
+  AcademicYearSettings,
+  AdminAccountControls,
+  ListPage,
+} from '../application/account-controls.ports';
 import {
   CorrectStudentNameDto,
+  CreateAdminDto,
   ExtendStudentAccessDto,
+  ListAccountsQueryDto,
   ResetStudentPasswordDto,
+  SetAdminStatusDto,
   StudentAccountLookupDto,
   UpdateAcademicYearDto,
 } from './account-controls.dto';
@@ -55,6 +63,62 @@ export class AdminAccountControlsController {
   ): Promise<AcademicYearSettings> {
     const actor = await this.authorize(authorization);
     return this.controls.updateAcademicYear({ actorAccountId: actor.accountId, ...body });
+  }
+
+  @Get('students')
+  @Header('Cache-Control', 'no-store')
+  async listStudents(
+    @Query() query: ListAccountsQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<ListPage<StudentAccountControlsResult>> {
+    await this.authorize(authorization);
+    return this.controls.listStudents({
+      cursor: query.cursor ?? null,
+      limit: query.limit ?? null,
+      search: query.search ?? null,
+    });
+  }
+
+  @Get('admins')
+  @Header('Cache-Control', 'no-store')
+  async listAdmins(
+    @Query() query: ListAccountsQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<ListPage<AdminAccountControls>> {
+    await this.authorize(authorization);
+    return this.controls.listAdmins({
+      cursor: query.cursor ?? null,
+      limit: query.limit ?? null,
+      search: query.search ?? null,
+    });
+  }
+
+  @Post('admins')
+  @Header('Cache-Control', 'no-store')
+  async createAdmin(
+    @Body() body: CreateAdminDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ admin: { adminLogin: string }; temporaryPassword: string }> {
+    await this.authorize(authorization);
+    return this.controls.createAdmin(body);
+  }
+
+  @Post('admins/:accountId/status')
+  @Header('Cache-Control', 'no-store')
+  async setAdminStatus(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) adminAccountId: string,
+    @Body() body: SetAdminStatusDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<AdminAccountControls> {
+    const actor = await this.authorize(authorization);
+    return this.controls.setAdminStatus({
+      actorAccountId: actor.accountId,
+      adminAccountId,
+      expectedVersion: body.expectedVersion,
+      idempotencyKey: body.idempotencyKey,
+      reason: body.reason,
+      status: body.action,
+    });
   }
 
   @Post('students/lookup')

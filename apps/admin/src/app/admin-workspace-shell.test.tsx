@@ -19,8 +19,8 @@ vi.mock('next-intl/server', () => ({
       };
       return messages[key] ?? key;
     }
-    if (namespace === 'AccountControls' && key === 'navigation') return 'จัดการสิทธิ์และบัญชี';
     if (namespace === 'AccountControls' && key === 'year.navigation') return 'ปีการศึกษาปัจจุบัน';
+    if (namespace === 'Accounts' && key === 'navigation') return 'จัดการบัญชี';
     if (namespace === 'WorkManagement' && key === 'navigation') return 'จัดการผลงาน';
     return 'ทะเบียนนักศึกษา';
   }),
@@ -39,7 +39,7 @@ describe('AdminWorkspaceShell', () => {
     const user = userEvent.setup();
     render(
       await AdminWorkspaceShell({
-        activePage: 'account-controls',
+        activePage: 'accounts',
         children: <h1>ควบคุมบัญชีและระยะเวลาสิทธิ์</h1>,
       }),
     );
@@ -56,9 +56,9 @@ describe('AdminWorkspaceShell', () => {
     expect(dashboardLink.getAttribute('href')).toBe('/');
     expect(dashboardLink.querySelector('svg')).toBeTruthy();
 
-    const accountControlsLink = screen.getByRole('link', { name: 'จัดการสิทธิ์และบัญชี' });
-    expect(accountControlsLink.getAttribute('href')).toBe('/account-controls');
-    expect(accountControlsLink.getAttribute('aria-current')).toBe('page');
+    const accountsLink = screen.getByRole('link', { name: 'จัดการบัญชี' });
+    expect(accountsLink.getAttribute('href')).toBe('/accounts');
+    expect(accountsLink.getAttribute('aria-current')).toBe('page');
 
     const rosterLink = screen.getByRole('link', { name: 'ทะเบียนนักศึกษา' });
     expect(rosterLink.getAttribute('href')).toBe('/roster');
@@ -87,9 +87,7 @@ describe('AdminWorkspaceShell', () => {
     await user.click(mobileTrigger);
     const dialog = await screen.findByRole('dialog', { name: 'เมนูผู้ดูแลระบบ' });
     expect(
-      within(dialog)
-        .getByRole('link', { name: 'จัดการสิทธิ์และบัญชี' })
-        .getAttribute('aria-current'),
+      within(dialog).getByRole('link', { name: 'จัดการบัญชี' }).getAttribute('aria-current'),
     ).toBe('page');
 
     await user.keyboard('{Escape}');

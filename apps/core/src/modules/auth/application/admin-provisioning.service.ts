@@ -4,6 +4,7 @@ import type { Clock, IdentityProtector, TokenGenerator } from './auth.ports';
 import {
   ADMIN_PROVISIONING_PROVIDER,
   ADMIN_PROVISIONING_REPOSITORY,
+  AdminLoginTakenError,
 } from './admin-provisioning.ports';
 import type {
   AdminProvisioningProvider,
@@ -11,10 +12,12 @@ import type {
 } from './admin-provisioning.ports';
 
 export type AdminProvisioningErrorCode =
+  | 'ADMIN_LOGIN_TAKEN'
   | 'ADMIN_PROVIDER_UNAVAILABLE'
   | 'ADMIN_PROVISIONING_FAILED'
   | 'ADMIN_PROVISIONING_REQUIRES_RECONCILIATION'
-  | 'INVALID_ADMIN_LOGIN';
+  | 'INVALID_ADMIN_LOGIN'
+  | 'INVALID_ADMIN_NAME';
 
 export class AdminProvisioningError extends Error {
   constructor(readonly code: AdminProvisioningErrorCode) {
@@ -39,10 +42,27 @@ export class AdminProvisioningService {
 
   async provision(input: {
     adminLogin: string;
+    firstNameTh: string;
+    lastNameTh: string;
   }): Promise<{ adminLogin: string; temporaryPassword: string }> {
     const adminLogin = input.adminLogin.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(adminLogin)) {
       throw new AdminProvisioningError('INVALID_ADMIN_LOGIN');
+    }
+    const firstNameTh = input.firstNameTh.trim().normalize('NFC');
+    const lastNameTh = input.lastNameTh.trim().normalize('NFC');
+    if (
+      firstNameTh.length === 0 ||
+      firstNameTh.length > 100 ||
+      lastNameTh.length === 0 ||
+      lastNameTh.length > 100
+    ) {
+      throw new AdminProvisioningError('INVALID_ADMIN_NAME');
+    }
+
+    const adminLoginHash = this.identityProtector.hashAdminLogin(adminLogin);
+    if (await this.repository.adminLoginExists(adminLoginHash)) {
+      throw new AdminProvisioningError('ADMIN_LOGIN_TAKEN');
     }
 
     const temporaryPassword = this.tokenGenerator.generate(24);
@@ -60,17 +80,23 @@ export class AdminProvisioningService {
 
     try {
       await this.repository.createAdminAccount({
-        adminLoginHash: this.identityProtector.hashAdminLogin(adminLogin),
+        adminLoginHash,
+        firstNameTh,
+        lastNameTh,
         now: this.clock.now(),
         providerUserId: providerIdentity.providerUserId,
         syntheticIdentity,
       });
-    } catch {
+    } catch (error: unknown) {
+      const isLoginTaken = error instanceof AdminLoginTakenError;
       try {
         await this.provider.deleteIdentity(providerIdentity.providerUserId);
       } catch {
         this.logFailure('ADMIN_PROVISIONING_REQUIRES_RECONCILIATION');
         throw new AdminProvisioningError('ADMIN_PROVISIONING_REQUIRES_RECONCILIATION');
+      }
+      if (isLoginTaken) {
+        throw new AdminProvisioningError('ADMIN_LOGIN_TAKEN');
       }
       this.logFailure('ADMIN_PROVISIONING_FAILED');
       throw new AdminProvisioningError('ADMIN_PROVISIONING_FAILED');

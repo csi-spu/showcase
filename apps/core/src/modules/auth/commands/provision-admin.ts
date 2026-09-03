@@ -6,7 +6,7 @@ import {
 } from '../application/admin-provisioning.service';
 
 interface ProvisioningService {
-  provision(input: { adminLogin: string }): Promise<{
+  provision(input: { adminLogin: string; firstNameTh: string; lastNameTh: string }): Promise<{
     adminLogin: string;
     temporaryPassword: string;
   }>;
@@ -23,13 +23,20 @@ export async function runProvisionAdmin(
   output: CommandOutput,
 ): Promise<0 | 1> {
   const commandArgs = args[0] === '--' ? args.slice(1) : args;
-  const adminLogin = commandArgs[0];
-  if (commandArgs.length !== 1 || adminLogin === undefined) {
-    output.stderr('Usage: pnpm --filter @showcase/core admin:provision -- <admin-login>\n');
+  const [adminLogin, firstNameTh, lastNameTh] = commandArgs;
+  if (
+    commandArgs.length !== 3 ||
+    adminLogin === undefined ||
+    firstNameTh === undefined ||
+    lastNameTh === undefined
+  ) {
+    output.stderr(
+      'Usage: pnpm --filter @showcase/core admin:provision -- <admin-login> <firstNameTh> <lastNameTh>\n',
+    );
     return 1;
   }
   try {
-    const result = await service.provision({ adminLogin });
+    const result = await service.provision({ adminLogin, firstNameTh, lastNameTh });
     output.stdout(
       `Admin login: ${result.adminLogin}\nTemporary password: ${result.temporaryPassword}\n`,
     );

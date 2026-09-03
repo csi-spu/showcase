@@ -24,6 +24,7 @@ import type {
   AcademicYearAction,
   AcademicYearActionState,
   AcademicYearSettingsState,
+  AccountControlErrorMessage,
   StudentAccountAction,
   StudentAccountActionState,
   StudentAccountControlsState,
@@ -397,21 +398,7 @@ function PeriodValue({ label, value }: { label: string; value: number | string }
   );
 }
 
-function ActionFeedback({
-  error,
-}: {
-  error:
-    | 'backward'
-    | 'completed'
-    | 'inProgress'
-    | 'invalid'
-    | 'notFound'
-    | 'providerUnavailable'
-    | 'shortening'
-    | 'stale'
-    | 'unavailable'
-    | null;
-}) {
+function ActionFeedback({ error }: { error: AccountControlErrorMessage | null }) {
   const t = useTranslations('AccountControls');
   const alertRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

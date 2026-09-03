@@ -11,8 +11,13 @@ describe('runProvisionAdmin', () => {
     const stderr = jest.fn();
 
     await expect(
-      runProvisionAdmin(['--', 'operations'], { provision }, { stderr, stdout }),
+      runProvisionAdmin(['--', 'operations', 'สมชาย', 'ใจดี'], { provision }, { stderr, stdout }),
     ).resolves.toBe(0);
+    expect(provision).toHaveBeenCalledWith({
+      adminLogin: 'operations',
+      firstNameTh: 'สมชาย',
+      lastNameTh: 'ใจดี',
+    });
     expect(stdout).toHaveBeenCalledTimes(1);
     expect(stdout).toHaveBeenCalledWith(
       'Admin login: operations\nTemporary password: random-temporary-password-value\n',
@@ -21,7 +26,7 @@ describe('runProvisionAdmin', () => {
   });
 
   it('rejects missing or extra arguments before provisioning', async () => {
-    for (const args of [[], ['ops', 'extra']]) {
+    for (const args of [[], ['ops'], ['ops', 'สมชาย'], ['ops', 'สมชาย', 'ใจดี', 'extra']]) {
       const provision = jest.fn();
       const stderr = jest.fn();
       await expect(
@@ -29,7 +34,7 @@ describe('runProvisionAdmin', () => {
       ).resolves.toBe(1);
       expect(provision).not.toHaveBeenCalled();
       expect(stderr).toHaveBeenCalledWith(
-        'Usage: pnpm --filter @showcase/core admin:provision -- <admin-login>\n',
+        'Usage: pnpm --filter @showcase/core admin:provision -- <admin-login> <firstNameTh> <lastNameTh>\n',
       );
     }
   });
@@ -42,7 +47,7 @@ describe('runProvisionAdmin', () => {
     const stderr = jest.fn();
 
     await expect(
-      runProvisionAdmin(['operations'], { provision }, { stderr, stdout }),
+      runProvisionAdmin(['operations', 'สมชาย', 'ใจดี'], { provision }, { stderr, stdout }),
     ).resolves.toBe(1);
     expect(stdout).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith('Admin provisioning failed: ADMIN_PROVIDER_UNAVAILABLE\n');
@@ -53,7 +58,7 @@ describe('runProvisionAdmin', () => {
 
     await expect(
       runProvisionAdmin(
-        ['operations'],
+        ['operations', 'สมชาย', 'ใจดี'],
         { provision: jest.fn().mockRejectedValue(new Error('database detail')) },
         { stderr, stdout: jest.fn() },
       ),

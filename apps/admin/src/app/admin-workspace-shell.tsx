@@ -17,8 +17,9 @@ export async function AdminWorkspaceShell({
   activePage: AdminWorkspacePage;
   children: ReactNode;
 }) {
-  const [accountControlsT, rosterT, workManagementT, workspaceT] = await Promise.all([
+  const [accountControlsT, accountsT, rosterT, workManagementT, workspaceT] = await Promise.all([
     getTranslations('AccountControls'),
+    getTranslations('Accounts'),
     getTranslations('Roster'),
     getTranslations('WorkManagement'),
     getTranslations('Workspace'),
@@ -35,11 +36,7 @@ export async function AdminWorkspaceShell({
     {
       items: [
         { href: '/roster', label: rosterT('navigation'), page: 'roster' },
-        {
-          href: '/account-controls',
-          label: accountControlsT('navigation'),
-          page: 'account-controls',
-        },
+        { href: '/accounts', label: accountsT('navigation'), page: 'accounts' },
       ],
       label: workspaceT('groups.students'),
     },

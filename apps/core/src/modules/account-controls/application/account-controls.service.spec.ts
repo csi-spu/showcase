@@ -1,14 +1,51 @@
+import {
+  AdminProvisioningError,
+  AdminProvisioningService,
+} from '../../auth/application/admin-provisioning.service';
 import { AccountControlsService } from './account-controls.service';
 import type {
   AccountControlsRepository,
   AcademicYearSettings,
+  AdminAccountControls,
   BeginPasswordResetResult,
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
+  ListPage,
+  SetAdminStatusResult,
   StudentAccountControls,
   UpdateAcademicYearResult,
 } from './account-controls.ports';
+
+class FakeAdminProvisioningService extends AdminProvisioningService {
+  provisionInput: Parameters<AdminProvisioningService['provision']>[0] | null = null;
+  provisionResult: () => Promise<{ adminLogin: string; temporaryPassword: string }> = () =>
+    Promise.reject(new Error('provisionResult not configured for this test'));
+
+  constructor() {
+    super(
+      { adminLoginExists: jest.fn(), createAdminAccount: jest.fn() },
+      { createIdentity: jest.fn(), deleteIdentity: jest.fn() },
+      { now: () => NOW },
+      {
+        hashAdminLogin: jest.fn(),
+        hashSessionToken: jest.fn(),
+        hashSourceAddress: jest.fn(),
+        hashStudentId: jest.fn(),
+        toAdminSyntheticIdentity: jest.fn(),
+        toSyntheticIdentity: jest.fn(),
+      },
+      { generate: jest.fn() },
+    );
+  }
+
+  override provision(
+    input: Parameters<AdminProvisioningService['provision']>[0],
+  ): Promise<{ adminLogin: string; temporaryPassword: string }> {
+    this.provisionInput = input;
+    return this.provisionResult();
+  }
+}
 
 const NOW = new Date('2026-08-25T06:00:00.000Z');
 const ACTOR_ACCOUNT_ID = '10000000-0000-4000-8000-000000000001';
@@ -43,6 +80,7 @@ describe('AccountControlsService Current Academic Year', () => {
         toSyntheticIdentity: jest.fn(),
       },
       { generate: jest.fn() },
+      new FakeAdminProvisioningService(),
     );
   });
 
@@ -114,6 +152,7 @@ describe('AccountControlsService Student Access Period', () => {
         toSyntheticIdentity: jest.fn(),
       },
       { generate: jest.fn() },
+      new FakeAdminProvisioningService(),
     );
   });
 
@@ -282,6 +321,7 @@ describe('AccountControlsService Student password reset', () => {
         toSyntheticIdentity: jest.fn(),
       },
       { generate },
+      new FakeAdminProvisioningService(),
     );
   });
 
@@ -378,6 +418,177 @@ describe('AccountControlsService Student password reset', () => {
   );
 });
 
+describe('AccountControlsService Admin Account listing and lifecycle', () => {
+  let repository: TestRepository;
+  let adminProvisioning: FakeAdminProvisioningService;
+  let service: AccountControlsService;
+  const ADMIN_ACCOUNT_ID = '30000000-0000-4000-8000-000000000009';
+  const ADMIN = {
+    accountId: ADMIN_ACCOUNT_ID,
+    createdAt: NOW,
+    firstNameTh: 'สมชาย',
+    lastNameTh: 'ใจดี',
+    status: 'active',
+    version: 1,
+  } satisfies AdminAccountControls;
+
+  beforeEach(() => {
+    repository = new TestRepository();
+    adminProvisioning = new FakeAdminProvisioningService();
+    service = new AccountControlsService(
+      repository,
+      { resetPassword: jest.fn() },
+      { now: () => NOW },
+      {
+        hashAdminLogin: jest.fn(),
+        hashSessionToken: jest.fn(),
+        hashSourceAddress: jest.fn(),
+        hashStudentId: jest.fn(),
+        toAdminSyntheticIdentity: jest.fn(),
+        toSyntheticIdentity: jest.fn(),
+      },
+      { generate: jest.fn() },
+      adminProvisioning,
+    );
+  });
+
+  it('lists Students with a default limit, clamped custom limit, and trimmed search', async () => {
+    repository.listStudentsResult = { items: [STUDENT], nextCursor: 'next-cursor' };
+
+    await expect(
+      service.listStudents({ cursor: null, limit: null, search: '  สม  ' }),
+    ).resolves.toMatchObject({ nextCursor: 'next-cursor' });
+    expect(repository.listStudentsInput).toEqual({ cursor: null, limit: 20, search: 'สม' });
+
+    await service.listStudents({ cursor: 'abc', limit: 500, search: '   ' });
+    expect(repository.listStudentsInput).toEqual({ cursor: 'abc', limit: 100, search: null });
+  });
+
+  it('lists Admins without deriving Student-only fields', async () => {
+    repository.listAdminsResult = { items: [ADMIN], nextCursor: null };
+
+    await expect(service.listAdmins({ cursor: null, limit: 5, search: null })).resolves.toEqual({
+      items: [ADMIN],
+      nextCursor: null,
+    });
+    expect(repository.listAdminsInput).toEqual({ cursor: null, limit: 5, search: null });
+  });
+
+  it('creates an Admin by delegating to provisioning and returns the one-time password', async () => {
+    adminProvisioning.provisionResult = () =>
+      Promise.resolve({ adminLogin: 'ops', temporaryPassword: 'one-time-password' });
+
+    await expect(
+      service.createAdmin({ adminLogin: 'ops', firstNameTh: 'สมชาย', lastNameTh: 'ใจดี' }),
+    ).resolves.toEqual({
+      admin: { adminLogin: 'ops' },
+      temporaryPassword: 'one-time-password',
+    });
+    expect(adminProvisioning.provisionInput).toEqual({
+      adminLogin: 'ops',
+      firstNameTh: 'สมชาย',
+      lastNameTh: 'ใจดี',
+    });
+  });
+
+  it.each([
+    ['ADMIN_LOGIN_TAKEN', 409],
+    ['INVALID_ADMIN_LOGIN', 422],
+    ['INVALID_ADMIN_NAME', 422],
+    ['ADMIN_PROVIDER_UNAVAILABLE', 503],
+    ['ADMIN_PROVISIONING_FAILED', 503],
+  ] as const)('maps provisioning failure %s to a stable status', async (code, status) => {
+    adminProvisioning.provisionResult = () => Promise.reject(new AdminProvisioningError(code));
+
+    await expect(
+      service.createAdmin({ adminLogin: 'ops', firstNameTh: 'สมชาย', lastNameTh: 'ใจดี' }),
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
+  });
+
+  it('rejects an Admin suspending their own Account before calling the repository', async () => {
+    await expect(
+      service.setAdminStatus({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        adminAccountId: ADMIN_ACCOUNT_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: 'เหตุผลที่ตรวจสอบได้',
+        status: 'suspended',
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({ code: 'ADMIN_SELF_STATUS_CHANGE_FORBIDDEN', status: 403 }),
+    );
+    expect(repository.setAdminStatusInput).toBeNull();
+  });
+
+  it.each(['', '   ', 'x'.repeat(2001)])(
+    'rejects an invalid audited reason before calling the repository',
+    async (reason) => {
+      await expect(
+        service.setAdminStatus({
+          actorAccountId: ACTOR_ACCOUNT_ID,
+          adminAccountId: ADMIN_ACCOUNT_ID,
+          expectedVersion: 1,
+          idempotencyKey: IDEMPOTENCY_KEY,
+          reason,
+          status: 'suspended',
+        }),
+      ).rejects.toEqual(
+        expect.objectContaining({ code: 'ADMIN_STATUS_REASON_INVALID', status: 422 }),
+      );
+      expect(repository.setAdminStatusInput).toBeNull();
+    },
+  );
+
+  it('suspends an Admin with actor, optimistic version, and idempotency', async () => {
+    repository.setAdminStatusResult = {
+      admin: { ...ADMIN, status: 'suspended', version: 2 },
+      outcome: 'updated',
+    };
+
+    await expect(
+      service.setAdminStatus({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        adminAccountId: ADMIN_ACCOUNT_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: '  เหตุผลที่ตรวจสอบได้  ',
+        status: 'suspended',
+      }),
+    ).resolves.toEqual({ ...ADMIN, status: 'suspended', version: 2 });
+    expect(repository.setAdminStatusInput).toEqual({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      adminAccountId: ADMIN_ACCOUNT_ID,
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+      reason: 'เหตุผลที่ตรวจสอบได้',
+      status: 'suspended',
+    });
+  });
+
+  it.each([
+    ['idempotency_conflict', 'ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409],
+    ['not_found', 'ADMIN_ACCOUNT_NOT_FOUND', 404],
+    ['self_status_change', 'ADMIN_SELF_STATUS_CHANGE_FORBIDDEN', 403],
+    ['last_active_admin', 'ADMIN_LAST_ACTIVE_ACCOUNT', 409],
+    ['version_conflict', 'ACCOUNT_CONTROL_VERSION_CONFLICT', 409],
+  ] as const)('maps %s status outcome to a stable error', async (outcome, code, status) => {
+    repository.setAdminStatusResult = { outcome };
+
+    await expect(
+      service.setAdminStatus({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        adminAccountId: ADMIN_ACCOUNT_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        reason: 'เหตุผลที่ตรวจสอบได้',
+        status: 'suspended',
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
+  });
+});
+
 class TestRepository implements AccountControlsRepository {
   settings: AcademicYearSettings = {
     currentAcademicYear: null,
@@ -412,9 +623,36 @@ class TestRepository implements AccountControlsRepository {
     outcome: 'updated',
     student: STUDENT,
   };
+  listStudentsInput: Parameters<AccountControlsRepository['listStudents']>[0] | null = null;
+  listStudentsResult: ListPage<StudentAccountControls> = { items: [], nextCursor: null };
+  listAdminsInput: Parameters<AccountControlsRepository['listAdmins']>[0] | null = null;
+  listAdminsResult: ListPage<AdminAccountControls> = { items: [], nextCursor: null };
+  setAdminStatusInput: Parameters<AccountControlsRepository['setAdminStatus']>[0] | null = null;
+  setAdminStatusResult: SetAdminStatusResult = { outcome: 'not_found' };
 
   getAcademicYear(): Promise<AcademicYearSettings> {
     return Promise.resolve(this.settings);
+  }
+
+  listStudents(
+    input: Parameters<AccountControlsRepository['listStudents']>[0],
+  ): Promise<ListPage<StudentAccountControls>> {
+    this.listStudentsInput = input;
+    return Promise.resolve(this.listStudentsResult);
+  }
+
+  listAdmins(
+    input: Parameters<AccountControlsRepository['listAdmins']>[0],
+  ): Promise<ListPage<AdminAccountControls>> {
+    this.listAdminsInput = input;
+    return Promise.resolve(this.listAdminsResult);
+  }
+
+  setAdminStatus(
+    input: Parameters<AccountControlsRepository['setAdminStatus']>[0],
+  ): Promise<SetAdminStatusResult> {
+    this.setAdminStatusInput = input;
+    return Promise.resolve(this.setAdminStatusResult);
   }
 
   updateAcademicYear(
