@@ -30,8 +30,8 @@ const CAROUSEL_OPTIONS = { align: 'start', containScroll: false, loop: true } as
  * Repeats a short collection until the track is long enough for Embla to wrap.
  *
  * Repeats are presentational duplicates: they carry a distinct React key so the
- * list stays stable, and are hidden from assistive technology so each work is
- * still announced exactly once.
+ * list stays stable, and are marked so they can be hidden from assistive
+ * technology while staying fully interactive for pointer users.
  */
 function toLoopingSlides(items: { content: ReactNode; key: string }[]) {
   const passes = Math.ceil(MIN_SLIDES_TO_LOOP / items.length);
@@ -43,6 +43,23 @@ function toLoopingSlides(items: { content: ReactNode; key: string }[]) {
       key: `${item.key}:${pass}`,
     })),
   ).flat();
+}
+
+/**
+ * Keeps an `aria-hidden` slide out of the tab order.
+ *
+ * A focusable element inside an `aria-hidden` subtree is an accessibility fault:
+ * keyboard focus lands somewhere a screen reader will not announce. Setting the
+ * tab index on the rendered links removes that without disabling them, so the
+ * repeat still responds to a click or an Enter press once focus reaches it by
+ * pointer.
+ */
+function markSubtreeUntabbable(slide: HTMLDivElement | null) {
+  if (!slide) return;
+
+  for (const focusable of slide.querySelectorAll<HTMLElement>('a[href], button, [tabindex]')) {
+    focusable.tabIndex = -1;
+  }
 }
 
 export interface CollectionCarouselLabels {
@@ -94,12 +111,17 @@ export function HomepageCollectionCarousel({
       <CarouselContent className="ml-[calc(var(--carousel-gap)*-1)] py-1">
         {toLoopingSlides(items).map((slide) => (
           <CarouselItem
+            // A repeat is a duplicate of a card already in the document, so it is
+            // hidden from assistive technology and kept out of the tab order.
+            // `inert` would do both, but it also swallows pointer events, which
+            // left every card past the first pass unclickable once the rail
+            // scrolled. `aria-hidden` plus a negative tab index on the subtree
+            // announces and focuses each work exactly once while leaving repeats
+            // clickable wherever the loop happens to land.
+            aria-hidden={slide.isRepeat || undefined}
             className={cn('pl-(--carousel-gap)', itemClassName)}
-            // `inert` hides repeats from assistive technology and from the tab
-            // order together, so a duplicated card is never announced or focused
-            // while the original stays fully reachable.
-            inert={slide.isRepeat}
             key={slide.key}
+            ref={slide.isRepeat ? markSubtreeUntabbable : undefined}
           >
             {slide.content}
           </CarouselItem>
