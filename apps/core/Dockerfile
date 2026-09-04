@@ -48,7 +48,11 @@ ENV PORT=4100
 WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
 COPY --from=builder --chown=nestjs:nodejs /prod/core ./
+COPY --from=builder --chown=nestjs:nodejs /repo/apps/core/prisma ./prisma
+COPY --chown=nestjs:nodejs apps/core/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 USER nestjs
 EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:4100/v1/health/ready >/dev/null || exit 1
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/main.js"]
