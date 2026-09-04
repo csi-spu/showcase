@@ -290,6 +290,8 @@ export class PostgresCatalogRepository implements CatalogRepository {
         from public.public_profiles as profile
         join public.profile_consents as consent
           on consent.person_id = profile.person_id and consent.withdrawn_at is null
+        join public.accounts as account
+          on account.person_id = profile.person_id and account.status = 'active'
         where profile.public_id >= ${lower}::uuid
           and (${upper}::uuid is null or profile.public_id < ${upper}::uuid)
         order by profile.public_id
@@ -416,6 +418,8 @@ export class PostgresCatalogRepository implements CatalogRepository {
         join private.person_names as name on name.person_id = profile.person_id
         join public.profile_consents as consent
           on consent.person_id = profile.person_id and consent.withdrawn_at is null
+        join public.accounts as account
+          on account.person_id = profile.person_id and account.status = 'active'
         left join private.profile_photo_assets as photo
           on photo.id = profile.photo_id and photo.status = 'ready'
       ), candidate as (
