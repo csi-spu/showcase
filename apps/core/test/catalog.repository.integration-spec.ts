@@ -22,6 +22,16 @@ const IDS = {
   secondConsentedProfile: id(24),
   thirdConsentedPerson: id(25),
   thirdConsentedProfile: id(26),
+  suspendedPerson: id(33),
+  suspendedProfile: id(34),
+  suspendedAccount: id(35),
+  suspendedProvider: id(36),
+  consentedProvider: id(37),
+  secondConsentedProvider: id(38),
+  thirdConsentedProvider: id(39),
+  consentedAccount: id(40),
+  secondConsentedAccount: id(41),
+  thirdConsentedAccount: id(42),
   workOne: id(8),
   workOnePublic: id(9),
   revisionOne: id(10),
@@ -122,6 +132,14 @@ describe('PostgresCatalogRepository integration', () => {
     expect(JSON.stringify(people)).not.toContain(IDS.hiddenProfile);
   });
 
+  it('excludes Public Profiles whose Account is suspended', async () => {
+    const people = await repository.listPeople({
+      after: null,
+      query: normalizePeopleCatalogQuery({ q: 'ณัฐที่ถูกระงับ' }),
+    });
+    expect(people.entries).toEqual([]);
+  });
+
   it('lists distinct filter years only from the Public Catalog', async () => {
     const options = await repository.listFilterOptions();
 
@@ -189,6 +207,7 @@ describe('PostgresCatalogRepository integration', () => {
       ]),
     );
     expect(people.map((entry) => entry.publicId)).not.toContain(IDS.hiddenProfile);
+    expect(people.map((entry) => entry.publicId)).not.toContain(IDS.suspendedProfile);
     const tags = await repository.listSitemapEntries('tags', 0x97);
     expect(tags.map((entry) => entry.publicId)).toEqual(
       expect.arrayContaining([IDS.tagReactPublic, IDS.tagNestPublic]),
@@ -261,24 +280,33 @@ describe('PostgresCatalogRepository integration', () => {
     await database.sql.begin(async (transaction) => {
       await transaction`insert into public.people (id) values
         (${IDS.adminPerson}), (${IDS.consentedPerson}), (${IDS.hiddenPerson}),
-        (${IDS.secondConsentedPerson}), (${IDS.thirdConsentedPerson})`;
+        (${IDS.secondConsentedPerson}), (${IDS.thirdConsentedPerson}), (${IDS.suspendedPerson})`;
       await transaction`insert into public.students (
         person_id, entry_year, access_ends_academic_year
       ) values
         (${IDS.consentedPerson}, 2566, 2573),
         (${IDS.hiddenPerson}, 2499, 2506),
         (${IDS.secondConsentedPerson}, 2565, 2572),
-        (${IDS.thirdConsentedPerson}, 2564, 2571)`;
+        (${IDS.thirdConsentedPerson}, 2564, 2571),
+        (${IDS.suspendedPerson}, 2563, 2570)`;
       await transaction`insert into private.person_names (
         person_id, first_name_th, last_name_th
       ) values
         (${IDS.consentedPerson}, 'ณัฐดนัย', 'สุขใจ'),
         (${IDS.hiddenPerson}, 'ณัฐที่ซ่อนอยู่', 'ข้อมูลลับ'),
         (${IDS.secondConsentedPerson}, 'ณัฐกร', 'ใจดี'),
-        (${IDS.thirdConsentedPerson}, 'ณัฐวุฒิ', 'มั่นใจ')`;
+        (${IDS.thirdConsentedPerson}, 'ณัฐวุฒิ', 'มั่นใจ'),
+        (${IDS.suspendedPerson}, 'ณัฐที่ถูกระงับ', 'บัญชีระงับ')`;
       await transaction`insert into public.accounts (
         id, person_id, provider_user_id, credential_state
-      ) values (${IDS.adminAccount}, ${IDS.adminPerson}, ${IDS.adminProvider}, 'set')`;
+      ) values
+        (${IDS.adminAccount}, ${IDS.adminPerson}, ${IDS.adminProvider}, 'set'),
+        (${IDS.consentedAccount}, ${IDS.consentedPerson}, ${IDS.consentedProvider}, 'set'),
+        (${IDS.secondConsentedAccount}, ${IDS.secondConsentedPerson}, ${IDS.secondConsentedProvider}, 'set'),
+        (${IDS.thirdConsentedAccount}, ${IDS.thirdConsentedPerson}, ${IDS.thirdConsentedProvider}, 'set')`;
+      await transaction`insert into public.accounts (
+        id, person_id, provider_user_id, credential_state, status
+      ) values (${IDS.suspendedAccount}, ${IDS.suspendedPerson}, ${IDS.suspendedProvider}, 'set', 'suspended')`;
       await transaction`insert into public.account_roles (account_id, role)
         values (${IDS.adminAccount}, 'admin')`;
       await transaction`insert into public.public_profiles (
@@ -287,13 +315,15 @@ describe('PostgresCatalogRepository integration', () => {
         (${IDS.consentedPerson}, ${IDS.consentedProfile}, 'สนใจระบบเว็บที่ใช้งานง่าย', 1, ${NOW}, ${NOW}),
         (${IDS.hiddenPerson}, ${IDS.hiddenProfile}, 'ข้อมูลที่ห้ามเผยแพร่', 1, ${NOW}, ${NOW}),
         (${IDS.secondConsentedPerson}, ${IDS.secondConsentedProfile}, null, 1, ${NOW}, ${NOW}),
-        (${IDS.thirdConsentedPerson}, ${IDS.thirdConsentedProfile}, null, 1, ${NOW}, ${NOW})`;
+        (${IDS.thirdConsentedPerson}, ${IDS.thirdConsentedProfile}, null, 1, ${NOW}, ${NOW}),
+        (${IDS.suspendedPerson}, ${IDS.suspendedProfile}, null, 1, ${NOW}, ${NOW})`;
       await transaction`insert into public.profile_consents (
         person_id, consent_text_version, granted_at
       ) values
         (${IDS.consentedPerson}, 'phase-1', ${NOW}),
         (${IDS.secondConsentedPerson}, 'phase-1', ${NOW}),
-        (${IDS.thirdConsentedPerson}, 'phase-1', ${NOW})`;
+        (${IDS.thirdConsentedPerson}, 'phase-1', ${NOW}),
+        (${IDS.suspendedPerson}, 'phase-1', ${NOW})`;
       await transaction`insert into public.works (
         id, public_id, submitter_person_id, activity_state, publication_state,
         created_at, updated_at
@@ -388,21 +418,25 @@ describe('PostgresCatalogRepository integration', () => {
       await transaction`delete from private.work_revisions where id in (${IDS.revisionOne}, ${IDS.revisionTwo})`;
       await transaction`delete from public.works where id in (${IDS.workOne}, ${IDS.workTwo})`;
       await transaction`delete from public.profile_consents where person_id in (
-        ${IDS.consentedPerson}, ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}
+        ${IDS.consentedPerson}, ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson},
+        ${IDS.suspendedPerson}
       )`;
       await transaction`delete from public.public_profiles where person_id in (
         ${IDS.consentedPerson}, ${IDS.hiddenPerson},
-        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}
+        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}, ${IDS.suspendedPerson}
       )`;
       await transaction`delete from public.account_roles where account_id = ${IDS.adminAccount}`;
-      await transaction`delete from public.accounts where id = ${IDS.adminAccount}`;
+      await transaction`delete from public.accounts where id in (
+        ${IDS.adminAccount}, ${IDS.consentedAccount}, ${IDS.secondConsentedAccount},
+        ${IDS.thirdConsentedAccount}, ${IDS.suspendedAccount}
+      )`;
       await transaction`delete from public.students where person_id in (
         ${IDS.consentedPerson}, ${IDS.hiddenPerson},
-        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}
+        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}, ${IDS.suspendedPerson}
       )`;
       await transaction`delete from public.people where id in (
         ${IDS.adminPerson}, ${IDS.consentedPerson}, ${IDS.hiddenPerson},
-        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}
+        ${IDS.secondConsentedPerson}, ${IDS.thirdConsentedPerson}, ${IDS.suspendedPerson}
       )`;
     });
   }
