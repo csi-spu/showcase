@@ -87,6 +87,9 @@ describe('Homepage featured collections', () => {
     expect(html.match(/data-empty-state="true"/g)).toHaveLength(2);
     expect(html.match(/ยังไม่มีผลงานแนะนำ/g)).toHaveLength(1);
     expect(html).toContain('ยังไม่มีนักศึกษาแนะนำ');
+    // The header's link to the full catalogue stays live even with no cards to show.
+    expect(html).toContain('href="/works"');
+    expect(html).toContain('href="/people"');
   });
 
   it('merges every category into one recent-first section when a category is short', () => {
