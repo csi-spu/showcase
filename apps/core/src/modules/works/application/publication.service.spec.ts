@@ -91,13 +91,12 @@ describe('PublicationService', () => {
 
   it('returns only repository-authorized public Work and media', async () => {
     await expect(service.getPublicWork(WORK_PUBLIC_ID)).resolves.toEqual(publicWork());
+    // The URL carries no signature and no expiry, so a shared cache can retain
+    // it rather than re-fetching a fresh presign every minute.
     await expect(service.getPublicMedia(WORK_PUBLIC_ID, ASSET_ID, 480)).resolves.toEqual({
-      url: 'https://r2.example.test/presigned-work-media',
+      url: `https://media.example.test/objects/${Buffer.from('work-media/asset/480.webp', 'utf8').toString('base64url')}`,
     });
-    expect(mediaStorage.lastInput).toEqual({
-      expiresInSeconds: 60,
-      key: 'work-media/asset/480.webp',
-    });
+    expect(mediaStorage.lastInput).toEqual({ key: 'work-media/asset/480.webp' });
 
     repository.publicWork = null;
     await expect(service.getPublicWork(WORK_PUBLIC_ID)).rejects.toMatchObject({
@@ -124,12 +123,12 @@ describe('PublicationService', () => {
 
 class FakePublicMediaStorage {
   isUnavailable = false;
-  lastInput: { expiresInSeconds: number; key: string } | undefined;
+  lastInput: { key: string } | undefined;
 
-  createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
+  createPublicUrl(input: { key: string }): string {
     this.lastInput = input;
-    if (this.isUnavailable) return Promise.reject(new Error('provider detail'));
-    return Promise.resolve('https://r2.example.test/presigned-work-media');
+    if (this.isUnavailable) throw new Error('provider detail');
+    return `https://media.example.test/objects/${Buffer.from(input.key, 'utf8').toString('base64url')}`;
   }
 }
 

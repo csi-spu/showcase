@@ -108,6 +108,10 @@ class FakeStorage implements WorkMediaStorage {
     return Promise.resolve('https://r2.example.test/presigned');
   }
 
+  createPublicUrl(): string {
+    throw new Error('UNUSED');
+  }
+
   createPresignedGet() {
     return Promise.resolve('https://r2.example.test/processed-preview');
   }

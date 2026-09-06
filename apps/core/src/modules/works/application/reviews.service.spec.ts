@@ -131,6 +131,9 @@ describe('ReviewsService', () => {
 function storage(): WorkMediaStorage {
   return {
     createPresignedGet: () => Promise.resolve('https://r2.example.test/signed-preview'),
+    createPublicUrl: () => {
+      throw new Error('UNUSED');
+    },
     createPresignedPut: () => Promise.reject(new Error('UNUSED')),
     deleteObject: () => Promise.reject(new Error('UNUSED')),
     getObject: () => Promise.reject(new Error('UNUSED')),
