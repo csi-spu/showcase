@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import { createSignedMediaUrl } from '../../../config/media-url';
 import type {
-  CatalogPosition,
   CatalogFilterOptions,
   CatalogRepository,
   CatalogSitemapEntry,
@@ -71,83 +70,68 @@ export class PostgresCatalogRepository implements CatalogRepository {
     this.mediaSigningSecret = config.get<string>('MEDIA_SERVICE_HMAC_SECRET') ?? '';
   }
 
-  async listWorks(input: {
-    after: CatalogPosition | null;
-    query: WorkCatalogQuery;
-  }): Promise<CatalogSlice<WorkCatalogCard>> {
-    const { after, query } = input;
+  async listWorks(input: { query: WorkCatalogQuery }): Promise<CatalogSlice<WorkCatalogCard>> {
+    const { query } = input;
     const pattern = query.query === null ? null : `%${escapeLike(query.query)}%`;
-    const fetchLimit = query.limit + 1;
     const categories = query.categories;
     const tagPublicIds = query.tagPublicIds;
+    const offset = (query.page - 1) * query.limit;
     let rows: WorkCatalogRow[];
 
     if (query.sort === 'title') {
-      const afterTitle = positionString(after, 'title');
-      const afterPublicId = positionString(after, 'publicId');
       rows = await this.database.sql<WorkCatalogRow[]>`
         ${this.workCandidates(pattern, categories, tagPublicIds, query)}
         select candidate.*,
           ${this.workAttributionsSql()}, ${this.workTagsSql()}, ${this.workPosterSql()}
         from candidate
-        where (${after === null} or (candidate.normalized_title, candidate.work_public_id) >
-          (${afterTitle}, ${afterPublicId}::uuid))
         order by candidate.normalized_title, candidate.work_public_id
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     } else if (query.sort === 'academic_period') {
-      const afterYear = positionNumber(after, 'year');
-      const afterSemester = positionNumber(after, 'semesterOrder');
-      const afterPublishedAt = positionString(after, 'publishedAt');
-      const afterPublicId = positionString(after, 'publicId');
       rows = await this.database.sql<WorkCatalogRow[]>`
         ${this.workCandidates(pattern, categories, tagPublicIds, query)}
         select candidate.*,
           ${this.workAttributionsSql()}, ${this.workTagsSql()}, ${this.workPosterSql()}
         from candidate
-        where (${after === null} or (
-          candidate.academic_year, candidate.semester_order,
-          candidate.published_at, candidate.work_public_id
-        ) < (${afterYear}, ${afterSemester}, ${afterPublishedAt}::timestamptz, ${afterPublicId}::uuid))
         order by candidate.academic_year desc, candidate.semester_order desc,
           candidate.published_at desc, candidate.work_public_id desc
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     } else if (query.sort === 'relevance') {
-      const afterRank = positionNumber(after, 'rank');
-      const afterPublishedAt = positionString(after, 'publishedAt');
-      const afterPublicId = positionString(after, 'publicId');
       rows = await this.database.sql<WorkCatalogRow[]>`
         ${this.workCandidates(pattern, categories, tagPublicIds, query)}
         select candidate.*,
           ${this.workAttributionsSql()}, ${this.workTagsSql()}, ${this.workPosterSql()}
         from candidate
-        where (${after === null} or (candidate.rank, candidate.published_at, candidate.work_public_id) <
-          (${afterRank}, ${afterPublishedAt}::timestamptz, ${afterPublicId}::uuid))
         order by candidate.rank desc, candidate.published_at desc, candidate.work_public_id desc
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     } else {
-      const afterPublishedAt = positionString(after, 'publishedAt');
-      const afterPublicId = positionString(after, 'publicId');
       rows = await this.database.sql<WorkCatalogRow[]>`
         ${this.workCandidates(pattern, categories, tagPublicIds, query)}
         select candidate.*,
           ${this.workAttributionsSql()}, ${this.workTagsSql()}, ${this.workPosterSql()}
         from candidate
-        where (${after === null} or (candidate.published_at, candidate.work_public_id) <
-          (${afterPublishedAt}::timestamptz, ${afterPublicId}::uuid))
         order by candidate.published_at desc, candidate.work_public_id desc
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     }
 
-    return {
-      entries: rows.map((row) => ({
-        item: this.mapWork(row),
-        position: this.workPosition(row, query.sort),
-      })),
-    };
+    const totalCount = await this.countWorks(pattern, categories, tagPublicIds, query);
+    return { items: rows.map((row) => this.mapWork(row)), totalCount };
+  }
+
+  private async countWorks(
+    pattern: string | null,
+    categories: WorkCatalogQuery['categories'],
+    tagPublicIds: string[],
+    query: WorkCatalogQuery,
+  ): Promise<number> {
+    const rows = await this.database.sql<Array<{ total_items: number }>>`
+      ${this.workCandidates(pattern, categories, tagPublicIds, query)}
+      select count(*)::integer as total_items from candidate
+    `;
+    return rows[0]?.total_items ?? 0;
   }
 
   async getCacheVersion(): Promise<string> {
@@ -159,46 +143,36 @@ export class PostgresCatalogRepository implements CatalogRepository {
     return row.version.toString();
   }
 
-  async listPeople(input: {
-    after: CatalogPosition | null;
-    query: PeopleCatalogQuery;
-  }): Promise<CatalogSlice<PeopleCatalogCard>> {
-    const { after, query } = input;
+  async listPeople(input: { query: PeopleCatalogQuery }): Promise<CatalogSlice<PeopleCatalogCard>> {
+    const { query } = input;
     const pattern = query.query === null ? null : `%${escapeLike(query.query)}%`;
-    const fetchLimit = query.limit + 1;
+    const offset = (query.page - 1) * query.limit;
     let rows: PeopleCatalogRow[];
     if (query.sort === 'relevance') {
       rows = await this.database.sql<PeopleCatalogRow[]>`
         ${this.peopleCandidates(pattern, query)}
         select * from candidate
-        where (${after === null}
-          or rank < ${positionNumber(after, 'rank')}
-          or (rank = ${positionNumber(after, 'rank')}
-            and (normalized_name, public_id) >
-              (${positionString(after, 'name')}, ${positionString(after, 'publicId')}::uuid)))
         order by rank desc, normalized_name, public_id
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     } else {
       rows = await this.database.sql<PeopleCatalogRow[]>`
         ${this.peopleCandidates(pattern, query)}
         select * from candidate
-        where (${after === null} or (normalized_name, public_id) >
-          (${positionString(after, 'name')}, ${positionString(after, 'publicId')}::uuid))
         order by normalized_name, public_id
-        limit ${fetchLimit}
+        offset ${offset} limit ${query.limit}
       `;
     }
-    return {
-      entries: rows.map((row) => ({
-        item: this.mapPerson(row),
-        position: {
-          name: row.normalized_name,
-          publicId: row.public_id,
-          ...(query.sort === 'relevance' ? { rank: row.rank } : {}),
-        },
-      })),
-    };
+    const totalCount = await this.countPeople(pattern, query);
+    return { items: rows.map((row) => this.mapPerson(row)), totalCount };
+  }
+
+  private async countPeople(pattern: string | null, query: PeopleCatalogQuery): Promise<number> {
+    const rows = await this.database.sql<Array<{ total_items: number }>>`
+      ${this.peopleCandidates(pattern, query)}
+      select count(*)::integer as total_items from candidate
+    `;
+    return rows[0]?.total_items ?? 0;
   }
 
   async listPopularTags(): Promise<PublicTagView[]> {
@@ -405,11 +379,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
     return this.database.sql`
       with profile_source as (
         select profile.person_id, profile.public_id, profile.bio,
-          name.first_name_th, name.last_name_th,
-          lower(regexp_replace(
-            normalize(btrim(name.first_name_th || ' ' || name.last_name_th), NFKC),
-            '[[:space:]]+', ' ', 'g'
-          )) as normalized_name,
+          name.first_name_th, name.last_name_th, name.normalized_name,
           student.entry_year, photo.sanitized_object_key as photo_object_key,
           photo.width as photo_width, photo.height as photo_height,
           photo.id as photo_id
@@ -454,24 +424,6 @@ export class PostgresCatalogRepository implements CatalogRepository {
     };
   }
 
-  private workPosition(row: WorkCatalogRow, sort: WorkCatalogQuery['sort']): CatalogPosition {
-    const common = { publicId: row.work_public_id };
-    if (sort === 'title') return { ...common, title: row.normalized_title };
-    if (sort === 'academic_period') {
-      return {
-        ...common,
-        publishedAt: row.published_at.toISOString(),
-        semesterOrder: row.semester_order,
-        year: row.academic_year,
-      };
-    }
-    return {
-      ...common,
-      publishedAt: row.published_at.toISOString(),
-      ...(sort === 'relevance' ? { rank: row.rank } : {}),
-    };
-  }
-
   private mapPerson(row: PeopleCatalogRow): PeopleCatalogCard {
     return {
       bio: row.bio,
@@ -507,16 +459,6 @@ function mapTag(row: TagRow): PublicTagView {
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/gu, (character) => `\\${character}`);
-}
-
-function positionString(position: CatalogPosition | null, key: string): string | null {
-  const value = position?.[key];
-  return typeof value === 'string' ? value : null;
-}
-
-function positionNumber(position: CatalogPosition | null, key: string): number | null {
-  const value = position?.[key];
-  return typeof value === 'number' ? value : null;
 }
 
 function sitemapRange(bucket: number): { lower: string; upper: string | null } {

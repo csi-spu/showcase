@@ -68,61 +68,74 @@ describe('PostgresCatalogRepository integration', () => {
 
   it('searches weighted approved fields and applies Category OR plus Tag AND filters', async () => {
     const search = await repository.listWorks({
-      after: null,
       query: normalizeWorkCatalogQuery({ limit: '24', q: 'react' }),
     });
-    expect(search.entries.map((entry) => entry.item.title)).toEqual([
-      'React Catalog',
-      'API Catalog',
-    ]);
-    expect(search.entries[0]?.item.poster).toMatchObject({
+    expect(search.items.map((item) => item.title)).toEqual(['React Catalog', 'API Catalog']);
+    expect(search.totalCount).toBe(2);
+    expect(search.items[0]?.poster).toMatchObject({
       assetId: IDS.poster,
       variants: [{ height: 720, width: 480 }],
     });
     expect(JSON.stringify(search)).not.toMatch(/studentId|accountId|personId|description/i);
 
     const filtered = await repository.listWorks({
-      after: null,
       query: normalizeWorkCatalogQuery({
         category: ['academic_article', 'course_work'],
         tag: [IDS.tagReactPublic, IDS.tagNestPublic],
       }),
     });
-    expect(filtered.entries.map((entry) => entry.item.workPublicId)).toEqual([IDS.workOnePublic]);
+    expect(filtered.items.map((item) => item.workPublicId)).toEqual([IDS.workOnePublic]);
+    expect(filtered.totalCount).toBe(1);
+  });
+
+  it('paginates Works by offset and reports the correct total across pages', async () => {
+    const pageOne = await repository.listWorks({
+      query: normalizeWorkCatalogQuery({ limit: '1', page: '1', q: 'react' }),
+    });
+    expect(pageOne.items.map((item) => item.title)).toEqual(['React Catalog']);
+    expect(pageOne.totalCount).toBe(2);
+
+    const pageTwo = await repository.listWorks({
+      query: normalizeWorkCatalogQuery({ limit: '1', page: '2', q: 'react' }),
+    });
+    expect(pageTwo.items.map((item) => item.title)).toEqual(['API Catalog']);
+    expect(pageTwo.totalCount).toBe(2);
+
+    const beyondLastPage = await repository.listWorks({
+      query: normalizeWorkCatalogQuery({ limit: '1', page: '99', q: 'react' }),
+    });
+    expect(beyondLastPage.items).toEqual([]);
+    expect(beyondLastPage.totalCount).toBe(2);
   });
 
   it('filters Published Works by consented Public Profile attribution', async () => {
     const submitterWorks = await repository.listWorks({
-      after: null,
       query: normalizeWorkCatalogQuery({ profile: IDS.consentedProfile }),
     });
-    expect(submitterWorks.entries.map((entry) => entry.item.workPublicId)).toEqual([
+    expect(submitterWorks.items.map((item) => item.workPublicId)).toEqual([
       IDS.workOnePublic,
       IDS.workTwoPublic,
     ]);
 
     const contributorWorks = await repository.listWorks({
-      after: null,
       query: normalizeWorkCatalogQuery({ profile: IDS.secondConsentedProfile }),
     });
-    expect(contributorWorks.entries.map((entry) => entry.item.workPublicId)).toEqual([
-      IDS.workTwoPublic,
-    ]);
+    expect(contributorWorks.items.map((item) => item.workPublicId)).toEqual([IDS.workTwoPublic]);
 
     const withdrawnProfileWorks = await repository.listWorks({
-      after: null,
       query: normalizeWorkCatalogQuery({ profile: IDS.hiddenProfile }),
     });
-    expect(withdrawnProfileWorks.entries).toEqual([]);
+    expect(withdrawnProfileWorks.items).toEqual([]);
+    expect(withdrawnProfileWorks.totalCount).toBe(0);
   });
 
   it('returns only consented Public Profiles and exact active Published Work counts', async () => {
     const people = await repository.listPeople({
-      after: null,
       query: normalizePeopleCatalogQuery({ q: 'ณัฐดนัย' }),
     });
-    expect(people.entries).toHaveLength(1);
-    expect(people.entries[0]?.item).toMatchObject({
+    expect(people.items).toHaveLength(1);
+    expect(people.totalCount).toBe(1);
+    expect(people.items[0]).toMatchObject({
       bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
       firstName: 'ณัฐดนัย',
       lastName: 'สุขใจ',
@@ -134,10 +147,10 @@ describe('PostgresCatalogRepository integration', () => {
 
   it('excludes Public Profiles whose Account is suspended', async () => {
     const people = await repository.listPeople({
-      after: null,
       query: normalizePeopleCatalogQuery({ q: 'ณัฐที่ถูกระงับ' }),
     });
-    expect(people.entries).toEqual([]);
+    expect(people.items).toEqual([]);
+    expect(people.totalCount).toBe(0);
   });
 
   it('lists distinct filter years only from the Public Catalog', async () => {
@@ -150,20 +163,25 @@ describe('PostgresCatalogRepository integration', () => {
     expect(options.workYears).toEqual([...options.workYears].sort((left, right) => right - left));
   });
 
-  it('continues People relevance results in name order when ranks tie', async () => {
-    const query = normalizePeopleCatalogQuery({ limit: '1', q: 'ณัฐ' });
-    const first = await repository.listPeople({ after: null, query });
-    const firstEntry = first.entries[0];
-    const expectedNext = first.entries[1];
-    expect(firstEntry).toBeDefined();
-    expect(expectedNext).toBeDefined();
-
-    const continued = await repository.listPeople({
-      after: firstEntry?.position ?? null,
-      query,
+  it('paginates People relevance results in name order when ranks tie', async () => {
+    const unpaged = await repository.listPeople({
+      query: normalizePeopleCatalogQuery({ limit: '24', q: 'ณัฐ' }),
     });
+    expect(unpaged.items.length).toBeGreaterThanOrEqual(2);
+    const [expectedFirst, expectedSecond] = unpaged.items;
 
-    expect(continued.entries[0]?.item.publicId).toBe(expectedNext?.item.publicId);
+    const pageOne = await repository.listPeople({
+      query: normalizePeopleCatalogQuery({ limit: '1', page: '1', q: 'ณัฐ' }),
+    });
+    expect(pageOne.items).toHaveLength(1);
+    expect(pageOne.items[0]?.publicId).toBe(expectedFirst?.publicId);
+    expect(pageOne.totalCount).toBe(unpaged.items.length);
+
+    const pageTwo = await repository.listPeople({
+      query: normalizePeopleCatalogQuery({ limit: '1', page: '2', q: 'ณัฐ' }),
+    });
+    expect(pageTwo.items[0]?.publicId).toBe(expectedSecond?.publicId);
+    expect(pageTwo.totalCount).toBe(unpaged.items.length);
   });
 
   it('hides zero-count Tags and reconciles exact popularity idempotently', async () => {
@@ -257,10 +275,7 @@ describe('PostgresCatalogRepository integration', () => {
       `),
       explain(database.sql`
         select person_id from private.person_names
-        order by lower(regexp_replace(
-          normalize(btrim(first_name_th || ' ' || last_name_th), NFKC),
-          '[[:space:]]+', ' ', 'g'
-        )), person_id limit 25
+        order by normalized_name, person_id limit 25
       `),
       explain(database.sql`
         select public_id from public.tags where active_work_count > 0
@@ -272,7 +287,7 @@ describe('PostgresCatalogRepository integration', () => {
     expect(recent).toContain('public_work_catalog_category_recent_idx');
     expect(period).toContain('public_work_catalog_period_recent_idx');
     expect(title).toContain('public_work_catalog_title_idx');
-    expect(people).toContain('person_names_public_catalog_browse_idx');
+    expect(people).toContain('person_names_normalized_name_idx');
     expect(tags).toContain('tags_public_popularity_idx');
   });
 

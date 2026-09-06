@@ -69,6 +69,27 @@ export function CatalogPagination({
             </PaginationLink>
           </PaginationItem>
         ))}
+        {window.lastPage ? (
+          <>
+            <PaginationItem>
+              <span
+                aria-hidden="true"
+                className="grid size-9 place-items-center text-muted-foreground"
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </span>
+              <span className="sr-only">{labels.ellipsis}</span>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationLink
+                aria-label={labels.goToPage(window.lastPage.page)}
+                href={window.lastPage.href}
+              >
+                {window.lastPage.page}
+              </PaginationLink>
+            </PaginationItem>
+          </>
+        ) : null}
         {window.nextUrl ? (
           <PaginationItem>
             <PaginationNext href={window.nextUrl} rel="next" text={labels.nextPage} />

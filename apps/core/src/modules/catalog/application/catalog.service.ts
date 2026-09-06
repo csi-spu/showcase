@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CatalogCursorCodec, CatalogCursorError } from '../domain/catalog-cursor';
 import {
   CatalogQueryError,
   normalizePeopleCatalogQuery,
@@ -9,7 +8,6 @@ import {
   type RawWorkCatalogQuery,
 } from '../domain/catalog-query-policy';
 import {
-  CATALOG_CURSOR_CODEC,
   CATALOG_REPOSITORY,
   type CatalogRepository,
   type CatalogSitemapKind,
@@ -28,28 +26,23 @@ export class CatalogError extends Error {
 
 @Injectable()
 export class CatalogService {
-  constructor(
-    @Inject(CATALOG_REPOSITORY) private readonly repository: CatalogRepository,
-    @Inject(CATALOG_CURSOR_CODEC) private readonly cursorCodec: CatalogCursorCodec,
-  ) {}
+  constructor(@Inject(CATALOG_REPOSITORY) private readonly repository: CatalogRepository) {}
 
-  async listWorks(rawQuery: RawWorkCatalogQuery, cursor: string | undefined) {
+  async listWorks(rawQuery: RawWorkCatalogQuery) {
     try {
       const query = normalizeWorkCatalogQuery(rawQuery);
-      const after = cursor === undefined ? null : this.cursorCodec.decode('works', query, cursor);
-      const slice = await this.repository.listWorks({ after, query });
-      return this.page('works', query, slice, query.limit);
+      const slice = await this.repository.listWorks({ query });
+      return this.page(query, slice);
     } catch (error: unknown) {
       this.rethrowValidation(error);
     }
   }
 
-  async listPeople(rawQuery: RawPeopleCatalogQuery, cursor: string | undefined) {
+  async listPeople(rawQuery: RawPeopleCatalogQuery) {
     try {
       const query = normalizePeopleCatalogQuery(rawQuery);
-      const after = cursor === undefined ? null : this.cursorCodec.decode('people', query, cursor);
-      const slice = await this.repository.listPeople({ after, query });
-      return this.page('people', query, slice, query.limit);
+      const slice = await this.repository.listPeople({ query });
+      return this.page(query, slice);
     } catch (error: unknown) {
       this.rethrowValidation(error);
     }
@@ -90,27 +83,23 @@ export class CatalogService {
     return this.repository.listSitemapEntries(kind, bucket);
   }
 
-  private page<TItem>(
-    collection: 'people' | 'works',
-    query: object,
-    slice: CatalogSlice<TItem>,
-    limit: number,
-  ) {
-    const visible = slice.entries.slice(0, limit);
-    const hasNextPage = slice.entries.length > limit;
-    const last = visible.at(-1);
+  // A page beyond totalPages is a normal, valid request: it returns empty items, not an error.
+  private page<TItem>(query: { limit: number; page: number }, slice: CatalogSlice<TItem>) {
+    const totalPages = Math.max(1, Math.ceil(slice.totalCount / query.limit));
     return {
-      hasNextPage,
-      items: visible.map((entry) => entry.item),
-      nextCursor:
-        hasNextPage && last !== undefined
-          ? this.cursorCodec.encode(collection, query, last.position)
-          : null,
+      items: slice.items,
+      page: query.page,
+      pageSize: query.limit,
+      totalCount: slice.totalCount,
+      totalPages,
+      // Transitional fields for PR1-relaxed visitor pods still running old code; remove once PR2 is confirmed stable.
+      hasNextPage: query.page < totalPages,
+      nextCursor: null,
     };
   }
 
   private rethrowValidation(error: unknown): never {
-    if (error instanceof CatalogCursorError || error instanceof CatalogQueryError) {
+    if (error instanceof CatalogQueryError) {
       throw new CatalogError(error.code, 400);
     }
     throw error;
@@ -118,15 +107,9 @@ export class CatalogService {
 }
 
 export function isCatalogSharedCacheEligible(input: {
-  cursor: string | null;
   profilePublicId: string | null;
   query: string | null;
   tagCount: number;
 }): boolean {
-  return (
-    input.cursor === null &&
-    input.profilePublicId === null &&
-    input.query === null &&
-    input.tagCount <= 1
-  );
+  return input.profilePublicId === null && input.query === null && input.tagCount <= 1;
 }

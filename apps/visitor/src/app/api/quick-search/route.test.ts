@@ -25,7 +25,6 @@ describe('Visitor quick search route', () => {
 
   it('returns bounded public People and Work matches without leaking catalog details', async () => {
     const listPeople = vi.fn().mockResolvedValue({
-      hasNextPage: false,
       items: [
         {
           bio: 'สนใจระบบเว็บ',
@@ -37,10 +36,12 @@ describe('Visitor quick search route', () => {
           publishedWorkCount: 2,
         },
       ],
-      nextCursor: null,
+      page: 1,
+      pageSize: 5,
+      totalCount: 1,
+      totalPages: 1,
     });
     const listWorks = vi.fn().mockResolvedValue({
-      hasNextPage: false,
       items: [
         {
           academicPeriod: { semester: '1', year: 2567 },
@@ -54,7 +55,10 @@ describe('Visitor quick search route', () => {
           workPublicId: '20000000-0000-4000-8000-000000000002',
         },
       ],
-      nextCursor: null,
+      page: 1,
+      pageSize: 5,
+      totalCount: 1,
+      totalPages: 1,
     });
     const handler = createQuickSearchHandler({ listPeople, listWorks });
 

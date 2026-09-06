@@ -38,18 +38,13 @@ export function isPublicHtmlSharedCacheEligible(url: URL): boolean {
   const entityId = segments[1];
   if (segments.length === 0) return url.search.length === 0;
   if (segments[0] === 'works' && segments.length === 1) {
-    return (
-      !url.searchParams.has('cursor') &&
-      !url.searchParams.has('q') &&
-      url.searchParams.getAll('tag').filter(Boolean).length <= 1
-    );
+    return !url.searchParams.has('q') && url.searchParams.getAll('tag').filter(Boolean).length <= 1;
   }
   if (segments[0] === 'people' && segments.length === 1) {
-    return !url.searchParams.has('cursor') && !url.searchParams.has('q');
+    return !url.searchParams.has('q');
   }
   if (segments[0] === 'tags' && segments.length === 2 && entityId !== undefined) {
-    if (!UUID_PATTERN.test(entityId)) return false;
-    return !url.searchParams.has('cursor');
+    return UUID_PATTERN.test(entityId);
   }
   return (
     segments.length === 2 &&

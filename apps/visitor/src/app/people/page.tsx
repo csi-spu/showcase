@@ -28,7 +28,7 @@ export default async function PeoplePage({ searchParams }: Props) {
     client.listFilterOptions(),
     getTranslations('People'),
   ]);
-  const pageWindow = catalogPageWindow('/people', params, page.nextCursor);
+  const pageWindow = catalogPageWindow('/people', params, page.totalPages);
   const paginationLabels = {
     ellipsis: t('ellipsis'),
     goToPage: (pageNumber: number) => t('goToPage', { page: pageNumber }),

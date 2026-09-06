@@ -28,16 +28,13 @@ export class CatalogController {
     @Req() request: Request,
     @Res() response: Response,
   ) {
-    const cursor = scalarCursor(input.cursor);
-    const rawQuery = workQueryWithoutCursor(input);
-    const page = await this.catalog.listWorks(rawQuery, cursor ?? undefined);
-    const normalized = normalizeWorkCatalogQuery(rawQuery);
+    const page = await this.catalog.listWorks(input);
+    const normalized = normalizeWorkCatalogQuery(input);
     return respond(
       request,
       response,
       page,
       isCatalogSharedCacheEligible({
-        cursor,
         profilePublicId: normalized.profilePublicId,
         query: normalized.query,
         tagCount: normalized.tagPublicIds.length,
@@ -52,16 +49,13 @@ export class CatalogController {
     @Req() request: Request,
     @Res() response: Response,
   ) {
-    const cursor = scalarCursor(input.cursor);
-    const rawQuery = peopleQueryWithoutCursor(input);
-    const page = await this.catalog.listPeople(rawQuery, cursor ?? undefined);
-    const normalized = normalizePeopleCatalogQuery(rawQuery);
+    const page = await this.catalog.listPeople(input);
+    const normalized = normalizePeopleCatalogQuery(input);
     return respond(
       request,
       response,
       page,
       isCatalogSharedCacheEligible({
-        cursor,
         profilePublicId: null,
         query: normalized.query,
         tagCount: 0,
@@ -134,36 +128,6 @@ function sitemapBucket(value: string): number {
     throw new CatalogError('CATALOG_SITEMAP_BUCKET_INVALID', 400);
   }
   return Number.parseInt(value, 16);
-}
-
-function scalarCursor(value: string | string[] | undefined): string | null {
-  if (value === undefined) return null;
-  if (Array.isArray(value) || value.length === 0) {
-    throw new CatalogError('CATALOG_CURSOR_INVALID', 400);
-  }
-  return value;
-}
-
-function workQueryWithoutCursor(input: WorkCatalogQueryDto) {
-  return {
-    category: input.category,
-    limit: input.limit,
-    profile: input.profile,
-    q: input.q,
-    semester: input.semester,
-    sort: input.sort,
-    tag: input.tag,
-    year: input.year,
-  };
-}
-
-function peopleQueryWithoutCursor(input: PeopleCatalogQueryDto) {
-  return {
-    entryYear: input.entryYear,
-    limit: input.limit,
-    q: input.q,
-    sort: input.sort,
-  };
 }
 
 function respond<T>(

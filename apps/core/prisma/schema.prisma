@@ -327,8 +327,11 @@ model person_names {
   last_name_th  String
   created_at    DateTime @default(now()) @db.Timestamptz(6)
   updated_at    DateTime @default(now()) @db.Timestamptz(6)
-  people        people   @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  /// Database-generated (STORED, immutable expression over first_name_th/last_name_th). Never assign from application code.
+  normalized_name String?
+  people          people  @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([normalized_name], map: "person_names_normalized_name_idx")
   @@schema("private")
 }
 
