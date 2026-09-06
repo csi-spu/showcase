@@ -9,6 +9,16 @@ import { pipeline } from 'node:stream/promises';
 import { flushMediaSentry, reportMediaError } from './sentry.js';
 
 const MAX_OBJECT_BYTES = 5 * 1_024 * 1_024;
+// Processed Work variants are the bytes the Public Catalog already serves to
+// anyone, so a GET for one needs no signature. Keeping them unsigned is what
+// lets Cloudflare cache them: a signed URL expires within a minute and can
+// never register a cache hit. `master.webp` is deliberately excluded — it is
+// the full-resolution original used for Admin review, not published output.
+const PUBLIC_VARIANT_KEY = /^work-media\/[0-9a-f-]{36}\/[0-9]{1,4}\.webp$/u;
+
+function isPublicVariantKey(key: string): boolean {
+  return PUBLIC_VARIANT_KEY.test(key);
+}
 
 interface MediaServerOptions {
   allowedUploadOrigin: string;
@@ -64,7 +74,11 @@ async function handleRequest(
     if (origin !== options.allowedUploadOrigin) return send(response, 403, 'ORIGIN_FORBIDDEN');
     allowUploadOrigin(response, origin);
   }
+  // Only an unsigned GET is exempt, and only for a published variant. Every
+  // PUT and DELETE still proves authorization through the signature.
+  const isUnsignedPublicRead = method === 'GET' && isPublicVariantKey(key);
   if (
+    !isUnsignedPublicRead &&
     !verifySignature(
       options.signingSecret,
       method,
@@ -96,11 +110,12 @@ async function handleRequest(
       'content-type',
       key.endsWith('.webp') ? 'image/webp' : 'application/octet-stream',
     );
-    // `work-media/` objects are addressed by an immutable assetId, so they can
-    // stay in shared and browser caches for a year. Everything else is private.
+    // Published variants are addressed by an immutable assetId, so they can
+    // stay in shared and browser caches for a year. Everything else — including
+    // `master.webp` under the same prefix — stays private.
     response.setHeader(
       'cache-control',
-      key.startsWith('work-media/') ? 'public, max-age=31536000, immutable' : 'private, no-store',
+      isPublicVariantKey(key) ? 'public, max-age=31536000, immutable' : 'private, no-store',
     );
     response.statusCode = 200;
     // Streaming keeps a 5 MB object off the heap of a 2 GB host.
