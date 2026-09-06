@@ -1,12 +1,10 @@
 import type { PeopleCatalogQuery, WorkCatalogQuery } from '../domain/catalog-query-policy';
 
 export const CATALOG_REPOSITORY = Symbol('CATALOG_REPOSITORY');
-export const CATALOG_CURSOR_CODEC = Symbol('CATALOG_CURSOR_CODEC');
-
-export type CatalogPosition = Record<string, boolean | number | string | null>;
 
 export interface CatalogSlice<TItem> {
-  entries: Array<{ item: TItem; position: CatalogPosition }>;
+  items: TItem[];
+  totalCount: number;
 }
 
 export interface WorkCatalogCard {
@@ -59,15 +57,9 @@ export interface CatalogRepository {
   findTag(publicId: string): Promise<PublicTagView | null>;
   getCacheVersion(): Promise<string>;
   listFilterOptions(): Promise<CatalogFilterOptions>;
-  listPeople(input: {
-    after: CatalogPosition | null;
-    query: PeopleCatalogQuery;
-  }): Promise<CatalogSlice<PeopleCatalogCard>>;
+  listPeople(input: { query: PeopleCatalogQuery }): Promise<CatalogSlice<PeopleCatalogCard>>;
   listPopularTags(): Promise<PublicTagView[]>;
   listSitemapEntries(kind: CatalogSitemapKind, bucket: number): Promise<CatalogSitemapEntry[]>;
   suggestTags(query: string): Promise<PublicTagView[]>;
-  listWorks(input: {
-    after: CatalogPosition | null;
-    query: WorkCatalogQuery;
-  }): Promise<CatalogSlice<WorkCatalogCard>>;
+  listWorks(input: { query: WorkCatalogQuery }): Promise<CatalogSlice<WorkCatalogCard>>;
 }

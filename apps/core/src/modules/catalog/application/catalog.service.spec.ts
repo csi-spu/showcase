@@ -5,19 +5,17 @@ import type {
   PublicTagView,
   WorkCatalogCard,
 } from './catalog.ports';
-import { CatalogCursorCodec } from '../domain/catalog-cursor';
 import { CatalogService, isCatalogSharedCacheEligible } from './catalog.service';
-
-const SECRET = 'catalog-cursor-secret-that-is-at-least-thirty-two-bytes';
 
 class FakeCatalogRepository implements CatalogRepository {
   filterOptions = { entryYears: [] as number[], workYears: [] as number[] };
-  workSlice: CatalogSlice<WorkCatalogCard> = { entries: [] };
-  peopleSlice: CatalogSlice<PeopleCatalogCard> = { entries: [] };
+  workSlice: CatalogSlice<WorkCatalogCard> = { items: [], totalCount: 0 };
+  peopleSlice: CatalogSlice<PeopleCatalogCard> = { items: [], totalCount: 0 };
   popularTags: PublicTagView[] = [];
   suggestedTags: PublicTagView[] = [];
   tag: PublicTagView | null = null;
   lastWorkInput: Parameters<CatalogRepository['listWorks']>[0] | undefined;
+  lastTagSuggestionQuery: string | undefined;
 
   findTag(): Promise<PublicTagView | null> {
     return Promise.resolve(this.tag);
@@ -48,8 +46,6 @@ class FakeCatalogRepository implements CatalogRepository {
     return Promise.resolve(this.suggestedTags);
   }
 
-  lastTagSuggestionQuery: string | undefined;
-
   listWorks(input: Parameters<CatalogRepository['listWorks']>[0]) {
     this.lastWorkInput = input;
     return Promise.resolve(this.workSlice);
@@ -62,83 +58,75 @@ describe('CatalogService', () => {
 
   beforeEach(() => {
     repository = new FakeCatalogRepository();
-    service = new CatalogService(repository, new CatalogCursorCodec(SECRET));
+    service = new CatalogService(repository);
   });
 
-  it('returns a bounded Work page and binds continuation to its normalized request', async () => {
+  it('returns a bounded, offset-addressable Work page with correct total pages', async () => {
     repository.workSlice = {
-      entries: [workEntry(1), workEntry(2), workEntry(3)],
+      items: [workItem(1), workItem(2)],
+      totalCount: 5,
     };
 
-    const firstPage = await service.listWorks({ limit: '2', q: '  REACT  ' }, undefined);
+    const firstPage = await service.listWorks({ limit: '2', page: '1', q: '  REACT  ' });
     expect(firstPage).toMatchObject({
-      hasNextPage: true,
       items: [{ title: 'Work 1' }, { title: 'Work 2' }],
+      page: 1,
+      pageSize: 2,
+      totalCount: 5,
+      totalPages: 3,
+      hasNextPage: true,
+      nextCursor: null,
     });
-    expect(firstPage).not.toHaveProperty('total');
-    expect(firstPage.nextCursor).toEqual(expect.any(String));
     expect(repository.lastWorkInput).toMatchObject({
-      after: null,
-      query: { limit: 2, query: 'react', sort: 'relevance' },
+      query: { limit: 2, page: 1, query: 'react', sort: 'relevance' },
     });
 
-    repository.workSlice = { entries: [] };
-    await service.listWorks({ limit: '2', q: 'react' }, firstPage.nextCursor ?? undefined);
-    expect(repository.lastWorkInput?.after).toEqual({
-      publishedAt: '2026-08-26T00:00:02.000Z',
-      publicId: '95000000-0000-4000-8000-000000000002',
-      rank: 2,
-    });
-
-    await expect(
-      service.listWorks({ limit: '2', q: 'vue' }, firstPage.nextCursor ?? undefined),
-    ).rejects.toMatchObject({ code: 'CATALOG_CURSOR_MISMATCH', status: 400 });
+    await service.listWorks({ limit: '2', page: '3', q: 'react' });
+    expect(repository.lastWorkInput).toMatchObject({ query: { page: 3 } });
   });
 
-  it('uses no-store for high-cardinality shapes and shared cache only for bounded first pages', () => {
+  it('rounds totalPages up and reports no next page on the last page', async () => {
+    repository.workSlice = { items: [workItem(1)], totalCount: 5 };
+    const page = await service.listWorks({ limit: '2', page: '3' });
+    expect(page).toMatchObject({ totalPages: 3, hasNextPage: false });
+  });
+
+  it('defaults to page 1 and returns empty items for a page beyond the last page', async () => {
+    repository.workSlice = { items: [], totalCount: 5 };
+    const defaulted = await service.listWorks({ limit: '2' });
+    expect(repository.lastWorkInput).toMatchObject({ query: { page: 1 } });
+
+    const beyond = await service.listWorks({ limit: '2', page: '99' });
+    expect(beyond).toMatchObject({ items: [], page: 99, totalPages: 3 });
+    expect(defaulted).toMatchObject({ page: 1 });
+  });
+
+  it('rejects an invalid page number', async () => {
+    await expect(service.listWorks({ page: '0' })).rejects.toMatchObject({
+      code: 'CATALOG_PAGE_INVALID',
+      status: 400,
+    });
+    await expect(service.listWorks({ page: 'abc' })).rejects.toMatchObject({
+      code: 'CATALOG_PAGE_INVALID',
+      status: 400,
+    });
+  });
+
+  it('uses no-store for high-cardinality shapes and shared cache only for cacheable filter shapes', () => {
+    expect(isCatalogSharedCacheEligible({ profilePublicId: null, query: null, tagCount: 0 })).toBe(
+      true,
+    );
     expect(
-      isCatalogSharedCacheEligible({
-        cursor: null,
-        profilePublicId: null,
-        query: null,
-        tagCount: 0,
-      }),
-    ).toBe(true);
-    expect(
-      isCatalogSharedCacheEligible({
-        cursor: 'cursor',
-        profilePublicId: null,
-        query: null,
-        tagCount: 0,
-      }),
+      isCatalogSharedCacheEligible({ profilePublicId: null, query: 'react', tagCount: 0 }),
     ).toBe(false);
+    expect(isCatalogSharedCacheEligible({ profilePublicId: null, query: null, tagCount: 2 })).toBe(
+      false,
+    );
+    expect(isCatalogSharedCacheEligible({ profilePublicId: null, query: null, tagCount: 1 })).toBe(
+      true,
+    );
     expect(
       isCatalogSharedCacheEligible({
-        cursor: null,
-        profilePublicId: null,
-        query: 'react',
-        tagCount: 0,
-      }),
-    ).toBe(false);
-    expect(
-      isCatalogSharedCacheEligible({
-        cursor: null,
-        profilePublicId: null,
-        query: null,
-        tagCount: 2,
-      }),
-    ).toBe(false);
-    expect(
-      isCatalogSharedCacheEligible({
-        cursor: null,
-        profilePublicId: null,
-        query: null,
-        tagCount: 1,
-      }),
-    ).toBe(true);
-    expect(
-      isCatalogSharedCacheEligible({
-        cursor: null,
         profilePublicId: '93000000-0000-4000-8000-000000000001',
         query: null,
         tagCount: 0,
@@ -180,25 +168,18 @@ describe('CatalogService', () => {
   });
 });
 
-function workEntry(index: number) {
+function workItem(index: number): WorkCatalogCard {
   const suffix = String(index).padStart(12, '0');
   return {
-    item: {
-      academicPeriod: { semester: '1' as const, year: 2569 },
-      attributions: ['ผู้สร้าง'],
-      category: 'course_work' as const,
-      poster: null,
-      publishedAt: `2026-08-26T00:00:0${index}.000Z`,
-      summary: `Summary ${index}`,
-      tags: [],
-      title: `Work ${index}`,
-      workPublicId: `95000000-0000-4000-8000-${suffix}`,
-    },
-    position: {
-      publishedAt: `2026-08-26T00:00:0${index}.000Z`,
-      publicId: `95000000-0000-4000-8000-${suffix}`,
-      rank: index,
-    },
+    academicPeriod: { semester: '1' as const, year: 2569 },
+    attributions: ['ผู้สร้าง'],
+    category: 'course_work' as const,
+    poster: null,
+    publishedAt: `2026-08-26T00:00:0${index}.000Z`,
+    summary: `Summary ${index}`,
+    tags: [],
+    title: `Work ${index}`,
+    workPublicId: `95000000-0000-4000-8000-${suffix}`,
   };
 }
 

@@ -8,7 +8,7 @@ import { PublicCatalogCoreClient, type CatalogSearchParams } from '@/lib/public-
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
 import { PublicShell } from '../../public-shell';
 import { PublicPageIntro } from '../../public-page';
-import { catalogContinuationUrl } from '../../catalog-url';
+import { catalogPageHref } from '../../catalog-url';
 import { CatalogWorkGrid } from '../../works/catalog-work-grid';
 
 type Props = {
@@ -21,7 +21,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const query = await searchParams;
   return {
     alternates: { canonical: `/tags/${publicId}` },
-    robots: { follow: true, index: query.cursor === undefined },
+    robots: { follow: true, index: query.page === undefined },
     title: 'แท็กผลงาน | Student Showcase',
   };
 }
@@ -31,7 +31,7 @@ export default async function TagPage({ params, searchParams }: Props) {
   const query = await searchParams;
   if (!z.uuid().safeParse(publicId).success) notFound();
   const client = new PublicCatalogCoreClient(getVisitorCoreUrl());
-  const workQuery = { cursor: query.cursor, limit: '24', tag: publicId };
+  const workQuery = { limit: '24', page: query.page, tag: publicId };
   const [tag, works, t] = await Promise.all([
     client.getTag(publicId),
     client.listWorks(workQuery),
@@ -50,10 +50,10 @@ export default async function TagPage({ params, searchParams }: Props) {
           labels={{ empty: t('empty'), posterAlt: (title) => t('posterAlt', { title }) }}
           works={works.items}
         />
-        {works.hasNextPage && works.nextCursor ? (
+        {works.page < works.totalPages ? (
           <Link
             className={buttonVariants({ className: 'min-h-11', variant: 'outline' })}
-            href={catalogContinuationUrl(`/tags/${publicId}`, workQuery, works.nextCursor)}
+            href={catalogPageHref(`/tags/${publicId}`, workQuery, works.page + 1)}
             rel="next"
           >
             {t('more')}

@@ -19,6 +19,11 @@ const INVALID_WORK_QUERIES: Array<[RawWorkCatalogQuery, CatalogQueryError['code'
   [{ year: '2399' }, 'CATALOG_YEAR_INVALID'],
   [{ year: '2701' }, 'CATALOG_YEAR_INVALID'],
   [{ limit: '49' }, 'CATALOG_LIMIT_INVALID'],
+  [{ page: '0' }, 'CATALOG_PAGE_INVALID'],
+  [{ page: '-1' }, 'CATALOG_PAGE_INVALID'],
+  [{ page: '1.5' }, 'CATALOG_PAGE_INVALID'],
+  [{ page: 'abc' }, 'CATALOG_PAGE_INVALID'],
+  [{ page: ['1', '2'] }, 'CATALOG_PAGE_INVALID'],
 ];
 
 describe('Public Catalog query policy', () => {
@@ -27,6 +32,7 @@ describe('Public Catalog query policy', () => {
       normalizeWorkCatalogQuery({
         category: ['competition_entry', 'course_work', 'course_work'],
         limit: '48',
+        page: '2',
         profile: uuid(4),
         q: '  ＲＥＡＣＴ   ระบบ  ',
         semester: 'summer',
@@ -41,6 +47,7 @@ describe('Public Catalog query policy', () => {
     ).toEqual({
       categories: ['competition_entry', 'course_work'],
       limit: 48,
+      page: 2,
       query: 'react ระบบ',
       profilePublicId: uuid(4),
       semester: 'summer',
@@ -57,6 +64,7 @@ describe('Public Catalog query policy', () => {
     expect(normalizeWorkCatalogQuery({ semester: '', year: '' })).toEqual({
       categories: [],
       limit: 24,
+      page: 1,
       query: null,
       profilePublicId: null,
       semester: null,
@@ -67,9 +75,14 @@ describe('Public Catalog query policy', () => {
     expect(normalizePeopleCatalogQuery({ entryYear: '' })).toEqual({
       entryYear: null,
       limit: 24,
+      page: 1,
       query: null,
       sort: 'name',
     });
+  });
+
+  it('accepts any page number with no upper bound', () => {
+    expect(normalizeWorkCatalogQuery({ page: '999999' })).toMatchObject({ page: 999999 });
   });
 
   it.each(INVALID_WORK_QUERIES)('rejects an invalid Work request with %s', (input, code) => {

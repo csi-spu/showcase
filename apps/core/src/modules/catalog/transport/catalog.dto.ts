@@ -6,10 +6,10 @@ export class WorkCatalogQueryDto implements RawWorkCatalogQuery {
   category?: string | string[];
 
   @Allow()
-  cursor?: string | string[];
+  limit?: string | string[];
 
   @Allow()
-  limit?: string | string[];
+  page?: string | string[];
 
   @Allow()
   profile?: string | string[];
@@ -32,13 +32,13 @@ export class WorkCatalogQueryDto implements RawWorkCatalogQuery {
 
 export class PeopleCatalogQueryDto implements RawPeopleCatalogQuery {
   @Allow()
-  cursor?: string | string[];
-
-  @Allow()
   entryYear?: string | string[];
 
   @Allow()
   limit?: string | string[];
+
+  @Allow()
+  page?: string | string[];
 
   @Allow()
   q?: string | string[];

@@ -29,7 +29,7 @@ export default async function WorksPage({ searchParams }: Props) {
     client.listFilterOptions(),
     getTranslations('Catalog'),
   ]);
-  const pageWindow = catalogPageWindow('/works', params, page.nextCursor);
+  const pageWindow = catalogPageWindow('/works', params, page.totalPages);
   const paginationLabels = {
     ellipsis: t('ellipsis'),
     goToPage: (pageNumber: number) => t('goToPage', { page: pageNumber }),

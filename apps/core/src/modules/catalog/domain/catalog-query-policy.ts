@@ -3,6 +3,7 @@ import { WORK_CATEGORIES, WORK_SEMESTERS } from '../../works/domain/work-draft-p
 
 const PAGE_SIZE_DEFAULT = 24;
 const PAGE_SIZE_MAXIMUM = 48;
+const PAGE_NUMBER_DEFAULT = 1;
 const QUERY_MAXIMUM_LENGTH = 100;
 const QUERY_MINIMUM_LENGTH = 2;
 const TAG_SUGGESTION_QUERY_MAXIMUM_LENGTH = 50;
@@ -18,6 +19,7 @@ type QueryValue = string | string[] | undefined;
 export interface RawWorkCatalogQuery {
   category?: QueryValue;
   limit?: QueryValue;
+  page?: QueryValue;
   profile?: QueryValue;
   q?: QueryValue;
   semester?: QueryValue;
@@ -29,6 +31,7 @@ export interface RawWorkCatalogQuery {
 export interface RawPeopleCatalogQuery {
   entryYear?: QueryValue;
   limit?: QueryValue;
+  page?: QueryValue;
   q?: QueryValue;
   sort?: QueryValue;
 }
@@ -36,6 +39,7 @@ export interface RawPeopleCatalogQuery {
 export interface WorkCatalogQuery {
   categories: Array<(typeof WORK_CATEGORIES)[number]>;
   limit: number;
+  page: number;
   profilePublicId: string | null;
   query: string | null;
   semester: (typeof WORK_SEMESTERS)[number] | null;
@@ -47,6 +51,7 @@ export interface WorkCatalogQuery {
 export interface PeopleCatalogQuery {
   entryYear: number | null;
   limit: number;
+  page: number;
   query: string | null;
   sort: (typeof PEOPLE_SORTS)[number] | 'relevance';
 }
@@ -55,6 +60,7 @@ export type CatalogQueryErrorCode =
   | 'CATALOG_CATEGORY_INVALID'
   | 'CATALOG_ENTRY_YEAR_INVALID'
   | 'CATALOG_LIMIT_INVALID'
+  | 'CATALOG_PAGE_INVALID'
   | 'CATALOG_PROFILE_INVALID'
   | 'CATALOG_QUERY_LENGTH'
   | 'CATALOG_QUERY_SHAPE_INVALID'
@@ -95,6 +101,7 @@ export function normalizeWorkCatalogQuery(input: RawWorkCatalogQuery): WorkCatal
   return {
     categories,
     limit: normalizePageSize(input.limit),
+    page: normalizePageNumber(input.page),
     profilePublicId,
     query,
     semester: semesterValue ?? null,
@@ -111,6 +118,7 @@ export function normalizePeopleCatalogQuery(input: RawPeopleCatalogQuery): Peopl
   return {
     entryYear: normalizeAcademicYear(input.entryYear, 'CATALOG_ENTRY_YEAR_INVALID'),
     limit: normalizePageSize(input.limit),
+    page: normalizePageNumber(input.page),
     query,
     sort: query === null ? requestedSort : 'relevance',
   };
@@ -148,6 +156,14 @@ function normalizePageSize(input: QueryValue): number {
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > PAGE_SIZE_MAXIMUM) {
     fail('CATALOG_LIMIT_INVALID');
   }
+  return parsed;
+}
+
+function normalizePageNumber(input: QueryValue): number {
+  const value = scalar(input, 'CATALOG_PAGE_INVALID');
+  if (value === undefined) return PAGE_NUMBER_DEFAULT;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) fail('CATALOG_PAGE_INVALID');
   return parsed;
 }
 

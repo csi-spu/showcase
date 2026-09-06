@@ -28,20 +28,18 @@ class E2eCatalogRepository implements CatalogRepository {
 
   listPeople() {
     return Promise.resolve({
-      entries: [
+      items: [
         {
-          item: {
-            bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
-            entryYear: 2566,
-            firstName: 'ณัฐดนัย',
-            lastName: 'สุขใจ',
-            photo: null,
-            publicId: PROFILE_PUBLIC_ID,
-            publishedWorkCount: 1,
-          },
-          position: { name: 'ณัฐดนัย', publicId: PROFILE_PUBLIC_ID },
+          bio: 'สนใจระบบเว็บที่ใช้งานง่าย',
+          entryYear: 2566,
+          firstName: 'ณัฐดนัย',
+          lastName: 'สุขใจ',
+          photo: null,
+          publicId: PROFILE_PUBLIC_ID,
+          publishedWorkCount: 1,
         },
       ],
+      totalCount: 1,
     });
   }
 
@@ -55,9 +53,13 @@ class E2eCatalogRepository implements CatalogRepository {
     return Promise.resolve([{ lastModified: null, publicId: WORK_PUBLIC_ID }]);
   }
 
-  listWorks() {
+  listWorks(input: Parameters<CatalogRepository['listWorks']>[0]) {
+    const allItems = [workItem(1), workItem(2), workItem(3)];
+    const { limit, page } = input.query;
+    const offset = (page - 1) * limit;
     return Promise.resolve({
-      entries: [workEntry(1), workEntry(2)],
+      items: allItems.slice(offset, offset + limit),
+      totalCount: allItems.length,
     });
   }
 
@@ -83,15 +85,22 @@ describe('Public Catalog HTTP contract (e2e)', () => {
 
   afterAll(async () => app.close());
 
-  it('serves bounded Work pages without totals or private identifiers', async () => {
+  it('serves bounded, offset-addressable Work pages without private identifiers', async () => {
     const response = await request(app.getHttpServer()).get('/v1/public/works?limit=1').expect(200);
     expect(response.headers['cache-control']).toBe(
       'public, max-age=0, s-maxage=60, stale-while-revalidate=60',
     );
     expect(response.headers['cache-tag']).toBe('showcase-catalog,showcase-catalog-works');
     expect(response.headers.etag).toEqual(expect.any(String));
-    expect(response.body).toMatchObject({ hasNextPage: true, items: [{ title: 'Work 1' }] });
-    expect(response.body).not.toHaveProperty('total');
+    expect(response.body).toMatchObject({
+      hasNextPage: true,
+      items: [{ title: 'Work 1' }],
+      nextCursor: null,
+      page: 1,
+      pageSize: 1,
+      totalCount: 3,
+      totalPages: 3,
+    });
     expect(JSON.stringify(response.body)).not.toMatch(/studentId|accountId|personId|description/i);
 
     await request(app.getHttpServer())
@@ -100,16 +109,37 @@ describe('Public Catalog HTTP contract (e2e)', () => {
       .expect(304);
   });
 
-  it('uses no-store and rejects cursor reuse for search', async () => {
+  it('serves distinct, directly addressable Work pages via ?page and rejects invalid page values', async () => {
+    const pageTwo = await request(app.getHttpServer())
+      .get('/v1/public/works?limit=1&page=2')
+      .expect(200);
+    expect(pageTwo.body).toMatchObject({
+      hasNextPage: true,
+      items: [{ title: 'Work 2' }],
+      page: 2,
+      totalPages: 3,
+    });
+
+    const lastPage = await request(app.getHttpServer())
+      .get('/v1/public/works?limit=1&page=3')
+      .expect(200);
+    expect(lastPage.body).toMatchObject({ hasNextPage: false, items: [{ title: 'Work 3' }] });
+
+    await request(app.getHttpServer())
+      .get('/v1/public/works?page=0')
+      .expect(400)
+      .expect({ error: { code: 'CATALOG_PAGE_INVALID' } });
+    await request(app.getHttpServer())
+      .get('/v1/public/works?page=abc')
+      .expect(400)
+      .expect({ error: { code: 'CATALOG_PAGE_INVALID' } });
+  });
+
+  it('uses no-store for search', async () => {
     const first = await request(app.getHttpServer())
       .get('/v1/public/works?limit=1&q=react')
       .expect(200);
     expect(first.headers['cache-control']).toBe('private, no-store');
-    const nextCursor = requiredStringProperty(first.body as unknown, 'nextCursor');
-    await request(app.getHttpServer())
-      .get(`/v1/public/works?limit=1&q=vue&cursor=${encodeURIComponent(nextCursor)}`)
-      .expect(400)
-      .expect({ error: { code: 'CATALOG_CURSOR_MISMATCH' } });
     await request(app.getHttpServer())
       .get('/v1/public/works?unknown=private')
       .expect(400)
@@ -195,36 +225,23 @@ describe('Public Catalog HTTP contract (e2e)', () => {
   });
 });
 
-function workEntry(index: number) {
+function workItem(index: number) {
   const publicId = index === 1 ? WORK_PUBLIC_ID : id(10 + index);
   return {
-    item: {
-      academicPeriod: { semester: '1' as const, year: 2569 },
-      attributions: ['ผู้สร้าง'],
-      category: 'course_work' as const,
-      poster: null,
-      publishedAt: `2026-08-26T00:00:0${index}.000Z`,
-      summary: `Summary ${index}`,
-      tags: [],
-      title: `Work ${index}`,
-      workPublicId: publicId,
-    },
-    position: {
-      publishedAt: `2026-08-26T00:00:0${index}.000Z`,
-      publicId,
-    },
+    academicPeriod: { semester: '1' as const, year: 2569 },
+    attributions: ['ผู้สร้าง'],
+    category: 'course_work' as const,
+    poster: null,
+    publishedAt: `2026-08-26T00:00:0${index}.000Z`,
+    summary: `Summary ${index}`,
+    tags: [],
+    title: `Work ${index}`,
+    workPublicId: publicId,
   };
 }
 
 function id(index: number): string {
   return `98000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-}
-
-function requiredStringProperty(value: unknown, key: string): string {
-  if (typeof value !== 'object' || value === null) throw new Error('INVALID_TEST_RESPONSE');
-  const property = Reflect.get(value, key) as unknown;
-  if (typeof property !== 'string') throw new Error('INVALID_TEST_RESPONSE');
-  return property;
 }
 
 function requiredArrayProperty(value: unknown, key: string): unknown[] {

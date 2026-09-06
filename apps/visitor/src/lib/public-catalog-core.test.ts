@@ -24,7 +24,7 @@ describe('PublicCatalogCoreClient', () => {
     expect(init?.cache).toBe('no-store');
   });
 
-  it('revalidates bounded first pages while bypassing cache for search and cursors', async () => {
+  it('revalidates bounded pages while bypassing cache for search and profile filters', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockImplementation(() => Promise.resolve(Response.json(workPage())));
@@ -32,17 +32,19 @@ describe('PublicCatalogCoreClient', () => {
     await client.listWorks({ limit: '12', sort: 'recent' });
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ next: { revalidate: 60 } });
 
+    await client.listWorks({ page: '2', sort: 'recent' });
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ next: { revalidate: 60 } });
+
     await client.listWorks({ q: 'react' });
-    expect(fetchMock.mock.calls[1]?.[1]?.cache).toBe('no-store');
+    expect(fetchMock.mock.calls[2]?.[1]?.cache).toBe('no-store');
 
     await client.listWorks({ limit: '6', profile: id(4), sort: 'recent' });
-    expect(String(fetchMock.mock.calls[2]?.[0])).toContain(`profile=${id(4)}`);
-    expect(fetchMock.mock.calls[2]?.[1]?.cache).toBe('no-store');
+    expect(String(fetchMock.mock.calls[3]?.[0])).toContain(`profile=${id(4)}`);
+    expect(fetchMock.mock.calls[3]?.[1]?.cache).toBe('no-store');
   });
 
   it('validates the consented Public Profile bio in People catalog cards', async () => {
     const page = {
-      hasNextPage: false,
       items: [
         {
           bio: 'สนใจการออกแบบประสบการณ์ที่ใช้งานง่าย',
@@ -54,13 +56,25 @@ describe('PublicCatalogCoreClient', () => {
           publishedWorkCount: 2,
         },
       ],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      totalCount: 1,
+      totalPages: 1,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(page));
 
     await expect(
       new PublicCatalogCoreClient('https://core.example.test', fetchMock).listPeople({}),
     ).resolves.toEqual(page);
+  });
+
+  it('tolerates transitional hasNextPage/nextCursor fields Core still sends alongside offset pagination', async () => {
+    const page = { ...workPage(), hasNextPage: true, nextCursor: null };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(page));
+
+    await expect(
+      new PublicCatalogCoreClient('https://core.example.test', fetchMock).listWorks({}),
+    ).resolves.toMatchObject(workPage());
   });
 
   it('rejects accidental private or full Revision fields', async () => {
@@ -105,7 +119,6 @@ describe('PublicCatalogCoreClient', () => {
 
 function workPage() {
   return {
-    hasNextPage: false,
     items: [
       {
         academicPeriod: { semester: '1', year: 2569 },
@@ -119,7 +132,10 @@ function workPage() {
         workPublicId: id(1),
       },
     ],
-    nextCursor: null,
+    page: 1,
+    pageSize: 24,
+    totalCount: 1,
+    totalPages: 1,
   };
 }
 

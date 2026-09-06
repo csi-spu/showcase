@@ -60,13 +60,13 @@ const personCardSchema = z
   .strict();
 
 const pageSchema = <T extends z.ZodType>(item: T) =>
-  z
-    .object({
-      hasNextPage: z.boolean(),
-      items: z.array(item).max(48),
-      nextCursor: z.string().min(1).nullable(),
-    })
-    .strict();
+  z.object({
+    items: z.array(item).max(48),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1).max(48),
+    totalCount: z.number().int().nonnegative(),
+    totalPages: z.number().int().min(1),
+  });
 
 const workPageSchema = pageSchema(workCardSchema);
 const peoplePageSchema = pageSchema(personCardSchema);
@@ -101,8 +101,8 @@ export class PublicCatalogCoreClient {
   async listWorks(params: CatalogSearchParams): Promise<WorkCatalogPage> {
     const url = this.url('/v1/public/works', params, [
       'category',
-      'cursor',
       'limit',
+      'page',
       'profile',
       'q',
       'semester',
@@ -119,13 +119,7 @@ export class PublicCatalogCoreClient {
   }
 
   async listPeople(params: CatalogSearchParams): Promise<PeopleCatalogPage> {
-    const url = this.url('/v1/public/people', params, [
-      'cursor',
-      'entryYear',
-      'limit',
-      'q',
-      'sort',
-    ]);
+    const url = this.url('/v1/public/people', params, ['entryYear', 'limit', 'page', 'q', 'sort']);
     const response = await this.fetchImpl(
       url,
       this.fetchOptions(params, ['showcase-catalog', 'showcase-catalog-people']),
@@ -209,10 +203,7 @@ export class PublicCatalogCoreClient {
   ): RequestInit & { next?: { revalidate: number; tags: string[] } } {
     const tags = values(params.tag);
     const isNoStore =
-      values(params.cursor).length > 0 ||
-      values(params.profile).some(Boolean) ||
-      values(params.q).some(Boolean) ||
-      tags.length > 1;
+      values(params.profile).some(Boolean) || values(params.q).some(Boolean) || tags.length > 1;
     return {
       ...(isNoStore
         ? { cache: 'no-store' as const }

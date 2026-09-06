@@ -29,8 +29,9 @@ describe('publicCacheTags', () => {
     expect(isPublicHtmlSharedCacheEligible(url(`/works?tag=${id(1)}`))).toBe(true);
     expect(isPublicHtmlSharedCacheEligible(url(`/works?tag=${id(1)}&tag=${id(2)}`))).toBe(false);
     expect(isPublicHtmlSharedCacheEligible(url('/works?q=react'))).toBe(false);
-    expect(isPublicHtmlSharedCacheEligible(url('/people?cursor=opaque'))).toBe(false);
-    expect(isPublicHtmlSharedCacheEligible(url(`/tags/${id(1)}?cursor=opaque`))).toBe(false);
+    expect(isPublicHtmlSharedCacheEligible(url('/works?page=2'))).toBe(true);
+    expect(isPublicHtmlSharedCacheEligible(url('/people?q=react'))).toBe(false);
+    expect(isPublicHtmlSharedCacheEligible(url(`/tags/${id(1)}?page=2`))).toBe(true);
   });
 
   it('changes validators with the authoritative cache version and matches HTTP lists', () => {
