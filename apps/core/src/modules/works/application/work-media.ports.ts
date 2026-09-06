@@ -132,6 +132,12 @@ export interface WorkMediaRepository {
 
 export interface WorkMediaStorage {
   createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string>;
+  /**
+   * URL for an already-published variant. It carries no signature and does not
+   * expire, so shared caches can actually retain it; callers must therefore
+   * only pass keys whose bytes are public by definition.
+   */
+  createPublicUrl(input: { key: string }): string;
   createPresignedPut(input: {
     contentType: WorkMediaContentType;
     expiresInSeconds: number;

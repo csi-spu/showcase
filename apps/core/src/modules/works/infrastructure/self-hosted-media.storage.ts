@@ -27,6 +27,12 @@ export class SelfHostedMediaStorage implements WorkMediaStorage {
     return Promise.resolve(this.signedUrl(this.baseUrl, 'GET', input.key, input.expiresInSeconds));
   }
 
+  createPublicUrl(input: { key: string }): string {
+    const encoded = Buffer.from(input.key, 'utf8').toString('base64url');
+    if (encoded.length > MAX_KEY_LENGTH) throw new Error('MEDIA_KEY_INVALID');
+    return `${this.publicBaseUrl}/objects/${encoded}`;
+  }
+
   createPresignedPut(input: {
     contentType: WorkMediaContentType;
     expiresInSeconds: number;

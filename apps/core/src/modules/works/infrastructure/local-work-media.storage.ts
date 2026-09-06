@@ -23,6 +23,10 @@ export class LocalWorkMediaStorage implements WorkMediaStorage {
     return Promise.resolve(this.objectUrl(input.key));
   }
 
+  createPublicUrl(input: { key: string }): string {
+    return this.objectUrl(input.key);
+  }
+
   createPresignedPut(input: {
     contentType: WorkMediaContentType;
     expiresInSeconds: number;

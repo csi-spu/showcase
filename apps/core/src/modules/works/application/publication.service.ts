@@ -33,7 +33,7 @@ export class PublicationService {
     @Inject(PUBLICATION_REPOSITORY) private readonly repository: PublicationRepository,
     @Inject(WORKS_CLOCK) private readonly clock: WorksClock,
     @Inject(WORK_MEDIA_STORAGE)
-    private readonly mediaStorage: Pick<WorkMediaStorage, 'createPresignedGet'>,
+    private readonly mediaStorage: Pick<WorkMediaStorage, 'createPublicUrl'>,
   ) {}
 
   async approveAndPublish(input: {
@@ -65,9 +65,11 @@ export class PublicationService {
     const objectKey = await this.repository.findPublicMediaObjectKey(workPublicId, assetId, width);
     if (objectKey === null) throw new PublicationError('PUBLIC_WORK_NOT_FOUND', 404);
     try {
-      return {
-        url: await this.mediaStorage.createPresignedGet({ expiresInSeconds: 60, key: objectKey }),
-      };
+      // The query above already constrains this to an approved Revision of a
+      // published, active Work, so these bytes are public by definition. A
+      // signature would only add a 60-second expiry that stops shared caches
+      // from ever retaining the image.
+      return { url: this.mediaStorage.createPublicUrl({ key: objectKey }) };
     } catch {
       throw new PublicationError('WORK_MEDIA_SERVICE_UNAVAILABLE', 503);
     }

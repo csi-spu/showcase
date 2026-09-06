@@ -6,6 +6,11 @@ export class UnavailableWorkMediaStorage implements WorkMediaStorage {
     return Promise.reject(new Error('MEDIA_WORK_UNAVAILABLE'));
   }
 
+  createPublicUrl(_input: { key: string }): string {
+    void _input;
+    throw new Error('MEDIA_WORK_UNAVAILABLE');
+  }
+
   createPresignedPut(_input: {
     contentType: WorkMediaContentType;
     expiresInSeconds: number;
