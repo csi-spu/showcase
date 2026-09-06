@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
 import { getVisitorCoreUrl } from '@/lib/public-profile-core';
 import { PublicWorkCoreClient } from '@/lib/public-work-core';
 
 const MAX_MEDIA_BYTES = 5 * 1_024 * 1_024;
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, s-maxage=31536000, immutable';
 const MAX_FETCH_ATTEMPTS = 2;
 const RETRY_DELAY_MIN_MS = 100;
 const RETRY_JITTER_MS = 100;
@@ -34,30 +34,35 @@ export async function GET(
   }
   if (url === null) return notFound();
 
-  const bytes = await fetchMediaBytes(url, { assetId, publicId, width });
-  if (bytes === null) return unavailable();
-  const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
+  // Uploading replacement media always mints a new assetId, so an
+  // (assetId, width) pair addresses immutable bytes. That makes the identity a
+  // sound ETag and lets the response stay in browser cache indefinitely,
+  // instead of re-hashing every megabyte on each request.
+  const etag = `"${assetId}-${width}"`;
   if (request.headers.get('if-none-match') === etag) {
     return new Response(null, {
-      headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300', ETag: etag },
+      headers: { 'Cache-Control': IMMUTABLE_CACHE_CONTROL, ETag: etag },
       status: 304,
     });
   }
-  return new Response(bytes, {
+
+  const media = await fetchMedia(url, { assetId, publicId, width });
+  if (media === null) return unavailable();
+  return new Response(media.body, {
     headers: {
-      'Cache-Control': 'public, max-age=0, s-maxage=300',
-      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': IMMUTABLE_CACHE_CONTROL,
       'Content-Type': 'image/webp',
       ETag: etag,
       'X-Content-Type-Options': 'nosniff',
+      ...(media.contentLength === null ? {} : { 'Content-Length': media.contentLength }),
     },
   });
 }
 
-async function fetchMediaBytes(
+async function fetchMedia(
   url: string,
   context: { assetId: string; publicId: string; width: number },
-): Promise<ArrayBuffer | null> {
+): Promise<{ body: ReadableStream<Uint8Array>; contentLength: string | null } | null> {
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
     let upstream: Response;
     try {
@@ -113,29 +118,43 @@ async function fetchMediaBytes(
       return null;
     }
 
-    try {
-      const bytes = await readBoundedBody(upstream, MAX_MEDIA_BYTES);
-      if (bytes !== null) return bytes;
+    if (upstream.body === null) {
       console.error('PUBLIC_WORK_MEDIA_RESPONSE_INVALID', context);
       return null;
-    } catch (error) {
-      if (attempt < MAX_FETCH_ATTEMPTS) {
-        console.warn('PUBLIC_WORK_MEDIA_RETRY', {
-          ...context,
-          attempt,
-          reason: 'body_failed',
-        });
-        await waitBeforeRetry();
-        continue;
-      }
-      console.error('PUBLIC_WORK_MEDIA_BODY_FAILED', {
-        ...context,
-        errorName: safeErrorName(error),
-      });
-      return null;
     }
+    // The body streams straight through to the client, so a whole poster never
+    // sits in this container's heap. Retrying is no longer possible once bytes
+    // are in flight, so a mid-stream failure surfaces as a truncated response.
+    return {
+      body: boundedStream(upstream.body, MAX_MEDIA_BYTES, () => {
+        console.error('PUBLIC_WORK_MEDIA_BODY_FAILED', context);
+      }),
+      contentLength:
+        Number.isFinite(declaredLength) && declaredLength > 0 ? String(declaredLength) : null,
+    };
   }
   return null;
+}
+
+function boundedStream(
+  source: ReadableStream<Uint8Array>,
+  maximumBytes: number,
+  onOverflow: () => void,
+): ReadableStream<Uint8Array> {
+  let byteLength = 0;
+  return source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        byteLength += chunk.byteLength;
+        if (byteLength > maximumBytes) {
+          onOverflow();
+          controller.error(new Error('MEDIA_TOO_LARGE'));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -149,33 +168,6 @@ function waitBeforeRetry(): Promise<void> {
 
 function safeErrorName(error: unknown): string {
   return error instanceof Error ? error.name.slice(0, 100) : 'UnknownError';
-}
-
-async function readBoundedBody(
-  response: Response,
-  maximumBytes: number,
-): Promise<ArrayBuffer | null> {
-  if (response.body === null) return null;
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    byteLength += value.byteLength;
-    if (byteLength > maximumBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes.buffer;
 }
 
 function notFound(): Response {

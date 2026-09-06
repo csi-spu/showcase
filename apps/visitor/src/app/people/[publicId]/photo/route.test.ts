@@ -80,7 +80,7 @@ describe('public profile photo route', () => {
     expect(await response.json()).toEqual({ error: { code: 'PUBLIC_PROFILE_PHOTO_UNAVAILABLE' } });
   });
 
-  it('returns a service error when the upstream photo body fails while reading', async () => {
+  it('aborts the streamed photo when the upstream body fails while reading', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
@@ -100,7 +100,10 @@ describe('public profile photo route', () => {
       params: Promise.resolve({ publicId: PUBLIC_ID }),
     });
 
-    expect(response.status).toBe(503);
+    // Streaming commits the status before the body fails, so the failure can
+    // only surface as an aborted body.
+    expect(response.status).toBe(200);
+    await expect(response.arrayBuffer()).rejects.toThrow();
   });
 
   it('serves only bounded sanitized WebP after rechecking consent', async () => {
@@ -109,7 +112,7 @@ describe('public profile photo route', () => {
     );
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), {
-        headers: { 'Content-Type': 'image/webp' },
+        headers: { ETag: '"upstream-photo"', 'Content-Type': 'image/webp' },
       }),
     );
 
@@ -118,9 +121,31 @@ describe('public profile photo route', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=300');
-    expect(response.headers.get('etag')).toEqual(expect.any(String));
+    // This URL has no version segment, so the photo must stay revalidatable
+    // rather than immutable.
+    expect(response.headers.get('cache-control')).toBe(
+      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+    );
+    expect(response.headers.get('etag')).toBe('"upstream-photo"');
     expect(response.headers.get('content-type')).toBe('image/webp');
     expect((await response.arrayBuffer()).byteLength).toBe(3);
+  });
+
+  it('revalidates with the upstream entity tag', async () => {
+    vi.spyOn(PublicProfileCoreClient.prototype, 'getPhotoUrl').mockResolvedValue(
+      'https://media.example.test/profile-media/photo.webp',
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { ETag: '"upstream-photo"', 'Content-Type': 'image/webp' },
+      }),
+    );
+
+    const response = await GET(
+      new Request('http://localhost', { headers: { 'if-none-match': '"upstream-photo"' } }),
+      { params: Promise.resolve({ publicId: PUBLIC_ID }) },
+    );
+
+    expect(response.status).toBe(304);
   });
 });

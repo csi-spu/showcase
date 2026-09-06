@@ -1,8 +1,11 @@
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
 import { getVisitorCoreUrl, PublicProfileCoreClient } from '@/lib/public-profile-core';
 
 const MAX_SANITIZED_PHOTO_BYTES = 8 * 1_024 * 1_024;
+// This URL carries no asset version, so a replaced photo reuses it. The cache
+// window stays short enough that a new photo appears without a purge; it must
+// not become `immutable` until the path includes a version segment.
+const PHOTO_CACHE_CONTROL = 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400';
 const MAX_FETCH_ATTEMPTS = 2;
 const RETRY_DELAY_MIN_MS = 100;
 const RETRY_JITTER_MS = 100;
@@ -25,27 +28,37 @@ export async function GET(
   }
   if (photoUrl === null) return notFound();
 
-  const bytes = await fetchPhotoBytes(photoUrl, publicId);
-  if (bytes === null) return unavailable();
-  const etag = `"${createHash('sha256').update(new Uint8Array(bytes)).digest('base64url')}"`;
-  if (request.headers.get('if-none-match') === etag) {
+  const photo = await fetchPhoto(photoUrl, publicId);
+  if (photo === null) return unavailable();
+  // The upstream ETag tracks the stored object, so a replaced photo revalidates
+  // correctly. Without one the response is still cacheable for the window above.
+  const etag = photo.etag;
+  if (etag !== null && request.headers.get('if-none-match') === etag) {
+    await photo.body.cancel().catch(() => undefined);
     return new Response(null, {
-      headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300', ETag: etag },
+      headers: { 'Cache-Control': PHOTO_CACHE_CONTROL, ETag: etag },
       status: 304,
     });
   }
-  return new Response(bytes, {
+  return new Response(photo.body, {
     headers: {
-      'Cache-Control': 'public, max-age=0, s-maxage=300',
-      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': PHOTO_CACHE_CONTROL,
       'Content-Type': 'image/webp',
-      ETag: etag,
       'X-Content-Type-Options': 'nosniff',
+      ...(etag === null ? {} : { ETag: etag }),
+      ...(photo.contentLength === null ? {} : { 'Content-Length': photo.contentLength }),
     },
   });
 }
 
-async function fetchPhotoBytes(url: string, publicId: string): Promise<ArrayBuffer | null> {
+async function fetchPhoto(
+  url: string,
+  publicId: string,
+): Promise<{
+  body: ReadableStream<Uint8Array>;
+  contentLength: string | null;
+  etag: string | null;
+} | null> {
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
     let upstream: Response;
     try {
@@ -101,56 +114,43 @@ async function fetchPhotoBytes(url: string, publicId: string): Promise<ArrayBuff
       return null;
     }
 
-    try {
-      const bytes = await readBoundedBody(upstream, MAX_SANITIZED_PHOTO_BYTES);
-      if (bytes !== null) return bytes;
+    if (upstream.body === null) {
       console.error('PUBLIC_PROFILE_PHOTO_RESPONSE_INVALID', { publicId });
       return null;
-    } catch (error) {
-      if (attempt < MAX_FETCH_ATTEMPTS) {
-        console.warn('PUBLIC_PROFILE_PHOTO_RETRY', {
-          attempt,
-          publicId,
-          reason: 'body_failed',
-        });
-        await waitBeforeRetry();
-        continue;
-      }
-      console.error('PUBLIC_PROFILE_PHOTO_BODY_FAILED', {
-        errorName: safeErrorName(error),
-        publicId,
-      });
-      return null;
     }
+    // Streamed straight to the client so a photo never lands in this
+    // container's heap; a mid-stream failure can no longer be retried.
+    return {
+      body: boundedStream(upstream.body, MAX_SANITIZED_PHOTO_BYTES, () => {
+        console.error('PUBLIC_PROFILE_PHOTO_BODY_FAILED', { publicId });
+      }),
+      contentLength:
+        Number.isFinite(declaredLength) && declaredLength > 0 ? String(declaredLength) : null,
+      etag: upstream.headers.get('etag'),
+    };
   }
   return null;
 }
 
-async function readBoundedBody(
-  response: Response,
+function boundedStream(
+  source: ReadableStream<Uint8Array>,
   maximumBytes: number,
-): Promise<ArrayBuffer | null> {
-  if (response.body === null) return null;
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  onOverflow: () => void,
+): ReadableStream<Uint8Array> {
   let byteLength = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    byteLength += value.byteLength;
-    if (byteLength > maximumBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes.buffer;
+  return source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        byteLength += chunk.byteLength;
+        if (byteLength > maximumBytes) {
+          onOverflow();
+          controller.error(new Error('PHOTO_TOO_LARGE'));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
 }
 
 function isRetryableStatus(status: number): boolean {
