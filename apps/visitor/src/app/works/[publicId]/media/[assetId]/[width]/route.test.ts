@@ -8,7 +8,7 @@ const ASSET_ID = '88000000-0000-4000-8000-000000000002';
 describe('published Work media route', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('serves only a bounded eligible processed WebP with five-minute shared caching', async () => {
+  it('serves only a bounded eligible processed WebP with immutable caching', async () => {
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://r2.example.test/signed-public-media',
     );
@@ -21,7 +21,9 @@ describe('published Work media route', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=300');
+    expect(response.headers.get('cache-control')).toBe(
+      'public, max-age=31536000, s-maxage=31536000, immutable',
+    );
     expect(response.headers.get('content-type')).toBe('image/webp');
     expect(response.headers.get('etag')).toEqual(expect.any(String));
     expect((await response.arrayBuffer()).byteLength).toBe(3);
@@ -155,10 +157,33 @@ describe('published Work media route', () => {
       params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
     });
 
-    expect(response.status).toBe(503);
+    // The response is streamed, so its status is committed before the body
+    // fails. The failure can only surface as an aborted body.
+    expect(response.status).toBe(200);
+    await expect(response.arrayBuffer()).rejects.toThrow();
   });
 
-  it('returns a service error when a variant exceeds the public media limit', async () => {
+  it('returns a service error when a variant declares a length over the public media limit', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
+      'https://media.example.test/oversized.webp',
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array(8), {
+        headers: {
+          'Content-Length': String(5 * 1_024 * 1_024 + 1),
+          'Content-Type': 'image/webp',
+        },
+      }),
+    );
+    const response = await GET(new Request('http://localhost'), {
+      params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('aborts the body when an undeclared variant exceeds the public media limit', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(PublicWorkCoreClient.prototype, 'getMediaUrl').mockResolvedValue(
       'https://media.example.test/oversized.webp',
@@ -171,7 +196,7 @@ describe('published Work media route', () => {
     const response = await GET(new Request('http://localhost'), {
       params: Promise.resolve({ assetId: ASSET_ID, publicId: WORK_PUBLIC_ID, width: '480' }),
     });
-    expect(response.status).toBe(503);
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.status).toBe(200);
+    await expect(response.arrayBuffer()).rejects.toThrow();
   });
 });

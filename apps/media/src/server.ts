@@ -2,8 +2,10 @@ import './instrument.js';
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { flushMediaSentry, reportMediaError } from './sentry.js';
 
 const MAX_OBJECT_BYTES = 5 * 1_024 * 1_024;
@@ -20,6 +22,12 @@ export function createMediaServer(options: MediaServerOptions) {
     void handleRequest(request, response, options).catch((error: unknown) => {
       if (!(error instanceof BodyTooLargeError)) {
         (options.reportError ?? reportMediaError)(error);
+      }
+      // A streamed response has already committed its status and headers, so
+      // the only way to signal failure is to destroy the connection.
+      if (response.headersSent) {
+        response.destroy();
+        return;
       }
       send(
         response,
@@ -75,21 +83,29 @@ async function handleRequest(
     return send(response, 200, 'ok');
   }
   if (method === 'GET') {
+    let size: number;
     try {
-      const body = await readFile(objectPath);
-      response.setHeader('content-length', body.byteLength);
-      response.setHeader(
-        'content-type',
-        key.endsWith('.webp') ? 'image/webp' : 'application/octet-stream',
-      );
-      response.setHeader(
-        'cache-control',
-        key.startsWith('work-media/') ? 'public, max-age=300' : 'private, no-store',
-      );
-      return send(response, 200, body);
+      const stats = await stat(objectPath);
+      if (!stats.isFile()) return send(response, 404, 'NOT_FOUND');
+      size = stats.size;
     } catch {
       return send(response, 404, 'NOT_FOUND');
     }
+    response.setHeader('content-length', size);
+    response.setHeader(
+      'content-type',
+      key.endsWith('.webp') ? 'image/webp' : 'application/octet-stream',
+    );
+    // `work-media/` objects are addressed by an immutable assetId, so they can
+    // stay in shared and browser caches for a year. Everything else is private.
+    response.setHeader(
+      'cache-control',
+      key.startsWith('work-media/') ? 'public, max-age=31536000, immutable' : 'private, no-store',
+    );
+    response.statusCode = 200;
+    // Streaming keeps a 5 MB object off the heap of a 2 GB host.
+    await pipeline(createReadStream(objectPath), response);
+    return;
   }
   if (method === 'DELETE') {
     await rm(objectPath, { force: true });

@@ -31,7 +31,7 @@ test('rejects expired and tampered URLs and caches public media for five minutes
     const get = signedUrl(origin, 'GET', key, Math.floor(Date.now() / 1_000) + 60);
     const response = await fetch(get);
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('cache-control'), 'public, max-age=300');
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal((await fetch(`${get}tampered`)).status, 403);
     assert.equal(
       (await fetch(signedUrl(origin, 'GET', key, Math.floor(Date.now() / 1_000) - 1))).status,
