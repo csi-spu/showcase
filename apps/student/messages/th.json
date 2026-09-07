@@ -126,13 +126,16 @@
     "actions": {
       "archive_saved_draft": "เก็บเป็นฉบับร่างที่บันทึกไว้",
       "continue_editing": "แก้ไขต่อ",
-      "create_new_revision": "สร้างฉบับใหม่",
+      "create_new_revision": "แก้ไขผลงาน",
       "return_to_editing": "กลับไปแก้ไข",
       "view_details": "ดูรายละเอียด",
       "view_public_work": "ดูผลงานสาธารณะ",
       "withdraw_submission": "ถอนออกจากคิวตรวจ"
     },
-    "activity": { "active": "ใช้งานอยู่", "archived": "บันทึกไว้" },
+    "activity": {
+      "active": "ใช้งานอยู่",
+      "archived": "บันทึกไว้"
+    },
     "archiveConfirm": "ยืนยันเก็บผลงานนี้ไว้ในฉบับร่างที่บันทึกไว้",
     "archivedSuccess": "เก็บผลงานเป็นฉบับร่างที่บันทึกไว้แล้ว",
     "restoredSuccess": "กลับไปแก้ไขฉบับร่างแล้ว",

@@ -8,13 +8,23 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { ArrowUpRightIcon, Clock3Icon, EllipsisIcon, ImageOffIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import type { WorkListItem } from '@/lib/student-works-core';
 import {
   archiveSavedDraftAction,
   restoreSavedDraftAction,
   type SavedDraftActionResult,
 } from './work.actions';
+
+// Tailwind's bg-gradient-to-* utilities interpolate in oklab and render as
+// `none` on engines that don't support that gradient syntax, so this scrim
+// uses a plain rgba() linear-gradient, matching the Public Catalog card.
+const CARD_SCRIM_CLASS =
+  'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.55)_42%,rgba(0,0,0,0)_100%)]';
+
+// Status Badges sit on top of the Poster, so they need their own contrast
+// rather than the surface-tinted Badge variants.
+const OVERLAY_BADGE_CLASS = 'border-white/35 bg-white/15 text-white backdrop-blur-sm';
 
 export function StudentWorkList({
   canEdit,
@@ -33,11 +43,11 @@ export function StudentWorkList({
         const action = getPrimaryAction(work, canEdit, labels, visitorUrl);
         const title = work.title ?? labels.placeholder;
         const card = (
-          <Card className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden transition-[transform,box-shadow,border-color] duration-200 group-hover/work-card:-translate-y-0.5 group-hover/work-card:border-primary/30 group-hover/work-card:shadow-lg group-focus-visible/work-card:border-ring group-focus-visible/work-card:ring-2 group-focus-visible/work-card:ring-ring group-focus-visible/work-card:ring-offset-2 group-focus-visible/work-card:ring-offset-background motion-reduce:transform-none motion-reduce:transition-none">
-            <div className="relative aspect-[3/4] overflow-hidden rounded-t-surface bg-muted">
+          <Card className="relative grid h-full overflow-hidden rounded-media border-border p-0 transition-[transform,box-shadow,border-color] duration-200 group-hover/work-card:-translate-y-0.5 group-hover/work-card:border-primary/30 group-hover/work-card:shadow-lg group-focus-visible/work-card:border-ring group-focus-visible/work-card:ring-2 group-focus-visible/work-card:ring-ring group-focus-visible/work-card:ring-offset-2 group-focus-visible/work-card:ring-offset-background motion-reduce:transform-none motion-reduce:transition-none">
+            <div className="relative aspect-[3/4] overflow-hidden bg-neutral-800">
               {work.poster === null ? (
                 <div
-                  className="grid h-full place-items-center text-muted-foreground"
+                  className="grid h-full place-items-center pb-24 text-white/70"
                   aria-label={labels.posterFallback}
                 >
                   <span className="grid justify-items-center gap-2 text-sm">
@@ -48,7 +58,7 @@ export function StudentWorkList({
               ) : (
                 <Image
                   alt=""
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover/card:scale-[1.02] motion-reduce:transition-none"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover/work-card:scale-[1.035] motion-reduce:transition-none motion-reduce:transform-none"
                   fill
                   loading="lazy"
                   sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
@@ -56,45 +66,48 @@ export function StudentWorkList({
                   unoptimized
                 />
               )}
-            </div>
-            <CardHeader className="grid min-h-36 content-start gap-3">
-              <div className="flex min-h-14 content-start flex-wrap gap-2">
-                <Badge>{labels[`source.${work.displayedSource}`]}</Badge>
-                <Badge variant="outline">{labels[`activity.${work.activityState}`]}</Badge>
-                <Badge variant="outline">{labels[`publication.${work.publicationState}`]}</Badge>
-                <Badge variant="secondary">
-                  {
-                    labels[
-                      `review.${work.latestRevisionStatus ?? (work.hasDraft ? 'draft' : 'none')}`
-                    ]
-                  }
-                </Badge>
-              </div>
-              <CardTitle>
+              <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
+              <div className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5">
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge className={OVERLAY_BADGE_CLASS} variant="outline">
+                    {labels[`source.${work.displayedSource}`]}
+                  </Badge>
+                  <Badge className={OVERLAY_BADGE_CLASS} variant="outline">
+                    {labels[`activity.${work.activityState}`]}
+                  </Badge>
+                  <Badge className={OVERLAY_BADGE_CLASS} variant="outline">
+                    {labels[`publication.${work.publicationState}`]}
+                  </Badge>
+                  <Badge className={OVERLAY_BADGE_CLASS} variant="outline">
+                    {
+                      labels[
+                        `review.${work.latestRevisionStatus ?? (work.hasDraft ? 'draft' : 'none')}`
+                      ]
+                    }
+                  </Badge>
+                </div>
                 <h2
-                  className="line-clamp-2 min-h-[2.75rem] text-lg"
+                  className="line-clamp-2 text-xl leading-snug font-semibold text-balance text-white [text-shadow:0_1px_6px_rgb(0_0_0_/_60%)]"
                   title={work.title ?? undefined}
                 >
                   {title}
                 </h2>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid content-between gap-4">
-              <p className="line-clamp-3 min-h-[3.75rem] text-sm text-muted-foreground">
-                {work.summary ?? labels.placeholder}
-              </p>
-              <div className="flex items-center justify-between gap-3">
-                <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock3Icon aria-hidden="true" className="size-3.5" />
-                  {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
+                <p className="line-clamp-2 text-sm leading-relaxed text-white/85 text-pretty [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
+                  {work.summary ?? labels.placeholder}
                 </p>
-                {action === null ? null : (
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
-                    <ArrowUpRightIcon aria-hidden="true" className="size-4" />
-                  </span>
-                )}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-xs text-white/75 [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
+                    <Clock3Icon aria-hidden="true" className="size-3.5" />
+                    {labels.updatedAt} {formatBangkokDate(work.updatedAt)}
+                  </p>
+                  {action === null ? null : (
+                    <span className="grid size-9 shrink-0 place-items-center rounded-control border border-white/35 bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover/work-card:-translate-y-0.5 group-hover/work-card:translate-x-0.5 motion-reduce:transform-none">
+                      <ArrowUpRightIcon aria-hidden="true" className="size-4" />
+                    </span>
+                  )}
+                </div>
               </div>
-            </CardContent>
+            </div>
           </Card>
         );
 
