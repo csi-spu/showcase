@@ -48,7 +48,9 @@ export interface WorkDraftMediaView {
 export interface WorkDraftContributorView {
   attributionName: string;
   contributionRole: string | null;
+  hasPhoto: boolean;
   kind: 'account' | 'external';
+  profilePublicId: string | null;
   publicId: string;
 }
 

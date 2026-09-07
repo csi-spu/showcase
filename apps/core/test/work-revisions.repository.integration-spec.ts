@@ -10,6 +10,8 @@ const PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000003';
 const CONTRIBUTOR_PERSON_ID = '73000000-0000-4000-8000-000000000004';
 const CONTRIBUTOR_ACCOUNT_ID = '73000000-0000-4000-8000-000000000015';
 const CONTRIBUTOR_PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000016';
+const CONTRIBUTOR_PROFILE_PUBLIC_ID = '73000000-0000-4000-8000-000000000017';
+const CONTRIBUTOR_PHOTO_ID = '73000000-0000-4000-8000-000000000018';
 const OTHER_PERSON_ID = '73000000-0000-4000-8000-000000000005';
 const OTHER_ACCOUNT_ID = '73000000-0000-4000-8000-000000000006';
 const OTHER_PROVIDER_USER_ID = '73000000-0000-4000-8000-000000000007';
@@ -58,8 +60,26 @@ describe('PostgresWorkRevisionsRepository integration', () => {
           (${OTHER_PERSON_ID}, 'ชื่อ', 'บุคคลอื่น')
       `;
       await transaction`
-        insert into public.public_profiles (person_id, created_at, updated_at)
-        values (${PERSON_ID}, ${NOW}, ${NOW})
+        insert into private.profile_photo_assets (
+          id, person_id, status, quarantine_object_key, sanitized_object_key,
+          declared_content_type, declared_byte_size, inspected_content_type,
+          inspected_byte_size, width, height, created_at, updated_at, expires_at
+        ) values (
+          ${CONTRIBUTOR_PHOTO_ID}, ${CONTRIBUTOR_PERSON_ID}, 'ready',
+          ${`quarantine/${CONTRIBUTOR_PHOTO_ID}`}, ${`profiles/${CONTRIBUTOR_PHOTO_ID}.webp`},
+          'image/webp', 1024, 'image/webp', 1024, 512, 512, ${NOW}, ${NOW},
+          ${new Date('2026-09-01T15:00:00.000Z')}
+        )
+      `;
+      await transaction`
+        insert into public.public_profiles (person_id, public_id, photo_id, created_at, updated_at)
+        values
+          (${PERSON_ID}, gen_random_uuid(), null, ${NOW}, ${NOW}),
+          (${CONTRIBUTOR_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, ${CONTRIBUTOR_PHOTO_ID}, ${NOW}, ${NOW})
+      `;
+      await transaction`
+        insert into public.profile_consents (person_id, consent_text_version, granted_at)
+        values (${CONTRIBUTOR_PERSON_ID}, 'phase-1', ${NOW})
       `;
       await transaction`
         update public.academic_settings set current_academic_year = 2569, updated_at = ${NOW}
@@ -113,13 +133,17 @@ describe('PostgresWorkRevisionsRepository integration', () => {
         attributions: [
           {
             attributionName: 'ชื่อ ผู้ส่ง',
+            hasPhoto: false,
             kind: 'submitter',
+            profilePublicId: null,
             studyYear: 2,
           },
           {
             attributionName: 'ชื่อผู้ร่วมผลงาน',
             contributionRole: 'พัฒนาระบบ',
+            hasPhoto: true,
             kind: 'account',
+            profilePublicId: CONTRIBUTOR_PROFILE_PUBLIC_ID,
             studyYear: null,
           },
         ],
@@ -132,6 +156,19 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       },
     });
     if (!('revision' in created)) throw new Error('REVISION_CREATE_FAILED');
+
+    await database.sql`
+      update public.profile_consents set withdrawn_at = ${new Date(NOW.getTime() + 1_000)}
+      where person_id = ${CONTRIBUTOR_PERSON_ID}
+    `;
+    await expect(repository.findPendingRevision(ACCOUNT_ID, WORK_PUBLIC_ID)).resolves.toMatchObject(
+      {
+        attributions: [
+          { hasPhoto: false, profilePublicId: null },
+          { hasPhoto: false, profilePublicId: null },
+        ],
+      },
+    );
 
     await expect(repository.submitRevision(submitInput())).resolves.toMatchObject({
       outcome: 'replayed',
@@ -240,7 +277,7 @@ describe('PostgresWorkRevisionsRepository integration', () => {
     `;
     // The first test submits the seeded draft (v3), which durably advances the
     // active Draft to v4. Withdrawal retains that Draft rather than reseeding it.
-    expect(draft).toEqual([{ title: 'ระบบแนะนำผลงาน', version: '4' }]);
+    expect(draft).toEqual([{ title: 'ระบบแนะนำผลงาน', version: 4n }]);
     const retained = await repository.findRevisionForReview(revisionPublicId);
     expect(retained).toBeNull();
     const history = await database.sql<Array<{ count: number }>>`
@@ -340,7 +377,13 @@ describe('PostgresWorkRevisionsRepository integration', () => {
       await transaction`delete from private.work_media_variants where asset_id in (${POSTER_ID}, ${SECOND_POSTER_ID})`;
       await transaction`delete from private.work_media_assets where id in (${POSTER_ID}, ${SECOND_POSTER_ID})`;
       await transaction`delete from public.works where id in (${WORK_ID}, ${SECOND_WORK_ID})`;
-      await transaction`delete from public.public_profiles where person_id = ${PERSON_ID}`;
+      await transaction`
+        delete from public.profile_consents where person_id = ${CONTRIBUTOR_PERSON_ID}
+      `;
+      await transaction`
+        delete from public.public_profiles where person_id in (${PERSON_ID}, ${CONTRIBUTOR_PERSON_ID})
+      `;
+      await transaction`delete from private.profile_photo_assets where id = ${CONTRIBUTOR_PHOTO_ID}`;
       await transaction`
         delete from public.account_roles
         where account_id in (${ACCOUNT_ID}, ${CONTRIBUTOR_ACCOUNT_ID}, ${OTHER_ACCOUNT_ID})
