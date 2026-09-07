@@ -1,5 +1,5 @@
 import { cn } from '@showcase/ui/cn';
-import { ImagesIcon, UserRoundIcon, type LucideIcon } from 'lucide-react';
+import { ImagesIcon, type LucideIcon } from 'lucide-react';
 import Image from 'next/image';
 import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
 
@@ -8,6 +8,13 @@ import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
 // uses a plain rgba() linear-gradient (same technique as the page hero).
 export const CARD_SCRIM_CLASS =
   'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.55)_42%,rgba(0,0,0,0)_100%)]';
+
+// The photo scrim has to survive a bright photo behind the caption, so it
+// darkens most of the card. An initials tile is a flat, light colour we chose,
+// so it only needs a short scrim under the caption itself — the full-height one
+// washes the tile out to grey and throws away the per-Person colour.
+export const CARD_SCRIM_COMPACT_CLASS =
+  'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.88)_0%,rgba(0,0,0,0.62)_18%,rgba(0,0,0,0.18)_34%,rgba(0,0,0,0)_52%)]';
 
 const FALLBACK_COMPOSITIONS = [
   {
@@ -29,6 +36,96 @@ const FALLBACK_COMPOSITIONS = [
     ring: 'left-8 -bottom-24',
   },
 ] as const;
+
+// Person portraits fall back to a deterministic identicon-style tile: initials
+// over a soft graphic backdrop. The palette and composition are derived from
+// the Public ID so a Person keeps the same tile across renders and surfaces,
+// while an adjacent grid of People without photos still reads as varied.
+const PORTRAIT_FALLBACK_THEMES = [
+  {
+    dot: 'bg-[rgb(145_0_123_/_0.34)]',
+    initials: 'text-[rgb(112_0_95_/_0.82)]',
+    panel: 'bg-[rgb(145_0_123_/_0.12)]',
+    ring: 'border-[rgb(145_0_123_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(250_238_248)_0%,rgb(240_222_237)_100%)]',
+  },
+  {
+    dot: 'bg-[rgb(12_74_110_/_0.32)]',
+    initials: 'text-[rgb(12_63_94_/_0.82)]',
+    panel: 'bg-[rgb(12_74_110_/_0.12)]',
+    ring: 'border-[rgb(12_74_110_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(236_245_251)_0%,rgb(218_233_244)_100%)]',
+  },
+  {
+    dot: 'bg-[rgb(154_52_18_/_0.32)]',
+    initials: 'text-[rgb(124_45_18_/_0.8)]',
+    panel: 'bg-[rgb(154_52_18_/_0.12)]',
+    ring: 'border-[rgb(154_52_18_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(253_243_235)_0%,rgb(246_228_213)_100%)]',
+  },
+  {
+    dot: 'bg-[rgb(21_94_79_/_0.32)]',
+    initials: 'text-[rgb(19_78_66_/_0.82)]',
+    panel: 'bg-[rgb(21_94_79_/_0.12)]',
+    ring: 'border-[rgb(21_94_79_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(236_248_243)_0%,rgb(215_236_228)_100%)]',
+  },
+  {
+    dot: 'bg-[rgb(76_29_149_/_0.3)]',
+    initials: 'text-[rgb(67_26_130_/_0.8)]',
+    panel: 'bg-[rgb(76_29_149_/_0.11)]',
+    ring: 'border-[rgb(76_29_149_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(243_240_252)_0%,rgb(227_221_246)_100%)]',
+  },
+  {
+    dot: 'bg-[rgb(133_77_14_/_0.32)]',
+    initials: 'text-[rgb(113_63_18_/_0.8)]',
+    panel: 'bg-[rgb(133_77_14_/_0.12)]',
+    ring: 'border-[rgb(133_77_14_/_0.09)]',
+    surface: 'bg-[linear-gradient(150deg,rgb(252_247_233)_0%,rgb(245_234_206)_100%)]',
+  },
+] as const;
+
+const PORTRAIT_FALLBACK_COMPOSITIONS = [
+  { dot: 'right-9 top-12', panel: '-left-10 -bottom-6 rotate-12', ring: '-right-24 -top-20' },
+  { dot: 'left-9 top-14', panel: '-right-10 -bottom-8 -rotate-12', ring: '-left-24 -top-16' },
+  { dot: 'right-10 bottom-24', panel: '-left-12 -top-10 -rotate-6', ring: '-right-20 -bottom-24' },
+] as const;
+
+// Thai has no case, so an initial is the name's first consonant. Leading
+// vowels (เ แ โ ใ ไ) are written before their consonant but are not read
+// first, so `ไชยเค้า` initials as `ช`; combining vowels and tone marks above
+// or below the consonant are dropped too. Names in other scripts fall back to
+// the first letter, upper-cased.
+const THAI_CONSONANT = /[ก-ฮ]/u;
+const LETTER = /\p{L}/u;
+
+function nameInitial(value: string): string {
+  const thaiConsonant = THAI_CONSONANT.exec(value);
+  if (thaiConsonant !== null) {
+    return thaiConsonant[0];
+  }
+
+  const letter = LETTER.exec(value);
+  return letter === null ? '' : letter[0].toLocaleUpperCase();
+}
+
+export function personInitials(person: Pick<PeopleCatalogCard, 'firstName' | 'lastName'>): string {
+  const initials = `${nameInitial(person.firstName)}${nameInitial(person.lastName)}`;
+  return initials === '' ? '\u2014' : initials;
+}
+
+export function personScrimClass(person: Pick<PeopleCatalogCard, 'photo'>): string {
+  return person.photo === null ? CARD_SCRIM_COMPACT_CLASS : CARD_SCRIM_CLASS;
+}
+
+export function portraitFallbackVariant(publicId: string): number {
+  let hash = 0;
+  for (const character of publicId) {
+    hash = (hash * 31 + character.codePointAt(0)!) % 1_000_003;
+  }
+  return hash % PORTRAIT_FALLBACK_THEMES.length;
+}
 
 export function WorkPosterFallback({ title, variant }: { title: string; variant: number }) {
   const composition = FALLBACK_COMPOSITIONS[variant] ?? FALLBACK_COMPOSITIONS[0];
@@ -81,17 +178,47 @@ export function PersonPortrait({
   sizes: string;
 }) {
   if (person.photo === null) {
+    const variant = portraitFallbackVariant(person.publicId);
+    const theme = PORTRAIT_FALLBACK_THEMES[variant]!;
+    const composition =
+      PORTRAIT_FALLBACK_COMPOSITIONS[variant % PORTRAIT_FALLBACK_COMPOSITIONS.length]!;
+
     return (
       <div
-        className="absolute inset-0 grid place-items-center overflow-hidden bg-muted/70"
+        className={cn('absolute inset-0 overflow-hidden', theme.surface)}
         data-person-photo-fallback="true"
-        data-person-photo-fallback-kind="generic-avatar"
+        data-person-photo-fallback-kind="initials"
+        data-person-photo-fallback-variant={variant}
       >
         <span className="sr-only">{alt}</span>
-        <div aria-hidden="true" className="relative grid aspect-square w-[76%] place-items-center">
-          <span className="absolute size-full rounded-full border border-border/70 bg-background/45" />
-          <span className="relative grid size-[84%] place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-[0_1.5rem_4rem_-2.5rem_color-mix(in_oklch,var(--foreground),transparent_72%)] transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none">
-            <UserRoundIcon className="size-[68%]" strokeWidth={1.15} />
+        <div aria-hidden="true" className="absolute inset-0">
+          <span
+            className={cn(
+              'absolute size-64 rounded-full border-[2.75rem] transition-transform duration-500 group-hover:scale-105 motion-reduce:transform-none',
+              theme.ring,
+              composition.ring,
+            )}
+          />
+          <span
+            className={cn(
+              'absolute size-36 rounded-media transition-transform duration-500 group-hover:-translate-y-1.5 motion-reduce:transform-none',
+              theme.panel,
+              composition.panel,
+            )}
+          />
+          <span className={cn('absolute size-4 rounded-full', theme.dot, composition.dot)} />
+        </div>
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 grid place-items-center pb-[26%] transition-transform duration-500 group-hover:scale-[1.04] motion-reduce:transform-none"
+        >
+          <span
+            className={cn(
+              'text-5xl leading-none font-semibold tracking-tight sm:text-6xl',
+              theme.initials,
+            )}
+          >
+            {personInitials(person)}
           </span>
         </div>
       </div>

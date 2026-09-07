@@ -30,7 +30,9 @@ describe('Public Catalog People grid', () => {
 
     expect(html).toContain('href="/people/81000000-0000-4000-8000-000000000001"');
     expect(html).toContain('data-person-photo-fallback="true"');
-    expect(html).toContain('data-person-photo-fallback-kind="generic-avatar"');
+    expect(html).toContain('data-person-photo-fallback-kind="initials"');
+    // Initials skip the leading vowel: ใจดี -> จ, not ใ.
+    expect(html).toContain('>กจ<');
     expect(html).toContain('data-person-card-layout="portrait"');
     expect(html).toContain('ปีที่เข้าศึกษา 2567');
     expect(html).toContain('ผลงานเผยแพร่ 3 ชิ้น');

@@ -3,7 +3,7 @@ import { ArrowUpRightIcon, UsersRoundIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { BlurFade } from '@/components/ui/blur-fade';
 import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
-import { CARD_SCRIM_CLASS, CatalogEmptyState, PersonPortrait } from '../catalog-artwork';
+import { CatalogEmptyState, PersonPortrait, personScrimClass } from '../catalog-artwork';
 
 interface CatalogPeopleGridLabels {
   empty: string;
@@ -40,7 +40,7 @@ export function CatalogPeopleGrid({
                     person={person}
                     sizes="(max-width: 639px) 100vw, (max-width: 1279px) 50vw, 33vw"
                   />
-                  <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
+                  <div aria-hidden="true" className={personScrimClass(person)} />
                   <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
                     <ArrowUpRightIcon aria-hidden="true" className="size-4" />
                   </span>
