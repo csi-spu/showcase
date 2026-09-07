@@ -45,7 +45,7 @@ jobs:
 
       - name: Download CI deployment plan
         if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: deployment-plan
           path: ${{ runner.temp }}/deployment-plan
