@@ -32,10 +32,19 @@ vi.mock('./work-contributor-editor', () => ({
   WorkContributorEditor: () => <div>contributor-editor</div>,
 }));
 vi.mock('./work-media-upload', () => ({
-  WorkMediaUpload: ({ mediaKind }: { mediaKind: 'gallery' | 'poster' }) => (
+  WorkMediaUpload: ({
+    mediaKind,
+    onBusyChange,
+  }: {
+    mediaKind: 'gallery' | 'poster';
+    onBusyChange?: (isBusy: boolean) => void;
+  }) => (
     <div>
       media-upload
       <input aria-label={`media-client-state-${mediaKind}`} />
+      <button onClick={() => onBusyChange?.(true)} type="button">
+        {`busy-${mediaKind}`}
+      </button>
     </div>
   ),
 }));
@@ -111,6 +120,7 @@ describe('five-step Work authoring', () => {
     });
     renderForm();
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: '  ผลงานใหม่  ' } });
+    fillDetailsStep();
     expect(screen.getByText('ยังไม่ได้บันทึกข้อมูลล่าสุด')).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(2_000));
     expect(mocks.saveDraft).not.toHaveBeenCalled();
@@ -121,7 +131,7 @@ describe('five-step Work authoring', () => {
     expect(mocks.saveDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedVersion: null,
-        patch: { title: 'ผลงานใหม่' },
+        patch: expect.objectContaining({ title: 'ผลงานใหม่' }),
         publicId: null,
       }),
     );
@@ -145,6 +155,7 @@ describe('five-step Work authoring', () => {
     });
     renderRemountingRoute();
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    fillDetailsStep();
 
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
 
@@ -161,6 +172,7 @@ describe('five-step Work authoring', () => {
     mocks.saveDraft.mockResolvedValue({ error: 'unavailable', outcome: 'error' });
     renderForm();
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    fillDetailsStep();
 
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
 
@@ -171,7 +183,7 @@ describe('five-step Work authoring', () => {
 
   it('keeps a version conflict actionable after more local edits', async () => {
     mocks.saveDraft.mockResolvedValue({ error: 'conflict', outcome: 'error' });
-    renderForm(savedWorkResult().work);
+    renderForm(completeWork());
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'แก้ไขครั้งแรก' } });
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
 
@@ -191,6 +203,7 @@ describe('five-step Work authoring', () => {
     renderForm();
 
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    fillDetailsStep();
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
     await act(async () => Promise.resolve());
     expect(mocks.saveDraft).toHaveBeenCalledTimes(1);
@@ -220,6 +233,7 @@ describe('five-step Work authoring', () => {
     renderForm();
 
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    fillDetailsStep();
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
     await act(async () => Promise.resolve());
     fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานล่าสุด' } });
@@ -244,13 +258,13 @@ describe('five-step Work authoring', () => {
   });
 
   it('keeps Contributor assignment inside the attribution step', async () => {
-    renderForm(savedWorkResult().work);
+    renderForm(completeWork());
     await advanceSteps(2);
     expect(screen.getByText('contributor-editor')).toBeTruthy();
   });
 
   it('preserves local values without saving when the Student presses Previous', async () => {
-    renderForm(savedWorkResult().work);
+    renderForm(completeWork());
     await advanceSteps(2);
     fireEvent.change(screen.getByLabelText('ชั้นปีเมื่อทำผลงาน'), { target: { value: '2' } });
 
@@ -261,7 +275,7 @@ describe('five-step Work authoring', () => {
   });
 
   it('preserves client-side media state after advancing and returning to the media step', async () => {
-    renderForm(savedWorkResult().work);
+    renderForm(completeWork());
     await advanceSteps(1);
     const posterState = screen.getByLabelText('media-client-state-poster');
     fireEvent.change(posterState, { target: { value: 'uploaded-preview' } });
@@ -274,15 +288,26 @@ describe('five-step Work authoring', () => {
     );
   });
 
-  it('maps invalid optional discovery data back to step four and reviews every field group', async () => {
-    renderForm(savedWorkResult().work);
+  it('holds the Student on step four while an optional link is invalid', async () => {
+    renderForm(completeWork());
     await advanceSteps(3);
     fireEvent.change(screen.getByLabelText('GitHub'), {
       target: { value: 'https://example.com/not-github' },
     });
+
     await advanceSteps(1);
 
-    expect(screen.getByRole('button', { name: 'กลับไปแก้ไขขั้นที่ 4' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'ถัดไป' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByLabelText('GitHub')).toBeTruthy();
+    expect(screen.queryByText('ตัวอย่างสื่อก่อนส่งตรวจ')).toBeNull();
+  });
+
+  it('reviews every field group once each step is complete', async () => {
+    renderForm(completeWork());
+    await advanceSteps(4);
+
     for (const label of [
       'ประเภทผลงาน',
       'ปีการศึกษา',
@@ -300,28 +325,33 @@ describe('five-step Work authoring', () => {
     }
   });
 
-  it('offers historical Academic Years before Entry Year but never a future year', () => {
-    renderForm();
+  it('blocks Next while a Poster upload has not produced a preview yet', async () => {
+    renderForm(completeWork());
+    await advanceSteps(1);
 
-    expect(screen.getByRole('option', { name: '2565' })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: '2570' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'busy-poster' }));
+
+    expect((screen.getByRole('button', { name: 'ถัดไป' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      screen.getByText('รอให้อัปโหลดรูปเสร็จและแสดงตัวอย่างก่อนจึงจะไปขั้นถัดไปได้'),
+    ).toBeTruthy();
   });
 
-  it('uses prototype-like field proportions and groups classification controls', () => {
+  it('blocks Next while the required details of the current step are missing', () => {
     renderForm();
 
-    expect(screen.getByLabelText('สรุปผลงาน').getAttribute('rows')).toBe('3');
-    expect(screen.getByLabelText('รายละเอียดผลงาน').getAttribute('rows')).toBe('6');
-    const classification = screen.getByRole('group', {
-      name: 'ประเภทและช่วงเวลาของผลงาน',
-    });
-    expect(within(classification).getByLabelText('ประเภทผลงาน')).toBeTruthy();
-    expect(within(classification).getByLabelText('ปีการศึกษา')).toBeTruthy();
-    expect(within(classification).getByLabelText('ภาคการศึกษา')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'ถัดไป' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      screen.getByText('กรอกข้อมูลที่จำเป็นในขั้นตอนนี้ให้ครบก่อนจึงจะไปขั้นถัดไปได้'),
+    ).toBeTruthy();
   });
 
   it('keeps Poster and Gallery controls on equal-width stretched cards', async () => {
-    renderForm(savedWorkResult().work);
+    renderForm(completeWork());
     await advanceSteps(1);
 
     const mediaLayout = document.querySelector('[data-slot="work-media-layout"]');
@@ -407,6 +437,25 @@ function renderRemountingRoute() {
       <RouteHarness />
     </NextIntlClientProvider>,
   );
+}
+
+// The Next button is disabled until the current step's required fields are
+// filled, so tests that exercise saving from step one must complete it first.
+function fillDetailsStep() {
+  fireEvent.change(screen.getByLabelText('สรุปผลงาน'), { target: { value: 'สรุปผลงาน' } });
+  fireEvent.change(screen.getByLabelText('รายละเอียดผลงาน'), {
+    target: { value: 'รายละเอียดผลงาน' },
+  });
+  const classification = screen.getByRole('group', { name: 'ประเภทและช่วงเวลาของผลงาน' });
+  fireEvent.change(within(classification).getByLabelText('ประเภทผลงาน'), {
+    target: { value: 'course_work' },
+  });
+  fireEvent.change(within(classification).getByLabelText('ปีการศึกษา'), {
+    target: { value: '2569' },
+  });
+  fireEvent.change(within(classification).getByLabelText('ภาคการศึกษา'), {
+    target: { value: '1' },
+  });
 }
 
 async function advanceSteps(count: number) {

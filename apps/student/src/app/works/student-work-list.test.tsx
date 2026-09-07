@@ -63,7 +63,7 @@ describe('StudentWorkList', () => {
     expect(document.querySelector('[data-slot="card-footer"]')).toBeNull();
   });
 
-  it('offers creating a new Revision to edit a Published Work', () => {
+  it('offers editing a Published Work through a new Revision', () => {
     render(
       <StudentWorkList
         canEdit
@@ -80,10 +80,30 @@ describe('StudentWorkList', () => {
 
     const cardLink = screen.getByRole('link', { name: 'ดูผลงานสาธารณะ: ผลงาน' });
     const menuTrigger = screen.getByText('เพิ่มเติม').closest('summary');
-    const editLink = screen.getByRole('link', { name: 'สร้างฉบับแก้ไข' });
+    const editLink = screen.getByRole('link', { name: 'แก้ไขผลงาน' });
 
     expect(cardLink.contains(menuTrigger)).toBe(false);
     expect(editLink.getAttribute('href')).toBe('/works/64000000-0000-4000-8000-000000000001');
+  });
+
+  it('overlays the status Badges and caption on the Poster to save vertical space', () => {
+    const work = item({
+      poster: {
+        assetId: '64000000-0000-4000-8000-000000000002',
+        height: 1_600,
+        variants: [{ height: 1_600, width: 1_200 }],
+        width: 1_200,
+      },
+    });
+    render(<StudentWorkList canEdit items={[work]} labels={labels} />);
+
+    const caption = screen.getByRole('heading', { name: 'ผลงาน' }).parentElement;
+
+    expect(caption?.classList).toContain('absolute');
+    expect(caption?.textContent).toContain('จากร่าง');
+    expect(caption?.textContent).toContain('สรุป');
+    expect(document.querySelector('[data-slot="card-header"]')).toBeNull();
+    expect(document.querySelector('[data-slot="card-content"]')).toBeNull();
   });
 
   it('shows a recoverable error when restoring a saved draft fails', async () => {
@@ -116,7 +136,7 @@ const labels: Record<string, string> = {
   posterFallback: 'ไม่มีโปสเตอร์',
   updatedAt: 'อัปเดต',
   'actions.continue_editing': 'แก้ไขต่อ',
-  'actions.create_new_revision': 'สร้างฉบับแก้ไข',
+  'actions.create_new_revision': 'แก้ไขผลงาน',
   'actions.return_to_editing': 'กลับไปแก้ไข',
   'actions.view_public_work': 'ดูผลงานสาธารณะ',
   'activity.active': 'ใช้งาน',

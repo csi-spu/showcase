@@ -84,6 +84,8 @@ export function WorkForm({
   const t = useTranslations('Work');
   const router = useRouter();
   const [step, setStep] = useState(initialStep);
+  const [isPosterUploading, setIsPosterUploading] = useState(false);
+  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
   const [values, setValues] = useState(() => valuesFromWork(initialWork));
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [error, setError] = useState<
@@ -198,7 +200,10 @@ export function WorkForm({
       : serverWork;
   const hasReadyPoster =
     effectiveWork?.media.some((item) => item.kind === 'poster' && item.status === 'ready') ?? false;
-  const hasUnreadyMedia = effectiveWork?.media.some((item) => item.status !== 'ready') ?? false;
+  const hasUnreadyMedia =
+    (effectiveWork?.media.some((item) => item.status !== 'ready') ?? false) ||
+    isPosterUploading ||
+    isGalleryUploading;
   const isStale =
     effectiveWork !== null &&
     effectiveWork.basePublishedRevisionId !== effectiveWork.publishedRevisionId;
@@ -253,8 +258,15 @@ export function WorkForm({
     });
   };
 
+  // UI-level guard only: Core still validates every draft save and the final
+  // submission. This just stops a Student from walking past a step that cannot
+  // pass Review yet — including a Poster whose upload has not produced a
+  // preview, which leaves the Work without a usable Poster.
+  const isStepComplete = !incompleteSteps.includes(step);
+  const canGoNext = !isSaving && isStepComplete;
+
   const goNext = () => {
-    if (isSaving) return;
+    if (!canGoNext) return;
     startSaving(async () => {
       const targetStep = Math.min(step + 1, STEP_COUNT - 1);
       if (await saveDraft(targetStep)) {
@@ -314,6 +326,8 @@ export function WorkForm({
           <div hidden={step !== 1}>
             <MediaStep
               media={effectiveWork?.media ?? []}
+              onGalleryBusyChange={setIsGalleryUploading}
+              onPosterBusyChange={setIsPosterUploading}
               onVersion={(next) => {
                 applyMutationVersion(next);
                 setSaveState('saved');
@@ -352,20 +366,29 @@ export function WorkForm({
             />
           ) : null}
         </div>
-        <div className="flex justify-between gap-3 border-t border-border pt-5">
-          <Button
-            disabled={step === 0}
-            onClick={() => setStep((value) => value - 1)}
-            type="button"
-            variant="outline"
-          >
-            {t('wizard.previous')}
-          </Button>
-          {step === STEP_COUNT - 1 ? null : (
-            <Button disabled={isSaving} onClick={goNext} type="button">
-              {isSaving ? t('draftSave.saving') : t('wizard.next')}
-            </Button>
+        <div className="grid gap-3 border-t border-border pt-5">
+          {step === STEP_COUNT - 1 || isStepComplete ? null : (
+            <p aria-live="polite" className="text-sm text-muted-foreground">
+              {step === 1 && (isPosterUploading || isGalleryUploading)
+                ? t('wizard.mediaBusyHint')
+                : t('wizard.incompleteHint')}
+            </p>
           )}
+          <div className="flex justify-between gap-3">
+            <Button
+              disabled={step === 0}
+              onClick={() => setStep((value) => value - 1)}
+              type="button"
+              variant="outline"
+            >
+              {t('wizard.previous')}
+            </Button>
+            {step === STEP_COUNT - 1 ? null : (
+              <Button disabled={!canGoNext} onClick={goNext} type="button">
+                {isSaving ? t('draftSave.saving') : t('wizard.next')}
+              </Button>
+            )}
+          </div>
         </div>
       </section>
     </div>
@@ -482,12 +505,16 @@ function DetailsStep({
 
 function MediaStep({
   media,
+  onPosterBusyChange,
+  onGalleryBusyChange,
   onVersion,
   publicId,
   t,
   version,
 }: {
   media: WorkDraft['media'];
+  onGalleryBusyChange: (isBusy: boolean) => void;
+  onPosterBusyChange: (isBusy: boolean) => void;
   onVersion: (version: number) => void;
   publicId: string | null;
   t: Translation;
@@ -502,6 +529,7 @@ function MediaStep({
           expectedVersion={version}
           media={media.filter((item) => item.kind === 'poster')}
           mediaKind="poster"
+          onBusyChange={onPosterBusyChange}
           onVersion={onVersion}
           publicId={publicId}
         />
@@ -509,6 +537,7 @@ function MediaStep({
           expectedVersion={version}
           media={media.filter((item) => item.kind === 'gallery')}
           mediaKind="gallery"
+          onBusyChange={onGalleryBusyChange}
           onVersion={onVersion}
           publicId={publicId}
         />
