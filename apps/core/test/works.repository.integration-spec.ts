@@ -209,6 +209,87 @@ describe('PostgresWorksRepository integration', () => {
     expect(persisted?.draft.title).not.toBe(rejectedTitle);
   });
 
+  it('exposes a consented, ready-photo Contributor via findOwnedDraft and hides it after withdrawal', async () => {
+    const CONTRIBUTOR_PROFILE_PUBLIC_ID = '62000000-0000-4000-8000-000000000011';
+    const CONTRIBUTOR_PHOTO_ID = '62000000-0000-4000-8000-000000000012';
+    const now = new Date('2026-08-25T10:10:00.000Z');
+
+    const created = await repository.createWork({
+      actorAccountId: ACCOUNT_ID,
+      draft: draft({ title: 'ผลงานสำหรับทดสอบรูปโปรไฟล์' }),
+      idempotencyKey: '62000000-0000-4000-8000-000000000013',
+      now,
+      submitterPersonId: PERSON_ID,
+    });
+    if (!('work' in created)) throw new Error('WORK_CREATE_FAILED');
+    const workId = (
+      await database.sql<
+        { id: string }[]
+      >`select id from public.works where public_id = ${created.work.publicId}`
+    )[0]!.id;
+
+    try {
+      await database.sql`
+        insert into private.profile_photo_assets (
+          id, person_id, status, quarantine_object_key, sanitized_object_key,
+          declared_content_type, declared_byte_size, inspected_content_type,
+          inspected_byte_size, width, height, created_at, updated_at, expires_at
+        ) values (
+          ${CONTRIBUTOR_PHOTO_ID}, ${OTHER_PERSON_ID}, 'ready',
+          ${`quarantine/${CONTRIBUTOR_PHOTO_ID}`}, ${`profiles/${CONTRIBUTOR_PHOTO_ID}.webp`},
+          'image/webp', 1024, 'image/webp', 1024, 512, 512, ${now}, ${now},
+          ${new Date('2026-09-01T15:00:00.000Z')}
+        )
+      `;
+      await database.sql`
+        insert into public.public_profiles (person_id, public_id, photo_id, created_at, updated_at)
+        values (
+          ${OTHER_PERSON_ID}, ${CONTRIBUTOR_PROFILE_PUBLIC_ID}, ${CONTRIBUTOR_PHOTO_ID}, ${now}, ${now}
+        )
+      `;
+      await database.sql`
+        insert into public.profile_consents (person_id, consent_text_version, granted_at)
+        values (${OTHER_PERSON_ID}, 'phase-1', ${now})
+      `;
+      await database.sql`
+        insert into private.work_draft_contributors (
+          work_id, kind, person_id, attribution_name, contribution_role,
+          position, created_at, updated_at
+        ) values (
+          ${workId}, 'account', ${OTHER_PERSON_ID}, 'ชื่อผู้ร่วมผลงาน', 'พัฒนาระบบ', 1, ${now}, ${now}
+        )
+      `;
+
+      await expect(
+        repository.findOwnedDraft(ACCOUNT_ID, created.work.publicId),
+      ).resolves.toMatchObject({
+        contributors: [
+          {
+            attributionName: 'ชื่อผู้ร่วมผลงาน',
+            hasPhoto: true,
+            profilePublicId: CONTRIBUTOR_PROFILE_PUBLIC_ID,
+          },
+        ],
+      });
+
+      await database.sql`
+        update public.profile_consents set withdrawn_at = ${new Date(now.getTime() + 1_000)}
+        where person_id = ${OTHER_PERSON_ID}
+      `;
+
+      await expect(
+        repository.findOwnedDraft(ACCOUNT_ID, created.work.publicId),
+      ).resolves.toMatchObject({
+        contributors: [{ hasPhoto: false, profilePublicId: null }],
+      });
+    } finally {
+      await database.sql`delete from private.work_draft_contributors where work_id = ${workId}`;
+      await database.sql`delete from public.profile_consents where person_id = ${OTHER_PERSON_ID}`;
+      await database.sql`delete from public.public_profiles where person_id = ${OTHER_PERSON_ID}`;
+      await database.sql`delete from private.profile_photo_assets where id = ${CONTRIBUTOR_PHOTO_ID}`;
+    }
+  });
+
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
       await transaction`

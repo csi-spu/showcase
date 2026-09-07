@@ -127,9 +127,9 @@ describe('WorkContributorEditor', () => {
       ]),
     );
 
-    expect(screen.getByRole('img', { name: 'รูปโปรไฟล์ของ สมชาย ใจดี' }).getAttribute('src')).toContain(
-      `/people/${PUBLIC_PROFILE_ID}/photo`,
-    );
+    expect(
+      screen.getByRole('img', { name: 'รูปโปรไฟล์ของ สมชาย ใจดี' }).getAttribute('src'),
+    ).toContain(`/people/${PUBLIC_PROFILE_ID}/photo`);
   });
 
   it('keeps an in-flight Contributor Candidate search across a translation rerender', async () => {

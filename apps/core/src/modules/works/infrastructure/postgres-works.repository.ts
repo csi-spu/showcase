@@ -1075,9 +1075,16 @@ export class PostgresWorksRepository implements WorksRepository {
             'publicId', contributor.public_id,
             'kind', contributor.kind,
             'attributionName', contributor.attribution_name,
-            'contributionRole', contributor.contribution_role
+            'contributionRole', contributor.contribution_role,
+            'profilePublicId', case when consent.id is null then null else profile.public_id end,
+            'hasPhoto', consent.id is not null and photo.id is not null
           ) order by contributor.position)
           from private.work_draft_contributors as contributor
+          left join public.public_profiles as profile on profile.person_id = contributor.person_id
+          left join public.profile_consents as consent
+            on consent.person_id = profile.person_id and consent.withdrawn_at is null
+          left join private.profile_photo_assets as photo
+            on photo.id = profile.photo_id and photo.status = 'ready'
           where contributor.work_id = work.id and contributor.removed_at is null
         ), '[]'::jsonb) as contributors,
         coalesce((
