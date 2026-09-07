@@ -10,6 +10,7 @@ import {
   CARD_SCRIM_CLASS,
   CatalogEmptyState,
   PersonPortrait,
+  personScrimClass,
   WorkPosterFallback,
 } from './catalog-artwork';
 import { HomepageCollectionCarousel } from './homepage-collection-carousel';
@@ -454,7 +455,7 @@ function PeopleCollectionSection({
                         person={person}
                         sizes="(max-width: 639px) 60vw, (max-width: 1023px) 38vw, 20vw"
                       />
-                      <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
+                      <div aria-hidden="true" className={personScrimClass(person)} />
                       <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
                         <ArrowUpRightIcon aria-hidden="true" className="size-4" />
                       </span>
