@@ -8,7 +8,9 @@ export interface WorkRevisionAttributionView {
   affiliation: string | null;
   attributionName: string;
   contributionRole: string | null;
+  hasPhoto: boolean;
   kind: 'account' | 'external' | 'submitter';
+  profilePublicId: string | null;
   studyYear: number | null;
 }
 

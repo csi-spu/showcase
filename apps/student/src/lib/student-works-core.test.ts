@@ -102,7 +102,17 @@ describe('StudentWorksCoreClient', () => {
   it('requests the current Published Revision through the private Student contract', async () => {
     const publishedRevision = {
       authorKind: 'student_submission',
-      attributions: [],
+      attributions: [
+        {
+          affiliation: null,
+          attributionName: 'สมชาย ใจดี',
+          contributionRole: 'พัฒนาระบบ',
+          hasPhoto: true,
+          kind: 'account',
+          profilePublicId: '64000000-0000-4000-8000-000000000006',
+          studyYear: 3,
+        },
+      ],
       content: {
         academicPeriod: { semester: '1', year: 2569 },
         category: 'course_work',

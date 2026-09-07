@@ -913,8 +913,15 @@ export class PostgresWorkRevisionsRepository
         coalesce((select jsonb_agg(jsonb_build_object(
           'kind', attribution.kind, 'attributionName', attribution.attribution_name,
           'studyYear', attribution.study_year, 'contributionRole', attribution.contribution_role,
-          'affiliation', attribution.affiliation
+          'affiliation', attribution.affiliation,
+          'profilePublicId', case when consent.id is null then null else profile.public_id end,
+          'hasPhoto', consent.id is not null and photo.id is not null
         ) order by attribution.position) from private.work_revision_attributions as attribution
+          left join public.public_profiles as profile on profile.person_id = attribution.person_id
+          left join public.profile_consents as consent
+            on consent.person_id = profile.person_id and consent.withdrawn_at is null
+          left join private.profile_photo_assets as photo
+            on photo.id = profile.photo_id and photo.status = 'ready'
           where attribution.revision_id = revision.id), '[]'::jsonb) as attributions,
         coalesce((select jsonb_agg(jsonb_build_object(
           'assetId', media.asset_id, 'kind', media.media_kind, 'position', media.position,

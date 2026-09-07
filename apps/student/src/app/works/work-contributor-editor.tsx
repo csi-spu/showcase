@@ -194,12 +194,7 @@ export function WorkContributorEditor({
             className="flex items-center gap-3 rounded-control border bg-card p-3"
             key={item.publicId}
           >
-            <span
-              aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
-            >
-              <UserRoundIcon className="size-5" />
-            </span>
+            <ContributorAvatar fullName={item.attributionName} profile={item} />
             <span className="min-w-0 flex-1">
               <span className="block truncate font-medium">{item.attributionName}</span>
               <span className="block truncate text-sm text-muted-foreground">
@@ -370,7 +365,7 @@ function ContributorCandidateSearch({
                 }}
                 role="option"
               >
-                <ContributorAvatar candidate={candidate} fullName={fullName} />
+                <ContributorAvatar fullName={fullName} profile={candidateProfile(candidate)} />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{fullName}</span>
                   <span className="block text-sm text-muted-foreground">
@@ -443,8 +438,8 @@ function SelectedCandidateCard({
     >
       <div className="flex items-start gap-3">
         <ContributorAvatar
-          candidate={candidate}
           fullName={`${candidate.firstName} ${candidate.lastName}`}
+          profile={candidateProfile(candidate)}
           size="large"
         />
         <div className="min-w-0 flex-1">
@@ -498,12 +493,12 @@ const CONTRIBUTOR_AVATAR_RETRY_DELAY_MIN_MS = 300;
 const CONTRIBUTOR_AVATAR_RETRY_JITTER_MS = 200;
 
 function ContributorAvatar({
-  candidate,
   fullName,
+  profile,
   size = 'default',
 }: {
-  candidate: ContributorCandidate;
   fullName: string;
+  profile: { hasPhoto: boolean; profilePublicId: string | null };
   size?: 'default' | 'large';
 }) {
   const t = useTranslations('Work');
@@ -540,8 +535,8 @@ function ContributorAvatar({
     );
   };
 
-  if (candidate.publicProfile?.hasPhoto === true && state.phase !== 'failed') {
-    const path = `/people/${candidate.publicProfile.publicId}/photo`;
+  if (profile.hasPhoto && profile.profilePublicId !== null && state.phase !== 'failed') {
+    const path = `/people/${profile.profilePublicId}/photo`;
     return (
       <Image
         alt={t('attribution.profileImage', { name: fullName })}
@@ -565,6 +560,16 @@ function ContributorAvatar({
       <UserRoundIcon aria-hidden="true" className="size-1/2" />
     </span>
   );
+}
+
+function candidateProfile(candidate: ContributorCandidate): {
+  hasPhoto: boolean;
+  profilePublicId: string | null;
+} {
+  return {
+    hasPhoto: candidate.publicProfile?.hasPhoto ?? false,
+    profilePublicId: candidate.publicProfile?.publicId ?? null,
+  };
 }
 
 function candidateMetadata(candidate: ContributorCandidate, t: Translation): string {

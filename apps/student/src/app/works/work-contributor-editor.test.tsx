@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/th.json';
 
@@ -110,6 +111,25 @@ describe('WorkContributorEditor', () => {
     fireEvent.error(retriedImage);
     expect(within(suggestions).getAllByTestId('contributor-avatar-fallback')).toHaveLength(2);
     expect(suggestions.textContent).not.toMatch(/[0-9]{8}/u);
+  });
+
+  it('renders a ready profile photo for an already-added Contributor', () => {
+    render(
+      editor(messages, [
+        {
+          attributionName: 'สมชาย ใจดี',
+          contributionRole: 'พัฒนาระบบ',
+          hasPhoto: true,
+          kind: 'account',
+          profilePublicId: PUBLIC_PROFILE_ID,
+          publicId: CANDIDATE_REFERENCE,
+        },
+      ]),
+    );
+
+    expect(
+      screen.getByRole('img', { name: 'รูปโปรไฟล์ของ สมชาย ใจดี' }).getAttribute('src'),
+    ).toContain(`/people/${PUBLIC_PROFILE_ID}/photo`);
   });
 
   it('keeps an in-flight Contributor Candidate search across a translation rerender', async () => {
@@ -246,11 +266,14 @@ function renderEditor() {
   return render(editor(messages));
 }
 
-function editor(translations: typeof messages) {
+function editor(
+  translations: typeof messages,
+  contributors: ComponentProps<typeof WorkContributorEditor>['contributors'] = [],
+) {
   return (
     <NextIntlClientProvider locale="th" messages={translations}>
       <WorkContributorEditor
-        contributors={[]}
+        contributors={contributors}
         onContributors={vi.fn()}
         onVersion={vi.fn()}
         publicId={PUBLIC_ID}

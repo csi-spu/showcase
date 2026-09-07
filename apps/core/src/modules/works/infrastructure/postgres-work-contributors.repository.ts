@@ -547,11 +547,19 @@ export class PostgresWorkContributorsRepository implements WorkContributorsRepos
 
   private async listContributors(sql: Sql, workId: string): Promise<WorkDraftContributorView[]> {
     return sql<WorkDraftContributorView[]>`
-      select public_id as "publicId", kind, attribution_name as "attributionName",
-        contribution_role as "contributionRole"
-      from private.work_draft_contributors
-      where work_id = ${workId} and removed_at is null
-      order by position
+      select contributor.public_id as "publicId", contributor.kind,
+        contributor.attribution_name as "attributionName",
+        contributor.contribution_role as "contributionRole",
+        case when consent.id is null then null else profile.public_id end as "profilePublicId",
+        consent.id is not null and photo.id is not null as "hasPhoto"
+      from private.work_draft_contributors as contributor
+      left join public.public_profiles as profile on profile.person_id = contributor.person_id
+      left join public.profile_consents as consent
+        on consent.person_id = profile.person_id and consent.withdrawn_at is null
+      left join private.profile_photo_assets as photo
+        on photo.id = profile.photo_id and photo.status = 'ready'
+      where contributor.work_id = ${workId} and contributor.removed_at is null
+      order by contributor.position
     `;
   }
 

@@ -63,7 +63,9 @@ const revisionSchema = z
           affiliation: z.string().nullable(),
           attributionName: z.string(),
           contributionRole: z.string().nullable(),
+          hasPhoto: z.boolean(),
           kind: z.enum(['submitter', 'account', 'external']),
+          profilePublicId: z.uuid().nullable(),
           studyYear: z.number().int().min(1).max(8).nullable(),
         })
         .strict(),

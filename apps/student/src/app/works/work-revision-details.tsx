@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { ExternalLinkIcon, UserRoundIcon } from 'lucide-react';
+import { ExternalLinkIcon } from 'lucide-react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkRevision } from '@/lib/student-works-core';
+import { WorkRevisionAttributionAvatar } from './work-revision-attribution-avatar';
 
 export interface WorkRevisionDetailsLabels {
   academicPeriod: string;
@@ -159,9 +160,7 @@ function RevisionSidebar({
                 className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-control border bg-background p-3"
                 key={`${attribution.kind}:${index}:${attribution.attributionName}`}
               >
-                <span className="grid size-9 place-items-center rounded-full bg-primary-soft text-primary">
-                  <UserRoundIcon aria-hidden="true" className="size-4" />
-                </span>
+                <WorkRevisionAttributionAvatar attribution={attribution} />
                 <div className="min-w-0">
                   <p className="font-medium wrap-break-word">{attribution.attributionName}</p>
                   <p className="text-sm">

@@ -15,6 +15,8 @@ const WORK_ID = '78000000-0000-4000-8000-000000000007';
 const WORK_PUBLIC_ID = '78000000-0000-4000-8000-000000000008';
 const STUDENT_ID_HASH = 'a'.repeat(64);
 const STUDENT_ID_PREFIX_HASH = 'b'.repeat(64);
+const CANDIDATE_PROFILE_PUBLIC_ID = '78000000-0000-4000-8000-000000000009';
+const CANDIDATE_PHOTO_ID = '78000000-0000-4000-8000-000000000010';
 
 describe('PostgresWorkContributorsRepository Student ID prefix integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
@@ -70,6 +72,29 @@ describe('PostgresWorkContributorsRepository Student ID prefix integration', () 
           insert into private.person_names (
             person_id, first_name_th, last_name_th, created_at, updated_at
           ) values (${CANDIDATE_PERSON_ID}, 'สมชาย', 'ใจดี', ${NOW}, ${NOW})
+        `;
+        await sql`
+          insert into private.profile_photo_assets (
+            id, person_id, status, quarantine_object_key, sanitized_object_key,
+            declared_content_type, declared_byte_size, inspected_content_type,
+            inspected_byte_size, width, height, created_at, updated_at, expires_at
+          ) values (
+            ${CANDIDATE_PHOTO_ID}, ${CANDIDATE_PERSON_ID}, 'ready',
+            ${`quarantine/${CANDIDATE_PHOTO_ID}`}, ${`profiles/${CANDIDATE_PHOTO_ID}.webp`},
+            'image/webp', 1024, 'image/webp', 1024, 512, 512, ${NOW}, ${NOW},
+            ${new Date('2026-09-01T03:30:00.000Z')}
+          )
+        `;
+        await sql`
+          insert into public.public_profiles (person_id, public_id, photo_id, created_at, updated_at)
+          values (
+            ${CANDIDATE_PERSON_ID}, ${CANDIDATE_PROFILE_PUBLIC_ID}, ${CANDIDATE_PHOTO_ID},
+            ${NOW}, ${NOW}
+          )
+        `;
+        await sql`
+          insert into public.profile_consents (person_id, consent_text_version, granted_at)
+          values (${CANDIDATE_PERSON_ID}, 'phase-1', ${NOW})
         `;
         await sql`
           insert into public.accounts (
@@ -141,7 +166,32 @@ describe('PostgresWorkContributorsRepository Student ID prefix integration', () 
           studentIdPrefixLength: 8,
           workPublicId: WORK_PUBLIC_ID,
         });
-        return { exact, prefix };
+        if (prefix.outcome !== 'matches') throw new Error('PREFIX_SEARCH_FAILED');
+        const candidateReference = prefix.candidates[0]?.candidateReference;
+        if (candidateReference === undefined) throw new Error('PREFIX_CANDIDATE_MISSING');
+        const added = await repository.addAccount({
+          actorAccountId: SUBMITTER_ACCOUNT_ID,
+          candidateReference,
+          contributionRole: 'พัฒนาระบบ',
+          expectedVersion: 1,
+          idempotencyKey: '78000000-0000-4000-8000-000000000011',
+          now: NOW,
+          workPublicId: WORK_PUBLIC_ID,
+        });
+        await sql`
+          update public.profile_consents set withdrawn_at = ${new Date(NOW.getTime() + 1_000)}
+          where person_id = ${CANDIDATE_PERSON_ID}
+        `;
+        const withdrawn = await repository.addExternal({
+          actorAccountId: SUBMITTER_ACCOUNT_ID,
+          attributionName: 'บุคคลภายนอก',
+          contributionRole: 'ออกแบบ',
+          expectedVersion: 2,
+          idempotencyKey: '78000000-0000-4000-8000-000000000012',
+          now: new Date(NOW.getTime() + 2_000),
+          workPublicId: WORK_PUBLIC_ID,
+        });
+        return { added, exact, prefix, withdrawn };
       } finally {
         await sql`rollback to savepoint student_id_prefix_search`;
       }
@@ -154,5 +204,27 @@ describe('PostgresWorkContributorsRepository Student ID prefix integration', () 
       });
       expect(JSON.stringify(result)).not.toMatch(/accountId|personId|studentId/i);
     }
+    expect(results.added).toMatchObject({
+      contributors: [
+        {
+          hasPhoto: true,
+          profilePublicId: CANDIDATE_PROFILE_PUBLIC_ID,
+        },
+      ],
+      outcome: 'added',
+    });
+    expect(results.withdrawn).toMatchObject({
+      contributors: [
+        {
+          hasPhoto: false,
+          profilePublicId: null,
+        },
+        {
+          hasPhoto: false,
+          profilePublicId: null,
+        },
+      ],
+      outcome: 'added',
+    });
   });
 });
