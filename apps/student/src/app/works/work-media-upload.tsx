@@ -51,12 +51,14 @@ export function WorkMediaUpload({
   expectedVersion,
   media,
   mediaKind,
+  onBusyChange,
   onVersion,
   publicId,
 }: {
   expectedVersion: number;
   media: WorkDraft['media'];
   mediaKind: 'gallery' | 'poster';
+  onBusyChange?: (isBusy: boolean) => void;
   onVersion: (version: number) => void;
   publicId: string;
 }) {
@@ -74,6 +76,13 @@ export function WorkMediaUpload({
     height: number;
     width: number;
   } | null>(null);
+
+  // The Work form disables its Next button while an upload is in flight, so the
+  // local upload state has to reach it — the server media rows do not exist yet
+  // while the browser is still uploading or processing a file.
+  useEffect(() => {
+    onBusyChange?.(status === 'uploading' || status === 'processing');
+  }, [onBusyChange, status]);
 
   useEffect(() => {
     const readyMedia = media.filter((item) => item.status === 'ready');
