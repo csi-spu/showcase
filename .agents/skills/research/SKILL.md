@@ -1,6 +1,6 @@
 ---
 name: research
-description: Research a Student Showcase technical, product, security, or operational question using current primary sources and capture cited findings in the repository. Use when implementation depends on external APIs, provider behavior, standards, version-specific framework facts, or evidence not available in the local codebase.
+description: Verify external technical or provider facts using current primary sources; save cited findings when requested.
 ---
 
 # Research
@@ -9,7 +9,7 @@ Produce durable evidence, not an uncited recommendation.
 
 ## Define the question
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant ADRs, and local dependency versions. State the exact decision or implementation question, scope, required freshness, and what evidence would change the answer.
+Use loaded instructions; consult domain/ADR sections only when they constrain the question and local dependency versions for version-specific behavior. State the exact decision or implementation question, scope, required freshness, and what evidence would change the answer.
 
 Do not research facts already owned by current local code or lockfiles unless verifying external behavior.
 

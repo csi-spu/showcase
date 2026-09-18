@@ -1,6 +1,6 @@
 ---
 name: wayfinder
-description: Map a large, uncertain Student Showcase effort into decision-focused GitHub issues and resolve the planning frontier over multiple sessions. Use when the destination is larger than one agent session, key implementation choices remain unknown, or research, prototypes, and user decisions must be coordinated before a spec can be written.
+description: Map an uncertain, multi-session effort into decision issues and resolve authorized work toward an implementation-ready spec.
 ---
 
 # Wayfinder
@@ -38,16 +38,16 @@ The frontier contains open, unblocked questions precise enough to work now. Keep
 
 ## Chart a map
 
-1. Read `AGENTS.md`, `CONTEXT.md`, relevant ADRs, product docs, and `docs/agents/issue-tracker.md`.
+1. Reuse loaded instructions; consult domain, ADR, and product sections that constrain the destination, and tracker instructions for GitHub operations.
 2. Use one-question-at-a-time grilling to define a measurable destination and scope boundary.
 3. Explore breadth-first. Identify decisions that can be phrased now, their blocking edges, and remaining fog.
 4. Present the proposed map and initial ticket graph to the user.
 5. Create GitHub issues only after explicit authorization. Use `needs-info` for unresolved decision tickets and avoid inventing labels not listed in `docs/agents/triage-labels.md`.
-6. Stop after charting. Do not resolve a ticket in the same session.
+6. If the request is mapping only, finish with the map. If resolution is authorized, continue with an unblocked frontier ticket.
 
 ## Work a map
 
-Resolve at most one frontier ticket per session:
+Resolve authorized frontier work until the agreed outcome is reached, a consequential user decision is required, or access/authorization blocks progress:
 
 1. Load the map and only the ticket needed now.
 2. Confirm its blockers are closed or otherwise resolved.

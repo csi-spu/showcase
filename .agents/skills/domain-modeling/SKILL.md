@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build or sharpen the Student Showcase domain language, invariants, relationships, and lifecycle rules. Use when a request introduces an ambiguous term, changes a domain concept, exposes a contradiction between docs and code, or needs a durable domain or architecture decision recorded.
+description: Resolve ambiguous Showcase domain terms, invariants, or conflicting domain decisions in authoritative docs.
 ---
 
 # Domain Modeling
@@ -9,7 +9,7 @@ Maintain one precise language for product discussion, code, tests, issues, and o
 
 ## Load authority
 
-Read completely:
+Use existing context; consult only sources relevant to the domain question:
 
 1. Root `AGENTS.md` and the nearest app `AGENTS.md` in scope.
 2. `CONTEXT.md`.
@@ -32,7 +32,7 @@ Protect these established separations unless the user explicitly reopens them:
 - `Person`, `Account`, `Public Profile`, and `Student ID` are different concepts.
 - `Visitor` is an unauthenticated access state, not a role.
 - `Work` persists across immutable reviewed `Revisions`.
-- `Submitter` controls revision submission; accepted `Contributors` receive attribution, not edit rights.
+- `Submitter` controls revision submission; Submitter-assigned `Contributors` receive attribution without acceptance, not edit rights.
 - `Entry Year`, `Study Year`, and `Academic Period` answer different questions.
 - Publication, profile consent, account eligibility, archival, and removal are separate state changes.
 

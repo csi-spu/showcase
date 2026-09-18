@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnose Student Showcase bugs, flaky behavior, failing builds, and performance regressions through reproducible evidence. Use when the user reports something broken, throwing, failing, inconsistent, or slow and wants the cause investigated or fixed.
+description: Investigate a reported failure or performance regression; reproduce the cause and repair it when requested.
 ---
 
 # Diagnosing Bugs
@@ -9,7 +9,7 @@ Build evidence before changing production code. A diagnosis request alone does n
 
 ## Load context and define symptom
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, ADRs, and the affected path. Record:
+Use loaded instructions and relevant domain/ADR sections; inspect the affected path. Record:
 
 - exact observed behavior and expected behavior;
 - environment, actor state, inputs, timestamps, and last known good state;

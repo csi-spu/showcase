@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Visitor-specific rules
 
-- Read root `AGENTS.md`, `CONTEXT.md`, and relevant ADRs first.
+- Use root instructions already in context; consult `CONTEXT.md` for domain behavior and relevant ADRs when changing architectural boundaries.
 - Only approved Published Revisions and consented Public Profiles may enter a response or cache.
 - Design public reads for cacheability, pagination, bounded filtering, and stable canonical URLs.
 - Never add Phase 2 authentication, Star, or Comment UI as a non-functional placeholder.

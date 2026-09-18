@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implement an approved Student Showcase specification or ticket end to end. Use when the user asks to build, implement, complete, or deliver defined behavior across the monorepo with migrations, validation, authorization, tests, documentation, and focused verification.
+description: Deliver defined Showcase behavior from an approved spec, ticket, or explicit user request through focused verification and review.
 ---
 
 # Implement
@@ -9,7 +9,7 @@ Deliver the smallest complete vertical slice that satisfies the approved source 
 
 ## Establish scope
 
-1. Read root and nearest `AGENTS.md`, `CONTEXT.md`, relevant ADRs, product docs, and the full issue or spec including comments.
+1. Use loaded root and app instructions. Read the governing request or full issue/spec including comments; consult domain, ADR, and product sections needed for the affected behavior.
 2. Inspect the existing implementation before editing. Preserve user changes and established patterns.
 3. State success criteria: behavior that changes, behavior that remains unchanged, affected trust boundaries, and focused verification.
 4. Resolve only meaningful ambiguity. If a low-risk implementation detail is governed by repo rules, state the assumption and proceed.

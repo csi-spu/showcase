@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Implement Student Showcase behavior through focused red-green-refactor cycles. Use when the user requests TDD, test-first development, red-green-refactor, a regression test, or behavior whose domain rules should be established through executable examples.
+description: Implement behavior through focused red-green-refactor cycles when test-first work or a regression test is required.
 ---
 
 # Test-Driven Development
@@ -9,7 +9,7 @@ Build one observable behavior at a time through a public seam.
 
 ## Prepare
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, ADRs, and the governing spec. State:
+Use loaded instructions and relevant domain/ADR sections; inspect the governing spec. State:
 
 - behavior changing and behavior staying unchanged;
 - public seam under test;

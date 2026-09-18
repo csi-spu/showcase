@@ -1,6 +1,6 @@
 ---
 name: to-tickets
-description: Break an approved Student Showcase specification into dependency-aware vertical implementation tickets. Use when the user asks to create issues, split Phase work for agents, plan implementation slices, or publish ready-for-agent GitHub Issues from an accepted spec.
+description: Split an approved spec into dependency-aware vertical implementation tickets; publish only when authorized.
 ---
 
 # To Tickets
@@ -9,7 +9,7 @@ Create tracer-bullet tickets that each deliver a narrow, complete, verifiable be
 
 ## Load the source
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant ADRs, `docs/agents/issue-tracker.md`, and the full approved spec or parent issue including comments. Inspect enough code to understand existing seams and migration constraints.
+Read the full approved spec or parent issue including comments. Reuse loaded instructions; consult relevant domain/ADR sections and `docs/agents/issue-tracker.md` for tracker operations. Inspect enough code to understand existing seams and migration constraints.
 
 Do not ticket unresolved product ambiguity as implementation. Send it back to `$grill-with-docs`, `$research`, or `$prototype` first.
 

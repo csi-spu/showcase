@@ -10,9 +10,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Student-specific rules
 
-- Read root `AGENTS.md`, `CONTEXT.md`, and relevant ADRs first.
+- Use root instructions already in context; consult `CONTEXT.md` for domain behavior and relevant ADRs when changing architectural boundaries.
 - The first authenticated session may only complete the required password change until that requirement is satisfied.
-- Profile Consent defaults to granted when roster import creates an Account; withdrawal must remain an explicit, always-available action, and a withdrawal must never be silently re-granted by a later roster import or Account activation.
-- One Submitter can edit a Work. Contributors only accept attribution and never gain edit rights.
+- Profile Consent requires an explicit grant for a valid Public Profile draft. Roster import and Account activation never grant it; preserve withdrawal and regrant flows defined in `docs/product/phase-1.md`.
+- One Submitter can edit a Work. Contributors receive Submitter-managed attribution without an acceptance flow and never gain edit rights (ADR 0007).
 - Distinguish Published Revision, current draft, pending Review, and Change Request in state and copy.
 - Place upload controls and forms behind the smallest possible client boundary.
