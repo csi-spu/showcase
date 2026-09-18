@@ -2,9 +2,11 @@
 
 This repository has one Student Showcase context shared by Admin, Student, Visitor, and Core surfaces.
 
-## Before exploring
+## Consult by task
 
-1. Read root `CONTEXT.md` for canonical domain language.
+Reuse context already loaded; reread only changed sources or missing sections.
+
+1. Consult root `CONTEXT.md` when interpreting or changing domain behavior.
 2. Read ADRs in `docs/adr/` that touch the area being changed.
 3. Read the nearest app/package `AGENTS.md` for local implementation rules.
 

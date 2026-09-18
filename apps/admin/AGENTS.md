@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Admin-specific rules
 
-- Read root `AGENTS.md`, `CONTEXT.md`, and relevant ADRs first.
+- Use root instructions already in context; consult `CONTEXT.md` for domain behavior and relevant ADRs when changing architectural boundaries.
 - Admin is an audited operational surface, not a privileged shortcut around Core.
 - Keep roster errors row-specific and downloadable; do not fail valid rows because other rows are invalid.
 - A Change Request requires both a reason and actionable feedback.

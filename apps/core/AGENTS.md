@@ -1,6 +1,6 @@
 # Core-specific rules
 
-- Read root `AGENTS.md`, `CONTEXT.md`, and relevant ADRs first.
+- Use root instructions already in context; consult `CONTEXT.md` for domain behavior and relevant ADRs when changing architectural boundaries.
 - Add code under `src/modules/<feature>`; do not create global controller/service/repository layer folders.
 - Controllers parse transport input and map output. Application services own use-case orchestration and domain decisions.
 - Persistence, Supabase, and R2 adapters sit behind explicit injected ports. Never import an SDK into domain logic.

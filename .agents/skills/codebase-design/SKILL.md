@@ -1,6 +1,6 @@
 ---
 name: codebase-design
-description: Design or improve Student Showcase modules, interfaces, dependency seams, and test surfaces. Use when a feature needs an interface chosen, code is difficult to test or navigate, responsibilities leak between apps and Core, or multiple architecture shapes need comparison before implementation.
+description: Design a specific module interface or dependency seam before implementation; compare consequential alternatives.
 ---
 
 # Codebase Design
@@ -21,7 +21,7 @@ Use `boundary` only for a real trust, process, or domain boundary. Do not create
 
 ## Load context
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, ADRs, and the code on both sides of the proposed seam. Preserve these system boundaries:
+Use loaded instructions and relevant domain/ADR sections; inspect the code on both sides of the proposed seam. Preserve these system boundaries:
 
 - Browser apps call Core and never query Supabase application tables directly.
 - Core owns authentication, authorization, publication rules, and R2 upload authorization.

@@ -28,12 +28,12 @@ Core owns application data and authentication boundaries. Browser applications m
 
 - `Visitor` is an unauthenticated access state, not a role.
 - Phase 1 roles are `Student` and `Admin`. `External Member`, `Star`, and `Comment` are follow-ups only.
-- A `Work` has one `Submitter`, optional accepted `Contributors`, and immutable reviewed `Revisions`.
+- A `Work` has one `Submitter`, optional Submitter-assigned `Contributors`, and immutable reviewed `Revisions`.
 - The current `Published Revision` remains public while a newer Revision is reviewed.
 - A `Change Request` requires a reason and actionable feedback.
 - Admin edits are audited and still require an explicit approve-and-publish action; the same Admin may perform both.
 - `Student ID` is private authentication data. Never expose it in public responses, logs, URLs, analytics, or client bundles.
-- `Public Profile` visibility is governed by `Profile Consent`, which defaults to granted when a roster-activated `Account` is created; a `Student` may withdraw consent at any time, and a withdrawal is never silently re-granted.
+- `Public Profile` visibility is governed by `Profile Consent`, explicitly granted for a valid Public Profile draft. Roster processing and Account activation never grant consent; withdrawal is never silently reversed. See `CONTEXT.md` and `docs/product/phase-1.md` for the lifecycle.
 - Archive and unpublish are recoverable. No hard delete through normal UI flows.
 
 ## Code conventions
@@ -110,15 +110,17 @@ Full rules and runbooks live under `docs/rules/`, `docs/infrastructure/`, and `d
 
 ## Agent skills
 
-Repository-local skills live under `.agents/skills/`. Read [the skill catalog](docs/agents/skills.md) and invoke the narrowest matching skill instead of improvising a parallel workflow.
+Repository-local skills live under `.agents/skills/`. Choose the narrowest matching skill; consult [the skill catalog](docs/agents/skills.md) when routing is unclear. Reuse documents already loaded unless they changed. Read only relevant sections: `CONTEXT.md` for domain behavior, ADRs for architectural decisions, and runbooks for operational work.
 
 ### Delivery workflow
 
 - Use `$grill-with-docs`, `$domain-modeling`, `$research`, or `$prototype` to resolve uncertainty before production implementation.
-- Use `$to-spec` and `$to-tickets` to create durable, vertically sliced work.
+- Use `$to-spec` when a durable specification is requested or needed to settle scope; use `$to-tickets` when that spec needs separate delivery slices. A defined user request can be implemented directly.
 - Use `$implement` with `$tdd`, then `$code-review`, for behavior changes.
 - Use `$diagnosing-bugs` for evidence-first debugging and `$handoff` before changing sessions.
 - Use `$codebase-design` and `$improve-codebase-architecture` for explicit architecture work. Use `$wayfinder` only when the route to an implementation-ready spec exceeds one session.
+
+Complete authorized work through implementation, affected verification, and fixing in-scope review findings. Continue local edits and affected checks without repeated approval; stop for a material product decision, missing access, or an action outside existing authority. Full-suite approval limits above still apply.
 
 Skills do not expand authorization. Creating issues, committing, pushing, opening pull requests, deploying, or changing external services still requires the authority defined by the user request and these rules.
 

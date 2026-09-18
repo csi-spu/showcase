@@ -25,10 +25,10 @@ Run `pnpm skills:check` after editing a skill and `pnpm skills:test` after chang
 
 ## Technology guardrails
 
-| Need                                             | Skill                               |
-| ------------------------------------------------ | ----------------------------------- |
-| Work with any Supabase product or integration    | `$supabase`                         |
-| Change or review Postgres schema, SQL, or tuning | `$supabase-postgres-best-practices` |
+| Need                                                              | Skill                               |
+| ----------------------------------------------------------------- | ----------------------------------- |
+| Implement or diagnose Supabase provider integration/configuration | `$supabase`                         |
+| Change or review Postgres schema, SQL, or tuning                  | `$supabase-postgres-best-practices` |
 
 ## Normal paths
 
@@ -61,3 +61,11 @@ improve-codebase-architecture -> codebase-design -> domain-modeling/ADR -> to-sp
 Invoking a skill does not authorize external mutation. Follow `docs/agents/issue-tracker.md` for GitHub operations and use `rtk gh` only. Draft before publishing unless the user explicitly requested publication. Commit, push, pull request, deployment, and provider changes require matching user authority.
 
 The one-time repository setup skill from the Baan reference is intentionally not copied: Showcase already has the resulting `AGENTS.md` block and `docs/agents/` configuration. Keeping a setup skill after setup would create a second path capable of overwriting repository-specific rules.
+
+## Context and discovery budget
+
+Reuse instructions and source sections already loaded unless they changed. Read domain definitions for domain decisions, ADRs for affected architectural boundaries, and tracker instructions for tracker work. A short, defined change does not require a new spec or ticket chain.
+
+Keep descriptions focused on capability and invocation conditions. `skills:check` warns above 200 characters as a repository review heuristic, not an OpenAI limit; warnings do not fail validation. Move workflow detail into the body, and split substantial conditional workflows into references. Preserve privacy, authorization, migrations, and affected verification requirements for every supported model.
+
+Use [routing scenarios](skill-routing-scenarios.md) to evaluate overlapping triggers and stopping behavior. Structural validation cannot prove routing quality or faster execution. Compare the same tasks and model configuration before and after changes, recording loaded skills/docs, task completion, quality, latency, and token usage where available.

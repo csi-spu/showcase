@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Prepare a concise, security-safe continuation brief for another Student Showcase agent session. Use when the user wants to pause, change sessions, preserve working context, or transfer an unfinished implementation, diagnosis, review, or planning effort.
+description: Prepare a redacted continuation brief when transferring unfinished work to another agent session.
 ---
 
 # Handoff
@@ -9,7 +9,7 @@ Create a fresh-agent brief without duplicating authoritative artifacts.
 
 ## Inspect current state
 
-Read the relevant `AGENTS.md`, `CONTEXT.md`, plan or spec, ADRs, Git branch/status/log, and changed-file summary. Do not alter the worktree.
+Reuse established context and link the governing plan/spec and relevant domain/ADR sections. Inspect current Git branch/status/log and changed-file summary. Do not alter the worktree.
 
 Resolve the OS temporary directory and write a uniquely named Markdown file there. Keep handoffs out of the repository unless the user explicitly requests a durable repo artifact.
 

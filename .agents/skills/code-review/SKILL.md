@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review Student Showcase changes against repository standards and the governing product specification. Use when the user asks to review a branch, pull request, commit range, staged diff, or working tree for correctness, security, architecture, missing tests, or scope fidelity.
+description: Review a branch, PR, commit range, or working tree against Showcase requirements and engineering standards.
 ---
 
 # Code Review
@@ -9,7 +9,7 @@ Review without editing unless the user separately asks for fixes.
 
 ## Pin the change
 
-1. Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, ADRs, and rules documents.
+1. Use loaded instructions and relevant domain/ADR sections; inspect rules documents relevant to the diff.
 2. Resolve the comparison point supplied by the user. When reviewing a branch without one, use its merge-base with `origin/main` after a read-only fetch.
 3. Include staged, unstaged, and untracked files when the user asks for working-tree review.
 4. List commits and changed files. Stop if the ref is invalid or the intended diff is empty.

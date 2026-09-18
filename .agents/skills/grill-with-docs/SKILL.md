@@ -1,6 +1,6 @@
 ---
 name: grill-with-docs
-description: Stress-test a product, domain, architecture, or delivery plan against Student Showcase terminology and decisions, asking one consequential question at a time and updating CONTEXT.md, docs/product, or docs/adr inline as decisions settle. Use when a user asks to grill, challenge, refine, or document a Showcase plan before implementation.
+description: Challenge an unsettled Showcase plan one consequential question at a time and record agreed decisions.
 ---
 
 # Grill With Showcase Docs
@@ -9,7 +9,7 @@ Turn ambiguous plans into documented decisions without starting implementation.
 
 ## Load context
 
-Read completely before questioning:
+Use existing context; consult only sources relevant to the decision:
 
 1. Root `AGENTS.md` and the nearest app `AGENTS.md` when an app is in scope.
 2. `CONTEXT.md`.

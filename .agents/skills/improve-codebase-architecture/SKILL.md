@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: Audit Student Showcase code for architectural friction and design focused deepening opportunities. Use when the user asks to improve architecture, reduce coupling, make code easier for agents to navigate, strengthen test seams, or review whether modules and dependencies still match domain boundaries.
+description: Audit existing Showcase architecture for evidenced coupling and testability problems; rank improvements before choosing a design.
 ---
 
 # Improve Codebase Architecture
@@ -9,7 +9,7 @@ Find evidence-backed improvements. An architecture audit is read-only unless the
 
 ## Load the model
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant app rules, all ADRs affecting the area, `docs/architecture.md`, workspace configuration, and current tests. Use `$codebase-design` vocabulary: module, interface, implementation, seam, adapter, depth, leverage, and locality.
+Use loaded instructions. Consult domain definitions and ADRs for the affected boundaries; inspect relevant architecture sections, workspace dependencies, and tests as the audit requires. Use `$codebase-design` vocabulary: module, interface, implementation, seam, adapter, depth, leverage, and locality.
 
 Do not reopen an ADR merely because another design is possible. Surface conflict only when current code provides concrete evidence that the accepted decision now causes material cost.
 

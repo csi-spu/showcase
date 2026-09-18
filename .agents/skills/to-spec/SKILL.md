@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Turn settled Student Showcase discussion, research, or a prototype decision into an implementation-ready specification. Use when the user asks for a PRD, feature spec, acceptance criteria, or a durable GitHub issue that an implementation agent can execute without relying on chat history.
+description: Turn settled decisions into an implementation-ready Showcase spec or PRD when requested.
 ---
 
 # To Spec
@@ -9,9 +9,9 @@ Synthesize settled context. Do not restart the product interview or invent missi
 
 ## Gather authority
 
-Read:
+Reuse context already loaded and gather missing evidence:
 
-1. `AGENTS.md`, `CONTEXT.md`, relevant ADRs, and product docs.
+1. Relevant domain, ADR, and product sections that constrain the spec.
 2. The complete conversation context supplied to the session.
 3. Referenced GitHub issue bodies and comments using `rtk gh`.
 4. Relevant code, migrations, and tests to describe the true starting state.

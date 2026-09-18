@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build a disposable Student Showcase logic or UI experiment to answer a specific product or architecture question. Use when state behavior is hard to reason about, multiple interface directions need comparison, or the user wants a concrete artifact before committing to production design.
+description: Build a disposable logic or UI experiment to resolve a named product or architecture question.
 ---
 
 # Prototype
@@ -9,7 +9,7 @@ A prototype answers one named question. It is evidence for a decision, not produ
 
 ## Choose the experiment
 
-Read `AGENTS.md`, `CONTEXT.md`, relevant ADRs, and surrounding code. State the question and success signal before editing.
+Use loaded instructions and relevant domain/ADR sections; inspect surrounding code. State the question and success signal before editing.
 
 - For workflow, state, authorization shape, or edge-case questions, follow [logic-prototype.md](references/logic-prototype.md).
 - For layout, information hierarchy, interaction, or visual direction, follow [ui-prototype.md](references/ui-prototype.md).

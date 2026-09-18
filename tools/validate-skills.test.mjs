@@ -105,3 +105,41 @@ for (const [caseName, metadata] of invalidMetadataCases) {
     );
   });
 }
+
+for (const [length, expectedWarnings] of [
+  [200, 0],
+  [201, 1],
+]) {
+  test(`reports description budget warnings at ${length} characters`, async (context) => {
+    const root = await createRepository();
+    context.after(() => rm(root, { recursive: true, force: true }));
+    await writeFile(
+      join(root, '.agents', 'skills', 'sample-skill', 'SKILL.md'),
+      `---\nname: sample-skill\ndescription: ${'x'.repeat(length)}\n---\n\n# Sample\n\nValid body.\n`,
+    );
+    const result = await validateSkills(root);
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.warnings.length, expectedWarnings);
+    if (expectedWarnings) assert.match(result.warnings[0], /sample-skill.*description.*200/);
+  });
+}
+
+test('returns diagnostics when the skills directory is missing', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'showcase-skill-test-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const result = await validateSkills(root);
+  assert.equal(result.skillCount, 0);
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.issues, ['Missing .agents/skills directory']);
+});
+
+test('rejects a missing workflow reference', async (context) => {
+  const root = await createRepository();
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, '.agents', 'skills', 'sample-skill', 'SKILL.md'),
+    '---\nname: sample-skill\ndescription: Route a sample task.\n---\n\nRead [workflow](references/missing.md).\n',
+  );
+  const result = await validateSkills(root);
+  assert.deepEqual(result.issues, ['sample-skill: missing reference references/missing.md']);
+});

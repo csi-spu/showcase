@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { parseDocument } from 'yaml';
 
+// Repository discovery budget, not an OpenAI platform limit.
+const DESCRIPTION_WARNING_LENGTH = 200;
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const REQUIRED_INTERFACE_FIELDS = ['display_name', 'short_description', 'default_prompt'];
 const OPTIONAL_INTERFACE_FIELDS = ['icon_small', 'icon_large', 'brand_color'];
@@ -79,9 +81,10 @@ export async function validateSkills(repositoryRoot) {
   const skillsRoot = join(repositoryRoot, '.agents', 'skills');
   const catalogPath = join(repositoryRoot, 'docs', 'agents', 'skills.md');
   const issues = [];
+  const warnings = [];
 
   if (!existsSync(skillsRoot)) {
-    return { skillCount: 0, issues: ['Missing .agents/skills directory'] };
+    return { skillCount: 0, issues: ['Missing .agents/skills directory'], warnings };
   }
 
   const skillNames = (await readdir(skillsRoot, { withFileTypes: true }))
@@ -136,6 +139,10 @@ export async function validateSkills(repositoryRoot) {
 
     if (!description) {
       issues.push(`${folderName}: description is required`);
+    } else if (description.length > DESCRIPTION_WARNING_LENGTH) {
+      warnings.push(
+        `${folderName}: description exceeds ${DESCRIPTION_WARNING_LENGTH} characters; shorten discovery text and move detail into the body`,
+      );
     }
 
     if (!parsed.body.trim() || /\bTODO\b/.test(parsed.body)) {
@@ -191,13 +198,17 @@ export async function validateSkills(repositoryRoot) {
     }
   }
 
-  return { skillCount: skillNames.length, issues };
+  return { skillCount: skillNames.length, issues, warnings };
 }
 
 async function main() {
   const scriptDirectory = dirname(fileURLToPath(import.meta.url));
   const repositoryRoot = resolve(scriptDirectory, '..');
   const result = await validateSkills(repositoryRoot);
+
+  for (const warning of result.warnings) {
+    console.warn(`Warning: ${warning}`);
+  }
 
   if (result.issues.length > 0) {
     for (const issue of result.issues) {
