@@ -24,6 +24,10 @@ _Avoid_: Learner, student account
 A Person entitled to review submissions and manage showcase content.
 _Avoid_: Teacher, staff account
 
+**Instructor**:
+A Person entitled to manage private forms, Student groups, submitted documents, and checking in the separate form and document collection product. Every Instructor may view all collection groups and submissions and act on behalf of other Instructors, with changes audited. An Admin explicitly grants or revokes Instructor access through an audited action; Admin status alone does not permit reading collection documents. Instructor and Admin are separate roles: neither grants the other automatically, and a Person holding both uses the same Account with separate surface-bound Authentication Sessions. This role belongs to the collection product and does not change Showcase Phase 1 roles.
+_Avoid_: Admin, Work reviewer
+
 **Visitor**:
 An unauthenticated Person viewing public profiles and work. Visitor is an access state, not a role.
 _Avoid_: Guest role, public user
