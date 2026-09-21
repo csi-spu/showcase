@@ -29,7 +29,24 @@ test('maps affected Turbo packages to deployable application images', () => {
 test('marks every deployable application for an initial push', () => {
   const plan = createDeploymentPlan({ isInitialPush: true, sourceSha: SOURCE_SHA });
 
-  assert.deepEqual(plan.apps, ['core', 'admin', 'student', 'visitor', 'media']);
+  assert.deepEqual(plan.apps, [
+    'core',
+    'admin',
+    'instructor',
+    'student',
+    'student-collection',
+    'visitor',
+    'media',
+  ]);
+});
+
+test('deploys the Instructor and Student-collection images independently', () => {
+  const plan = createDeploymentPlan({
+    sourceSha: SOURCE_SHA,
+    turboPackages: ['@showcase/instructor', '@showcase/student-collection'],
+  });
+
+  assert.deepEqual(plan.apps, ['instructor', 'student-collection']);
 });
 
 test('creates a canonical plan for an explicit manual deployment selection', () => {

@@ -1123,6 +1123,71 @@ model academic_settings {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model instructor_role_change_audit_events {
+  id                     BigInt   @id @default(autoincrement())
+  idempotency_key        String   @unique @db.Uuid
+  actor_account_id       String   @db.Uuid
+  instructor_account_id  String   @db.Uuid
+  action                 String
+  occurred_at            DateTime @db.Timestamptz(6)
+  accounts_actor         accounts @relation("instructor_role_change_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_instructor    accounts @relation("instructor_role_change_audit_events_instructor_account_idToaccounts", fields: [instructor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([instructor_account_id, occurred_at(sort: Desc)], map: "instructor_role_change_target_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model collection_rounds {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  status                String              @default("active")
+  created_by_account_id String              @db.Uuid
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  accounts              accounts            @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_groups     collection_groups[]
+
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model collection_groups {
+  id                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  round_id                     String                         @db.Uuid
+  name                         String
+  created_by_account_id        String                         @db.Uuid
+  created_at                   DateTime                       @default(now()) @db.Timestamptz(6)
+  accounts                     accounts                       @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_rounds            collection_rounds              @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_group_memberships collection_group_memberships[]
+
+  @@index([round_id, created_at(sort: Desc)], map: "collection_groups_round_id_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model collection_group_memberships {
+  group_id                                                                         String            @db.Uuid
+  student_account_id                                                               String            @db.Uuid
+  status                                                                           String            @default("current")
+  membership_source                                                                String
+  added_by_account_id                                                              String            @db.Uuid
+  added_at                                                                         DateTime          @default(now()) @db.Timestamptz(6)
+  withdrawn_by_account_id                                                          String?           @db.Uuid
+  withdrawn_at                                                                     DateTime?         @db.Timestamptz(6)
+  withdrawal_reason                                                                String?
+  collection_groups                                                                collection_groups @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_student_account_idToaccounts               accounts          @relation("collection_group_memberships_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_added_by_account_idToaccounts              accounts          @relation("collection_group_memberships_added_by_account_idToaccounts", fields: [added_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_withdrawn_by_account_idToaccounts          accounts?         @relation("collection_group_memberships_withdrawn_by_account_idToaccounts", fields: [withdrawn_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([group_id, student_account_id])
+  @@index([student_account_id], map: "collection_group_memberships_student_idx")
+  @@index([group_id, status], map: "collection_group_memberships_group_status_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model account_roles {
   account_id String   @db.Uuid
   role       String
@@ -1155,6 +1220,13 @@ model accounts {
   attribution_removal_requests                                                                             attribution_removal_requests[]
   authentication_audit_events                                                                              authentication_audit_events[]
   authentication_sessions                                                                                  authentication_sessions[]
+  instructor_role_change_audit_events_instructor_role_change_audit_events_actor_account_idToaccounts        instructor_role_change_audit_events[] @relation("instructor_role_change_audit_events_actor_account_idToaccounts")
+  instructor_role_change_audit_events_instructor_role_change_audit_events_instructor_account_idToaccounts   instructor_role_change_audit_events[] @relation("instructor_role_change_audit_events_instructor_account_idToaccounts")
+  collection_rounds                                                                                        collection_rounds[]
+  collection_groups                                                                                        collection_groups[]
+  collection_group_memberships_collection_group_memberships_student_account_idToaccounts                   collection_group_memberships[]        @relation("collection_group_memberships_student_account_idToaccounts")
+  collection_group_memberships_collection_group_memberships_added_by_account_idToaccounts                  collection_group_memberships[]        @relation("collection_group_memberships_added_by_account_idToaccounts")
+  collection_group_memberships_collection_group_memberships_withdrawn_by_account_idToaccounts               collection_group_memberships[]        @relation("collection_group_memberships_withdrawn_by_account_idToaccounts")
   person_name_correction_audit_events_person_name_correction_audit_events_actor_account_idToaccounts       person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_actor_account_idToaccounts")
   person_name_correction_audit_events_person_name_correction_audit_events_student_account_idToaccounts     person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_student_account_idToaccounts")
   profile_operations                                                                                       profile_operations[]

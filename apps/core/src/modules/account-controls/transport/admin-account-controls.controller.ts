@@ -23,12 +23,15 @@ import {
 import type {
   AcademicYearSettings,
   AdminAccountControls,
+  InstructorAccountControls,
   ListPage,
 } from '../application/account-controls.ports';
 import {
   CorrectStudentNameDto,
   CreateAdminDto,
+  CreateInstructorDto,
   ExtendStudentAccessDto,
+  InstructorRoleActionDto,
   ListAccountsQueryDto,
   ResetStudentPasswordDto,
   SetAdminStatusDto,
@@ -119,6 +122,60 @@ export class AdminAccountControlsController {
       idempotencyKey: body.idempotencyKey,
       reason: body.reason,
       status: body.action,
+    });
+  }
+
+  @Get('instructors')
+  @Header('Cache-Control', 'no-store')
+  async listInstructors(
+    @Query() query: ListAccountsQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<ListPage<InstructorAccountControls>> {
+    await this.authorize(authorization);
+    return this.controls.listInstructors({
+      cursor: query.cursor ?? null,
+      limit: query.limit ?? null,
+      search: query.search ?? null,
+    });
+  }
+
+  @Post('instructors')
+  @Header('Cache-Control', 'no-store')
+  async createInstructor(
+    @Body() body: CreateInstructorDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ instructor: { instructorLogin: string }; temporaryPassword: string }> {
+    await this.authorize(authorization);
+    return this.controls.createInstructor(body);
+  }
+
+  @Post('instructors/:accountId/grant')
+  @Header('Cache-Control', 'no-store')
+  async grantInstructorRole(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) instructorAccountId: string,
+    @Body() body: InstructorRoleActionDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<InstructorAccountControls> {
+    const actor = await this.authorize(authorization);
+    return this.controls.grantInstructorRole({
+      actorAccountId: actor.accountId,
+      idempotencyKey: body.idempotencyKey,
+      instructorAccountId,
+    });
+  }
+
+  @Post('instructors/:accountId/revoke')
+  @Header('Cache-Control', 'no-store')
+  async revokeInstructorRole(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) instructorAccountId: string,
+    @Body() body: InstructorRoleActionDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<InstructorAccountControls> {
+    const actor = await this.authorize(authorization);
+    return this.controls.revokeInstructorRole({
+      actorAccountId: actor.accountId,
+      idempotencyKey: body.idempotencyKey,
+      instructorAccountId,
     });
   }
 

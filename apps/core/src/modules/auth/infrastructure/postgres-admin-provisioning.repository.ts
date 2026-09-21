@@ -24,6 +24,7 @@ export class PostgresAdminProvisioningRepository implements AdminProvisioningRep
     lastNameTh: string;
     now: Date;
     providerUserId: string;
+    role: 'admin' | 'instructor';
     syntheticIdentity: string;
   }): Promise<{ accountId: string }> {
     return this.database.sql.begin(async (transaction) => {
@@ -73,7 +74,7 @@ export class PostgresAdminProvisioningRepository implements AdminProvisioningRep
         }
         await transaction`
           insert into public.account_roles (account_id, role, created_at)
-          values (${account.id}, 'admin', ${input.now})
+          values (${account.id}, ${input.role}, ${input.now})
         `;
         await transaction`
           insert into private.admin_auth_identities (
@@ -103,7 +104,7 @@ export class PostgresAdminProvisioningRepository implements AdminProvisioningRep
           account_id,
           event_type,
           occurred_at
-        ) values (${account.id}, 'admin_provisioned', ${input.now})
+        ) values (${account.id}, ${`${input.role}_provisioned`}, ${input.now})
       `;
       return { accountId: account.id };
     });

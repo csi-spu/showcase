@@ -113,8 +113,26 @@ describe('AdminProvisioningService', () => {
       lastNameTh: 'ใจดี',
       now: new Date('2026-08-25T04:00:00.000Z'),
       providerUserId: provider.identity.providerUserId,
+      role: 'admin',
       syntheticIdentity: 'hash-operations.team@admin.auth.invalid',
     });
+  });
+
+  it('provisions an Instructor Account when a role is requested, reusing the same staff identity mechanism', async () => {
+    const { repository, service } = setup();
+
+    await expect(
+      service.provision({
+        adminLogin: 'teaching.staff',
+        firstNameTh: 'สมชาย',
+        lastNameTh: 'ใจดี',
+        role: 'instructor',
+      }),
+    ).resolves.toEqual({
+      adminLogin: 'teaching.staff',
+      temporaryPassword: 'random-24-byte-password-value',
+    });
+    expect(repository.createdInput).toMatchObject({ role: 'instructor' });
   });
 
   it.each(['ab', 'contains space', 'x'.repeat(65), 'ผู้ดูแล'])(

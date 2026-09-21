@@ -84,6 +84,7 @@ class E2eRepository implements AuthRepository {
     adminLoginHash: 'admin-hash',
     credentialState: 'initial',
     hasAdminRole: true,
+    hasInstructorRole: false,
     providerUserId: PROVIDER_USER_ID,
     syntheticIdentity: 'admin-hash@admin.auth.invalid',
   };
@@ -134,8 +135,16 @@ class E2eRepository implements AuthRepository {
     });
   }
 
+  findInstructorSession(): Promise<AdminAuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
   findLoginAccount(studentIdHash: string): Promise<LoginAccount | null> {
     return Promise.resolve(studentIdHash === 'student-hash' ? { ...this.studentAccount } : null);
+  }
+
+  findStudentCollectionSession(): Promise<AuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
   }
 
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {

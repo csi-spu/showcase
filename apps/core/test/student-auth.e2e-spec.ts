@@ -96,6 +96,14 @@ class E2eAuthRepository implements AuthRepository {
     return Promise.resolve(null);
   }
 
+  findInstructorSession(): Promise<AdminAuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
+  findStudentCollectionSession(): Promise<AuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
     const stored = this.sessions.get(sessionIdHash);
     if (stored === undefined) {

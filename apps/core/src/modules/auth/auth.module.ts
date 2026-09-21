@@ -9,6 +9,8 @@ import {
 } from './application/auth.ports';
 import { StudentAuthService } from './application/student-auth.service';
 import { AdminAuthService } from './application/admin-auth.service';
+import { InstructorAuthService } from './application/instructor-auth.service';
+import { StudentCollectionAuthService } from './application/student-collection-auth.service';
 import {
   ADMIN_PROVISIONING_PROVIDER,
   ADMIN_PROVISIONING_REPOSITORY,
@@ -32,9 +34,18 @@ import { StudentAuthController } from './transport/student-auth.controller';
 import { StudentBffGuard } from './transport/student-bff.guard';
 import { AdminAuthController } from './transport/admin-auth.controller';
 import { AdminBffGuard } from './transport/admin-bff.guard';
+import { InstructorAuthController } from './transport/instructor-auth.controller';
+import { InstructorBffGuard } from './transport/instructor-bff.guard';
+import { StudentCollectionAuthController } from './transport/student-collection-auth.controller';
+import { StudentCollectionBffGuard } from './transport/student-collection-bff.guard';
 
 @Module({
-  controllers: [AdminAuthController, StudentAuthController],
+  controllers: [
+    AdminAuthController,
+    InstructorAuthController,
+    StudentAuthController,
+    StudentCollectionAuthController,
+  ],
   providers: [
     DatabaseClient,
     {
@@ -49,8 +60,12 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
     AdminAuthService,
     AdminBffGuard,
     AdminProvisioningService,
+    InstructorAuthService,
+    InstructorBffGuard,
     StudentAuthService,
     StudentBffGuard,
+    StudentCollectionAuthService,
+    StudentCollectionBffGuard,
     AuthExceptionFilter,
     { provide: AUTH_CLOCK, useClass: NodeClock },
     {
@@ -84,8 +99,10 @@ import { AdminBffGuard } from './transport/admin-bff.guard';
     AUTH_TOKEN_GENERATOR,
     DatabaseClient,
     BetterAuthEngine,
+    InstructorAuthService,
     StudentAuthService,
     StudentBffGuard,
+    StudentCollectionAuthService,
   ],
 })
 export class AuthModule {}

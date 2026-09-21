@@ -96,6 +96,28 @@ export class CreateAdminDto {
   lastNameTh!: string;
 }
 
+export class CreateInstructorDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  firstNameTh!: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(64)
+  instructorLogin!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  lastNameTh!: string;
+}
+
+export class InstructorRoleActionDto {
+  @IsUUID('4')
+  idempotencyKey!: string;
+}
+
 export class SetStudentStatusDto {
   @IsIn(['active', 'suspended'])
   action!: 'active' | 'suspended';

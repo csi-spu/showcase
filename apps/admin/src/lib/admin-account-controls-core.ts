@@ -37,9 +37,34 @@ const adminAccountControlsSchema = z
     accountId: z.uuid(),
     createdAt: z.iso.datetime(),
     firstNameTh: z.string().min(1),
+    hasInstructorRole: z.boolean(),
     lastNameTh: z.string().min(1),
     status: z.enum(['active', 'suspended']),
     version: z.number().int().positive(),
+  })
+  .strict();
+
+const instructorAccountControlsSchema = z
+  .object({
+    accountId: z.uuid(),
+    createdAt: z.iso.datetime(),
+    firstNameTh: z.string().min(1),
+    lastNameTh: z.string().min(1),
+    status: z.enum(['active', 'suspended']),
+  })
+  .strict();
+
+const instructorListPageSchema = z
+  .object({
+    items: z.array(instructorAccountControlsSchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
+const createInstructorResultSchema = z
+  .object({
+    instructor: z.object({ instructorLogin: z.string().min(1) }).strict(),
+    temporaryPassword: z.string().min(12).max(128),
   })
   .strict();
 
@@ -71,6 +96,9 @@ export type AdminAccountControls = z.infer<typeof adminAccountControlsSchema>;
 export type AdminStudentListPage = z.infer<typeof studentListPageSchema>;
 export type AdminAdminListPage = z.infer<typeof adminListPageSchema>;
 export type AdminCreateAdminResult = z.infer<typeof createAdminResultSchema>;
+export type AdminInstructorAccountControls = z.infer<typeof instructorAccountControlsSchema>;
+export type AdminInstructorListPage = z.infer<typeof instructorListPageSchema>;
+export type AdminCreateInstructorResult = z.infer<typeof createInstructorResultSchema>;
 
 interface AdminAccountControlsCoreConfig {
   adminBffSecret: string;
@@ -244,6 +272,59 @@ export class AdminAccountControlsCoreClient {
       method: 'POST',
       path: `/v1/internal/admin/account-controls/admins/${accountId}/status`,
       responseSchema: adminAccountControlsSchema,
+      sessionToken,
+    });
+  }
+
+  listInstructors(
+    sessionToken: string,
+    input: { cursor: string | null; search: string | null },
+  ): Promise<AdminInstructorListPage> {
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/admin/account-controls/instructors${toQueryString(input)}`,
+      responseSchema: instructorListPageSchema,
+      sessionToken,
+    });
+  }
+
+  createInstructor(
+    sessionToken: string,
+    input: { firstNameTh: string; instructorLogin: string; lastNameTh: string },
+  ): Promise<AdminCreateInstructorResult> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: '/v1/internal/admin/account-controls/instructors',
+      responseSchema: createInstructorResultSchema,
+      sessionToken,
+    });
+  }
+
+  grantInstructorRole(
+    sessionToken: string,
+    accountId: string,
+    input: { idempotencyKey: string },
+  ): Promise<AdminInstructorAccountControls> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/account-controls/instructors/${accountId}/grant`,
+      responseSchema: instructorAccountControlsSchema,
+      sessionToken,
+    });
+  }
+
+  revokeInstructorRole(
+    sessionToken: string,
+    accountId: string,
+    input: { idempotencyKey: string },
+  ): Promise<AdminInstructorAccountControls> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/account-controls/instructors/${accountId}/revoke`,
+      responseSchema: instructorAccountControlsSchema,
       sessionToken,
     });
   }

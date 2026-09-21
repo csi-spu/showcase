@@ -95,8 +95,16 @@ class FakeAuthRepository implements AuthRepository {
     return Promise.resolve(null);
   }
 
+  findInstructorSession(): Promise<AdminAuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
+  }
+
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
     return Promise.resolve(sessionIdHash === this.session?.sessionIdHash ? this.session : null);
+  }
+
+  findStudentCollectionSession(): Promise<AuthenticationSessionRecord | null> {
+    return Promise.resolve(null);
   }
 
   replaceAllAccountSessions(input: NewAuthenticationSession): Promise<void> {

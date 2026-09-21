@@ -9,7 +9,10 @@ import type {
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
+  GrantInstructorRoleResult,
+  InstructorAccountControls,
   ListPage,
+  RevokeInstructorRoleResult,
   SetAdminStatusResult,
   SetStudentStatusResult,
   StudentAccountControls,
@@ -82,6 +85,7 @@ interface AdminRow {
   control_version: number;
   created_at: Date;
   first_name_th: string;
+  has_instructor_role: boolean;
   last_name_th: string;
   status: 'active' | 'suspended';
 }
@@ -102,6 +106,24 @@ interface AdminStatusAuditRow {
   reason: string;
   resulting_version: number;
   status: 'active' | 'suspended';
+}
+
+interface InstructorRow {
+  account_id: string;
+  created_at: Date;
+  first_name_th: string;
+  last_name_th: string;
+  status: 'active' | 'suspended';
+}
+
+interface InstructorEligibleRow extends InstructorRow {
+  has_instructor_role: boolean;
+}
+
+interface InstructorRoleChangeAuditRow {
+  actor_account_id: string;
+  action: 'granted' | 'revoked';
+  instructor_account_id: string;
 }
 
 @Injectable()
@@ -172,11 +194,14 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
         account.created_at,
         account.status,
         person_name.first_name_th,
-        person_name.last_name_th
+        person_name.last_name_th,
+        (instructor_role.account_id is not null) as has_instructor_role
       from public.accounts as account
       join public.account_roles as admin_role
         on admin_role.account_id = account.id and admin_role.role = 'admin'
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join public.account_roles as instructor_role
+        on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
       where (
           ${input.search}::text is null
           or lower(person_name.first_name_th || ' ' || person_name.last_name_th)
@@ -190,6 +215,142 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       limit ${input.limit + 1}
     `;
     return this.toListPage(rows, input.limit, (row) => this.mapAdmin(row));
+  }
+
+  async listInstructors(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<InstructorAccountControls>> {
+    const cursor = input.cursor === null ? null : decodeListCursor(input.cursor);
+    const rows = await this.database.sql<InstructorRow[]>`
+      select
+        account.id as account_id,
+        account.created_at,
+        account.status,
+        person_name.first_name_th,
+        person_name.last_name_th
+      from public.accounts as account
+      join public.account_roles as instructor_role
+        on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      where (
+          ${input.search}::text is null
+          or lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+            like '%' || lower(${input.search}) || '%'
+        )
+        and (
+          ${cursor === null}
+          or (account.created_at, account.id) < (${cursor?.createdAt ?? null}, ${cursor?.accountId ?? null})
+        )
+      order by account.created_at desc, account.id desc
+      limit ${input.limit + 1}
+    `;
+    return this.toListPage(rows, input.limit, (row) => this.mapInstructor(row));
+  }
+
+  async grantInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<GrantInstructorRoleResult> {
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const audit = await this.findInstructorRoleChangeAudit(transaction, input.idempotencyKey);
+      if (audit !== undefined) {
+        if (
+          audit.actor_account_id !== input.actorAccountId ||
+          audit.instructor_account_id !== input.instructorAccountId ||
+          audit.action !== 'granted'
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayed = await this.findInstructorEligibleAccount(
+          transaction,
+          input.instructorAccountId,
+        );
+        return replayed === null
+          ? { outcome: 'not_eligible' }
+          : { instructor: this.mapInstructor(replayed), outcome: 'replayed' };
+      }
+
+      const account = await this.findInstructorEligibleAccount(
+        transaction,
+        input.instructorAccountId,
+        true,
+      );
+      // A suspended Account must not gain a new role while suspended, even
+      // though revoking a role from a suspended Account is still allowed.
+      if (account === null || account.status !== 'active') return { outcome: 'not_eligible' };
+      if (account.has_instructor_role) return { outcome: 'already_granted' };
+
+      await transaction`
+        insert into public.account_roles (account_id, role, created_at)
+        values (${input.instructorAccountId}, 'instructor', ${input.now})
+      `;
+      await this.insertInstructorRoleChangeAudit(transaction, input, 'granted');
+      await transaction`
+        insert into private.authentication_audit_events (account_id, event_type, occurred_at)
+        values (${input.instructorAccountId}, 'instructor_role_granted', ${input.now})
+      `;
+      return { instructor: this.mapInstructor(account), outcome: 'granted' };
+    });
+  }
+
+  async revokeInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<RevokeInstructorRoleResult> {
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const audit = await this.findInstructorRoleChangeAudit(transaction, input.idempotencyKey);
+      if (audit !== undefined) {
+        if (
+          audit.actor_account_id !== input.actorAccountId ||
+          audit.instructor_account_id !== input.instructorAccountId ||
+          audit.action !== 'revoked'
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        const replayed = await this.findInstructorEligibleAccount(
+          transaction,
+          input.instructorAccountId,
+        );
+        return replayed === null
+          ? { outcome: 'not_granted' }
+          : { instructor: this.mapInstructor(replayed), outcome: 'replayed' };
+      }
+
+      const account = await this.findInstructorEligibleAccount(
+        transaction,
+        input.instructorAccountId,
+        true,
+      );
+      if (account === null || !account.has_instructor_role) return { outcome: 'not_granted' };
+
+      await transaction`
+        delete from public.account_roles
+        where account_id = ${input.instructorAccountId} and role = 'instructor'
+      `;
+      // Revoking Instructor access must deny the next request rather than a
+      // still-active session on the Instructor frontend, so end it now.
+      await transaction`
+        update private.authentication_sessions
+        set revoked_at = ${input.now}, revocation_reason = 'authorization_changed'
+        where account_id = ${input.instructorAccountId}
+          and audience = 'instructor'
+          and revoked_at is null
+      `;
+      await this.insertInstructorRoleChangeAudit(transaction, input, 'revoked');
+      await transaction`
+        insert into private.authentication_audit_events (account_id, event_type, occurred_at)
+        values (${input.instructorAccountId}, 'instructor_role_revoked', ${input.now})
+      `;
+      return { instructor: this.mapInstructor(account), outcome: 'revoked' };
+    });
   }
 
   async setStudentStatus(input: {
@@ -961,11 +1122,14 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
             account.created_at,
             account.status,
             person_name.first_name_th,
-            person_name.last_name_th
+            person_name.last_name_th,
+            (instructor_role.account_id is not null) as has_instructor_role
           from public.accounts as account
           join public.account_roles as admin_role
             on admin_role.account_id = account.id and admin_role.role = 'admin'
           join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as instructor_role
+            on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
           where account.id = ${accountId}
           for update of account
         `
@@ -976,15 +1140,104 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
             account.created_at,
             account.status,
             person_name.first_name_th,
-            person_name.last_name_th
+            person_name.last_name_th,
+            (instructor_role.account_id is not null) as has_instructor_role
           from public.accounts as account
           join public.account_roles as admin_role
             on admin_role.account_id = account.id and admin_role.role = 'admin'
           join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as instructor_role
+            on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
           where account.id = ${accountId}
         `;
     const row = rows[0];
     return row === undefined ? null : this.mapAdmin(row);
+  }
+
+  private async findInstructorEligibleAccount(
+    transaction: postgres.TransactionSql,
+    accountId: string,
+    shouldLock = false,
+  ): Promise<InstructorEligibleRow | null> {
+    // Instructor login reuses the Admin staff-identity mechanism, so only an
+    // Account that already has a private.admin_auth_identities row (i.e. an
+    // existing Admin) is eligible to be granted Instructor access here.
+    const rows = shouldLock
+      ? await transaction<InstructorEligibleRow[]>`
+          select
+            account.id as account_id,
+            account.created_at,
+            account.status,
+            person_name.first_name_th,
+            person_name.last_name_th,
+            (instructor_role.account_id is not null) as has_instructor_role
+          from public.accounts as account
+          join private.admin_auth_identities as identity on identity.account_id = account.id
+          join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as instructor_role
+            on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
+          where account.id = ${accountId}
+          for update of account
+        `
+      : await transaction<InstructorEligibleRow[]>`
+          select
+            account.id as account_id,
+            account.created_at,
+            account.status,
+            person_name.first_name_th,
+            person_name.last_name_th,
+            (instructor_role.account_id is not null) as has_instructor_role
+          from public.accounts as account
+          join private.admin_auth_identities as identity on identity.account_id = account.id
+          join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as instructor_role
+            on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
+          where account.id = ${accountId}
+        `;
+    return rows[0] ?? null;
+  }
+
+  private async findInstructorRoleChangeAudit(
+    transaction: postgres.TransactionSql,
+    idempotencyKey: string,
+  ): Promise<InstructorRoleChangeAuditRow | undefined> {
+    const audits = await transaction<InstructorRoleChangeAuditRow[]>`
+      select actor_account_id, action, instructor_account_id
+      from private.instructor_role_change_audit_events
+      where idempotency_key = ${idempotencyKey}
+      limit 1
+    `;
+    return audits[0];
+  }
+
+  private async insertInstructorRoleChangeAudit(
+    transaction: postgres.TransactionSql,
+    input: {
+      actorAccountId: string;
+      idempotencyKey: string;
+      instructorAccountId: string;
+      now: Date;
+    },
+    action: 'granted' | 'revoked',
+  ): Promise<void> {
+    await transaction`
+      insert into private.instructor_role_change_audit_events (
+        idempotency_key, actor_account_id, instructor_account_id, action, occurred_at
+      ) values (
+        ${input.idempotencyKey}, ${input.actorAccountId}, ${input.instructorAccountId},
+        ${action}, ${input.now}
+      )
+    `;
+  }
+
+  private mapInstructor(row: InstructorRow): InstructorAccountControls {
+    return {
+      accountId: row.account_id,
+      createdAt: row.created_at,
+      firstNameTh: row.first_name_th,
+      lastNameTh: row.last_name_th,
+      status: row.status,
+    };
   }
 
   private toListPage<Row extends { account_id: string; created_at: Date }, Mapped>(
@@ -1007,6 +1260,7 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       accountId: row.account_id,
       createdAt: row.created_at,
       firstNameTh: row.first_name_th,
+      hasInstructorRole: row.has_instructor_role,
       lastNameTh: row.last_name_th,
       status: row.status,
       version: row.control_version,

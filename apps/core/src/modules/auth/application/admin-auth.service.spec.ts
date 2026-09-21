@@ -73,6 +73,7 @@ class FakeRepository implements AuthRepository {
     adminLoginHash: 'admin-hash',
     credentialState: 'initial',
     hasAdminRole: true,
+    hasInstructorRole: false,
     providerUserId: PROVIDER_USER_ID,
     syntheticIdentity: 'admin-hash@admin.auth.invalid',
   };
@@ -103,11 +104,19 @@ class FakeRepository implements AuthRepository {
     );
   }
 
+  findInstructorSession(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
   findLoginAccount(): Promise<null> {
     return Promise.resolve(null);
   }
 
   findSession(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
+  findStudentCollectionSession(): Promise<null> {
     return Promise.resolve(null);
   }
 

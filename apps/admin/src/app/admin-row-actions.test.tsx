@@ -21,6 +21,7 @@ const ADMIN = {
   accountId: '40000000-0000-4000-8000-000000000001',
   createdAt: '2026-08-25T06:00:00.000Z',
   firstNameTh: 'ผู้ดูแล',
+  hasInstructorRole: false,
   lastNameTh: 'ระบบ',
   status: 'active' as const,
   version: 1,

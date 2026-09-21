@@ -17,6 +17,18 @@ const ADMIN_PROVIDER_USER_ID = '51000000-0000-4000-8000-000000000003';
 const SECOND_ADMIN_PERSON_ID = '51000000-0000-4000-8000-000000000021';
 const SECOND_ADMIN_ACCOUNT_ID = '51000000-0000-4000-8000-000000000022';
 const SECOND_ADMIN_PROVIDER_USER_ID = '51000000-0000-4000-8000-000000000023';
+const INSTRUCTOR_ELIGIBLE_PERSON_ID = '55000000-0000-4000-8000-000000000001';
+const INSTRUCTOR_ELIGIBLE_ACCOUNT_ID = '55000000-0000-4000-8000-000000000002';
+const INSTRUCTOR_ELIGIBLE_PROVIDER_USER_ID = '55000000-0000-4000-8000-000000000003';
+const INSTRUCTOR_ELIGIBLE_LOGIN_HASH = '61'.repeat(32);
+const SUSPENDED_STAFF_PERSON_ID = '55000000-0000-4000-8000-000000000011';
+const SUSPENDED_STAFF_ACCOUNT_ID = '55000000-0000-4000-8000-000000000012';
+const SUSPENDED_STAFF_PROVIDER_USER_ID = '55000000-0000-4000-8000-000000000013';
+const SUSPENDED_STAFF_LOGIN_HASH = '62'.repeat(32);
+const GRANT_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000015';
+const REPLAYED_GRANT_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000016';
+const REVOKE_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000017';
+const SUSPENDED_GRANT_IDEMPOTENCY_KEY = '53000000-0000-4000-8000-000000000018';
 const STUDENT_PERSON_ID = '52000000-0000-4000-8000-000000000001';
 const STUDENT_ACCOUNT_ID = '52000000-0000-4000-8000-000000000002';
 const STUDENT_PROVIDER_USER_ID = '52000000-0000-4000-8000-000000000003';
@@ -77,7 +89,8 @@ describe('PostgresAccountControlsRepository integration', () => {
       await transaction`
         insert into public.people (id)
         values (${ADMIN_PERSON_ID}), (${SECOND_ADMIN_PERSON_ID}),
-          (${STUDENT_PERSON_ID}), (${NAME_STUDENT_PERSON_ID}), (${STATUS_STUDENT_PERSON_ID})
+          (${STUDENT_PERSON_ID}), (${NAME_STUDENT_PERSON_ID}), (${STATUS_STUDENT_PERSON_ID}),
+          (${INSTRUCTOR_ELIGIBLE_PERSON_ID}), (${SUSPENDED_STAFF_PERSON_ID})
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year)
@@ -92,13 +105,19 @@ describe('PostgresAccountControlsRepository integration', () => {
           (${SECOND_ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_PERSON_ID}, ${SECOND_ADMIN_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
           (${STUDENT_ACCOUNT_ID}, ${STUDENT_PERSON_ID}, ${STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
           (${NAME_STUDENT_ACCOUNT_ID}, ${NAME_STUDENT_PERSON_ID}, ${NAME_STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
-          (${STATUS_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW})
+          (${STATUS_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
+          (${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${INSTRUCTOR_ELIGIBLE_PERSON_ID}, ${INSTRUCTOR_ELIGIBLE_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW}),
+          (${SUSPENDED_STAFF_ACCOUNT_ID}, ${SUSPENDED_STAFF_PERSON_ID}, ${SUSPENDED_STAFF_PROVIDER_USER_ID}, 'set', ${NOW}, ${NOW})
+      `;
+      await transaction`
+        update public.accounts set status = 'suspended' where id = ${SUSPENDED_STAFF_ACCOUNT_ID}
       `;
       await transaction`
         insert into public.account_roles (account_id, role)
         values (${ADMIN_ACCOUNT_ID}, 'admin'), (${SECOND_ADMIN_ACCOUNT_ID}, 'admin'),
           (${STUDENT_ACCOUNT_ID}, 'student'), (${NAME_STUDENT_ACCOUNT_ID}, 'student'),
-          (${STATUS_STUDENT_ACCOUNT_ID}, 'student')
+          (${STATUS_STUDENT_ACCOUNT_ID}, 'student'),
+          (${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, 'admin'), (${SUSPENDED_STAFF_ACCOUNT_ID}, 'admin')
       `;
       await transaction`
         insert into private.person_names (person_id, first_name_th, last_name_th)
@@ -106,7 +125,15 @@ describe('PostgresAccountControlsRepository integration', () => {
           (${SECOND_ADMIN_PERSON_ID}, 'ผู้ดูแล', 'สำรอง'),
           (${STUDENT_PERSON_ID}, 'สมชาย', 'ใจดี'),
           (${NAME_STUDENT_PERSON_ID}, 'สมชาย', 'เดิมดี'),
-          (${STATUS_STUDENT_PERSON_ID}, 'ระงับ', 'ทดสอบ')
+          (${STATUS_STUDENT_PERSON_ID}, 'ระงับ', 'ทดสอบ'),
+          (${INSTRUCTOR_ELIGIBLE_PERSON_ID}, 'ผู้สอน', 'มีสิทธิ์'),
+          (${SUSPENDED_STAFF_PERSON_ID}, 'ผู้สอน', 'ถูกระงับ')
+      `;
+      await transaction`
+        insert into private.admin_auth_identities (account_id, admin_login_hash, synthetic_identity)
+        values
+          (${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${INSTRUCTOR_ELIGIBLE_LOGIN_HASH}, ${`${INSTRUCTOR_ELIGIBLE_LOGIN_HASH}@admin.auth.invalid`}),
+          (${SUSPENDED_STAFF_ACCOUNT_ID}, ${SUSPENDED_STAFF_LOGIN_HASH}, ${`${SUSPENDED_STAFF_LOGIN_HASH}@admin.auth.invalid`})
       `;
       await transaction`
         insert into public.public_profiles (
@@ -342,6 +369,7 @@ describe('PostgresAccountControlsRepository integration', () => {
         accountId: SECOND_ADMIN_ACCOUNT_ID,
         createdAt: NOW,
         firstNameTh: 'ผู้ดูแล',
+        hasInstructorRole: false,
         lastNameTh: 'สำรอง',
         status: 'suspended',
         version: 2,
@@ -353,6 +381,7 @@ describe('PostgresAccountControlsRepository integration', () => {
         accountId: SECOND_ADMIN_ACCOUNT_ID,
         createdAt: NOW,
         firstNameTh: 'ผู้ดูแล',
+        hasInstructorRole: false,
         lastNameTh: 'สำรอง',
         status: 'suspended',
         version: 2,
@@ -385,6 +414,57 @@ describe('PostgresAccountControlsRepository integration', () => {
         idempotencyKey: STALE_VERSION_IDEMPOTENCY_KEY,
       }),
     ).resolves.toEqual({ outcome: 'version_conflict' });
+  });
+
+  it('grants and revokes Instructor access on an eligible Account, replaying idempotently', async () => {
+    const grantInput = {
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      idempotencyKey: GRANT_IDEMPOTENCY_KEY,
+      instructorAccountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID,
+      now: NOW,
+    };
+    await expect(repository.grantInstructorRole(grantInput)).resolves.toMatchObject({
+      instructor: { accountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID },
+      outcome: 'granted',
+    });
+    // Retrying the exact same grant request must be a safe no-op, distinct
+    // from a fresh grant, so a caller cannot mistake a replay for new action.
+    await expect(repository.grantInstructorRole(grantInput)).resolves.toMatchObject({
+      instructor: { accountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID },
+      outcome: 'replayed',
+    });
+    await expect(
+      repository.grantInstructorRole({
+        ...grantInput,
+        idempotencyKey: REPLAYED_GRANT_IDEMPOTENCY_KEY,
+      }),
+    ).resolves.toEqual({ outcome: 'already_granted' });
+
+    const revokeInput = {
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      idempotencyKey: REVOKE_IDEMPOTENCY_KEY,
+      instructorAccountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID,
+      now: NOW,
+    };
+    await expect(repository.revokeInstructorRole(revokeInput)).resolves.toMatchObject({
+      instructor: { accountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID },
+      outcome: 'revoked',
+    });
+    await expect(repository.revokeInstructorRole(revokeInput)).resolves.toMatchObject({
+      instructor: { accountId: INSTRUCTOR_ELIGIBLE_ACCOUNT_ID },
+      outcome: 'replayed',
+    });
+  });
+
+  it('refuses to grant Instructor access to a suspended Account', async () => {
+    await expect(
+      repository.grantInstructorRole({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        idempotencyKey: SUSPENDED_GRANT_IDEMPOTENCY_KEY,
+        instructorAccountId: SUSPENDED_STAFF_ACCOUNT_ID,
+        now: NOW,
+      }),
+    ).resolves.toEqual({ outcome: 'not_eligible' });
   });
 
   it('suspends and reactivates a Student Account idempotently, revoking live sessions', async () => {
@@ -762,17 +842,21 @@ describe('PostgresAccountControlsRepository integration', () => {
         where student_account_id = ${STATUS_STUDENT_ACCOUNT_ID}
       `;
       await transaction`
+        delete from private.instructor_role_change_audit_events
+        where instructor_account_id in (${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID})
+      `;
+      await transaction`
         delete from private.authentication_audit_events
         where account_id in (
           ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID},
-          ${STATUS_STUDENT_ACCOUNT_ID}
+          ${STATUS_STUDENT_ACCOUNT_ID}, ${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID}
         )
       `;
       await transaction`
         delete from private.authentication_sessions
         where account_id in (
           ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID},
-          ${STATUS_STUDENT_ACCOUNT_ID}
+          ${STATUS_STUDENT_ACCOUNT_ID}, ${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID}
         )
       `;
       await transaction`
@@ -781,6 +865,10 @@ describe('PostgresAccountControlsRepository integration', () => {
       `;
       await transaction`
         delete from private.student_auth_identities where account_id = ${STUDENT_ACCOUNT_ID}
+      `;
+      await transaction`
+        delete from private.admin_auth_identities
+        where account_id in (${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID})
       `;
       await transaction`
         delete from public.profile_consents where person_id = ${NAME_STUDENT_PERSON_ID}
@@ -792,14 +880,16 @@ describe('PostgresAccountControlsRepository integration', () => {
         delete from private.person_names
         where person_id in (
           ${ADMIN_PERSON_ID}, ${SECOND_ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID},
-          ${NAME_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PERSON_ID}
+          ${NAME_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PERSON_ID},
+          ${INSTRUCTOR_ELIGIBLE_PERSON_ID}, ${SUSPENDED_STAFF_PERSON_ID}
         )
       `;
       await transaction`
         delete from public.account_roles
         where account_id in (
           ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID},
-          ${NAME_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_ACCOUNT_ID}
+          ${NAME_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_ACCOUNT_ID},
+          ${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID}
         )
       `;
       await transaction`
@@ -811,7 +901,8 @@ describe('PostgresAccountControlsRepository integration', () => {
         delete from public.accounts
         where id in (
           ${ADMIN_ACCOUNT_ID}, ${SECOND_ADMIN_ACCOUNT_ID}, ${STUDENT_ACCOUNT_ID},
-          ${NAME_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_ACCOUNT_ID}
+          ${NAME_STUDENT_ACCOUNT_ID}, ${STATUS_STUDENT_ACCOUNT_ID},
+          ${INSTRUCTOR_ELIGIBLE_ACCOUNT_ID}, ${SUSPENDED_STAFF_ACCOUNT_ID}
         )
       `;
       await transaction`
@@ -824,7 +915,8 @@ describe('PostgresAccountControlsRepository integration', () => {
         delete from public.people
         where id in (
           ${ADMIN_PERSON_ID}, ${SECOND_ADMIN_PERSON_ID}, ${STUDENT_PERSON_ID},
-          ${NAME_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PERSON_ID}
+          ${NAME_STUDENT_PERSON_ID}, ${STATUS_STUDENT_PERSON_ID},
+          ${INSTRUCTOR_ELIGIBLE_PERSON_ID}, ${SUSPENDED_STAFF_PERSON_ID}
         )
       `;
     });

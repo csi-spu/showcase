@@ -1,0 +1,19 @@
+@import '@showcase/ui/styles.css';
+
+@source '../components/**/*.tsx';
+
+.instructor-canvas {
+  background:
+    radial-gradient(
+      circle at 88% 5%,
+      color-mix(in srgb, var(--primary) 6%, transparent),
+      transparent 26rem
+    ),
+    var(--background);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

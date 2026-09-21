@@ -5,10 +5,18 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AddAdminSheet } from '../add-admin-sheet';
+import { AddInstructorSheet } from '../add-instructor-sheet';
 import { AddStudentSheet } from '../add-student-sheet';
 import { AdminRowActions } from '../admin-row-actions';
+import { GrantInstructorAction, InstructorRowActions } from '../instructor-row-actions';
 import { manageStudentAccountAction } from '../account-controls.actions';
-import { createAdminAction, setAdminStatusAction } from '../accounts.actions';
+import {
+  createAdminAction,
+  createInstructorAction,
+  grantInstructorRoleAction,
+  revokeInstructorRoleAction,
+  setAdminStatusAction,
+} from '../accounts.actions';
 import { AdminWorkspacePage } from '../admin-workspace-page';
 import { AdminWorkspaceShell } from '../admin-workspace-shell';
 import { createRosterStudentAction } from '../roster.actions';
@@ -28,7 +36,7 @@ import { readAdminSessionToken } from '@/lib/admin-auth-session';
 import { AdminAccountControlsCoreClient } from '@/lib/admin-account-controls-core';
 import { getAdminServerEnvironment } from '@/lib/server-environment';
 
-const TABS = ['students', 'admins'] as const;
+const TABS = ['students', 'admins', 'instructors'] as const;
 type AccountsTab = (typeof TABS)[number];
 
 export default async function AccountsPage({
@@ -45,14 +53,20 @@ export default async function AccountsPage({
   const token = await readAdminSessionToken();
   if (token === null) redirect('/?expired=1');
 
-  const tab: AccountsTab = query.tab === 'admins' ? 'admins' : 'students';
+  const tab: AccountsTab =
+    query.tab !== undefined && (TABS as readonly string[]).includes(query.tab)
+      ? (query.tab as AccountsTab)
+      : 'students';
   const search = query.q?.trim() || null;
   const cursor = query.cursor ?? null;
   const core = new AdminAccountControlsCoreClient(getAdminServerEnvironment());
   const students = tab === 'students' ? await core.listStudents(token, { cursor, search }) : null;
   const admins = tab === 'admins' ? await core.listAdmins(token, { cursor, search }) : null;
-  const nextCursor = students?.nextCursor ?? admins?.nextCursor ?? null;
-  const isEmpty = (students?.items.length ?? admins?.items.length ?? 0) === 0;
+  const instructors =
+    tab === 'instructors' ? await core.listInstructors(token, { cursor, search }) : null;
+  const nextCursor = students?.nextCursor ?? admins?.nextCursor ?? instructors?.nextCursor ?? null;
+  const isEmpty =
+    (students?.items.length ?? admins?.items.length ?? instructors?.items.length ?? 0) === 0;
 
   return (
     <AdminWorkspaceShell activePage="accounts">
@@ -80,8 +94,10 @@ export default async function AccountsPage({
               </nav>
               {tab === 'students' ? (
                 <AddStudentSheet action={createRosterStudentAction} />
-              ) : (
+              ) : tab === 'admins' ? (
                 <AddAdminSheet action={createAdminAction} idempotencyKey={randomUUID()} />
+              ) : (
+                <AddInstructorSheet action={createInstructorAction} idempotencyKey={randomUUID()} />
               )}
             </div>
             <form className="flex w-full gap-2 sm:max-w-xl" method="get">
@@ -136,6 +152,28 @@ export default async function AccountsPage({
                   </TableCell>
                 </TableRow>
               ) : null}
+              {instructors?.items.map((instructor) => (
+                <TableRow key={instructor.accountId}>
+                  <TableCell>{`${instructor.firstNameTh} ${instructor.lastNameTh}`}</TableCell>
+                  <TableCell>
+                    <time dateTime={instructor.createdAt}>
+                      {formatBangkokDate(instructor.createdAt)}
+                    </time>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge tone={instructor.status === 'active' ? 'success' : 'warning'}>
+                      {t(`status.${instructor.status}`)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <InstructorRowActions
+                      action={revokeInstructorRoleAction}
+                      idempotencyKey={randomUUID()}
+                      instructor={instructor}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
               {students?.items.map((student) => (
                 <TableRow key={student.accountId}>
                   <TableCell>{`${student.firstNameTh} ${student.lastNameTh}`}</TableCell>
@@ -172,11 +210,19 @@ export default async function AccountsPage({
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <AdminRowActions
-                      action={setAdminStatusAction}
-                      admin={admin}
-                      idempotencyKey={randomUUID()}
-                    />
+                    <div className="flex justify-end gap-1">
+                      <GrantInstructorAction
+                        accountId={admin.accountId}
+                        action={grantInstructorRoleAction}
+                        hasInstructorRole={admin.hasInstructorRole}
+                        idempotencyKey={randomUUID()}
+                      />
+                      <AdminRowActions
+                        action={setAdminStatusAction}
+                        admin={admin}
+                        idempotencyKey={randomUUID()}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

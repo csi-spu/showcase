@@ -9,6 +9,7 @@ import {
 import type {
   AdminProvisioningProvider,
   AdminProvisioningRepository,
+  StaffRole,
 } from './admin-provisioning.ports';
 
 export type AdminProvisioningErrorCode =
@@ -44,7 +45,9 @@ export class AdminProvisioningService {
     adminLogin: string;
     firstNameTh: string;
     lastNameTh: string;
+    role?: StaffRole;
   }): Promise<{ adminLogin: string; temporaryPassword: string }> {
+    const role = input.role ?? 'admin';
     const adminLogin = input.adminLogin.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(adminLogin)) {
       throw new AdminProvisioningError('INVALID_ADMIN_LOGIN');
@@ -85,6 +88,7 @@ export class AdminProvisioningService {
         lastNameTh,
         now: this.clock.now(),
         providerUserId: providerIdentity.providerUserId,
+        role,
         syntheticIdentity,
       });
     } catch (error: unknown) {
