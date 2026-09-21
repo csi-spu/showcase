@@ -1,46 +1,133 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import { toast } from '@showcase/ui/toast';
-import { PlusIcon, UsersIcon } from 'lucide-react';
+import { Textarea } from '@showcase/ui/textarea';
+import { CalendarPlusIcon, IdCardIcon, PlusIcon, UsersIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useId, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { DisclosurePanel } from '@/components/ui/disclosure-panel';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { Textarea } from '@showcase/ui/textarea';
 import type { AddMembersAction, AddMembersActionState } from '../../collection-groups-state';
 import { INITIAL_ADD_MEMBERS_STATE } from '../../collection-groups-state';
 
-export function AddByStudentIdsForm({ action }: { action: AddMembersAction }) {
+type AddMethod = 'entryYear' | 'studentIds';
+
+/*
+ * Adding members is one task with two methods, so it is one panel with a
+ * method switch -- not two cards side by side asking the user to compare them.
+ */
+export function AddMembersPanel({
+  addByEntryYearAction,
+  addByStudentIdsAction,
+}: {
+  addByEntryYearAction: AddMembersAction;
+  addByStudentIdsAction: AddMembersAction;
+}) {
   const t = useTranslations('Groups');
+  const [method, setMethod] = useState<AddMethod>('studentIds');
+  const tablistLabel = t('members.methodLabel');
+
+  return (
+    <DisclosurePanel
+      closeLabel={t('members.addClose')}
+      openLabel={t('members.addOpen')}
+      title={t('members.addTitle')}
+    >
+      <div className="flex flex-col gap-4">
+        <div
+          aria-label={tablistLabel}
+          className="flex w-fit gap-1 rounded-control bg-muted p-1"
+          role="tablist"
+        >
+          <MethodTab
+            icon={IdCardIcon}
+            isSelected={method === 'studentIds'}
+            label={t('members.addByIdsTitle')}
+            onSelect={() => setMethod('studentIds')}
+          />
+          <MethodTab
+            icon={CalendarPlusIcon}
+            isSelected={method === 'entryYear'}
+            label={t('members.addByEntryYearTitle')}
+            onSelect={() => setMethod('entryYear')}
+          />
+        </div>
+        {method === 'studentIds' ? (
+          <AddByStudentIdsForm action={addByStudentIdsAction} />
+        ) : (
+          <AddByEntryYearForm action={addByEntryYearAction} />
+        )}
+      </div>
+    </DisclosurePanel>
+  );
+}
+
+function MethodTab({
+  icon: Icon,
+  isSelected,
+  label,
+  onSelect,
+}: {
+  icon: typeof IdCardIcon;
+  isSelected: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-selected={isSelected}
+      className={cn(
+        'flex items-center gap-2 rounded-control px-3 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none',
+        isSelected
+          ? 'bg-card text-foreground shadow-[0_1px_2px_rgba(22,22,22,0.08)]'
+          : 'text-muted-foreground hover:text-foreground',
+      )}
+      onClick={onSelect}
+      role="tab"
+      type="button"
+    >
+      <Icon aria-hidden="true" className="size-4" />
+      {label}
+    </button>
+  );
+}
+
+function useAddMembersAction(action: AddMembersAction) {
   const errorT = useTranslations('Groups.errors');
   const router = useRouter();
-  const [state, formAction] = useActionState(
-    async (previousState: AddMembersActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.error !== null) {
-        toast.error(errorT(nextState.error));
-      } else {
-        router.refresh();
-      }
-      return nextState;
-    },
-    INITIAL_ADD_MEMBERS_STATE,
-  );
+  return useActionState(async (previousState: AddMembersActionState, formData: FormData) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.error !== null) {
+      toast.error(errorT(nextState.error));
+    } else {
+      router.refresh();
+    }
+    return nextState;
+  }, INITIAL_ADD_MEMBERS_STATE);
+}
+
+export function AddByStudentIdsForm({ action }: { action: AddMembersAction }) {
+  const t = useTranslations('Groups');
+  const [state, formAction] = useAddMembersAction(action);
+  const fieldId = useId();
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <Field>
-        <FieldLabel htmlFor="student-ids">{t('members.studentIdsLabel')}</FieldLabel>
+        <FieldLabel htmlFor={fieldId}>{t('members.studentIdsLabel')}</FieldLabel>
         <Textarea
-          id="student-ids"
+          id={fieldId}
           name="studentIds"
           placeholder={t('members.studentIdsPlaceholder')}
           required
+          rows={5}
         />
         <FieldDescription>{t('members.studentIdsHelp')}</FieldDescription>
       </Field>
@@ -51,34 +138,24 @@ export function AddByStudentIdsForm({ action }: { action: AddMembersAction }) {
           unknownStudentIds={state.unknownStudentIds}
         />
       ) : null}
-      <SubmitButton label={t('members.addByIds')} pendingLabel={t('saving')} />
+      <div className="flex justify-end">
+        <SubmitButton label={t('members.addByIds')} pendingLabel={t('saving')} />
+      </div>
     </form>
   );
 }
 
 export function AddByEntryYearForm({ action }: { action: AddMembersAction }) {
   const t = useTranslations('Groups');
-  const errorT = useTranslations('Groups.errors');
-  const router = useRouter();
-  const [state, formAction] = useActionState(
-    async (previousState: AddMembersActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.error !== null) {
-        toast.error(errorT(nextState.error));
-      } else {
-        router.refresh();
-      }
-      return nextState;
-    },
-    INITIAL_ADD_MEMBERS_STATE,
-  );
+  const [state, formAction] = useAddMembersAction(action);
+  const fieldId = useId();
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3">
-      <Field className="w-40">
-        <FieldLabel htmlFor="entry-year">{t('members.entryYearLabel')}</FieldLabel>
+    <form action={formAction} className="flex flex-col gap-4">
+      <Field className="max-w-48">
+        <FieldLabel htmlFor={fieldId}>{t('members.entryYearLabel')}</FieldLabel>
         <Input
-          id="entry-year"
+          id={fieldId}
           inputMode="numeric"
           max={2700}
           min={2400}
@@ -86,17 +163,18 @@ export function AddByEntryYearForm({ action }: { action: AddMembersAction }) {
           required
           type="number"
         />
+        <FieldDescription>{t('members.entryYearHelp')}</FieldDescription>
       </Field>
-      <SubmitButton label={t('members.addByEntryYear')} pendingLabel={t('saving')} />
       {state.error === null && state.submitted ? (
-        <div className="w-full">
-          <ResultAlert
-            acceptedCount={state.acceptedCount}
-            alreadyWithdrawnCount={state.alreadyWithdrawnCount}
-            unknownStudentIds={[]}
-          />
-        </div>
+        <ResultAlert
+          acceptedCount={state.acceptedCount}
+          alreadyWithdrawnCount={state.alreadyWithdrawnCount}
+          unknownStudentIds={[]}
+        />
       ) : null}
+      <div className="flex justify-end">
+        <SubmitButton label={t('members.addByEntryYear')} pendingLabel={t('saving')} />
+      </div>
     </form>
   );
 }

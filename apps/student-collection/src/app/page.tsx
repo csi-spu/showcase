@@ -1,17 +1,13 @@
 import { Button } from '@showcase/ui/button';
-import { ClipboardListIcon, FolderOpenIcon } from 'lucide-react';
-import Image from 'next/image';
+import { ClipboardListIcon, FolderOpenIcon, InboxIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@showcase/ui/card';
+import { AuthLayout } from '@/components/ui/auth-layout';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { getStudentCollectionAuthPageState } from '@/lib/student-collection-auth-page-state';
+import { AppShell } from './app-shell';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -32,92 +28,81 @@ export default async function Home({ searchParams }: HomeProps) {
     getTranslations('Home'),
   ]);
 
+  /*
+   * Signed in: the student gets the dashboard frame, not a login card holding
+   * a notice. There is nothing to submit in this milestone, so the page states
+   * that plainly instead of implying a feature that is not there yet.
+   */
+  if (state.kind === 'active') {
+    return (
+      <AppShell>
+        <PageHeader
+          description={homeT('dashboardDescription')}
+          eyebrow={
+            <StatusBadge icon={ClipboardListIcon} tone="information">
+              {homeT('statusUpcoming')}
+            </StatusBadge>
+          }
+          title={homeT('dashboardTitle')}
+        />
+        <EmptyState
+          description={homeT('placeholderDescription')}
+          icon={InboxIcon}
+          title={homeT('placeholderTitle')}
+        />
+      </AppShell>
+    );
+  }
+
   const heading =
     state.kind === 'expired'
       ? authT('expired.heading')
       : state.kind === 'password_change_required'
         ? authT('change.heading')
-        : state.kind === 'active'
-          ? authT('active.heading')
-          : authT('login.heading');
+        : authT('login.heading');
   const description =
     state.kind === 'expired'
       ? authT('expired.description')
       : state.kind === 'password_change_required'
         ? authT('change.description')
-        : state.kind === 'active'
-          ? authT('active.description')
-          : authT('login.description');
+        : authT('login.description');
 
   return (
-    <main className="student-collection-canvas mx-auto flex min-h-svh w-full max-w-md flex-col justify-center gap-8 px-4 py-10 sm:px-8">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <Image
-          alt="คณะเทคโนโลยีสารสนเทศ"
-          className="h-9 w-auto"
-          height={64}
-          priority
-          sizes="80px"
-          src="/brand/sit-school-of-information-technology-color.webp"
-          width={214}
-        />
-        <div className="flex flex-col items-center gap-1.5">
-          <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary">
-            <FolderOpenIcon aria-hidden="true" className="size-5" />
-          </span>
-          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">
-            {authT('kicker')}
-          </p>
-          <p className="text-sm text-muted-foreground">{homeT('description')}</p>
-        </div>
+    <AuthLayout eyebrow={authT('kicker')} icon={FolderOpenIcon} tagline={homeT('description')}>
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+          {heading}
+        </h1>
+        <p className="text-muted-foreground">{description}</p>
       </div>
-      <Card className="w-full rounded-3xl shadow-[0_1.5rem_3.5rem_-2rem_rgba(90,50,30,0.28)]">
-        <CardHeader className="gap-2 pb-2">
-          <CardTitle>
-            <h1 className="text-2xl leading-[1.25] font-semibold tracking-tight sm:text-[1.75rem]">
-              {heading}
-            </h1>
-          </CardTitle>
-          <CardDescription className="text-base">{description}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {state.kind === 'login' ? (
-            <div className="flex flex-col gap-5">
-              {state.isServiceUnavailable ? (
-                <Alert variant="destructive">
-                  <AlertTitle>{authT('errors.unavailable')}</AlertTitle>
-                  <AlertDescription>{authT('errors.network')}</AlertDescription>
-                </Alert>
-              ) : null}
-              <LoginForm action={loginAction} />
-            </div>
-          ) : null}
-          {state.kind === 'password_change_required' ? (
-            <ChangePasswordForm action={changePasswordAction} />
-          ) : null}
-          {state.kind === 'expired' ? (
-            <form action={clearExpiredSessionAction}>
-              <Button className="w-full" size="lg" type="submit">
-                {authT('expired.action')}
-              </Button>
-            </form>
-          ) : null}
-          {state.kind === 'active' ? (
-            <Alert variant="information">
-              <ClipboardListIcon aria-hidden="true" />
-              <AlertTitle>{homeT('placeholderTitle')}</AlertTitle>
-              <AlertDescription>{homeT('placeholderDescription')}</AlertDescription>
+
+      {state.kind === 'login' ? (
+        <div className="flex flex-col gap-5">
+          {state.isServiceUnavailable ? (
+            <Alert variant="destructive">
+              <AlertTitle>{authT('errors.unavailable')}</AlertTitle>
+              <AlertDescription>{authT('errors.network')}</AlertDescription>
             </Alert>
           ) : null}
-        </CardContent>
-        <CardFooter className="rounded-b-3xl">
-          {state.kind === 'active' || state.kind === 'password_change_required' ? (
-            <LogoutForm action={logoutAction} />
-          ) : (
-            <p className="text-center text-sm text-muted-foreground">{authT('login.privacy')}</p>
-          )}
-        </CardFooter>
-      </Card>
-    </main>
+          <LoginForm action={loginAction} />
+        </div>
+      ) : null}
+      {state.kind === 'password_change_required' ? (
+        <ChangePasswordForm action={changePasswordAction} />
+      ) : null}
+      {state.kind === 'expired' ? (
+        <form action={clearExpiredSessionAction}>
+          <Button className="w-full" size="lg" type="submit">
+            {authT('expired.action')}
+          </Button>
+        </form>
+      ) : null}
+
+      {state.kind === 'password_change_required' ? (
+        <LogoutForm action={logoutAction} />
+      ) : (
+        <p className="text-sm text-muted-foreground">{authT('login.privacy')}</p>
+      )}
+    </AuthLayout>
   );
 }

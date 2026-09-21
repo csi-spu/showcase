@@ -3,70 +3,59 @@
 @source '../components/**/*.tsx';
 
 /*
- * Warm, editorial palette local to this app only -- the shared
- * @showcase/ui tokens above stay untouched, so Admin/Student/Visitor are
- * unaffected. Instructor and Student Collection intentionally diverge from
- * the rest of the workspace's magenta system.
+ * Instructor inherits the workspace palette from @showcase/ui above. Only
+ * layout metrics and app-specific surfaces live here, so Admin, Student,
+ * Visitor and Instructor stay one brand.
+ *
+ * Colour convention (applies to every screen in this app):
+ *   primary      -> the one primary action on a screen, and the active nav item
+ *   information  -> rounds (a scheduling/period concept)
+ *   primary-soft -> groups (a roster concept, one level below rounds)
+ *   success      -> current members, open rounds
+ *   warning      -> partially-applied results, attention without failure
+ *   destructive  -> withdrawal and other reversals
+ *   muted        -> withdrawn/closed records and all secondary metadata
+ * Never introduce a raw hex value in a component; use these tokens so the
+ * whole surface restyles from the shared package alone.
  */
 :root {
-  --background: #faf9f5;
-  --foreground: #26241f;
-  --card: #ffffff;
-  --card-foreground: #26241f;
-  --popover: #ffffff;
-  --popover-foreground: #26241f;
-  --primary: #bd5b39;
-  --primary-foreground: #fffaf6;
-  --primary-soft: #f6e7dc;
-  --secondary: #efeae0;
-  --secondary-foreground: #26241f;
-  --muted: #f2efe6;
-  --muted-foreground: #7c7669;
-  --accent: #f6e7dc;
-  --accent-foreground: #9a4b2e;
-  --disabled: #ece8dd;
-  --disabled-foreground: #9c9689;
-  --destructive: #af3029;
-  --destructive-background: #fbeae7;
-  --destructive-foreground: #ffffff;
-  --success: #3d6b4f;
-  --success-background: #e8f2eb;
-  --warning: #8a5a00;
-  --warning-background: #fbf1dc;
-  --information: #35597a;
-  --information-background: #e9f1f8;
-  --border: #e5ded0;
-  --input: #bdb3a0;
-  --ring: #bd5b39;
-  --radius: 0.75rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #26241f;
-  --sidebar-primary: #bd5b39;
-  --sidebar-primary-foreground: #fffaf6;
-  --sidebar-accent: #f6e7dc;
-  --sidebar-accent-foreground: #9a4b2e;
-  --sidebar-border: #e5ded0;
-  --sidebar-ring: #bd5b39;
+  /* Dashboard shell metrics, shared by the sidebar and the content offset. */
+  --app-sidebar-width: 17rem;
+  --app-topbar-height: 3.75rem;
 }
 
-.instructor-canvas {
+/*
+ * The application canvas. A single flat surface: the dashboard reads as one
+ * plane with cards floating on it, so the page never competes with content.
+ */
+.app-canvas {
+  background: var(--background);
+}
+
+/* The brand panel beside the sign-in form -- the only marketing-ish surface. */
+.auth-brand-panel {
   background:
     radial-gradient(
-      circle at 12% -10%,
-      color-mix(in srgb, var(--primary) 10%, transparent),
+      circle at 15% 8%,
+      color-mix(in srgb, var(--primary) 12%, transparent),
       transparent 30rem
     ),
     radial-gradient(
-      circle at 100% 0%,
-      color-mix(in srgb, var(--primary-soft) 60%, transparent),
-      transparent 34rem
+      circle at 92% 92%,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 26rem
     ),
-    var(--background);
+    var(--primary-soft);
 }
 
-.instructor-header {
-  background: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(6px);
+.app-sidebar {
+  background: var(--sidebar);
+  border-inline-end: 1px solid var(--sidebar-border);
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--background) 86%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 @media (prefers-reduced-motion: reduce) {

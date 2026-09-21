@@ -2,15 +2,23 @@
 
 import { Button } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
-import { ArrowLeftIcon, UserMinusIcon } from 'lucide-react';
+import { Textarea } from '@showcase/ui/textarea';
+import { UserMinusIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState, useState } from 'react';
+import { useActionState, useId, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
-import { Textarea } from '@showcase/ui/textarea';
 import type {
   WithdrawMemberAction,
   WithdrawMemberActionState,
@@ -19,15 +27,18 @@ import { INITIAL_WITHDRAW_STATE } from '../../collection-groups-state';
 
 export function MemberRowActions({
   action,
+  memberName,
   studentAccountId,
 }: {
   action: WithdrawMemberAction;
+  memberName: string;
   studentAccountId: string;
 }) {
   const t = useTranslations('Groups.members');
   const errorT = useTranslations('Groups.errors');
   const router = useRouter();
-  const [isConfirming, setIsConfirming] = useState(false);
+  const reasonId = useId();
+  const [isOpen, setIsOpen] = useState(false);
   const [state, formAction] = useActionState(
     async (previousState: WithdrawMemberActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
@@ -36,54 +47,63 @@ export function MemberRowActions({
         return nextState;
       }
       toast.success(t('withdrawSuccess'));
-      setIsConfirming(false);
+      setIsOpen(false);
       router.refresh();
       return nextState;
     },
     INITIAL_WITHDRAW_STATE,
   );
 
-  if (!isConfirming) {
-    return (
-      <Button onClick={() => setIsConfirming(true)} size="sm" type="button" variant="ghost">
-        <UserMinusIcon aria-hidden="true" data-icon="inline-start" />
-        {t('withdraw')}
-      </Button>
-    );
-  }
-
   return (
-    <form action={formAction} className="grid min-w-72 gap-2 text-left">
-      <input name="studentAccountId" type="hidden" value={studentAccountId} />
-      <Label htmlFor={`withdraw-reason-${studentAccountId}`}>{t('withdrawReason')}</Label>
-      <Textarea
-        id={`withdraw-reason-${studentAccountId}`}
-        maxLength={2_000}
-        name="reason"
-        required
+    <AlertDialog onOpenChange={setIsOpen} open={isOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button size="sm" variant="ghost">
+            <UserMinusIcon aria-hidden="true" data-icon="inline-start" />
+            <span className="hidden sm:inline">{t('withdraw')}</span>
+            <span className="sr-only sm:hidden">{t('withdrawMember', { name: memberName })}</span>
+          </Button>
+        }
       />
-      {state.error === null ? null : (
-        <Alert variant="destructive">
-          <AlertDescription>{errorT(state.error)}</AlertDescription>
-        </Alert>
-      )}
-      <div className="flex justify-end gap-2">
-        <Button onClick={() => setIsConfirming(false)} size="sm" type="button" variant="ghost">
-          <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
-          {t('cancel')}
-        </Button>
-        <SubmitButton label={t('withdraw')} />
-      </div>
-    </form>
+      <AlertDialogContent>
+        <AlertDialogTitle>{t('withdrawTitle')}</AlertDialogTitle>
+        <AlertDialogDescription>
+          {t('withdrawConfirm', { name: memberName })}
+        </AlertDialogDescription>
+        <form action={formAction} className="flex flex-col gap-4">
+          <input name="studentAccountId" type="hidden" value={studentAccountId} />
+          <Field>
+            <FieldLabel htmlFor={reasonId}>{t('withdrawReason')}</FieldLabel>
+            <Textarea id={reasonId} maxLength={2_000} name="reason" required rows={3} />
+            <FieldDescription>{t('withdrawReasonHelp')}</FieldDescription>
+          </Field>
+          {state.error === null ? null : (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(state.error)}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <Button onClick={() => setIsOpen(false)} type="button" variant="ghost">
+              {t('cancel')}
+            </Button>
+            <SubmitButton label={t('withdraw')} pendingLabel={t('withdrawing')} />
+          </AlertDialogFooter>
+        </form>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button disabled={pending} size="sm" type="submit" variant="outline">
-      {pending ? <Spinner aria-label={label} data-icon="inline-start" /> : null}
-      {label}
+    <Button disabled={pending} type="submit" variant="destructive">
+      {pending ? (
+        <Spinner aria-label={pendingLabel} data-icon="inline-start" />
+      ) : (
+        <UserMinusIcon aria-hidden="true" data-icon="inline-start" />
+      )}
+      {pending ? pendingLabel : label}
     </Button>
   );
 }
