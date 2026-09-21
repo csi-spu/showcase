@@ -1,5 +1,5 @@
 import { Button } from '@showcase/ui/button';
-import { ClipboardListIcon } from 'lucide-react';
+import { ClipboardListIcon, FolderOpenIcon } from 'lucide-react';
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -50,30 +50,35 @@ export default async function Home({ searchParams }: HomeProps) {
           : authT('login.description');
 
   return (
-    <main className="student-collection-canvas mx-auto flex min-h-svh w-full max-w-2xl flex-col justify-center gap-8 px-4 py-10 sm:px-8">
-      <div className="flex items-center gap-3">
+    <main className="student-collection-canvas mx-auto flex min-h-svh w-full max-w-md flex-col justify-center gap-8 px-4 py-10 sm:px-8">
+      <div className="flex flex-col items-center gap-4 text-center">
         <Image
           alt="คณะเทคโนโลยีสารสนเทศ"
-          className="h-10 w-auto"
+          className="h-9 w-auto"
           height={64}
           priority
           sizes="80px"
           src="/brand/sit-school-of-information-technology-color.webp"
           width={214}
         />
-        <div>
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">{authT('kicker')}</p>
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="flex size-11 items-center justify-center rounded-full bg-primary-soft text-primary">
+            <FolderOpenIcon aria-hidden="true" className="size-5" />
+          </span>
+          <p className="text-sm font-semibold tracking-[0.14em] text-primary uppercase">
+            {authT('kicker')}
+          </p>
           <p className="text-sm text-muted-foreground">{homeT('description')}</p>
         </div>
       </div>
-      <Card className="w-full">
-        <CardHeader className="gap-3">
+      <Card className="w-full rounded-3xl shadow-[0_1.5rem_3.5rem_-2rem_rgba(90,50,30,0.28)]">
+        <CardHeader className="gap-2 pb-2">
           <CardTitle>
-            <h1 className="text-2xl leading-[1.25] font-semibold tracking-tight sm:text-3xl">
+            <h1 className="text-2xl leading-[1.25] font-semibold tracking-tight sm:text-[1.75rem]">
               {heading}
             </h1>
           </CardTitle>
-          <CardDescription>{description}</CardDescription>
+          <CardDescription className="text-base">{description}</CardDescription>
         </CardHeader>
         <CardContent>
           {state.kind === 'login' ? (
@@ -98,18 +103,18 @@ export default async function Home({ searchParams }: HomeProps) {
             </form>
           ) : null}
           {state.kind === 'active' ? (
-            <Alert>
+            <Alert variant="information">
               <ClipboardListIcon aria-hidden="true" />
               <AlertTitle>{homeT('placeholderTitle')}</AlertTitle>
               <AlertDescription>{homeT('placeholderDescription')}</AlertDescription>
             </Alert>
           ) : null}
         </CardContent>
-        <CardFooter>
+        <CardFooter className="rounded-b-3xl">
           {state.kind === 'active' || state.kind === 'password_change_required' ? (
             <LogoutForm action={logoutAction} />
           ) : (
-            <p className="text-sm text-muted-foreground">{authT('login.privacy')}</p>
+            <p className="text-center text-sm text-muted-foreground">{authT('login.privacy')}</p>
           )}
         </CardFooter>
       </Card>

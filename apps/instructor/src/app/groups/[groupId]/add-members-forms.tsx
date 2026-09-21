@@ -113,8 +113,12 @@ function ResultAlert({
   unknownStudentIds: string[];
 }) {
   const t = useTranslations('Groups.members');
+  const hasExclusions =
+    unknownStudentIds.length > 0 ||
+    alreadyWithdrawnStudentIds.length > 0 ||
+    alreadyWithdrawnCount > 0;
   return (
-    <Alert>
+    <Alert variant={hasExclusions ? 'warning' : 'success'}>
       <UsersIcon aria-hidden="true" />
       <AlertTitle>{t('addResultTitle', { count: acceptedCount })}</AlertTitle>
       {unknownStudentIds.length > 0 ? (
