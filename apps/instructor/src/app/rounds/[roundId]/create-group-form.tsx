@@ -15,14 +15,14 @@ import { INITIAL_CREATE_GROUP_STATE } from '../../collection-groups-state';
 export function CreateGroupForm({ action }: { action: CreateGroupAction }) {
   const t = useTranslations('Groups');
   const errorT = useTranslations('Groups.errors');
-  const [, formAction] = useActionState(async (
-    previousState: CreateGroupActionState,
-    formData: FormData,
-  ) => {
-    const nextState = await action(previousState, formData);
-    if (nextState.error !== null) toast.error(errorT(nextState.error));
-    return nextState;
-  }, INITIAL_CREATE_GROUP_STATE);
+  const [, formAction] = useActionState(
+    async (previousState: CreateGroupActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) toast.error(errorT(nextState.error));
+      return nextState;
+    },
+    INITIAL_CREATE_GROUP_STATE,
+  );
 
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
@@ -39,7 +39,11 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
   const { pending } = useFormStatus();
   return (
     <Button disabled={pending} type="submit">
-      {pending ? <Spinner aria-label={pendingLabel} data-icon="inline-start" /> : <PlusIcon aria-hidden="true" data-icon="inline-start" />}
+      {pending ? (
+        <Spinner aria-label={pendingLabel} data-icon="inline-start" />
+      ) : (
+        <PlusIcon aria-hidden="true" data-icon="inline-start" />
+      )}
       {pending ? pendingLabel : label}
     </Button>
   );

@@ -11,7 +11,12 @@ const addByStudentIdsSchema = z.object({
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0),
     )
-    .pipe(z.array(z.string().regex(/^\d{8}$/)).min(1).max(500)),
+    .pipe(
+      z
+        .array(z.string().regex(/^\d{8}$/))
+        .min(1)
+        .max(500),
+    ),
 });
 const addByEntryYearSchema = z.object({ entryYear: z.coerce.number().int().min(2400).max(2700) });
 const withdrawSchema = z.object({

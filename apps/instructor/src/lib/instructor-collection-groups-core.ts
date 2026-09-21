@@ -55,7 +55,9 @@ export type InstructorCollectionRound = z.infer<typeof roundSchema>;
 export type InstructorCollectionGroup = z.infer<typeof groupSchema>;
 export type InstructorGroupMember = z.infer<typeof memberSchema>;
 export type InstructorAddMembersResult = z.infer<typeof addMembersResultSchema>;
-export type InstructorAddMembersByEntryYearResult = z.infer<typeof addMembersByEntryYearResultSchema>;
+export type InstructorAddMembersByEntryYearResult = z.infer<
+  typeof addMembersByEntryYearResultSchema
+>;
 export type InstructorGroupDetail = z.infer<typeof groupDetailSchema>;
 
 interface InstructorCollectionGroupsCoreConfig {

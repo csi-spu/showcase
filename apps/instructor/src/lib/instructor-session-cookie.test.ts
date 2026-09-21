@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { expiredInstructorSessionCookie, instructorSessionCookie } from './instructor-session-cookie';
+import {
+  expiredInstructorSessionCookie,
+  instructorSessionCookie,
+} from './instructor-session-cookie';
 
 describe('instructorSessionCookie', () => {
   it('uses a host-only cookie name and secure attributes in production', () => {

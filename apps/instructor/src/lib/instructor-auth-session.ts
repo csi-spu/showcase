@@ -1,6 +1,9 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { expiredInstructorSessionCookie, instructorSessionCookie } from './instructor-session-cookie';
+import {
+  expiredInstructorSessionCookie,
+  instructorSessionCookie,
+} from './instructor-session-cookie';
 
 export async function readInstructorSessionToken(): Promise<string | null> {
   const { name } = instructorSessionCookie(process.env.NODE_ENV);

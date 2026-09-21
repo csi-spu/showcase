@@ -53,9 +53,10 @@ describe('validateAddByEntryYear', () => {
 describe('validateWithdraw', () => {
   it('accepts a valid reason and account id', () => {
     const studentAccountId = '40000000-0000-4000-8000-000000000001';
-    expect(
-      validateWithdraw(formData({ reason: '  ลาออก  ', studentAccountId })),
-    ).toEqual({ reason: 'ลาออก', studentAccountId });
+    expect(validateWithdraw(formData({ reason: '  ลาออก  ', studentAccountId }))).toEqual({
+      reason: 'ลาออก',
+      studentAccountId,
+    });
   });
 
   it('rejects an empty reason or a non-UUID account id', () => {
@@ -64,6 +65,8 @@ describe('validateWithdraw', () => {
         formData({ reason: '', studentAccountId: '40000000-0000-4000-8000-000000000001' }),
       ),
     ).toBeNull();
-    expect(validateWithdraw(formData({ reason: 'ลาออก', studentAccountId: 'not-a-uuid' }))).toBeNull();
+    expect(
+      validateWithdraw(formData({ reason: 'ลาออก', studentAccountId: 'not-a-uuid' })),
+    ).toBeNull();
   });
 });

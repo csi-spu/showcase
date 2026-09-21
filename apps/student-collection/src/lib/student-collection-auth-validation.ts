@@ -22,9 +22,7 @@ export interface StudentCollectionPasswordChangeInput {
   newPassword: string;
 }
 
-export function validateLogin(
-  formData: FormData,
-): StudentCollectionLoginInput | AuthErrorMessage {
+export function validateLogin(formData: FormData): StudentCollectionLoginInput | AuthErrorMessage {
   const result = loginSchema.safeParse({
     password: formData.get('password'),
     studentId: formData.get('studentId'),

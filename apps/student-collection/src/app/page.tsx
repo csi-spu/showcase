@@ -3,7 +3,14 @@ import { ClipboardListIcon } from 'lucide-react';
 import Image from 'next/image';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@showcase/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@showcase/ui/card';
 import { getStudentCollectionAuthPageState } from '@/lib/student-collection-auth-page-state';
 import {
   changePasswordAction,

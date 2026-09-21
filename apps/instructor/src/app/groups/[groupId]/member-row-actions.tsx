@@ -11,7 +11,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@showcase/ui/textarea';
-import type { WithdrawMemberAction, WithdrawMemberActionState } from '../../collection-groups-state';
+import type {
+  WithdrawMemberAction,
+  WithdrawMemberActionState,
+} from '../../collection-groups-state';
 import { INITIAL_WITHDRAW_STATE } from '../../collection-groups-state';
 
 export function MemberRowActions({
@@ -25,20 +28,20 @@ export function MemberRowActions({
   const errorT = useTranslations('Groups.errors');
   const router = useRouter();
   const [isConfirming, setIsConfirming] = useState(false);
-  const [state, formAction] = useActionState(async (
-    previousState: WithdrawMemberActionState,
-    formData: FormData,
-  ) => {
-    const nextState = await action(previousState, formData);
-    if (nextState.error !== null) {
-      toast.error(errorT(nextState.error));
+  const [state, formAction] = useActionState(
+    async (previousState: WithdrawMemberActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) {
+        toast.error(errorT(nextState.error));
+        return nextState;
+      }
+      toast.success(t('withdrawSuccess'));
+      setIsConfirming(false);
+      router.refresh();
       return nextState;
-    }
-    toast.success(t('withdrawSuccess'));
-    setIsConfirming(false);
-    router.refresh();
-    return nextState;
-  }, INITIAL_WITHDRAW_STATE);
+    },
+    INITIAL_WITHDRAW_STATE,
+  );
 
   if (!isConfirming) {
     return (
@@ -53,7 +56,12 @@ export function MemberRowActions({
     <form action={formAction} className="grid min-w-72 gap-2 text-left">
       <input name="studentAccountId" type="hidden" value={studentAccountId} />
       <Label htmlFor={`withdraw-reason-${studentAccountId}`}>{t('withdrawReason')}</Label>
-      <Textarea id={`withdraw-reason-${studentAccountId}`} maxLength={2_000} name="reason" required />
+      <Textarea
+        id={`withdraw-reason-${studentAccountId}`}
+        maxLength={2_000}
+        name="reason"
+        required
+      />
       {state.error === null ? null : (
         <Alert variant="destructive">
           <AlertDescription>{errorT(state.error)}</AlertDescription>

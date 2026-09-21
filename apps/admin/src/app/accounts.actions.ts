@@ -127,8 +127,11 @@ export async function grantInstructorRoleAction(
   previousState: InstructorRoleActionState,
   formData: FormData,
 ): Promise<InstructorRoleActionState> {
-  return applyInstructorRoleAction(previousState, formData, (client, sessionToken, accountId, input) =>
-    client.grantInstructorRole(sessionToken, accountId, { idempotencyKey: input.idempotencyKey }),
+  return applyInstructorRoleAction(
+    previousState,
+    formData,
+    (client, sessionToken, accountId, input) =>
+      client.grantInstructorRole(sessionToken, accountId, { idempotencyKey: input.idempotencyKey }),
   );
 }
 
@@ -136,8 +139,13 @@ export async function revokeInstructorRoleAction(
   previousState: InstructorRoleActionState,
   formData: FormData,
 ): Promise<InstructorRoleActionState> {
-  return applyInstructorRoleAction(previousState, formData, (client, sessionToken, accountId, input) =>
-    client.revokeInstructorRole(sessionToken, accountId, { idempotencyKey: input.idempotencyKey }),
+  return applyInstructorRoleAction(
+    previousState,
+    formData,
+    (client, sessionToken, accountId, input) =>
+      client.revokeInstructorRole(sessionToken, accountId, {
+        idempotencyKey: input.idempotencyKey,
+      }),
   );
 }
 

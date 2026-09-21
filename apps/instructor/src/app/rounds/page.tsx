@@ -54,7 +54,9 @@ export default async function RoundsPage() {
                     href={`/rounds/${round.id}`}
                   >
                     <span className="font-medium">{round.name}</span>
-                    <span className="text-muted-foreground">{formatBangkokDate(round.createdAt)}</span>
+                    <span className="text-muted-foreground">
+                      {formatBangkokDate(round.createdAt)}
+                    </span>
                   </Link>
                 </li>
               ))}

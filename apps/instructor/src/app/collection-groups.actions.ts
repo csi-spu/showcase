@@ -10,7 +10,10 @@ import type {
   WithdrawMemberActionState,
 } from './collection-groups-state';
 import { InstructorCollectionGroupsCoreClient } from '@/lib/instructor-collection-groups-core';
-import { clearInstructorSessionToken, readInstructorSessionToken } from '@/lib/instructor-auth-session';
+import {
+  clearInstructorSessionToken,
+  readInstructorSessionToken,
+} from '@/lib/instructor-auth-session';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import {
   validateAddByEntryYear,
@@ -81,7 +84,11 @@ export async function addMembersByStudentIdsAction(
     };
   } catch (error: unknown) {
     await expireSessionIfRequired(error);
-    return { ...INITIAL_ADD_MEMBERS_STATE, error: mapCollectionGroupsError(error), submitted: true };
+    return {
+      ...INITIAL_ADD_MEMBERS_STATE,
+      error: mapCollectionGroupsError(error),
+      submitted: true,
+    };
   }
 }
 
@@ -105,7 +112,11 @@ export async function addMembersByEntryYearAction(
     };
   } catch (error: unknown) {
     await expireSessionIfRequired(error);
-    return { ...INITIAL_ADD_MEMBERS_STATE, error: mapCollectionGroupsError(error), submitted: true };
+    return {
+      ...INITIAL_ADD_MEMBERS_STATE,
+      error: mapCollectionGroupsError(error),
+      submitted: true,
+    };
   }
 }
 

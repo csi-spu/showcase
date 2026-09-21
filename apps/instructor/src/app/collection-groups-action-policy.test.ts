@@ -39,9 +39,9 @@ describe('mapCollectionGroupsError', () => {
   });
 
   it('falls back to unavailable for an unmapped or non-Core error', () => {
-    expect(mapCollectionGroupsError(new CoreClientError('COLLECTION_GROUPS_SERVICE_UNAVAILABLE', 503))).toBe(
-      'unavailable',
-    );
+    expect(
+      mapCollectionGroupsError(new CoreClientError('COLLECTION_GROUPS_SERVICE_UNAVAILABLE', 503)),
+    ).toBe('unavailable');
     expect(mapCollectionGroupsError(new Error('boom'))).toBe('unavailable');
   });
 });

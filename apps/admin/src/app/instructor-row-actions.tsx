@@ -11,7 +11,11 @@ import { ActionGroup } from '@/components/ui/action-group';
 import { ActionTooltip } from '@/components/ui/action-tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Spinner } from '@/components/ui/spinner';
-import type { InstructorAccountRow, InstructorRoleAction, InstructorRoleActionState } from './accounts-state';
+import type {
+  InstructorAccountRow,
+  InstructorRoleAction,
+  InstructorRoleActionState,
+} from './accounts-state';
 
 export function GrantInstructorAction({
   accountId,

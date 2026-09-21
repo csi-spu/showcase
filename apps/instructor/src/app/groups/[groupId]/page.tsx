@@ -96,10 +96,17 @@ export default async function GroupPage({ params }: GroupPageProps) {
                     <span className="font-medium">
                       {member.firstNameTh} {member.lastNameTh}
                     </span>
-                    <Badge variant="secondary">{t(`members.entryYear`, { year: member.entryYear })}</Badge>
-                    <Badge variant="outline">{t(`members.source.${member.membershipSource}`)}</Badge>
+                    <Badge variant="secondary">
+                      {t(`members.entryYear`, { year: member.entryYear })}
+                    </Badge>
+                    <Badge variant="outline">
+                      {t(`members.source.${member.membershipSource}`)}
+                    </Badge>
                   </div>
-                  <MemberRowActions action={boundWithdraw} studentAccountId={member.studentAccountId} />
+                  <MemberRowActions
+                    action={boundWithdraw}
+                    studentAccountId={member.studentAccountId}
+                  />
                 </li>
               ))}
             </ul>
