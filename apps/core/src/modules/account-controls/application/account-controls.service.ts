@@ -15,6 +15,7 @@ import type {
   AccountPasswordProvider,
   AcademicYearSettings,
   AdminAccountControls,
+  InstructorAccountControls,
   ListPage,
   StudentAccountControls,
 } from './account-controls.ports';
@@ -96,6 +97,87 @@ export class AccountControlsService {
       }
       throw error;
     }
+  }
+
+  listInstructors(input: {
+    cursor: string | null;
+    limit: number | null;
+    search: string | null;
+  }): Promise<ListPage<InstructorAccountControls>> {
+    return this.repository.listInstructors({
+      cursor: input.cursor,
+      limit: clampLimit(input.limit),
+      search: normalizeSearch(input.search),
+    });
+  }
+
+  async createInstructor(input: {
+    firstNameTh: string;
+    instructorLogin: string;
+    lastNameTh: string;
+  }): Promise<{ instructor: { instructorLogin: string }; temporaryPassword: string }> {
+    try {
+      const result = await this.adminProvisioning.provision({
+        adminLogin: input.instructorLogin,
+        firstNameTh: input.firstNameTh,
+        lastNameTh: input.lastNameTh,
+        role: 'instructor',
+      });
+      return {
+        instructor: { instructorLogin: result.adminLogin },
+        temporaryPassword: result.temporaryPassword,
+      };
+    } catch (error: unknown) {
+      if (error instanceof AdminProvisioningError) {
+        throw new AccountControlsError(error.code, mapAdminProvisioningStatus(error.code));
+      }
+      throw error;
+    }
+  }
+
+  async grantInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+  }): Promise<InstructorAccountControls> {
+    const result = await this.repository.grantInstructorRole({
+      ...input,
+      now: this.clock.now(),
+    });
+    if (result.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (result.outcome === 'not_eligible') {
+      throw new AccountControlsError('INSTRUCTOR_ACCOUNT_NOT_ELIGIBLE', 422);
+    }
+    if (result.outcome === 'already_granted') {
+      throw new AccountControlsError('INSTRUCTOR_ROLE_ALREADY_GRANTED', 409);
+    }
+    if (!('instructor' in result)) {
+      throw new AccountControlsError('ACCOUNT_CONTROLS_SERVICE_UNAVAILABLE', 503);
+    }
+    return result.instructor;
+  }
+
+  async revokeInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+  }): Promise<InstructorAccountControls> {
+    const result = await this.repository.revokeInstructorRole({
+      ...input,
+      now: this.clock.now(),
+    });
+    if (result.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (result.outcome === 'not_granted') {
+      throw new AccountControlsError('INSTRUCTOR_ROLE_NOT_GRANTED', 404);
+    }
+    if (!('instructor' in result)) {
+      throw new AccountControlsError('ACCOUNT_CONTROLS_SERVICE_UNAVAILABLE', 503);
+    }
+    return result.instructor;
   }
 
   async setStudentStatus(input: {

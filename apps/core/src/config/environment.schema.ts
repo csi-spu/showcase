@@ -137,7 +137,9 @@ const environmentSchema = z
     ...environment,
     ADMIN_BFF_SECRET: environment.API_KEY,
     AUTH_IDENTITY_SECRET: environment.API_KEY,
+    INSTRUCTOR_BFF_SECRET: environment.API_KEY,
     STUDENT_BFF_SECRET: environment.API_KEY,
+    STUDENT_COLLECTION_BFF_SECRET: environment.API_KEY,
     CORS_ALLOWED_ORIGINS: [environment.ADMIN_URL, environment.STUDENT_URL, environment.VISITOR_URL],
     PUBLIC_MEDIA_ORIGIN: environment.PUBLIC_MEDIA_ORIGIN ?? environment.CORE_URL,
   }));

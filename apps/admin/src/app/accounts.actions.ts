@@ -6,11 +6,21 @@ import {
   isAccountControlSessionExpired,
   mapAccountControlError,
 } from './account-controls-action-policy';
-import type { CreateAdminActionState, SetAdminStatusActionState } from './accounts-state';
+import type {
+  CreateAdminActionState,
+  CreateInstructorActionState,
+  InstructorRoleActionState,
+  SetAdminStatusActionState,
+} from './accounts-state';
 import { AdminAccountControlsCoreClient } from '@/lib/admin-account-controls-core';
 import { clearAdminSessionToken, readAdminSessionToken } from '@/lib/admin-auth-session';
 import { getAdminServerEnvironment } from '@/lib/server-environment';
-import { validateCreateAdmin, validateSetAdminStatus } from '@/lib/accounts-validation';
+import {
+  validateCreateAdmin,
+  validateCreateInstructor,
+  validateInstructorRoleAction,
+  validateSetAdminStatus,
+} from '@/lib/accounts-validation';
 
 export async function createAdminAction(
   previousState: CreateAdminActionState,
@@ -76,6 +86,97 @@ export async function setAdminStatusAction(
       admin: previousState.admin,
       error: mapAccountControlError(error),
       idempotencyKey: input.idempotencyKey,
+    };
+  }
+}
+
+export async function createInstructorAction(
+  previousState: CreateInstructorActionState,
+  formData: FormData,
+): Promise<CreateInstructorActionState> {
+  const input = validateCreateInstructor(formData);
+  if (input === null) {
+    return {
+      error: 'invalid',
+      idempotencyKey: previousState.idempotencyKey,
+      instructor: null,
+      temporaryPassword: null,
+    };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    const result = await coreClient().createInstructor(sessionToken, input);
+    return {
+      error: null,
+      idempotencyKey: randomUUID(),
+      instructor: result.instructor,
+      temporaryPassword: result.temporaryPassword,
+    };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return {
+      error: mapAccountControlError(error),
+      idempotencyKey: previousState.idempotencyKey,
+      instructor: null,
+      temporaryPassword: null,
+    };
+  }
+}
+
+export async function grantInstructorRoleAction(
+  previousState: InstructorRoleActionState,
+  formData: FormData,
+): Promise<InstructorRoleActionState> {
+  return applyInstructorRoleAction(
+    previousState,
+    formData,
+    (client, sessionToken, accountId, input) =>
+      client.grantInstructorRole(sessionToken, accountId, { idempotencyKey: input.idempotencyKey }),
+  );
+}
+
+export async function revokeInstructorRoleAction(
+  previousState: InstructorRoleActionState,
+  formData: FormData,
+): Promise<InstructorRoleActionState> {
+  return applyInstructorRoleAction(
+    previousState,
+    formData,
+    (client, sessionToken, accountId, input) =>
+      client.revokeInstructorRole(sessionToken, accountId, {
+        idempotencyKey: input.idempotencyKey,
+      }),
+  );
+}
+
+async function applyInstructorRoleAction(
+  previousState: InstructorRoleActionState,
+  formData: FormData,
+  apply: (
+    client: AdminAccountControlsCoreClient,
+    sessionToken: string,
+    accountId: string,
+    input: { accountId: string; idempotencyKey: string },
+  ) => ReturnType<AdminAccountControlsCoreClient['grantInstructorRole']>,
+): Promise<InstructorRoleActionState> {
+  const input = validateInstructorRoleAction(formData);
+  if (input === null) {
+    return {
+      error: 'invalid',
+      idempotencyKey: previousState.idempotencyKey,
+      instructor: previousState.instructor,
+    };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    const instructor = await apply(coreClient(), sessionToken, input.accountId, input);
+    return { error: null, idempotencyKey: randomUUID(), instructor };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return {
+      error: mapAccountControlError(error),
+      idempotencyKey: input.idempotencyKey,
+      instructor: previousState.instructor,
     };
   }
 }

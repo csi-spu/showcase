@@ -6,7 +6,7 @@ export const AUTH_TOKEN_GENERATOR = Symbol('AUTH_TOKEN_GENERATOR');
 
 export type AccountStatus = 'active' | 'suspended';
 export type CredentialState = 'initial' | 'reset_required' | 'set';
-export type SessionAudience = 'admin' | 'student';
+export type SessionAudience = 'admin' | 'instructor' | 'student' | 'student_collection';
 
 export interface Clock {
   now(): Date;
@@ -71,6 +71,7 @@ export interface AdminLoginAccount {
   adminLoginHash: string;
   credentialState: CredentialState;
   hasAdminRole: boolean;
+  hasInstructorRole: boolean;
   providerUserId: string;
   syntheticIdentity: string;
 }
@@ -100,7 +101,14 @@ export interface NewAuthenticationSession {
   accountId: string;
   audience: SessionAudience;
   eventType:
-    'admin_login' | 'admin_password_changed' | 'student_login' | 'student_password_changed';
+    | 'admin_login'
+    | 'admin_password_changed'
+    | 'instructor_login'
+    | 'instructor_password_changed'
+    | 'student_collection_login'
+    | 'student_collection_password_changed'
+    | 'student_login'
+    | 'student_password_changed';
   now: Date;
   providerSession: ProviderSession;
   sessionIdHash: string;
@@ -123,8 +131,10 @@ export interface AuthRepository {
   createSession(input: NewAuthenticationSession): Promise<void>;
   findAdminLoginAccount(adminLoginHash: string): Promise<AdminLoginAccount | null>;
   findAdminSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null>;
+  findInstructorSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null>;
   findLoginAccount(studentIdHash: string): Promise<LoginAccount | null>;
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null>;
+  findStudentCollectionSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null>;
   replaceAllAccountSessions(input: NewAuthenticationSession): Promise<void>;
   revokeSession(
     sessionIdHash: string,

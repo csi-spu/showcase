@@ -1,0 +1,58 @@
+@import '@showcase/ui/styles.css';
+
+@source '../components/**/*.tsx';
+
+/*
+ * Student Collection inherits the workspace palette from @showcase/ui above. Only
+ * layout metrics and app-specific surfaces live here, so every app in the
+ * workspace stays one brand.
+ *
+ * Colour convention (applies to every screen in this app):
+ *   primary      -> the one primary action on a screen, and the active nav item
+ *   information  -> a submission that is scheduled or awaiting review
+ *   success      -> an accepted submission
+ *   warning      -> attention without failure, such as an approaching due date
+ *   destructive  -> a rejected submission
+ *   muted        -> closed rounds and all secondary metadata
+ * Never introduce a raw hex value in a component; use these tokens so the
+ * whole surface restyles from the shared package alone.
+ */
+:root {
+  /* Shell metric, used by the top bar offset. */
+  --app-topbar-height: 3.75rem;
+}
+
+/*
+ * The application canvas. A single flat surface: the dashboard reads as one
+ * plane with cards floating on it, so the page never competes with content.
+ */
+.app-canvas {
+  background: var(--background);
+}
+
+/* The brand panel beside the sign-in form -- the only marketing-ish surface. */
+.auth-brand-panel {
+  background:
+    radial-gradient(
+      circle at 15% 8%,
+      color-mix(in srgb, var(--primary) 12%, transparent),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at 92% 92%,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 26rem
+    ),
+    var(--primary-soft);
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--background) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

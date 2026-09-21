@@ -22,9 +22,18 @@ export interface AdminAccountControls {
   accountId: string;
   createdAt: Date;
   firstNameTh: string;
+  hasInstructorRole: boolean;
   lastNameTh: string;
   status: 'active' | 'suspended';
   version: number;
+}
+
+export interface InstructorAccountControls {
+  accountId: string;
+  createdAt: Date;
+  firstNameTh: string;
+  lastNameTh: string;
+  status: 'active' | 'suspended';
 }
 
 export interface ListPage<T> {
@@ -75,6 +84,14 @@ export type BeginPasswordResetResult =
 export type CompletePasswordResetResult =
   { outcome: 'completed'; student: StudentAccountControls } | { outcome: 'not_pending' };
 
+export type GrantInstructorRoleResult =
+  | { outcome: 'already_granted' | 'idempotency_conflict' | 'not_eligible' }
+  | { instructor: InstructorAccountControls; outcome: 'granted' | 'replayed' };
+
+export type RevokeInstructorRoleResult =
+  | { outcome: 'idempotency_conflict' | 'not_granted' }
+  | { instructor: InstructorAccountControls; outcome: 'replayed' | 'revoked' };
+
 export interface AccountControlsRepository {
   correctStudentName(input: {
     actorAccountId: string;
@@ -115,16 +132,33 @@ export interface AccountControlsRepository {
     now: Date;
   }): Promise<void>;
   getAcademicYear(): Promise<AcademicYearSettings>;
+  grantInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<GrantInstructorRoleResult>;
   listAdmins(input: {
     cursor: string | null;
     limit: number;
     search: string | null;
   }): Promise<ListPage<AdminAccountControls>>;
+  listInstructors(input: {
+    cursor: string | null;
+    limit: number;
+    search: string | null;
+  }): Promise<ListPage<InstructorAccountControls>>;
   listStudents(input: {
     cursor: string | null;
     limit: number;
     search: string | null;
   }): Promise<ListPage<StudentAccountControls>>;
+  revokeInstructorRole(input: {
+    actorAccountId: string;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<RevokeInstructorRoleResult>;
   setStudentStatus(input: {
     actorAccountId: string;
     expectedVersion: number;

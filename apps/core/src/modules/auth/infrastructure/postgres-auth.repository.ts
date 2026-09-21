@@ -41,6 +41,7 @@ interface AdminAccountRow {
   admin_login_hash: string;
   credential_state: AdminLoginAccount['credentialState'];
   has_admin_role: boolean;
+  has_instructor_role: boolean;
   provider_user_id: string;
   synthetic_identity: string;
 }
@@ -176,6 +177,7 @@ export class PostgresAuthRepository implements AuthRepository {
         account.status as account_status,
         account.credential_state,
         (admin_role.account_id is not null) as has_admin_role,
+        (instructor_role.account_id is not null) as has_instructor_role,
         account.provider_user_id,
         identity.admin_login_hash,
         identity.synthetic_identity
@@ -183,6 +185,8 @@ export class PostgresAuthRepository implements AuthRepository {
       join public.accounts as account on account.id = identity.account_id
       left join public.account_roles as admin_role
         on admin_role.account_id = account.id and admin_role.role = 'admin'
+      left join public.account_roles as instructor_role
+        on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
       where identity.admin_login_hash = ${adminLoginHash}
       limit 1
     `;
@@ -190,6 +194,19 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   async findAdminSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null> {
+    return this.findStaffSession(sessionIdHash, 'admin');
+  }
+
+  async findInstructorSession(
+    sessionIdHash: string,
+  ): Promise<AdminAuthenticationSessionRecord | null> {
+    return this.findStaffSession(sessionIdHash, 'instructor');
+  }
+
+  private async findStaffSession(
+    sessionIdHash: string,
+    audience: 'admin' | 'instructor',
+  ): Promise<AdminAuthenticationSessionRecord | null> {
     const rows = await this.database.sql<AdminSessionRow[]>`
       select
         session.session_id_hash,
@@ -203,6 +220,7 @@ export class PostgresAuthRepository implements AuthRepository {
         account.status as account_status,
         account.credential_state,
         (admin_role.account_id is not null) as has_admin_role,
+        (instructor_role.account_id is not null) as has_instructor_role,
         account.provider_user_id,
         identity.admin_login_hash,
         identity.synthetic_identity
@@ -211,8 +229,10 @@ export class PostgresAuthRepository implements AuthRepository {
       join private.admin_auth_identities as identity on identity.account_id = account.id
       left join public.account_roles as admin_role
         on admin_role.account_id = account.id and admin_role.role = 'admin'
+      left join public.account_roles as instructor_role
+        on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
       where session.session_id_hash = ${sessionIdHash}
-        and session.audience = 'admin'
+        and session.audience = ${audience}
       limit 1
     `;
     const row = rows[0];
@@ -232,6 +252,19 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   async findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null> {
+    return this.findStudentAudienceSession(sessionIdHash, 'student');
+  }
+
+  async findStudentCollectionSession(
+    sessionIdHash: string,
+  ): Promise<AuthenticationSessionRecord | null> {
+    return this.findStudentAudienceSession(sessionIdHash, 'student_collection');
+  }
+
+  private async findStudentAudienceSession(
+    sessionIdHash: string,
+    audience: 'student' | 'student_collection',
+  ): Promise<AuthenticationSessionRecord | null> {
     const rows = await this.database.sql<SessionRow[]>`
       select
         session.session_id_hash,
@@ -259,7 +292,7 @@ export class PostgresAuthRepository implements AuthRepository {
         on student_role.account_id = account.id and student_role.role = 'student'
       left join public.academic_settings as settings on settings.singleton = true
       where session.session_id_hash = ${sessionIdHash}
-        and session.audience = 'student'
+        and session.audience = ${audience}
       limit 1
     `;
     const row = rows[0];
@@ -395,6 +428,7 @@ export class PostgresAuthRepository implements AuthRepository {
       adminLoginHash: row.admin_login_hash,
       credentialState: row.credential_state,
       hasAdminRole: row.has_admin_role,
+      hasInstructorRole: row.has_instructor_role,
       providerUserId: row.provider_user_id,
       syntheticIdentity: row.synthetic_identity,
     };

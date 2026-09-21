@@ -153,6 +153,7 @@ describe('AdminAccountControlsCoreClient', () => {
               accountId: '20000000-0000-4000-8000-000000000009',
               createdAt: '2026-08-25T06:00:00.000Z',
               firstNameTh: 'ผู้ดูแล',
+              hasInstructorRole: false,
               lastNameTh: 'ระบบ',
               status: 'active',
               version: 1,
@@ -205,6 +206,7 @@ describe('AdminAccountControlsCoreClient', () => {
         accountId,
         createdAt: '2026-08-25T06:00:00.000Z',
         firstNameTh: 'ผู้ดูแล',
+        hasInstructorRole: false,
         lastNameTh: 'ระบบ',
         status: 'suspended',
         version: 2,
@@ -225,5 +227,59 @@ describe('AdminAccountControlsCoreClient', () => {
       `https://core.example.test/v1/internal/admin/account-controls/admins/${accountId}/status`,
     );
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(input);
+  });
+
+  it('creates an Instructor and returns the one-time password', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        instructor: { instructorLogin: 'teaching.staff' },
+        temporaryPassword: 'one-time-random-password',
+      }),
+    );
+    const client = new AdminAccountControlsCoreClient(config, fetchMock);
+    const input = { firstNameTh: 'วิชัย', instructorLogin: 'teaching.staff', lastNameTh: 'มั่นคง' };
+
+    await expect(client.createInstructor('opaque-admin-session', input)).resolves.toEqual({
+      instructor: { instructorLogin: 'teaching.staff' },
+      temporaryPassword: 'one-time-random-password',
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://core.example.test/v1/internal/admin/account-controls/instructors',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(input);
+  });
+
+  it('grants and revokes Instructor access on an existing Account', async () => {
+    const accountId = '20000000-0000-4000-8000-000000000010';
+    const instructor = {
+      accountId,
+      createdAt: '2026-08-25T06:00:00.000Z',
+      firstNameTh: 'ผู้ดูแล',
+      lastNameTh: 'ระบบ',
+      status: 'active',
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(instructor))
+      .mockResolvedValueOnce(Response.json(instructor));
+    const client = new AdminAccountControlsCoreClient(config, fetchMock);
+
+    await expect(
+      client.grantInstructorRole('opaque-admin-session', accountId, {
+        idempotencyKey: '30000000-0000-4000-8000-000000000005',
+      }),
+    ).resolves.toMatchObject({ accountId });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/admin/account-controls/instructors/${accountId}/grant`,
+    );
+
+    await expect(
+      client.revokeInstructorRole('opaque-admin-session', accountId, {
+        idempotencyKey: '30000000-0000-4000-8000-000000000006',
+      }),
+    ).resolves.toMatchObject({ accountId });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      `https://core.example.test/v1/internal/admin/account-controls/instructors/${accountId}/revoke`,
+    );
   });
 });

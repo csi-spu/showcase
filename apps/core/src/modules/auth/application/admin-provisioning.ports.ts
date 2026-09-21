@@ -20,6 +20,8 @@ export class AdminLoginTakenError extends Error {
   }
 }
 
+export type StaffRole = 'admin' | 'instructor';
+
 export interface AdminProvisioningRepository {
   adminLoginExists(adminLoginHash: string): Promise<boolean>;
   createAdminAccount(input: {
@@ -28,6 +30,7 @@ export interface AdminProvisioningRepository {
     lastNameTh: string;
     now: Date;
     providerUserId: string;
+    role: StaffRole;
     syntheticIdentity: string;
   }): Promise<{ accountId: string }>;
 }

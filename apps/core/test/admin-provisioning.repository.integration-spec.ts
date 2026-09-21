@@ -30,6 +30,7 @@ describe('PostgresAdminProvisioningRepository integration', () => {
       lastNameTh: 'ใจดี',
       now: new Date('2026-08-25T04:00:00.000Z'),
       providerUserId: PROVIDER_USER_ID,
+      role: 'admin',
       syntheticIdentity: SYNTHETIC_IDENTITY,
     });
 
@@ -61,6 +62,7 @@ describe('PostgresAdminProvisioningRepository integration', () => {
       lastNameTh: 'ใจดี',
       now: new Date('2026-08-25T04:00:00.000Z'),
       providerUserId: PROVIDER_USER_ID,
+      role: 'admin',
       syntheticIdentity: SYNTHETIC_IDENTITY,
     });
     await expect(repository.adminLoginExists(ADMIN_LOGIN_HASH)).resolves.toBe(true);
@@ -73,6 +75,7 @@ describe('PostgresAdminProvisioningRepository integration', () => {
       lastNameTh: 'ใจดี',
       now: new Date('2026-08-25T04:00:00.000Z'),
       providerUserId: PROVIDER_USER_ID,
+      role: 'admin',
       syntheticIdentity: SYNTHETIC_IDENTITY,
     });
 
@@ -85,6 +88,7 @@ describe('PostgresAdminProvisioningRepository integration', () => {
         // A real identity provider may return the same provider user id for a
         // retried login instead of erroring, so this reproduces that case too.
         providerUserId: PROVIDER_USER_ID,
+        role: 'admin',
         syntheticIdentity: SYNTHETIC_IDENTITY,
       }),
     ).rejects.toBeInstanceOf(AdminLoginTakenError);

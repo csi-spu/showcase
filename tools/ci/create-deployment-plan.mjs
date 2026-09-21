@@ -5,7 +5,13 @@ import { parseArgs } from 'node:util';
 const DEPLOYABLE_APPLICATIONS = [
   { app: 'core', dockerfile: 'apps/core/Dockerfile', package: '@showcase/core' },
   { app: 'admin', dockerfile: 'apps/admin/Dockerfile', package: '@showcase/admin' },
+  { app: 'instructor', dockerfile: 'apps/instructor/Dockerfile', package: '@showcase/instructor' },
   { app: 'student', dockerfile: 'apps/student/Dockerfile', package: '@showcase/student' },
+  {
+    app: 'student-collection',
+    dockerfile: 'apps/student-collection/Dockerfile',
+    package: '@showcase/student-collection',
+  },
   { app: 'visitor', dockerfile: 'apps/visitor/Dockerfile', package: '@showcase/visitor' },
   { app: 'media', dockerfile: 'apps/media/Dockerfile', package: '@showcase/media' },
 ];

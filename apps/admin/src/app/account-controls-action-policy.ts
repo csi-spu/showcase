@@ -14,6 +14,8 @@ export function mapAccountControlError(error: unknown): AccountControlErrorMessa
   if (error.code === 'ADMIN_LOGIN_TAKEN') return 'loginTaken';
   if (error.code === 'ADMIN_LAST_ACTIVE_ACCOUNT') return 'lastActiveAdmin';
   if (error.code === 'ADMIN_SELF_STATUS_CHANGE_FORBIDDEN') return 'forbidden';
+  if (error.code === 'INSTRUCTOR_ROLE_ALREADY_GRANTED') return 'alreadyGranted';
+  if (['INSTRUCTOR_ROLE_NOT_GRANTED'].includes(error.code)) return 'notFound';
   if (
     [
       'STUDENT_NAME_INVALID',
@@ -21,6 +23,7 @@ export function mapAccountControlError(error: unknown): AccountControlErrorMessa
       'INVALID_ADMIN_LOGIN',
       'INVALID_ADMIN_NAME',
       'ADMIN_STATUS_REASON_INVALID',
+      'INSTRUCTOR_ACCOUNT_NOT_ELIGIBLE',
     ].includes(error.code)
   ) {
     return 'invalid';

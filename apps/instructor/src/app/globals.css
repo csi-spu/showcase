@@ -1,0 +1,65 @@
+@import '@showcase/ui/styles.css';
+
+@source '../components/**/*.tsx';
+
+/*
+ * Instructor inherits the workspace palette from @showcase/ui above. Only
+ * layout metrics and app-specific surfaces live here, so Admin, Student,
+ * Visitor and Instructor stay one brand.
+ *
+ * Colour convention (applies to every screen in this app):
+ *   primary      -> the one primary action on a screen, and the active nav item
+ *   information  -> rounds (a scheduling/period concept)
+ *   primary-soft -> groups (a roster concept, one level below rounds)
+ *   success      -> current members, open rounds
+ *   warning      -> partially-applied results, attention without failure
+ *   destructive  -> withdrawal and other reversals
+ *   muted        -> withdrawn/closed records and all secondary metadata
+ * Never introduce a raw hex value in a component; use these tokens so the
+ * whole surface restyles from the shared package alone.
+ */
+:root {
+  /* Dashboard shell metrics, shared by the sidebar and the content offset. */
+  --app-sidebar-width: 17rem;
+  --app-topbar-height: 3.75rem;
+}
+
+/*
+ * The application canvas. A single flat surface: the dashboard reads as one
+ * plane with cards floating on it, so the page never competes with content.
+ */
+.app-canvas {
+  background: var(--background);
+}
+
+/* The brand panel beside the sign-in form -- the only marketing-ish surface. */
+.auth-brand-panel {
+  background:
+    radial-gradient(
+      circle at 15% 8%,
+      color-mix(in srgb, var(--primary) 12%, transparent),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at 92% 92%,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 26rem
+    ),
+    var(--primary-soft);
+}
+
+.app-sidebar {
+  background: var(--sidebar);
+  border-inline-end: 1px solid var(--sidebar-border);
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--background) 86%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

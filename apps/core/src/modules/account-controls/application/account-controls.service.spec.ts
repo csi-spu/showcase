@@ -11,7 +11,10 @@ import type {
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
+  GrantInstructorRoleResult,
+  InstructorAccountControls,
   ListPage,
+  RevokeInstructorRoleResult,
   SetAdminStatusResult,
   SetStudentStatusResult,
   StudentAccountControls,
@@ -502,6 +505,7 @@ describe('AccountControlsService Admin Account listing and lifecycle', () => {
     accountId: ADMIN_ACCOUNT_ID,
     createdAt: NOW,
     firstNameTh: 'สมชาย',
+    hasInstructorRole: false,
     lastNameTh: 'ใจดี',
     status: 'active',
     version: 1,
@@ -664,6 +668,156 @@ describe('AccountControlsService Admin Account listing and lifecycle', () => {
   });
 });
 
+describe('AccountControlsService Instructor management', () => {
+  let repository: TestRepository;
+  let adminProvisioning: FakeAdminProvisioningService;
+  let service: AccountControlsService;
+  const INSTRUCTOR_ACCOUNT_ID = '30000000-0000-4000-8000-000000000010';
+  const INSTRUCTOR = {
+    accountId: INSTRUCTOR_ACCOUNT_ID,
+    createdAt: NOW,
+    firstNameTh: 'วิชัย',
+    lastNameTh: 'มั่นคง',
+    status: 'active',
+  } satisfies InstructorAccountControls;
+
+  beforeEach(() => {
+    repository = new TestRepository();
+    adminProvisioning = new FakeAdminProvisioningService();
+    service = new AccountControlsService(
+      repository,
+      { resetPassword: jest.fn() },
+      { now: () => NOW },
+      {
+        hashAdminLogin: jest.fn(),
+        hashSessionToken: jest.fn(),
+        hashSourceAddress: jest.fn(),
+        hashStudentId: jest.fn(),
+        toAdminSyntheticIdentity: jest.fn(),
+        toSyntheticIdentity: jest.fn(),
+      },
+      { generate: jest.fn() },
+      adminProvisioning,
+    );
+  });
+
+  it('lists Instructors', async () => {
+    repository.listInstructorsResult = { items: [INSTRUCTOR], nextCursor: null };
+
+    await expect(
+      service.listInstructors({ cursor: null, limit: 5, search: null }),
+    ).resolves.toEqual({ items: [INSTRUCTOR], nextCursor: null });
+    expect(repository.listInstructorsInput).toEqual({ cursor: null, limit: 5, search: null });
+  });
+
+  it('creates an Instructor by delegating to provisioning with the instructor role', async () => {
+    adminProvisioning.provisionResult = () =>
+      Promise.resolve({ adminLogin: 'teaching-staff', temporaryPassword: 'one-time-password' });
+
+    await expect(
+      service.createInstructor({
+        firstNameTh: 'วิชัย',
+        instructorLogin: 'teaching-staff',
+        lastNameTh: 'มั่นคง',
+      }),
+    ).resolves.toEqual({
+      instructor: { instructorLogin: 'teaching-staff' },
+      temporaryPassword: 'one-time-password',
+    });
+    expect(adminProvisioning.provisionInput).toEqual({
+      adminLogin: 'teaching-staff',
+      firstNameTh: 'วิชัย',
+      lastNameTh: 'มั่นคง',
+      role: 'instructor',
+    });
+  });
+
+  it('grants Instructor access to an existing eligible Account', async () => {
+    repository.grantInstructorRoleResult = { instructor: INSTRUCTOR, outcome: 'granted' };
+
+    await expect(
+      service.grantInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).resolves.toEqual(INSTRUCTOR);
+    expect(repository.grantInstructorRoleInput).toEqual({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      now: NOW,
+    });
+  });
+
+  it('returns the current Instructor when a grant request is replayed by idempotency key', async () => {
+    repository.grantInstructorRoleResult = { instructor: INSTRUCTOR, outcome: 'replayed' };
+
+    await expect(
+      service.grantInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).resolves.toEqual(INSTRUCTOR);
+  });
+
+  it.each([
+    ['idempotency_conflict', 'ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409],
+    ['not_eligible', 'INSTRUCTOR_ACCOUNT_NOT_ELIGIBLE', 422],
+    ['already_granted', 'INSTRUCTOR_ROLE_ALREADY_GRANTED', 409],
+  ] as const)('maps grant outcome %s to a stable error', async (outcome, code, status) => {
+    repository.grantInstructorRoleResult = { outcome };
+
+    await expect(
+      service.grantInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
+  });
+
+  it('revokes Instructor access without touching the underlying Account', async () => {
+    repository.revokeInstructorRoleResult = { instructor: INSTRUCTOR, outcome: 'revoked' };
+
+    await expect(
+      service.revokeInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).resolves.toEqual(INSTRUCTOR);
+  });
+
+  it('returns the current Instructor when a revoke request is replayed by idempotency key', async () => {
+    repository.revokeInstructorRoleResult = { instructor: INSTRUCTOR, outcome: 'replayed' };
+
+    await expect(
+      service.revokeInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).resolves.toEqual(INSTRUCTOR);
+  });
+
+  it.each([
+    ['idempotency_conflict', 'ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409],
+    ['not_granted', 'INSTRUCTOR_ROLE_NOT_GRANTED', 404],
+  ] as const)('maps revoke outcome %s to a stable error', async (outcome, code, status) => {
+    repository.revokeInstructorRoleResult = { outcome };
+
+    await expect(
+      service.revokeInstructorRole({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+      }),
+    ).rejects.toEqual(expect.objectContaining({ code, status }));
+  });
+});
+
 class TestRepository implements AccountControlsRepository {
   settings: AcademicYearSettings = {
     currentAcademicYear: null,
@@ -706,6 +860,14 @@ class TestRepository implements AccountControlsRepository {
   setAdminStatusResult: SetAdminStatusResult = { outcome: 'not_found' };
   setStudentStatusInput: Parameters<AccountControlsRepository['setStudentStatus']>[0] | null = null;
   setStudentStatusResult: SetStudentStatusResult = { outcome: 'not_found' };
+  listInstructorsInput: Parameters<AccountControlsRepository['listInstructors']>[0] | null = null;
+  listInstructorsResult: ListPage<InstructorAccountControls> = { items: [], nextCursor: null };
+  grantInstructorRoleInput: Parameters<AccountControlsRepository['grantInstructorRole']>[0] | null =
+    null;
+  grantInstructorRoleResult: GrantInstructorRoleResult = { outcome: 'not_eligible' };
+  revokeInstructorRoleInput:
+    Parameters<AccountControlsRepository['revokeInstructorRole']>[0] | null = null;
+  revokeInstructorRoleResult: RevokeInstructorRoleResult = { outcome: 'not_granted' };
 
   getAcademicYear(): Promise<AcademicYearSettings> {
     return Promise.resolve(this.settings);
@@ -784,5 +946,26 @@ class TestRepository implements AccountControlsRepository {
   ): Promise<void> {
     this.failPasswordResetInput = input;
     return Promise.resolve();
+  }
+
+  listInstructors(
+    input: Parameters<AccountControlsRepository['listInstructors']>[0],
+  ): Promise<ListPage<InstructorAccountControls>> {
+    this.listInstructorsInput = input;
+    return Promise.resolve(this.listInstructorsResult);
+  }
+
+  grantInstructorRole(
+    input: Parameters<AccountControlsRepository['grantInstructorRole']>[0],
+  ): Promise<GrantInstructorRoleResult> {
+    this.grantInstructorRoleInput = input;
+    return Promise.resolve(this.grantInstructorRoleResult);
+  }
+
+  revokeInstructorRole(
+    input: Parameters<AccountControlsRepository['revokeInstructorRole']>[0],
+  ): Promise<RevokeInstructorRoleResult> {
+    this.revokeInstructorRoleInput = input;
+    return Promise.resolve(this.revokeInstructorRoleResult);
   }
 }
