@@ -53,3 +53,10 @@ export class WithdrawMemberDto {
   @MaxLength(2_000)
   reason!: string;
 }
+
+export class ReinstateMemberDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2_000)
+  reason!: string;
+}

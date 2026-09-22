@@ -17,6 +17,7 @@ import {
 import { getInstructorAuthPageState } from '@/lib/instructor-auth-page-state';
 import { readInstructorSessionToken } from '@/lib/instructor-auth-session';
 import { InstructorCollectionGroupsCoreClient } from '@/lib/instructor-collection-groups-core';
+import { InstructorCollectionFormsCoreClient } from '@/lib/instructor-collection-forms-core';
 import type { InstructorGroupMember } from '@/lib/instructor-collection-groups-core';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../../app-shell';
@@ -25,9 +26,15 @@ import {
   addMembersByEntryYearAction,
   addMembersByStudentIdsAction,
   withdrawMemberAction,
+  reinstateMemberAction,
 } from '../../collection-groups.actions';
 import { AddMembersPanel } from './add-members-forms';
 import { MemberRowActions } from './member-row-actions';
+import {
+  createCollectionFormAction,
+  createCollectionFormFromTemplateAction,
+} from '../../collection-forms.actions';
+import { FormsSection } from './forms/forms-section';
 
 interface GroupPageProps {
   params: Promise<{ groupId: string }>;
@@ -56,10 +63,16 @@ export default async function GroupPage({ params }: GroupPageProps) {
     throw error;
   }
   const round = rounds.find((r) => r.id === detail.group.roundId);
+  const formsClient = new InstructorCollectionFormsCoreClient(getInstructorServerEnvironment());
+  const [forms, templates] = await Promise.all([
+    formsClient.list(sessionToken, groupId),
+    formsClient.listTemplates(sessionToken),
+  ]);
 
   const boundAddByStudentIds = addMembersByStudentIdsAction.bind(null, groupId);
   const boundAddByEntryYear = addMembersByEntryYearAction.bind(null, groupId);
   const boundWithdraw = withdrawMemberAction.bind(null, groupId);
+  const boundReinstate = reinstateMemberAction.bind(null, groupId);
   const currentMembers = detail.members.filter((member) => member.status === 'current');
   const withdrawnMembers = detail.members.filter((member) => member.status === 'withdrawn');
 
@@ -93,6 +106,14 @@ export default async function GroupPage({ params }: GroupPageProps) {
       <AddMembersPanel
         addByEntryYearAction={boundAddByEntryYear}
         addByStudentIdsAction={boundAddByStudentIds}
+      />
+
+      <FormsSection
+        createAction={createCollectionFormAction.bind(null, groupId)}
+        createFromTemplateAction={createCollectionFormFromTemplateAction.bind(null, groupId)}
+        forms={forms}
+        groupId={groupId}
+        templates={templates}
       />
 
       <section aria-labelledby="current-members-heading" className="flex flex-col gap-3">
@@ -144,6 +165,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
               <TableRow>
                 <TableHead>{t('members.columnName')}</TableHead>
                 <TableHead>{t('members.columnReason')}</TableHead>
+                <TableHead className="text-right">{t('members.columnActions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,6 +182,14 @@ export default async function GroupPage({ params }: GroupPageProps) {
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{member.withdrawalReason}</TableCell>
+                  <TableCell className="text-right">
+                    <MemberRowActions
+                      action={boundReinstate}
+                      kind="reinstate"
+                      memberName={`${member.firstNameTh} ${member.lastNameTh}`}
+                      studentAccountId={member.studentAccountId}
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -205,6 +235,7 @@ function MemberRow({
       <TableCell className="text-right">
         <MemberRowActions
           action={action}
+          kind="withdraw"
           memberName={`${member.firstNameTh} ${member.lastNameTh}`}
           studentAccountId={member.studentAccountId}
         />

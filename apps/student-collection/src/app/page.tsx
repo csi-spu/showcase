@@ -1,13 +1,19 @@
 import { Button } from '@showcase/ui/button';
 import { ClipboardListIcon, FolderOpenIcon, InboxIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AuthLayout } from '@/components/ui/auth-layout';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getStudentCollectionAuthPageState } from '@/lib/student-collection-auth-page-state';
+import { readStudentCollectionSessionToken } from '@/lib/student-collection-auth-session';
+import { StudentCollectionFormsCoreClient } from '@/lib/student-collection-forms-core';
+import type { StudentCollectionPrefill } from '@/lib/student-collection-forms-core';
+import { getStudentCollectionServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from './app-shell';
+import { CollectionForm } from './collection-form';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -20,6 +26,15 @@ interface HomeProps {
   searchParams: Promise<{ expired?: string; passwordSet?: string }>;
 }
 
+/*
+ * Reading the clock is a side effect, so it is kept out of the component body
+ * rather than inlined into the render. Lateness is decided here, on the server,
+ * because the browser's clock is not something the platform controls.
+ */
+function readServerClock(): number {
+  return Date.now();
+}
+
 export default async function Home({ searchParams }: HomeProps) {
   const { expired } = await searchParams;
   const [state, authT, homeT] = await Promise.all([
@@ -29,27 +44,69 @@ export default async function Home({ searchParams }: HomeProps) {
   ]);
 
   /*
-   * Signed in: the student gets the dashboard frame, not a login card holding
-   * a notice. There is nothing to submit in this milestone, so the page states
-   * that plainly instead of implying a feature that is not there yet.
+   * Signed in: the Student gets their real obligations, each rendered as a form
+   * they can answer, with its own status, deadline and checking feedback.
    */
   if (state.kind === 'active') {
+    const token = await readStudentCollectionSessionToken();
+    if (token === null) redirect('/?expired=1');
+
+    const client = new StudentCollectionFormsCoreClient(getStudentCollectionServerEnvironment());
+    const obligations = await client.list(token);
+
+    /*
+     * Prefills are fetched per form because each one is scoped to that form's
+     * mapping keys. Only forms the Student can still answer need them: a
+     * submitted form shows what was sent, never a fresh suggestion.
+     */
+    const answerable = obligations.filter(
+      (obligation) =>
+        obligation.status === 'not_submitted' || obligation.status === 'changes_required',
+    );
+    const prefillEntries = await Promise.all(
+      answerable.map(async (obligation): Promise<[string, StudentCollectionPrefill[]]> => [
+        obligation.form.id,
+        await client.listPrefills(token, obligation.form.id),
+      ]),
+    );
+    const prefillsByForm = new Map(prefillEntries);
+    /* One reading of the clock for the whole page, taken on the server. */
+    const renderedAt = readServerClock();
+
     return (
       <AppShell>
         <PageHeader
           description={homeT('dashboardDescription')}
           eyebrow={
             <StatusBadge icon={ClipboardListIcon} tone="information">
-              {homeT('statusUpcoming')}
+              {obligations.length === 0
+                ? homeT('statusUpcoming')
+                : homeT('countLabel', { count: obligations.length })}
             </StatusBadge>
           }
           title={homeT('dashboardTitle')}
         />
-        <EmptyState
-          description={homeT('placeholderDescription')}
-          icon={InboxIcon}
-          title={homeT('placeholderTitle')}
-        />
+        {obligations.length === 0 ? (
+          <EmptyState
+            description={homeT('placeholderDescription')}
+            icon={InboxIcon}
+            title={homeT('placeholderTitle')}
+          />
+        ) : (
+          <div className="flex flex-col gap-6">
+            {obligations.map((obligation) => (
+              <CollectionForm
+                isLate={
+                  obligation.form.deadlineAt !== null &&
+                  new Date(obligation.form.deadlineAt).getTime() < renderedAt
+                }
+                key={obligation.form.id}
+                obligation={obligation}
+                prefills={prefillsByForm.get(obligation.form.id) ?? []}
+              />
+            ))}
+          </div>
+        )}
       </AppShell>
     );
   }

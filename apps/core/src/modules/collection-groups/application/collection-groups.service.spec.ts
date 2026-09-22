@@ -9,6 +9,7 @@ import type {
   CollectionRound,
   GroupMember,
   WithdrawMemberResult,
+  ReinstateMemberResult,
 } from './collection-groups.ports';
 
 const NOW = new Date('2026-09-20T06:00:00.000Z');
@@ -48,6 +49,10 @@ class FakeRepository implements CollectionGroupsRepository {
   group: CollectionGroup | null = GROUP;
   members: GroupMember[] = [MEMBER];
   round: CollectionRound | null = ROUND;
+  reinstateMemberResult: ReinstateMemberResult = {
+    member: MEMBER,
+    outcome: 'reinstated',
+  };
   withdrawMemberResult: WithdrawMemberResult = {
     member: { ...MEMBER, status: 'withdrawn' },
     outcome: 'withdrawn',
@@ -87,6 +92,10 @@ class FakeRepository implements CollectionGroupsRepository {
 
   listRounds(): Promise<CollectionRound[]> {
     return Promise.resolve([ROUND]);
+  }
+
+  reinstateMember(): Promise<ReinstateMemberResult> {
+    return Promise.resolve(this.reinstateMemberResult);
   }
 
   withdrawMember(): Promise<WithdrawMemberResult> {
@@ -280,5 +289,51 @@ describe('CollectionGroupsService Entry Year and withdrawal', () => {
         studentAccountId: MEMBER.studentAccountId,
       }),
     ).resolves.toMatchObject({ status: 'withdrawn' });
+  });
+});
+
+describe('CollectionGroupsService reinstatement', () => {
+  it('requires a reason and restores a withdrawn member', async () => {
+    const { service } = setup();
+    await expect(
+      service.reinstateMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: GROUP_ID,
+        reason: '  กลับเข้าร่วม  ',
+        studentAccountId: MEMBER.studentAccountId,
+      }),
+    ).resolves.toMatchObject({ status: 'current' });
+    for (const reason of ['', '   ', 'x'.repeat(2_001)]) {
+      await expect(
+        service.reinstateMember({
+          actorAccountId: ACTOR_ACCOUNT_ID,
+          groupId: GROUP_ID,
+          reason,
+          studentAccountId: MEMBER.studentAccountId,
+        }),
+      ).rejects.toEqual(new CollectionGroupsError('REINSTATEMENT_REASON_INVALID', 422));
+    }
+  });
+
+  it('rejects reinstating a missing or already-current member', async () => {
+    const repository = new FakeRepository();
+    repository.reinstateMemberResult = { outcome: 'not_found' };
+    await expect(
+      setup(repository).service.reinstateMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: GROUP_ID,
+        reason: 'กลับเข้าร่วม',
+        studentAccountId: MEMBER.studentAccountId,
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_MEMBER_NOT_FOUND', 404));
+    repository.reinstateMemberResult = { outcome: 'already_current', member: MEMBER };
+    await expect(
+      setup(repository).service.reinstateMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: GROUP_ID,
+        reason: 'กลับเข้าร่วม',
+        studentAccountId: MEMBER.studentAccountId,
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_MEMBER_ALREADY_CURRENT', 409));
   });
 });

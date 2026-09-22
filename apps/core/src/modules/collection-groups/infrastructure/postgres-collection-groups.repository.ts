@@ -9,6 +9,7 @@ import type {
   GroupMember,
   MembershipSource,
   MembershipStatus,
+  ReinstateMemberResult,
   WithdrawMemberResult,
 } from '../application/collection-groups.ports';
 
@@ -200,6 +201,15 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         from public.collection_group_memberships
         where group_id = ${input.groupId} and student_account_id = any(${accountIds}::uuid[])
       `;
+      await transaction`
+        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
+        select form.id, membership.student_account_id, ${input.now}
+        from public.collection_forms as form
+        join public.collection_group_memberships as membership on membership.group_id = form.group_id
+        where form.group_id = ${input.groupId} and form.status = 'open'
+          and membership.student_account_id = any(${accountIds}::uuid[]) and membership.status = 'current'
+        on conflict do nothing
+      `;
       const membershipByAccountId = new Map(
         memberships.map((row) => [row.student_account_id, row] as const),
       );
@@ -270,6 +280,15 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         from public.collection_group_memberships
         where group_id = ${input.groupId} and student_account_id = any(${accountIds}::uuid[])
       `;
+      await transaction`
+        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
+        select form.id, membership.student_account_id, ${input.now}
+        from public.collection_forms as form
+        join public.collection_group_memberships as membership on membership.group_id = form.group_id
+        where form.group_id = ${input.groupId} and form.status = 'open'
+          and membership.student_account_id = any(${accountIds}::uuid[]) and membership.status = 'current'
+        on conflict do nothing
+      `;
       const membershipByAccountId = new Map(
         memberships.map((row) => [row.student_account_id, row] as const),
       );
@@ -307,6 +326,14 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     studentAccountId: string;
   }): Promise<WithdrawMemberResult> {
     return this.database.sql.begin(async (transaction) => {
+      const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
+        select round.status
+        from public.collection_rounds as round
+        join public.collection_groups as collection_group on collection_group.round_id = round.id
+        where collection_group.id = ${input.groupId}
+        for update of round
+      `;
+      if (rounds[0]?.status === 'closed') return { outcome: 'round_closed' };
       // Only a currently-active membership is transitioned; a retry against
       // an already-withdrawn membership must not overwrite the original
       // actor/time/reason with a second, unrelated withdrawal request.
@@ -321,6 +348,22 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
           and status = 'current'
         returning student_account_id
       `;
+
+      if (justWithdrawn.length > 0) {
+        await transaction`
+          update public.collection_obligations as obligation
+          set status_before_withdrawal = obligation.status, status = 'withdrawn'
+          from public.collection_forms as form
+          where obligation.form_id = form.id and form.group_id = ${input.groupId}
+            and obligation.student_account_id = ${input.studentAccountId}
+            and obligation.status <> 'withdrawn'
+        `;
+        await transaction`
+          insert into private.collection_membership_audit_events
+            (group_id, student_account_id, actor_account_id, action, reason, occurred_at)
+          values (${input.groupId}, ${input.studentAccountId}, ${input.actorAccountId}, 'withdrawn', ${input.reason}, ${input.now})
+        `;
+      }
 
       const rows = await transaction<MemberRow[]>`
         select
@@ -349,6 +392,90 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         member: this.mapMember(row),
         outcome: justWithdrawn.length > 0 ? 'withdrawn' : 'already_withdrawn',
       };
+    });
+  }
+
+  async reinstateMember(input: {
+    actorAccountId: string;
+    groupId: string;
+    now: Date;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<ReinstateMemberResult> {
+    return this.database.sql.begin(async (transaction) => {
+      const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
+        select round.status
+        from public.collection_rounds as round
+        join public.collection_groups as collection_group on collection_group.round_id = round.id
+        where collection_group.id = ${input.groupId}
+        for update of round
+      `;
+      if (rounds[0]?.status === 'closed') return { outcome: 'round_closed' };
+
+      const updated = await transaction<{ student_account_id: string }[]>`
+        update public.collection_group_memberships as membership
+        set status = 'current',
+            withdrawn_by_account_id = null,
+            withdrawn_at = null,
+            withdrawal_reason = null
+        from public.accounts as account
+        where membership.group_id = ${input.groupId}
+          and membership.student_account_id = ${input.studentAccountId}
+          and membership.status = 'withdrawn'
+          and account.id = membership.student_account_id
+          and account.status = 'active'
+        returning membership.student_account_id
+      `;
+
+      const rows = await transaction<(MemberRow & { account_status: string })[]>`
+        select
+          membership.student_account_id,
+          membership.status,
+          membership.membership_source,
+          membership.added_at,
+          membership.withdrawn_at,
+          membership.withdrawal_reason,
+          account.status as account_status,
+          student.entry_year,
+          person_name.first_name_th,
+          person_name.last_name_th
+        from public.collection_group_memberships as membership
+        join public.accounts as account on account.id = membership.student_account_id
+        join public.students as student on student.person_id = account.person_id
+        join private.person_names as person_name on person_name.person_id = account.person_id
+        where membership.group_id = ${input.groupId}
+          and membership.student_account_id = ${input.studentAccountId}
+        limit 1
+      `;
+      const row = rows[0];
+      if (row === undefined) return { outcome: 'not_found' };
+      if (updated.length === 0) {
+        if (row.account_status !== 'active') return { outcome: 'student_inactive' };
+        return { member: this.mapMember(row), outcome: 'already_current' };
+      }
+
+      await transaction`
+        insert into private.collection_membership_audit_events
+          (group_id, student_account_id, actor_account_id, action, reason, occurred_at)
+        values (${input.groupId}, ${input.studentAccountId}, ${input.actorAccountId}, 'reinstated', ${input.reason}, ${input.now})
+      `;
+      await transaction`
+        update public.collection_obligations as obligation
+        set status = coalesce(obligation.status_before_withdrawal, 'not_submitted'),
+            status_before_withdrawal = null
+        from public.collection_forms as form
+        where obligation.form_id = form.id and form.group_id = ${input.groupId}
+          and obligation.student_account_id = ${input.studentAccountId}
+          and obligation.status = 'withdrawn'
+      `;
+      await transaction`
+        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
+        select id, ${input.studentAccountId}, ${input.now}
+        from public.collection_forms
+        where group_id = ${input.groupId} and status = 'open'
+        on conflict do nothing
+      `;
+      return { member: this.mapMember(row), outcome: 'reinstated' };
     });
   }
 

@@ -7,6 +7,7 @@ import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import { assertLocalE2EEnvironment } from './environment.ts';
 import { createIdempotentCleanup } from './fixture-lifecycle.ts';
 import { registerSensitiveValues } from './sensitive-artifacts.ts';
+import { createE2ESourceAddress } from './source-address.ts';
 
 export interface ConsentHistoryEntry {
   consentTextVersion: string;
@@ -28,6 +29,7 @@ export interface ProfileConsentScenario {
   publicId: string;
   protectBrowserContext(context: BrowserContext): Promise<void>;
   readConsentState(): Promise<ConsentState>;
+  sourceAddress: string;
   studentId: string;
 }
 
@@ -35,11 +37,13 @@ export interface WorkLifecycleScenario {
   adminInitialPassword: string;
   adminLogin: string;
   adminNewPassword: string;
+  adminSourceAddress: string;
   contributorName: string;
   initialPassword: string;
   newPassword: string;
   protectBrowserContext(context: BrowserContext): Promise<void>;
   readState(publicId: string): Promise<WorkLifecycleState>;
+  studentSourceAddress: string;
   studentId: string;
   studentName: string;
   tagLabel: string;
@@ -122,7 +126,9 @@ const environment = assertLocalE2EEnvironment({
   CORE_URL: process.env.CORE_URL,
   DATABASE_URL: process.env.DATABASE_URL,
   E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
+  INSTRUCTOR_URL: process.env.INSTRUCTOR_URL,
   MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
+  STUDENT_COLLECTION_URL: process.env.STUDENT_COLLECTION_URL,
   STUDENT_URL: process.env.STUDENT_URL,
   VISITOR_URL: process.env.VISITOR_URL,
 });
@@ -257,6 +263,10 @@ async function createProfileConsentScenario(): Promise<
         isGranted: rows.some((row) => row.withdrawnAt === null),
       };
     },
+    sourceAddress: createE2ESourceAddress(
+      createHash('sha256').update(runId).digest('hex').slice(0, 12),
+      1,
+    ),
     studentId,
   };
 }
@@ -471,12 +481,14 @@ async function createWorkLifecycleScenario(): Promise<WorkLifecycleFixtureScenar
     adminInitialPassword,
     adminLogin,
     adminNewPassword,
+    adminSourceAddress: createE2ESourceAddress(runShort, 2),
     cleanup,
     contributorName,
     initialPassword,
     newPassword,
     protectBrowserContext: registerBrowserContextSecrets,
     readState: (publicId) => readWorkLifecycleState(database, publicId),
+    studentSourceAddress: createE2ESourceAddress(runShort, 1),
     studentId,
     studentName,
     tagLabel,

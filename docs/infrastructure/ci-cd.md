@@ -27,7 +27,7 @@ CI checks out full Git history because Turbo affected calculation depends on the
 
 For a successful push to `main`, CI asks Turbo for `build` tasks affected since `github.event.before`. Turbo expands shared-package changes to dependent applications. `tools/ci/create-deployment-plan.mjs` filters that graph to the five deployable images: `core`, `admin`, `student`, `visitor`, and `media`. A first push with an unavailable base marks all five affected. A change with no deployable application impact produces an empty plan and no production build or deployment.
 
-Repository files copied into every application build context are Turbo global dependencies. Changing one marks every deployable application affected. A Core image change deploys `core`, `core-cache-worker`, and `core-media-processor` because those three Coolify resources run the same image.
+Repository files copied into every application build context are Turbo global dependencies. Changing one marks every deployable application affected. A Core image change deploys `core`, `core-cache-worker`, `core-collection-file-inspector`, and `core-media-processor` because those four Coolify resources run the same image.
 
 CI uploads the versioned JSON plan as a workflow artifact. The production workflow downloads it only from the successful triggering CI run, verifies its source SHA, and uses its matrix directly. This preserves the exact multi-commit push range that CI evaluated instead of guessing a parent commit in the later `workflow_run` event.
 
@@ -41,7 +41,7 @@ Every production image build uploads source maps to its matching Sentry project 
 
 ## Production deployment
 
-The production workflow starts after successful `main` push CI, verifies the source commit belongs to `main`, builds the selected matrix, and then enters the protected `production` Environment approval gate. Media deploys first when selected, Core and its two workers follow when selected, then selected frontends deploy independently. A failed dependency prevents downstream deployment; an unrelated skipped application does not.
+The production workflow starts after successful `main` push CI, verifies the source commit belongs to `main`, builds the selected matrix, and then enters the protected `production` Environment approval gate. Media deploys first when selected, Core and its three workers follow when selected, then selected frontends deploy independently. A failed dependency prevents downstream deployment; an unrelated skipped application does not.
 
 `workflow_dispatch` remains available for redeploying existing images. It requires a full `main` commit SHA and an exact JSON application list such as `["media"]`. The workflow validates the list, verifies only those immutable images exist, requests production approval, and deploys only those applications. It never rebuilds a manual source SHA.
 

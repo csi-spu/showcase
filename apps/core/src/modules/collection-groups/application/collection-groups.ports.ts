@@ -41,7 +41,17 @@ export interface AddMembersByEntryYearResult {
 }
 
 export type WithdrawMemberResult =
-  { outcome: 'not_found' } | { member: GroupMember; outcome: 'already_withdrawn' | 'withdrawn' };
+  | { outcome: 'not_found' }
+  | { outcome: 'round_closed' }
+  | { member: GroupMember; outcome: 'already_withdrawn' }
+  | { member: GroupMember; outcome: 'withdrawn' };
+
+export type ReinstateMemberResult =
+  | { outcome: 'not_found' }
+  | { outcome: 'round_closed' }
+  | { outcome: 'student_inactive' }
+  | { member: GroupMember; outcome: 'already_current' }
+  | { member: GroupMember; outcome: 'reinstated' };
 
 export class CollectionGroupsError extends Error {
   constructor(
@@ -83,6 +93,13 @@ export interface CollectionGroupsRepository {
   listGroupMembers(groupId: string): Promise<GroupMember[]>;
   listGroups(roundId: string): Promise<CollectionGroup[]>;
   listRounds(): Promise<CollectionRound[]>;
+  reinstateMember(input: {
+    actorAccountId: string;
+    groupId: string;
+    now: Date;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<ReinstateMemberResult>;
   withdrawMember(input: {
     actorAccountId: string;
     groupId: string;

@@ -322,14 +322,14 @@ model person_name_correction_audit_events {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model person_names {
-  person_id     String   @id @db.Uuid
-  first_name_th String
-  last_name_th  String
-  created_at    DateTime @default(now()) @db.Timestamptz(6)
-  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+  person_id       String   @id @db.Uuid
+  first_name_th   String
+  last_name_th    String
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
   /// Database-generated (STORED, immutable expression over first_name_th/last_name_th). Never assign from application code.
   normalized_name String?
-  people          people  @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  people          people   @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([normalized_name], map: "person_names_normalized_name_idx")
   @@schema("private")
@@ -1124,14 +1124,14 @@ model academic_settings {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model instructor_role_change_audit_events {
-  id                     BigInt   @id @default(autoincrement())
-  idempotency_key        String   @unique @db.Uuid
-  actor_account_id       String   @db.Uuid
-  instructor_account_id  String   @db.Uuid
-  action                 String
-  occurred_at            DateTime @db.Timestamptz(6)
-  accounts_actor         accounts @relation("instructor_role_change_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  accounts_instructor    accounts @relation("instructor_role_change_audit_events_instructor_account_idToaccounts", fields: [instructor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    BigInt   @id @default(autoincrement())
+  idempotency_key       String   @unique @db.Uuid
+  actor_account_id      String   @db.Uuid
+  instructor_account_id String   @db.Uuid
+  action                String
+  occurred_at           DateTime @db.Timestamptz(6)
+  accounts_actor        accounts @relation("instructor_role_change_audit_events_actor_account_idToaccounts", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_instructor   accounts @relation("instructor_role_change_audit_events_instructor_account_idToaccounts", fields: [instructor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([instructor_account_id, occurred_at(sort: Desc)], map: "instructor_role_change_target_time_idx")
   @@schema("private")
@@ -1152,34 +1152,238 @@ model collection_rounds {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model collection_groups {
-  id                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  round_id                     String                         @db.Uuid
-  name                         String
-  created_by_account_id        String                         @db.Uuid
-  created_at                   DateTime                       @default(now()) @db.Timestamptz(6)
-  accounts                     accounts                       @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_rounds            collection_rounds              @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_group_memberships collection_group_memberships[]
+  id                                 String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  round_id                           String                               @db.Uuid
+  name                               String
+  created_by_account_id              String                               @db.Uuid
+  created_at                         DateTime                             @default(now()) @db.Timestamptz(6)
+  accounts                           accounts                             @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_rounds                  collection_rounds                    @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_group_memberships       collection_group_memberships[]
+  collection_membership_audit_events collection_membership_audit_events[]
+  collection_forms                   collection_forms[]
 
   @@index([round_id, created_at(sort: Desc)], map: "collection_groups_round_id_idx")
   @@schema("public")
 }
 
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_forms {
+  id                              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  group_id                        String                            @db.Uuid
+  title                           String
+  description                     String                            @default("")
+  status                          String                            @default("draft")
+  fields                          Json                              @default("[]")
+  deadline_at                     DateTime?                         @db.Timestamptz(6)
+  created_by_account_id           String                            @db.Uuid
+  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  opened_at                       DateTime?                         @db.Timestamptz(6)
+  closed_at                       DateTime?                         @db.Timestamptz(6)
+  version                         Int                               @default(1)
+  created_from_template_id        String?                           @db.Uuid
+  collection_groups               collection_groups                 @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts                        accounts                          @relation("collection_form_creator", fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_form_templates       collection_form_templates?        @relation(fields: [created_from_template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_obligations          collection_obligations[]
+  collection_response_drafts      collection_response_drafts[]
+  collection_files                collection_files[]
+  collection_form_metadata_events collection_form_metadata_events[]
+
+  @@index([group_id, status, created_at(sort: Desc)], map: "collection_forms_group_status_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_form_templates {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  description           String             @default("")
+  fields                Json               @default("[]")
+  created_by_account_id String             @db.Uuid
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime           @default(now()) @db.Timestamptz(6)
+  version               Int                @default(1)
+  accounts              accounts           @relation("collection_template_creator", fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_forms      collection_forms[]
+
+  @@index([created_at(sort: Desc)], map: "collection_form_templates_created_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_obligations {
+  form_id                  String                   @db.Uuid
+  student_account_id       String                   @db.Uuid
+  status                   String                   @default("not_submitted")
+  status_before_withdrawal String?
+  assigned_at              DateTime                 @db.Timestamptz(6)
+  first_submitted_at       DateTime?                @db.Timestamptz(6)
+  latest_submission_id     String?                  @unique @db.Uuid
+  collection_forms         collection_forms         @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts                 accounts                 @relation("collection_obligation_student", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_submissions   collection_submissions[]
+  latest_submission        collection_submissions?  @relation("latest_collection_submission", fields: [latest_submission_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([form_id, student_account_id])
+  @@index([student_account_id, status, assigned_at(sort: Desc)], map: "collection_obligations_student_status_idx")
+  @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_response_drafts {
+  form_id                String                   @db.Uuid
+  student_account_id     String                   @db.Uuid
+  answers                Json                     @default("{}")
+  version                Int                      @default(1)
+  updated_at             DateTime                 @db.Timestamptz(6)
+  collection_forms       collection_forms         @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts               accounts                 @relation("collection_draft_student", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_draft_files collection_draft_files[]
+
+  @@id([form_id, student_account_id])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_submissions {
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  form_id                     String                        @db.Uuid
+  student_account_id          String                        @db.Uuid
+  idempotency_key             String                        @db.Uuid
+  version                     Int
+  answers                     Json
+  submitted_at                DateTime                      @db.Timestamptz(6)
+  collection_obligations      collection_obligations        @relation(fields: [form_id, student_account_id], references: [form_id, student_account_id], onDelete: NoAction, onUpdate: NoAction)
+  latest_for_obligation       collection_obligations?       @relation("latest_collection_submission")
+  collection_checking_events  collection_checking_events[]
+  collection_submission_files collection_submission_files[]
+
+  @@unique([form_id, student_account_id, version])
+  @@unique([form_id, student_account_id, idempotency_key])
+  @@index([student_account_id, form_id, submitted_at(sort: Desc)], map: "collection_submissions_student_form_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_checking_events {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submission_id          String                 @db.Uuid
+  instructor_account_id  String                 @db.Uuid
+  decision               String
+  reason                 String?
+  occurred_at            DateTime               @db.Timestamptz(6)
+  collection_submissions collection_submissions @relation(fields: [submission_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts               accounts               @relation("collection_check_instructor", fields: [instructor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([submission_id, occurred_at(sort: Desc)], map: "collection_checking_events_submission_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_form_metadata_events {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  form_id          String           @db.Uuid
+  actor_account_id String           @db.Uuid
+  change_kind      String
+  previous_value   String?
+  next_value       String?
+  occurred_at      DateTime         @db.Timestamptz(6)
+  collection_forms collection_forms @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts         accounts         @relation("collection_form_metadata_actor", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([form_id, occurred_at(sort: Desc)], map: "collection_form_metadata_events_form_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_files {
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  form_id                     String                        @db.Uuid
+  field_id                    String
+  student_account_id          String                        @db.Uuid
+  storage_key                 String                        @unique
+  original_filename           String
+  declared_content_type       String
+  detected_content_type       String?
+  byte_size                   BigInt
+  status                      String                        @default("quarantined")
+  inspection_error_code       String?
+  inspection_lease_id         String?                       @db.Uuid
+  inspection_lease_expires_at DateTime?                     @db.Timestamptz(6)
+  created_at                  DateTime                      @db.Timestamptz(6)
+  inspected_at                DateTime?                     @db.Timestamptz(6)
+  collection_forms            collection_forms              @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts                    accounts                      @relation("collection_file_owner", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_draft_files      collection_draft_files[]
+  collection_submission_files collection_submission_files[]
+
+  @@index([student_account_id, form_id, field_id, created_at(sort: Desc)], map: "collection_files_owner_field_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_submission_files {
+  submission_id          String                 @db.Uuid
+  field_id               String
+  file_id                String                 @db.Uuid
+  position               Int
+  collection_submissions collection_submissions @relation(fields: [submission_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_files       collection_files       @relation(fields: [file_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([submission_id, field_id, position])
+  @@unique([submission_id, file_id])
+  @@index([file_id], map: "collection_submission_files_file_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_draft_files {
+  form_id                    String                     @db.Uuid
+  student_account_id         String                     @db.Uuid
+  field_id                   String
+  file_id                    String                     @db.Uuid
+  position                   Int
+  collection_response_drafts collection_response_drafts @relation(fields: [form_id, student_account_id], references: [form_id, student_account_id], onDelete: NoAction, onUpdate: NoAction)
+  collection_files           collection_files           @relation(fields: [file_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([form_id, student_account_id, field_id, position])
+  @@unique([form_id, student_account_id, file_id])
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model collection_membership_audit_events {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  group_id           String            @db.Uuid
+  student_account_id String            @db.Uuid
+  actor_account_id   String            @db.Uuid
+  action             String
+  reason             String
+  occurred_at        DateTime          @db.Timestamptz(6)
+  collection_groups  collection_groups @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_student   accounts          @relation("collection_membership_audit_student", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_actor     accounts          @relation("collection_membership_audit_actor", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([group_id, student_account_id, occurred_at(sort: Desc)], map: "collection_membership_audit_events_target_time_idx")
+  @@schema("private")
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model collection_group_memberships {
-  group_id                                                                         String            @db.Uuid
-  student_account_id                                                               String            @db.Uuid
-  status                                                                           String            @default("current")
-  membership_source                                                                String
-  added_by_account_id                                                              String            @db.Uuid
-  added_at                                                                         DateTime          @default(now()) @db.Timestamptz(6)
-  withdrawn_by_account_id                                                          String?           @db.Uuid
-  withdrawn_at                                                                     DateTime?         @db.Timestamptz(6)
-  withdrawal_reason                                                                String?
-  collection_groups                                                                collection_groups @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  accounts_collection_group_memberships_student_account_idToaccounts               accounts          @relation("collection_group_memberships_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  accounts_collection_group_memberships_added_by_account_idToaccounts              accounts          @relation("collection_group_memberships_added_by_account_idToaccounts", fields: [added_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  accounts_collection_group_memberships_withdrawn_by_account_idToaccounts          accounts?         @relation("collection_group_memberships_withdrawn_by_account_idToaccounts", fields: [withdrawn_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  group_id                                                                String            @db.Uuid
+  student_account_id                                                      String            @db.Uuid
+  status                                                                  String            @default("current")
+  membership_source                                                       String
+  added_by_account_id                                                     String            @db.Uuid
+  added_at                                                                DateTime          @default(now()) @db.Timestamptz(6)
+  withdrawn_by_account_id                                                 String?           @db.Uuid
+  withdrawn_at                                                            DateTime?         @db.Timestamptz(6)
+  withdrawal_reason                                                       String?
+  collection_groups                                                       collection_groups @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_student_account_idToaccounts      accounts          @relation("collection_group_memberships_student_account_idToaccounts", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_added_by_account_idToaccounts     accounts          @relation("collection_group_memberships_added_by_account_idToaccounts", fields: [added_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts_collection_group_memberships_withdrawn_by_account_idToaccounts accounts?         @relation("collection_group_memberships_withdrawn_by_account_idToaccounts", fields: [withdrawn_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([group_id, student_account_id])
   @@index([student_account_id], map: "collection_group_memberships_student_idx")
@@ -1220,13 +1424,22 @@ model accounts {
   attribution_removal_requests                                                                             attribution_removal_requests[]
   authentication_audit_events                                                                              authentication_audit_events[]
   authentication_sessions                                                                                  authentication_sessions[]
-  instructor_role_change_audit_events_instructor_role_change_audit_events_actor_account_idToaccounts        instructor_role_change_audit_events[] @relation("instructor_role_change_audit_events_actor_account_idToaccounts")
-  instructor_role_change_audit_events_instructor_role_change_audit_events_instructor_account_idToaccounts   instructor_role_change_audit_events[] @relation("instructor_role_change_audit_events_instructor_account_idToaccounts")
+  instructor_role_change_audit_events_instructor_role_change_audit_events_actor_account_idToaccounts       instructor_role_change_audit_events[]     @relation("instructor_role_change_audit_events_actor_account_idToaccounts")
+  instructor_role_change_audit_events_instructor_role_change_audit_events_instructor_account_idToaccounts  instructor_role_change_audit_events[]     @relation("instructor_role_change_audit_events_instructor_account_idToaccounts")
   collection_rounds                                                                                        collection_rounds[]
   collection_groups                                                                                        collection_groups[]
-  collection_group_memberships_collection_group_memberships_student_account_idToaccounts                   collection_group_memberships[]        @relation("collection_group_memberships_student_account_idToaccounts")
-  collection_group_memberships_collection_group_memberships_added_by_account_idToaccounts                  collection_group_memberships[]        @relation("collection_group_memberships_added_by_account_idToaccounts")
-  collection_group_memberships_collection_group_memberships_withdrawn_by_account_idToaccounts               collection_group_memberships[]        @relation("collection_group_memberships_withdrawn_by_account_idToaccounts")
+  collection_group_memberships_collection_group_memberships_student_account_idToaccounts                   collection_group_memberships[]            @relation("collection_group_memberships_student_account_idToaccounts")
+  collection_group_memberships_collection_group_memberships_added_by_account_idToaccounts                  collection_group_memberships[]            @relation("collection_group_memberships_added_by_account_idToaccounts")
+  collection_group_memberships_collection_group_memberships_withdrawn_by_account_idToaccounts              collection_group_memberships[]            @relation("collection_group_memberships_withdrawn_by_account_idToaccounts")
+  collection_membership_audit_student                                                                      collection_membership_audit_events[]      @relation("collection_membership_audit_student")
+  collection_membership_audit_actor                                                                        collection_membership_audit_events[]      @relation("collection_membership_audit_actor")
+  collection_forms_created                                                                                 collection_forms[]                        @relation("collection_form_creator")
+  collection_obligations_student                                                                           collection_obligations[]                  @relation("collection_obligation_student")
+  collection_response_drafts_student                                                                       collection_response_drafts[]              @relation("collection_draft_student")
+  collection_checking_events_instructor                                                                    collection_checking_events[]              @relation("collection_check_instructor")
+  collection_form_templates_created                                                                        collection_form_templates[]               @relation("collection_template_creator")
+  collection_form_metadata_events_actor                                                                    collection_form_metadata_events[]         @relation("collection_form_metadata_actor")
+  collection_files_owned                                                                                   collection_files[]                        @relation("collection_file_owner")
   person_name_correction_audit_events_person_name_correction_audit_events_actor_account_idToaccounts       person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_actor_account_idToaccounts")
   person_name_correction_audit_events_person_name_correction_audit_events_student_account_idToaccounts     person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_student_account_idToaccounts")
   profile_operations                                                                                       profile_operations[]

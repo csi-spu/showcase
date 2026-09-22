@@ -8,6 +8,7 @@ import type {
   CreateGroupActionState,
   CreateRoundActionState,
   WithdrawMemberActionState,
+  ReinstateMemberActionState,
 } from './collection-groups-state';
 import { InstructorCollectionGroupsCoreClient } from '@/lib/instructor-collection-groups-core';
 import {
@@ -21,6 +22,7 @@ import {
   validateCreateGroup,
   validateCreateRound,
   validateWithdraw,
+  validateReinstate,
 } from '@/lib/collection-groups-validation';
 
 export async function createRoundAction(
@@ -132,6 +134,25 @@ export async function withdrawMemberAction(
   const sessionToken = await requireSessionToken();
   try {
     await coreClient().withdrawMember(sessionToken, groupId, input.studentAccountId, {
+      reason: input.reason,
+    });
+    return { error: null };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { error: mapCollectionGroupsError(error) };
+  }
+}
+
+export async function reinstateMemberAction(
+  groupId: string,
+  _previousState: ReinstateMemberActionState,
+  formData: FormData,
+): Promise<ReinstateMemberActionState> {
+  const input = validateReinstate(formData);
+  if (input === null) return { error: 'invalid' };
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().reinstateMember(sessionToken, groupId, input.studentAccountId, {
       reason: input.reason,
     });
     return { error: null };

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { evaluatePasswordChange } from '../domain/password-policy';
+import { evaluateStudentAccess } from '../domain/student-access-policy';
 import { AuthError } from './auth.error';
 import {
   AUTH_CLOCK,
@@ -186,6 +187,29 @@ export class StudentCollectionAuthService {
     return {
       sessionState: session.credentialState === 'set' ? 'active' : 'password_change_required',
     };
+  }
+
+  async authorizeRead(sessionToken: string): Promise<{ accountId: string }> {
+    const now = this.clock.now();
+    const session = await this.resolveCurrentSession(sessionToken, now);
+    if (session.credentialState !== 'set') throw new AuthError('FORBIDDEN', 403);
+    await this.refreshProviderSessionIfRequired(session, now);
+    return { accountId: session.accountId };
+  }
+
+  async authorizeMutation(sessionToken: string): Promise<{ accountId: string }> {
+    const now = this.clock.now();
+    const session = await this.resolveCurrentSession(sessionToken, now);
+    const access = evaluateStudentAccess({
+      accessEndsAcademicYear: session.studentAccessEndsAcademicYear,
+      currentAcademicYear: session.currentAcademicYear,
+      entryYear: session.entryYear,
+    });
+    if (session.credentialState !== 'set' || !access.canUseStudentCapabilities) {
+      throw new AuthError('FORBIDDEN', 403);
+    }
+    await this.refreshProviderSessionIfRequired(session, now);
+    return { accountId: session.accountId };
   }
 
   async logout(input: LogoutInput): Promise<void> {

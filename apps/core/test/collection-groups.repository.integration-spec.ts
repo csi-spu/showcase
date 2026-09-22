@@ -138,9 +138,7 @@ describe('PostgresCollectionGroupsRepository integration', () => {
     expect(retry.accepted).toHaveLength(1);
     await expect(repository.listGroupMembers(group.id)).resolves.toHaveLength(2);
 
-    // Re-adding a Student withdrawn from this same group must not silently
-    // claim success while leaving the membership withdrawn in the database --
-    // reinstatement is a separate, not-yet-defined product decision.
+    // Re-adding does not bypass the explicit reinstatement action and reason.
     await repository.withdrawMember({
       actorAccountId: ACTOR_ACCOUNT_ID,
       groupId: group.id,
@@ -162,6 +160,15 @@ describe('PostgresCollectionGroupsRepository integration', () => {
         expect.objectContaining({ status: 'withdrawn', studentAccountId: STUDENT_ONE_ACCOUNT_ID }),
       ]),
     );
+    await expect(
+      repository.reinstateMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: group.id,
+        now: new Date(NOW.getTime() + 1_000),
+        reason: 'คืนสมาชิกเพื่อทดสอบ',
+        studentAccountId: STUDENT_ONE_ACCOUNT_ID,
+      }),
+    ).resolves.toMatchObject({ outcome: 'reinstated', member: { status: 'current' } });
   });
 
   it('adds members by Entry Year snapshot without becoming a live filter', async () => {
@@ -250,6 +257,12 @@ describe('PostgresCollectionGroupsRepository integration', () => {
 
   async function cleanup(): Promise<void> {
     await database.sql.begin(async (transaction) => {
+      await transaction`
+        delete from private.collection_membership_audit_events
+        where actor_account_id in (
+          select id from public.accounts where provider_user_id = ${ACTOR_PROVIDER_USER_ID}
+        )
+      `;
       await transaction`
         delete from public.collection_group_memberships
         where student_account_id in (

@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@showcase/ui/cn';
-import { CalendarRangeIcon, type LucideIcon } from 'lucide-react';
+import { CalendarRangeIcon, LayoutTemplateIcon, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -11,7 +11,10 @@ import { usePathname } from 'next/navigation';
  * plain data -- so a server-rendered shell sends this key instead and the
  * lookup below turns it back into the icon.
  */
-const NAV_ICONS = { calendarRange: CalendarRangeIcon } satisfies Record<string, LucideIcon>;
+const NAV_ICONS = {
+  calendarRange: CalendarRangeIcon,
+  layoutTemplate: LayoutTemplateIcon,
+} satisfies Record<string, LucideIcon>;
 
 export type NavIconName = keyof typeof NAV_ICONS;
 

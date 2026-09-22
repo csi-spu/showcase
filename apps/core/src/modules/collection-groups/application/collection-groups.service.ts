@@ -127,8 +127,44 @@ export class CollectionGroupsService {
     if (result.outcome === 'not_found') {
       throw new CollectionGroupsError('GROUP_MEMBER_NOT_FOUND', 404);
     }
+    if (result.outcome === 'round_closed') {
+      throw new CollectionGroupsError('ROUND_CLOSED', 409);
+    }
     if (result.outcome === 'already_withdrawn') {
       throw new CollectionGroupsError('GROUP_MEMBER_ALREADY_WITHDRAWN', 409);
+    }
+    return result.member;
+  }
+
+  async reinstateMember(input: {
+    actorAccountId: string;
+    groupId: string;
+    reason: string;
+    studentAccountId: string;
+  }): Promise<GroupMember> {
+    const reason = input.reason.trim();
+    if (reason.length === 0 || reason.length > 2_000) {
+      throw new CollectionGroupsError('REINSTATEMENT_REASON_INVALID', 422);
+    }
+    await this.requireGroup(input.groupId);
+    const result = await this.repository.reinstateMember({
+      actorAccountId: input.actorAccountId,
+      groupId: input.groupId,
+      now: this.clock.now(),
+      reason,
+      studentAccountId: input.studentAccountId,
+    });
+    if (result.outcome === 'not_found') {
+      throw new CollectionGroupsError('GROUP_MEMBER_NOT_FOUND', 404);
+    }
+    if (result.outcome === 'already_current') {
+      throw new CollectionGroupsError('GROUP_MEMBER_ALREADY_CURRENT', 409);
+    }
+    if (result.outcome === 'round_closed') {
+      throw new CollectionGroupsError('ROUND_CLOSED', 409);
+    }
+    if (result.outcome === 'student_inactive') {
+      throw new CollectionGroupsError('STUDENT_ACCOUNT_INACTIVE', 409);
     }
     return result.member;
   }

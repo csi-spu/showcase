@@ -13,7 +13,9 @@ const localDefaults: Record<string, string> = {
   CORE_URL: 'http://127.0.0.1:4100',
   DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
   E2E_LOCAL_ONLY: '1',
+  INSTRUCTOR_URL: 'http://127.0.0.1:3003',
   MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
+  STUDENT_COLLECTION_URL: 'http://127.0.0.1:3004',
   STUDENT_URL: 'http://127.0.0.1:3002',
   VISITOR_URL: 'http://127.0.0.1:3000',
 };
@@ -65,6 +67,8 @@ try {
     ...requestedEnvironment,
     MEDIA_PROVIDER_URL: requestedEnvironment.MEDIA_PROVIDER_URL,
     ADMIN_URL: requestedEnvironment.ADMIN_URL,
+    INSTRUCTOR_URL: requestedEnvironment.INSTRUCTOR_URL,
+    STUDENT_COLLECTION_URL: requestedEnvironment.STUDENT_COLLECTION_URL,
   };
   assertLocalE2EEnvironment(environment);
   run(

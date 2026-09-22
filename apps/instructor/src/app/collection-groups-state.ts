@@ -1,15 +1,19 @@
 export type CollectionGroupsErrorMessage =
   | 'groupMemberAlreadyWithdrawn'
+  | 'groupMemberAlreadyCurrent'
   | 'groupNameInvalid'
   | 'groupNotFound'
   | 'groupMemberNotFound'
   | 'invalid'
   | 'roundNameInvalid'
   | 'roundNotFound'
+  | 'roundClosed'
   | 'sessionExpired'
   | 'studentIdListInvalid'
+  | 'studentAccountInactive'
   | 'unavailable'
-  | 'withdrawalReasonInvalid';
+  | 'withdrawalReasonInvalid'
+  | 'reinstatementReasonInvalid';
 
 export interface CreateRoundActionState {
   error: CollectionGroupsErrorMessage | null;
@@ -32,6 +36,8 @@ export interface WithdrawMemberActionState {
   error: CollectionGroupsErrorMessage | null;
 }
 
+export type ReinstateMemberActionState = WithdrawMemberActionState;
+
 export const INITIAL_CREATE_ROUND_STATE: CreateRoundActionState = { error: null };
 export const INITIAL_CREATE_GROUP_STATE: CreateGroupActionState = { error: null };
 export const INITIAL_ADD_MEMBERS_STATE: AddMembersActionState = {
@@ -43,6 +49,7 @@ export const INITIAL_ADD_MEMBERS_STATE: AddMembersActionState = {
   unknownStudentIds: [],
 };
 export const INITIAL_WITHDRAW_STATE: WithdrawMemberActionState = { error: null };
+export const INITIAL_REINSTATE_STATE: ReinstateMemberActionState = { error: null };
 
 export type CreateRoundAction = (
   state: CreateRoundActionState,
@@ -63,3 +70,8 @@ export type WithdrawMemberAction = (
   state: WithdrawMemberActionState,
   formData: FormData,
 ) => Promise<WithdrawMemberActionState>;
+
+export type ReinstateMemberAction = (
+  state: ReinstateMemberActionState,
+  formData: FormData,
+) => Promise<ReinstateMemberActionState>;

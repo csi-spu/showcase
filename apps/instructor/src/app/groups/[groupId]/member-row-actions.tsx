@@ -3,7 +3,7 @@
 import { Button } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
 import { Textarea } from '@showcase/ui/textarea';
-import { UserMinusIcon } from 'lucide-react';
+import { UserMinusIcon, UserPlusIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useActionState, useId, useState } from 'react';
@@ -22,15 +22,18 @@ import { Spinner } from '@/components/ui/spinner';
 import type {
   WithdrawMemberAction,
   WithdrawMemberActionState,
+  ReinstateMemberAction,
 } from '../../collection-groups-state';
 import { INITIAL_WITHDRAW_STATE } from '../../collection-groups-state';
 
 export function MemberRowActions({
   action,
+  kind,
   memberName,
   studentAccountId,
 }: {
-  action: WithdrawMemberAction;
+  action: WithdrawMemberAction | ReinstateMemberAction;
+  kind: 'withdraw' | 'reinstate';
   memberName: string;
   studentAccountId: string;
 }) {
@@ -39,6 +42,9 @@ export function MemberRowActions({
   const router = useRouter();
   const reasonId = useId();
   const [isOpen, setIsOpen] = useState(false);
+  const isReinstating = kind === 'reinstate';
+  const Icon = isReinstating ? UserPlusIcon : UserMinusIcon;
+  const label = isReinstating ? t('reinstate') : t('withdraw');
   const [state, formAction] = useActionState(
     async (previousState: WithdrawMemberActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
@@ -46,7 +52,7 @@ export function MemberRowActions({
         toast.error(errorT(nextState.error));
         return nextState;
       }
-      toast.success(t('withdrawSuccess'));
+      toast.success(isReinstating ? t('reinstateSuccess') : t('withdrawSuccess'));
       setIsOpen(false);
       router.refresh();
       return nextState;
@@ -59,23 +65,35 @@ export function MemberRowActions({
       <AlertDialogTrigger
         render={
           <Button size="sm" variant="ghost">
-            <UserMinusIcon aria-hidden="true" data-icon="inline-start" />
-            <span className="hidden sm:inline">{t('withdraw')}</span>
-            <span className="sr-only sm:hidden">{t('withdrawMember', { name: memberName })}</span>
+            <Icon aria-hidden="true" data-icon="inline-start" />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sr-only sm:hidden">
+              {isReinstating
+                ? t('reinstateMember', { name: memberName })
+                : t('withdrawMember', { name: memberName })}
+            </span>
           </Button>
         }
       />
       <AlertDialogContent>
-        <AlertDialogTitle>{t('withdrawTitle')}</AlertDialogTitle>
+        <AlertDialogTitle>
+          {isReinstating ? t('reinstateTitle') : t('withdrawTitle')}
+        </AlertDialogTitle>
         <AlertDialogDescription>
-          {t('withdrawConfirm', { name: memberName })}
+          {isReinstating
+            ? t('reinstateConfirm', { name: memberName })
+            : t('withdrawConfirm', { name: memberName })}
         </AlertDialogDescription>
         <form action={formAction} className="flex flex-col gap-4">
           <input name="studentAccountId" type="hidden" value={studentAccountId} />
           <Field>
-            <FieldLabel htmlFor={reasonId}>{t('withdrawReason')}</FieldLabel>
+            <FieldLabel htmlFor={reasonId}>
+              {isReinstating ? t('reinstateReason') : t('withdrawReason')}
+            </FieldLabel>
             <Textarea id={reasonId} maxLength={2_000} name="reason" required rows={3} />
-            <FieldDescription>{t('withdrawReasonHelp')}</FieldDescription>
+            <FieldDescription>
+              {isReinstating ? t('reinstateReasonHelp') : t('withdrawReasonHelp')}
+            </FieldDescription>
           </Field>
           {state.error === null ? null : (
             <Alert variant="destructive">
@@ -86,7 +104,12 @@ export function MemberRowActions({
             <Button onClick={() => setIsOpen(false)} type="button" variant="ghost">
               {t('cancel')}
             </Button>
-            <SubmitButton label={t('withdraw')} pendingLabel={t('withdrawing')} />
+            <SubmitButton
+              icon={Icon}
+              label={label}
+              pendingLabel={isReinstating ? t('reinstating') : t('withdrawing')}
+              variant={isReinstating ? 'default' : 'destructive'}
+            />
           </AlertDialogFooter>
         </form>
       </AlertDialogContent>
@@ -94,14 +117,24 @@ export function MemberRowActions({
   );
 }
 
-function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
+function SubmitButton({
+  icon: Icon,
+  label,
+  pendingLabel,
+  variant,
+}: {
+  icon: typeof UserMinusIcon;
+  label: string;
+  pendingLabel: string;
+  variant: 'default' | 'destructive';
+}) {
   const { pending } = useFormStatus();
   return (
-    <Button disabled={pending} type="submit" variant="destructive">
+    <Button disabled={pending} type="submit" variant={variant}>
       {pending ? (
         <Spinner aria-label={pendingLabel} data-icon="inline-start" />
       ) : (
-        <UserMinusIcon aria-hidden="true" data-icon="inline-start" />
+        <Icon aria-hidden="true" data-icon="inline-start" />
       )}
       {pending ? pendingLabel : label}
     </Button>
