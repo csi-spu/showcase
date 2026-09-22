@@ -122,7 +122,9 @@ const environment = assertLocalE2EEnvironment({
   CORE_URL: process.env.CORE_URL,
   DATABASE_URL: process.env.DATABASE_URL,
   E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
+  INSTRUCTOR_URL: process.env.INSTRUCTOR_URL,
   MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
+  STUDENT_COLLECTION_URL: process.env.STUDENT_COLLECTION_URL,
   STUDENT_URL: process.env.STUDENT_URL,
   VISITOR_URL: process.env.VISITOR_URL,
 });

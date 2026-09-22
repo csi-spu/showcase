@@ -2,8 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 const studentUrl = new URL(process.env.STUDENT_URL ?? 'http://127.0.0.1:3002').origin;
 const adminUrl = new URL(process.env.ADMIN_URL ?? 'http://127.0.0.1:3001').origin;
+const instructorUrl = new URL(process.env.INSTRUCTOR_URL ?? 'http://127.0.0.1:3003').origin;
 const coreUrl = new URL(process.env.CORE_URL ?? 'http://127.0.0.1:4100').origin;
 const mediaProviderUrl = new URL(process.env.MEDIA_PROVIDER_URL ?? 'http://127.0.0.1:4191').origin;
+const studentCollectionUrl = new URL(process.env.STUDENT_COLLECTION_URL ?? 'http://127.0.0.1:3004')
+  .origin;
 const visitorUrl = new URL(process.env.VISITOR_URL ?? 'http://127.0.0.1:3000').origin;
 
 export default defineConfig({
@@ -49,6 +52,18 @@ export default defineConfig({
       cwd: '.',
       timeout: 120_000,
       url: new URL('/health', adminUrl).toString(),
+    },
+    {
+      command: 'pnpm --filter @showcase/instructor dev',
+      cwd: '.',
+      timeout: 120_000,
+      url: new URL('/health', instructorUrl).toString(),
+    },
+    {
+      command: 'pnpm --filter @showcase/student-collection dev',
+      cwd: '.',
+      timeout: 120_000,
+      url: new URL('/health', studentCollectionUrl).toString(),
     },
     {
       command: 'pnpm --filter @showcase/visitor dev',

@@ -8,7 +8,9 @@ export interface LocalE2EEnvironment {
   authIdentitySecret: string;
   databaseUrl: string;
   coreUrl: string;
+  instructorUrl: string;
   mediaProviderUrl: string;
+  studentCollectionUrl: string;
   studentUrl: string;
   visitorUrl: string;
 }
@@ -27,12 +29,18 @@ export function assertLocalE2EEnvironment(
 
   const databaseUrl = requireLocalDatabaseUrl(input.DATABASE_URL);
   const coreUrl = requireLocalHttpUrl(input.CORE_URL, 4100, 'CORE_URL');
+  const instructorUrl = requireLocalHttpUrl(input.INSTRUCTOR_URL, 3003, 'INSTRUCTOR_URL');
   const mediaProviderUrl = requireLocalHttpUrl(
     input.MEDIA_PROVIDER_URL,
     4191,
     'MEDIA_PROVIDER_URL',
   );
   const studentUrl = requireLocalHttpUrl(input.STUDENT_URL, 3002, 'STUDENT_URL');
+  const studentCollectionUrl = requireLocalHttpUrl(
+    input.STUDENT_COLLECTION_URL,
+    3004,
+    'STUDENT_COLLECTION_URL',
+  );
   const adminUrl = requireLocalHttpUrl(input.ADMIN_URL, 3001, 'ADMIN_URL');
   const visitorUrl = requireLocalHttpUrl(input.VISITOR_URL, 3000, 'VISITOR_URL');
   const requireCredentials = options.requireCredentials ?? true;
@@ -46,7 +54,9 @@ export function assertLocalE2EEnvironment(
     coreUrl,
     mediaProviderUrl,
     databaseUrl,
+    instructorUrl,
     studentUrl,
+    studentCollectionUrl,
     visitorUrl,
   };
 }

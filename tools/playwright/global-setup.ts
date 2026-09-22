@@ -11,7 +11,9 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
     CORE_URL: process.env.CORE_URL,
     DATABASE_URL: process.env.DATABASE_URL,
     E2E_LOCAL_ONLY: process.env.E2E_LOCAL_ONLY,
+    INSTRUCTOR_URL: process.env.INSTRUCTOR_URL,
     MEDIA_PROVIDER_URL: process.env.MEDIA_PROVIDER_URL,
+    STUDENT_COLLECTION_URL: process.env.STUDENT_COLLECTION_URL,
     STUDENT_URL: process.env.STUDENT_URL,
     VISITOR_URL: process.env.VISITOR_URL,
   });
@@ -23,12 +25,16 @@ export default async function globalSetup(config: FullConfig): Promise<() => Pro
     await Promise.all([
       waitForService(new URL('/health', environment.adminUrl), 'ADMIN'),
       waitForService(new URL('/v1/health/ready', environment.coreUrl), 'CORE'),
+      waitForService(new URL('/health', environment.instructorUrl), 'INSTRUCTOR'),
       waitForService(new URL('/health', environment.mediaProviderUrl), 'MEDIA_PROVIDER'),
       waitForService(new URL('/health', environment.studentUrl), 'STUDENT'),
+      waitForService(new URL('/health', environment.studentCollectionUrl), 'STUDENT_COLLECTION'),
       waitForService(new URL('/health', environment.visitorUrl), 'VISITOR'),
     ]);
     await warmRoute(new URL('/', environment.adminUrl), 'ADMIN');
+    await warmRoute(new URL('/', environment.instructorUrl), 'INSTRUCTOR');
     await warmRoute(new URL('/', environment.studentUrl), 'STUDENT');
+    await warmRoute(new URL('/', environment.studentCollectionUrl), 'STUDENT_COLLECTION');
     await warmRoute(
       new URL('/people/00000000-0000-4000-8000-000000000000', environment.visitorUrl),
       'VISITOR_PROFILE',
