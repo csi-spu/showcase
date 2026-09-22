@@ -21,6 +21,7 @@
     "media:dev": "node --watch -r ts-node/register/transpile-only -r tsconfig-paths/register src/modules/works/commands/process-work-media-development.ts",
     "media:process": "node dist/modules/works/commands/process-work-media.js",
     "cache:process": "node dist/modules/catalog/commands/process-cache-invalidations.js",
+    "collection:inspect": "node dist/modules/collection-forms/commands/inspect-collection-files.js",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
     "typecheck": "tsc --noEmit",

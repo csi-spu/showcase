@@ -3,7 +3,8 @@ import * as Sentry from '@sentry/nestjs';
 interface OperationalErrorContext {
   errorCode: string;
   operation: string;
-  runtime: 'api' | 'cache-worker' | 'media-processor' | 'roster-worker';
+  runtime:
+    'api' | 'cache-worker' | 'collection-file-inspector' | 'media-processor' | 'roster-worker';
 }
 
 export function reportOperationalError(error: unknown, context: OperationalErrorContext): void {

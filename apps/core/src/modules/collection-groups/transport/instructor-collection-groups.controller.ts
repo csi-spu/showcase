@@ -27,6 +27,7 @@ import {
   AddMembersByStudentIdsDto,
   CreateGroupDto,
   CreateRoundDto,
+  ReinstateMemberDto,
   WithdrawMemberDto,
 } from './collection-groups.dto';
 import { CollectionGroupsExceptionFilter } from './collection-groups-exception.filter';
@@ -145,6 +146,23 @@ export class InstructorCollectionGroupsController {
   ): Promise<GroupMember> {
     const actor = await this.authorize(authorization);
     return this.groups.withdrawMember({
+      actorAccountId: actor.accountId,
+      groupId,
+      reason: body.reason,
+      studentAccountId,
+    });
+  }
+
+  @Post('groups/:groupId/members/:studentAccountId/reinstate')
+  @Header('Cache-Control', 'no-store')
+  async reinstateMember(
+    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
+    @Param('studentAccountId', new ParseUUIDPipe({ version: '4' })) studentAccountId: string,
+    @Body() body: ReinstateMemberDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<GroupMember> {
+    const actor = await this.authorize(authorization);
+    return this.groups.reinstateMember({
       actorAccountId: actor.accountId,
       groupId,
       reason: body.reason,
