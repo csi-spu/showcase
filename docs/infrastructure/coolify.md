@@ -4,15 +4,18 @@
 
 Create one `production` environment containing these Docker Image applications and workers. Add staging later as a separate delivery decision when the team is ready to operate it:
 
-| App                  | Image name                         | Container port | Health path        |
-| -------------------- | ---------------------------------- | -------------: | ------------------ |
-| core                 | `ghcr.io/csi-spu/showcase-core`    |           4100 | `/v1/health/ready` |
-| core-media-processor | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
-| core-cache-worker    | `ghcr.io/csi-spu/showcase-core`    |            n/a | n/a                |
-| admin                | `ghcr.io/csi-spu/showcase-admin`   |           3001 | `/health`          |
-| student              | `ghcr.io/csi-spu/showcase-student` |           3002 | `/health`          |
-| visitor              | `ghcr.io/csi-spu/showcase-visitor` |           3000 | `/health`          |
-| media                | `ghcr.io/csi-spu/showcase-media`   |           4191 | `/health`          |
+| App                            | Image name                                    | Container port | Health path        |
+| ------------------------------ | --------------------------------------------- | -------------: | ------------------ |
+| core                           | `ghcr.io/csi-spu/showcase-core`               |           4100 | `/v1/health/ready` |
+| core-media-processor           | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| core-cache-worker              | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| core-collection-file-inspector | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| admin                          | `ghcr.io/csi-spu/showcase-admin`              |           3001 | `/health`          |
+| instructor                     | `ghcr.io/csi-spu/showcase-instructor`         |           3003 | `/health`          |
+| student                        | `ghcr.io/csi-spu/showcase-student`            |           3002 | `/health`          |
+| student-collection             | `ghcr.io/csi-spu/showcase-student-collection` |           3004 | `/health`          |
+| visitor                        | `ghcr.io/csi-spu/showcase-visitor`            |           3000 | `/health`          |
+| media                          | `ghcr.io/csi-spu/showcase-media`              |           4191 | `/health`          |
 
 Give Coolify read-only GHCR access. Configure an initial valid SHA tag before first start. Do not connect these applications to a Git source or enable automatic deploy.
 
@@ -40,15 +43,17 @@ Force HTTPS. Route Core internal authentication endpoints only where the fronten
 - Mount the media volume at `/data`. Docker-managed empty volumes inherit the image's `node` ownership; pre-provision host bind mounts as UID/GID `1000:1000`. Verify the running media container can create and remove a test file in `/data` before routing uploads.
 - Configure restarts for process failure, not application-level retry loops.
 
-Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `ADMIN_URL`, `STUDENT_URL`, `VISITOR_URL`, `CORE_URL`, `DATABASE_URL`, `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_SECRET`, `API_KEY`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, `VISITOR_BFF_SECRET`, `VISITOR_CACHE_SECRET`, and its public `SENTRY_DSN`. Core derives `ADMIN_BFF_SECRET`, `STUDENT_BFF_SECRET`, and `AUTH_IDENTITY_SECRET` from `API_KEY`, and derives `CORS_ALLOWED_ORIGINS` from `ADMIN_URL`, `STUDENT_URL`, and `VISITOR_URL`. Admin needs runtime `CORE_URL` and its own `API_KEY` set to the same value as Core's `API_KEY`. Student needs runtime `CORE_URL`, `VISITOR_URL`, and its own `API_KEY` set to the same value as Core's `API_KEY`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET`. Keep secrets server-only; ADR 0016 explicitly allows only the public Sentry DSNs to use a `NEXT_PUBLIC_` prefix.
+Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `ADMIN_URL`, `STUDENT_URL`, `VISITOR_URL`, `CORE_URL`, `DATABASE_URL`, `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_SECRET`, `API_KEY`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, `VISITOR_BFF_SECRET`, `VISITOR_CACHE_SECRET`, and its public `SENTRY_DSN`. Core derives the Admin, Instructor, Student, and Student Collection BFF secrets plus `AUTH_IDENTITY_SECRET` from `API_KEY`, and derives `CORS_ALLOWED_ORIGINS` from `ADMIN_URL`, `STUDENT_URL`, and `VISITOR_URL`. Admin, Instructor, and Student Collection each need runtime `CORE_URL` and their own `API_KEY` set to the same value as Core's `API_KEY`. Student additionally needs `VISITOR_URL`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET`. Keep secrets server-only; ADR 0016 explicitly allows only the public Sentry DSNs to use a `NEXT_PUBLIC_` prefix.
 
 Media needs `APP_ENV=production`, `NODE_ENV=production`, `HOST`, `PORT=4191`, `STORAGE_ROOT=/data`, `MEDIA_SERVICE_HMAC_SECRET`, exact `STUDENT_URL`, and its public `SENTRY_DSN`. `STUDENT_URL` is the only browser origin allowed to use signed upload URLs; Media rejects other origins and validates preflight requests against the signed `PUT` method.
 
-Set the same Core project DSN on the Core API, cache worker, roster worker process, and media processor because they share the Core project; runtime tags distinguish them. Do not set `SENTRY_AUTH_TOKEN` in Coolify. The three frontend DSNs are build-time GitHub variables and are not Coolify values.
+Set the same Core project DSN on the Core API, cache worker, collection file inspector, roster worker process, and media processor because they share the Core project; runtime tags distinguish them. Do not set `SENTRY_AUTH_TOKEN` in Coolify. The five frontend DSNs are build-time GitHub variables and are not Coolify values.
 
-Create a fifth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares Core's database and media-service environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
+Create `core-media-processor` as a non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/works/commands/process-work-media.js` on a one-minute schedule, shares Core's database and media-service environment values, and exits after at most 20 processing or cleanup jobs. Limit it to one CPU and 512 MiB memory; Sharp itself uses one worker, a 64 MiB cache, bounded decoded pixels, and a 15-second operation timeout. Concurrent runs are safe because processing and cleanup claims use leased rows with `FOR UPDATE SKIP LOCKED`.
 
-Create a sixth non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
+Create `core-cache-worker` as another non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
+
+Create `core-collection-file-inspector` as another non-HTTP Coolify resource from the exact Core image. Run `node dist/modules/collection-forms/commands/inspect-collection-files.js` on a one-minute schedule. Give it the same runtime configuration as Core because the shared environment schema validates the whole Core contract; `DATABASE_URL`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, and the Core project's `SENTRY_DSN` are the values it actively uses. One run inspects at most 50 files and exits; concurrent runs claim different rows through `FOR UPDATE SKIP LOCKED`. Alert when the oldest `quarantined` or `inspecting` file exceeds two minutes, or when the process exits unsuccessfully. A missing inspector is fail-closed: files remain quarantined and cannot be submitted.
 
 Configure Cloudflare to cache eligible Core API and Visitor HTML responses using their origin `Cache-Control`, retain the origin `Cache-Tag` values, and keep private/no-store routes out of shared cache. The cache worker expires matching Next.js data/path cache first and then calls Cloudflare's zone cache-purge API by tag. HTML/API remains capped at two minutes if purge delivery is delayed.
 
@@ -74,7 +79,7 @@ First deployment validation:
 2. Set Media's exact `STUDENT_URL` before deploying the CORS-enabled image.
 3. Push the initial harness commit to `main` and confirm CI builds all five GHCR images with the same full SHA tag.
 4. Approve the protected production Environment.
-5. Confirm Media becomes healthy before Core, workers, and frontends deploy.
+5. Confirm Media becomes healthy before Core, all three Core-image workers, and frontends deploy.
 6. Confirm every public health endpoint returns 200 over HTTPS and a signed Student upload completes.
 7. Confirm each affected Coolify application uses the expected immutable SHA tag.
 

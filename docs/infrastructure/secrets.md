@@ -24,9 +24,9 @@ The repository contains the build-only secret `SENTRY_AUTH_TOKEN`. Grant only th
 
 Repository variables identify applications:
 
-- `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_CACHE_WORKER`, `COOLIFY_PRODUCTION_MEDIA_PROCESSOR`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_VISITOR`, `COOLIFY_PRODUCTION_MEDIA`
+- `COOLIFY_PRODUCTION_CORE`, `COOLIFY_PRODUCTION_CACHE_WORKER`, `COOLIFY_PRODUCTION_COLLECTION_FILE_INSPECTOR`, `COOLIFY_PRODUCTION_MEDIA_PROCESSOR`, `COOLIFY_PRODUCTION_ADMIN`, `COOLIFY_PRODUCTION_INSTRUCTOR`, `COOLIFY_PRODUCTION_STUDENT`, `COOLIFY_PRODUCTION_STUDENT_COLLECTION`, `COOLIFY_PRODUCTION_VISITOR`, `COOLIFY_PRODUCTION_MEDIA`
 - `SENTRY_ORG`
-- `SENTRY_DSN_ADMIN`, `SENTRY_DSN_STUDENT`, `SENTRY_DSN_VISITOR`
+- `SENTRY_DSN_ADMIN`, `SENTRY_DSN_INSTRUCTOR`, `SENTRY_DSN_STUDENT`, `SENTRY_DSN_STUDENT_COLLECTION`, `SENTRY_DSN_VISITOR`
 
 Protect the `production` Environment with required reviewers and restrict it to `main`. Successful `main` CI runs build only affected images before requesting this approval.
 
@@ -35,7 +35,7 @@ Protect the `production` Environment with required reviewers and restrict it to 
 Current required keys:
 
 - `APP_ENV`
-- `API_KEY`, an environment-specific high-entropy secret. Core derives `ADMIN_BFF_SECRET` (shared with the Admin server runtime), `STUDENT_BFF_SECRET` (shared with the Student server runtime), and `AUTH_IDENTITY_SECRET` (HMAC secret for private Student ID and Admin login derivation) from this single value.
+- `API_KEY`, an environment-specific high-entropy secret. Core derives `ADMIN_BFF_SECRET`, `INSTRUCTOR_BFF_SECRET`, `STUDENT_BFF_SECRET`, `STUDENT_COLLECTION_BFF_SECRET`, and `AUTH_IDENTITY_SECRET` from this single value.
 - `ADMIN_URL`, the exact public Admin origin. Core derives `CORS_ALLOWED_ORIGINS` from `ADMIN_URL`, `STUDENT_URL`, and `VISITOR_URL`.
 - `CATALOG_CURSOR_SECRET`, an environment-specific high-entropy HMAC secret for integrity-protected Public Catalog cursors
 - `CLOUDFLARE_API_TOKEN`, a zone-scoped token with only Cache Purge permission
@@ -60,11 +60,13 @@ Media receives `STUDENT_URL` as the exact allowed browser upload origin. It reje
 
 Admin receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Admin sends it as the `x-admin-bff-secret` header. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 
-Student receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Student sends it as the `x-student-bff-secret` header. Because Core derives `ADMIN_BFF_SECRET`, `STUDENT_BFF_SECRET`, and `AUTH_IDENTITY_SECRET` from one `API_KEY`, rotating it is a combined Core+Admin+Student change, not an independent one. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
+Student receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Student sends it as the `x-student-bff-secret` header. Because Core derives every authenticated-browser BFF secret plus `AUTH_IDENTITY_SECRET` from one `API_KEY`, rotating it is a coordinated Core and authenticated-app change, not an independent one. Any variable beginning `NEXT_PUBLIC_` is public and build-time sensitive; adding one requires an ADR-level review because release artifacts are promoted unchanged.
+
+Instructor and Student Collection each receive `CORE_URL` and their own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`. They send it only from their server runtime as `x-instructor-bff-secret` and `x-student-collection-bff-secret`. Rotate this shared value across Core and all four authenticated browser applications together.
 
 Visitor receives `CORE_URL` and matching `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET` values at container runtime. Rotate either shared secret on Core and Visitor together. Visitor sends `VISITOR_BFF_SECRET` only to the same-environment HTTPS Core origin; neither secret enters browser code or logs. `VISITOR_BFF_SECRET` authenticates only an HMAC source key, never a raw address.
 
-Media receives the public Media project `SENTRY_DSN` at runtime. A DSN can submit events but cannot administer the Sentry project; treat the auth token, not the DSN, as the credential. Configure Sentry project access, server-side scrubbing, IP handling, retention, and alerts separately for all five projects.
+Media receives the public Media project `SENTRY_DSN` at runtime. A DSN can submit events but cannot administer the Sentry project; treat the auth token, not the DSN, as the credential. Configure Sentry project access, server-side scrubbing, IP handling, retention, and alerts separately for all seven projects.
 
 Provision an Admin from an authorized Core container after migrations are current:
 

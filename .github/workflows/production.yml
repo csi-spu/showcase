@@ -14,7 +14,7 @@ on:
       apps:
         description: JSON array of images to deploy from that SHA
         required: true
-        default: '["core","admin","student","visitor","media"]'
+        default: '["core","admin","instructor","student","student-collection","visitor","media"]'
         type: string
 
 concurrency:
@@ -124,7 +124,7 @@ jobs:
     with:
       app: ${{ matrix.app }}
       dockerfile: ${{ matrix.dockerfile }}
-      sentry_dsn: ${{ matrix.app == 'admin' && vars.SENTRY_DSN_ADMIN || matrix.app == 'student' && vars.SENTRY_DSN_STUDENT || matrix.app == 'visitor' && vars.SENTRY_DSN_VISITOR || '' }}
+      sentry_dsn: ${{ matrix.app == 'admin' && vars.SENTRY_DSN_ADMIN || matrix.app == 'instructor' && vars.SENTRY_DSN_INSTRUCTOR || matrix.app == 'student' && vars.SENTRY_DSN_STUDENT || matrix.app == 'student-collection' && vars.SENTRY_DSN_STUDENT_COLLECTION || matrix.app == 'visitor' && vars.SENTRY_DSN_VISITOR || '' }}
       sentry_org: ${{ vars.SENTRY_ORG }}
       source_sha: ${{ needs.resolve-plan.outputs.source_sha }}
     secrets:
@@ -225,6 +225,21 @@ jobs:
       image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
     secrets: inherit
 
+  deploy-collection-file-inspector:
+    needs: [resolve-plan, approve-production, deploy-core]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      needs.deploy-core.result == 'success' &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'core')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: core-collection-file-inspector
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_COLLECTION_FILE_INSPECTOR }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
   deploy-admin:
     needs:
       [
@@ -233,6 +248,7 @@ jobs:
         deploy-media,
         deploy-core,
         deploy-cache-worker,
+        deploy-collection-file-inspector,
         deploy-media-processor,
       ]
     if: >-
@@ -241,12 +257,41 @@ jobs:
       (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
       (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
       (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-collection-file-inspector.result == 'success' || needs.deploy-collection-file-inspector.result == 'skipped') &&
       (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
       contains(fromJSON(needs.resolve-plan.outputs.apps), 'admin')
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: admin
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_ADMIN }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-instructor:
+    needs:
+      [
+        resolve-plan,
+        approve-production,
+        deploy-media,
+        deploy-core,
+        deploy-cache-worker,
+        deploy-collection-file-inspector,
+        deploy-media-processor,
+      ]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
+      (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-collection-file-inspector.result == 'success' || needs.deploy-collection-file-inspector.result == 'skipped') &&
+      (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'instructor')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: instructor
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_INSTRUCTOR }}
       environment: production
       image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
     secrets: inherit
@@ -259,6 +304,7 @@ jobs:
         deploy-media,
         deploy-core,
         deploy-cache-worker,
+        deploy-collection-file-inspector,
         deploy-media-processor,
       ]
     if: >-
@@ -267,12 +313,41 @@ jobs:
       (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
       (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
       (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-collection-file-inspector.result == 'success' || needs.deploy-collection-file-inspector.result == 'skipped') &&
       (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
       contains(fromJSON(needs.resolve-plan.outputs.apps), 'student')
     uses: ./.github/workflows/deploy-coolify.yml
     with:
       app: student
       application_uuid: ${{ vars.COOLIFY_PRODUCTION_STUDENT }}
+      environment: production
+      image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
+    secrets: inherit
+
+  deploy-student-collection:
+    needs:
+      [
+        resolve-plan,
+        approve-production,
+        deploy-media,
+        deploy-core,
+        deploy-cache-worker,
+        deploy-collection-file-inspector,
+        deploy-media-processor,
+      ]
+    if: >-
+      always() &&
+      needs.approve-production.result == 'success' &&
+      (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
+      (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
+      (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-collection-file-inspector.result == 'success' || needs.deploy-collection-file-inspector.result == 'skipped') &&
+      (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
+      contains(fromJSON(needs.resolve-plan.outputs.apps), 'student-collection')
+    uses: ./.github/workflows/deploy-coolify.yml
+    with:
+      app: student-collection
+      application_uuid: ${{ vars.COOLIFY_PRODUCTION_STUDENT_COLLECTION }}
       environment: production
       image_tag: sha-${{ needs.resolve-plan.outputs.source_sha }}
     secrets: inherit
@@ -285,6 +360,7 @@ jobs:
         deploy-media,
         deploy-core,
         deploy-cache-worker,
+        deploy-collection-file-inspector,
         deploy-media-processor,
       ]
     if: >-
@@ -293,6 +369,7 @@ jobs:
       (needs.deploy-media.result == 'success' || needs.deploy-media.result == 'skipped') &&
       (needs.deploy-core.result == 'success' || needs.deploy-core.result == 'skipped') &&
       (needs.deploy-cache-worker.result == 'success' || needs.deploy-cache-worker.result == 'skipped') &&
+      (needs.deploy-collection-file-inspector.result == 'success' || needs.deploy-collection-file-inspector.result == 'skipped') &&
       (needs.deploy-media-processor.result == 'success' || needs.deploy-media-processor.result == 'skipped') &&
       contains(fromJSON(needs.resolve-plan.outputs.apps), 'visitor')
     uses: ./.github/workflows/deploy-coolify.yml

@@ -21,7 +21,45 @@ test('production consumes the CI plan and builds only its application matrix', (
   );
   assert.match(production.jobs['deploy-media'].if, /contains\(fromJSON\(.+apps\), 'media'\)/u);
   assert.match(production.jobs['deploy-core'].if, /contains\(fromJSON\(.+apps\), 'core'\)/u);
+  assert.match(
+    production.jobs['deploy-instructor'].if,
+    /contains\(fromJSON\(.+apps\), 'instructor'\)/u,
+  );
   assert.match(production.jobs['deploy-student'].if, /contains\(fromJSON\(.+apps\), 'student'\)/u);
+  assert.match(
+    production.jobs['deploy-student-collection'].if,
+    /contains\(fromJSON\(.+apps\), 'student-collection'\)/u,
+  );
+});
+
+test('a Core deployment updates every Core-image worker before frontends', () => {
+  const workerJobs = [
+    'deploy-cache-worker',
+    'deploy-collection-file-inspector',
+    'deploy-media-processor',
+  ];
+
+  for (const jobName of workerJobs) {
+    const job = production.jobs[jobName];
+    assert.ok(job, `${jobName} must exist`);
+    assert.match(job.if, /contains\(fromJSON\(.+apps\), 'core'\)/u);
+    assert.equal(job.with.image_tag, 'sha-${{ needs.resolve-plan.outputs.source_sha }}');
+  }
+  assert.equal(
+    production.jobs['deploy-collection-file-inspector'].with.application_uuid,
+    '${{ vars.COOLIFY_PRODUCTION_COLLECTION_FILE_INSPECTOR }}',
+  );
+
+  for (const frontend of [
+    'deploy-admin',
+    'deploy-instructor',
+    'deploy-student',
+    'deploy-student-collection',
+    'deploy-visitor',
+  ]) {
+    assert.ok(production.jobs[frontend].needs.includes('deploy-collection-file-inspector'));
+    assert.match(production.jobs[frontend].if, /needs\.deploy-collection-file-inspector\.result/u);
+  }
 });
 
 test('staging is not part of the current delivery workflow', () => {
@@ -32,6 +70,8 @@ test('production image builds provide Sentry source-map configuration without a 
   assert.equal(buildImage.on.workflow_call.secrets.SENTRY_AUTH_TOKEN.required, true);
   assert.equal(production.jobs.build.with.sentry_org, '${{ vars.SENTRY_ORG }}');
   assert.match(production.jobs.build.with.sentry_dsn, /SENTRY_DSN_ADMIN/u);
+  assert.match(production.jobs.build.with.sentry_dsn, /SENTRY_DSN_INSTRUCTOR/u);
+  assert.match(production.jobs.build.with.sentry_dsn, /SENTRY_DSN_STUDENT_COLLECTION/u);
   assert.equal(production.jobs.build.secrets.SENTRY_AUTH_TOKEN, '${{ secrets.SENTRY_AUTH_TOKEN }}');
 
   const buildStep = buildImage.jobs.build.steps.find(
