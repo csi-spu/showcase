@@ -43,9 +43,7 @@ describe('toFieldPayload', () => {
   });
 
   it('sends options only for a choice field, trimmed and without blank lines', () => {
-    const payload = toFieldPayload(
-      draft({ optionsText: ' ก \n\n ข \n', type: 'single_choice' }),
-    );
+    const payload = toFieldPayload(draft({ optionsText: ' ก \n\n ข \n', type: 'single_choice' }));
     expect(payload.options).toEqual(['ก', 'ข']);
   });
 

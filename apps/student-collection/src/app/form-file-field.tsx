@@ -147,9 +147,7 @@ export function FormFileField({
     const outcome = await uploadFileBytes({
       file: selected,
       onProgress: (fraction) =>
-        setTransfer((current) =>
-          current === null ? current : { ...current, progress: fraction },
-        ),
+        setTransfer((current) => (current === null ? current : { ...current, progress: fraction })),
       signal: controller.signal,
       url: uploadUrl,
     });

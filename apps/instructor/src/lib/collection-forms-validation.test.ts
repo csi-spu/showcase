@@ -140,9 +140,7 @@ describe('validateSaveAsTemplate', () => {
 
 describe('validateCreateFromTemplate', () => {
   it('requires a template id that is a uuid', () => {
-    expect(
-      validateCreateFromTemplate(formData({ templateId: 'nope', title: 'ชื่อ' })),
-    ).toBeNull();
+    expect(validateCreateFromTemplate(formData({ templateId: 'nope', title: 'ชื่อ' }))).toBeNull();
   });
 
   it('accepts a uuid with a title', () => {

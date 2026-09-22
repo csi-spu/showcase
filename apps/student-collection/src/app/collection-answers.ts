@@ -143,9 +143,7 @@ export function buildInitialAnswers(
  */
 function toAnswerValue(value: unknown, field: StudentCollectionField): CollectionAnswerValue {
   if (field.type === 'multiple_choice') {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
-      ? value
-      : [];
+    return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : [];
   }
   if (field.type === 'number') return typeof value === 'number' ? value : '';
   return typeof value === 'string' ? value : '';

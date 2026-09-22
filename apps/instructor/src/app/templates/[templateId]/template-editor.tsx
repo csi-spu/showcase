@@ -221,7 +221,11 @@ function SaveButton() {
   const { pending } = useFormStatus();
   return (
     <Button disabled={pending} type="submit">
-      {pending ? <Spinner aria-hidden="true" /> : <SaveIcon aria-hidden="true" data-icon="inline-start" />}
+      {pending ? (
+        <Spinner aria-hidden="true" />
+      ) : (
+        <SaveIcon aria-hidden="true" data-icon="inline-start" />
+      )}
       {t('template.editSave')}
     </Button>
   );

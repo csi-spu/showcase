@@ -61,10 +61,7 @@ export function FormsSection({
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <CreateFormDialog action={createAction} />
-          <CreateFromTemplateDialog
-            action={createFromTemplateAction}
-            templates={templates}
-          />
+          <CreateFromTemplateDialog action={createFromTemplateAction} templates={templates} />
         </div>
       </div>
 

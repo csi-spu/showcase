@@ -84,10 +84,7 @@ export function FormBuilder({
   /* Tracks unsaved structure so the Instructor is never unsure what is stored. */
   const [isDirty, setIsDirty] = useState(false);
 
-  const serializedFields = useMemo(
-    () => JSON.stringify(fields.map(toFieldPayload)),
-    [fields],
-  );
+  const serializedFields = useMemo(() => JSON.stringify(fields.map(toFieldPayload)), [fields]);
 
   const [structureState, structureFormAction] = useActionState(
     async (previousState: CollectionFormActionState, formData: FormData) => {
@@ -325,20 +322,17 @@ function OpenFormDialog({
   const errorT = useTranslations('Forms.errors');
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [state, formAction] = useActionState(
-    async (): Promise<CollectionFormActionState> => {
-      const nextState = await action();
-      if (nextState.error !== null) {
-        toast.error(errorT(nextState.error));
-        return nextState;
-      }
-      setIsOpen(false);
-      toast.success(t('builder.openedSuccess'));
-      router.refresh();
+  const [state, formAction] = useActionState(async (): Promise<CollectionFormActionState> => {
+    const nextState = await action();
+    if (nextState.error !== null) {
+      toast.error(errorT(nextState.error));
       return nextState;
-    },
-    INITIAL_FORM_ACTION_STATE,
-  );
+    }
+    setIsOpen(false);
+    toast.success(t('builder.openedSuccess'));
+    router.refresh();
+    return nextState;
+  }, INITIAL_FORM_ACTION_STATE);
 
   return (
     <AlertDialog onOpenChange={setIsOpen} open={isOpen}>

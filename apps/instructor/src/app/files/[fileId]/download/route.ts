@@ -30,7 +30,10 @@ export async function GET(
       getInstructorServerEnvironment(),
     ).createDownload(sessionToken, fileId);
   } catch (error: unknown) {
-    if (error instanceof CoreClientError && ['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)) {
+    if (
+      error instanceof CoreClientError &&
+      ['SESSION_EXPIRED', 'UNAUTHENTICATED'].includes(error.code)
+    ) {
       return unauthenticated();
     }
     if (error instanceof CoreClientError && NOT_FOUND_CODES.includes(error.code)) return notFound();

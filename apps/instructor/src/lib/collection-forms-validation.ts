@@ -53,12 +53,15 @@ const fieldsSchema = z
   .refine((fields) => new Set(fields.map((field) => field.id)).size === fields.length, {
     path: ['id'],
   })
-  .refine((fields) => {
-    const keys = fields
-      .map((field) => field.mappingKey)
-      .filter((key): key is string => key !== undefined);
-    return new Set(keys).size === keys.length;
-  }, { path: ['mappingKey'] });
+  .refine(
+    (fields) => {
+      const keys = fields
+        .map((field) => field.mappingKey)
+        .filter((key): key is string => key !== undefined);
+      return new Set(keys).size === keys.length;
+    },
+    { path: ['mappingKey'] },
+  );
 
 /** The builder posts its field array as one JSON string rather than many inputs. */
 const fieldsJsonSchema = z

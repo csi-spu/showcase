@@ -1,7 +1,11 @@
 import 'server-only';
 import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
-import { formSchema, reviewQueueSchema, templateSchema } from './instructor-collection-forms-contract';
+import {
+  formSchema,
+  reviewQueueSchema,
+  templateSchema,
+} from './instructor-collection-forms-contract';
 import type {
   InstructorCollectionForm,
   InstructorCollectionTemplate,
@@ -14,7 +18,6 @@ import type {
  * Core -- is server-only.
  */
 export * from './instructor-collection-forms-contract';
-
 
 const BASE = '/v1/internal/instructor/collection';
 

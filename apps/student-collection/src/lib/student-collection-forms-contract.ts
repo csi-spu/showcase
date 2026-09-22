@@ -74,9 +74,7 @@ export const fileSelectionSchema = z.record(z.string(), z.array(fileSchema));
  * The URL is short-lived and covers this one file. A successful send still
  * leaves the file quarantined: only a recorded inspection makes it submittable.
  */
-export const uploadTicketSchema = z
-  .object({ file: fileSchema, uploadUrl: z.url() })
-  .strict();
+export const uploadTicketSchema = z.object({ file: fileSchema, uploadUrl: z.url() }).strict();
 
 export const formSchema = z
   .object({
@@ -135,7 +133,9 @@ export const prefillSchema = z
   .strict();
 
 export const draftSaveSchema = z.object({ version: z.number().int() }).strict();
-export const submitSchema = z.object({ submissionId: z.uuid(), version: z.number().int() }).strict();
+export const submitSchema = z
+  .object({ submissionId: z.uuid(), version: z.number().int() })
+  .strict();
 
 export type StudentCollectionField = z.infer<typeof fieldSchema>;
 export type StudentCollectionFile = z.infer<typeof fileSchema>;

@@ -43,7 +43,9 @@ export function FormPreview({
                   *
                 </span>
               ) : null}
-              {field.required ? <span className="sr-only">{t('preview.requiredLabel')}</span> : null}
+              {field.required ? (
+                <span className="sr-only">{t('preview.requiredLabel')}</span>
+              ) : null}
             </FieldLabel>
             {field.description ? (
               <FieldDescription className="whitespace-pre-line">

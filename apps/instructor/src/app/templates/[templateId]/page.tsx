@@ -30,10 +30,7 @@ export default async function TemplatePage({ params }: TemplatePageProps) {
 
   return (
     <AppShell
-      trail={[
-        { href: '/templates', label: t('template.listHeading') },
-        { label: template.name },
-      ]}
+      trail={[{ href: '/templates', label: t('template.listHeading') }, { label: template.name }]}
     >
       <PageHeader description={t('template.editDescription')} title={template.name} />
       <TemplateEditor

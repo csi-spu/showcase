@@ -164,9 +164,7 @@ export function FieldEditor({
               onChange={(event) => onChange(field.id, { optionsText: event.target.value })}
               value={field.optionsText}
             />
-            <FieldDescription id={`${optionsId}-hint`}>
-              {t('builder.optionsHint')}
-            </FieldDescription>
+            <FieldDescription id={`${optionsId}-hint`}>{t('builder.optionsHint')}</FieldDescription>
           </Field>
         ) : null}
 
@@ -182,7 +180,11 @@ export function FieldEditor({
                       className="size-4 rounded-sm accent-primary"
                       onChange={(event) =>
                         onChange(field.id, {
-                          fileTypes: toggleFileType(field.fileTypes, fileType, event.target.checked),
+                          fileTypes: toggleFileType(
+                            field.fileTypes,
+                            fileType,
+                            event.target.checked,
+                          ),
                         })
                       }
                       type="checkbox"

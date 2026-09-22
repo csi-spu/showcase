@@ -17,10 +17,7 @@ import {
   type CollectionAnswers,
   type CollectionAnswerValue,
 } from './collection-answers';
-import {
-  saveCollectionDraftAction,
-  submitCollectionFormAction,
-} from './collection-forms.actions';
+import { saveCollectionDraftAction, submitCollectionFormAction } from './collection-forms.actions';
 import type { StudentFormsErrorMessage } from './collection-forms-errors';
 import { FormFieldControl } from './form-field-control';
 import { FormFileField } from './form-file-field';
@@ -166,9 +163,7 @@ export function CollectionForm({
     const found = findSubmitBlockers(form.fields, answers, fileCounts);
     if (found.length > 0) {
       setBlockers(found);
-      document
-        .getElementById(`${baseId}-summary`)
-        ?.scrollIntoView({ block: 'center' });
+      document.getElementById(`${baseId}-summary`)?.scrollIntoView({ block: 'center' });
       return;
     }
     setBlockers([]);
