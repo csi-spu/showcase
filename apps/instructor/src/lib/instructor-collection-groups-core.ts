@@ -169,4 +169,19 @@ export class InstructorCollectionGroupsCoreClient {
       sessionToken,
     });
   }
+
+  reinstateMember(
+    sessionToken: string,
+    groupId: string,
+    studentAccountId: string,
+    input: { reason: string },
+  ): Promise<InstructorGroupMember> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/instructor/groups/${groupId}/members/${studentAccountId}/reinstate`,
+      responseSchema: memberSchema,
+      sessionToken,
+    });
+  }
 }

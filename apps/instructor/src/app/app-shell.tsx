@@ -15,7 +15,10 @@ export interface Breadcrumb {
 
 async function getNavItems(): Promise<NavItem[]> {
   const t = await getTranslations('Nav');
-  return [{ href: '/rounds', icon: 'calendarRange', label: t('rounds') }];
+  return [
+    { href: '/rounds', icon: 'calendarRange', label: t('rounds') },
+    { href: '/templates', icon: 'layoutTemplate', label: t('templates') },
+  ];
 }
 
 /*

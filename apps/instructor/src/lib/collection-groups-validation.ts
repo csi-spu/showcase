@@ -51,3 +51,5 @@ export function validateWithdraw(formData: FormData) {
   });
   return result.success ? result.data : null;
 }
+
+export const validateReinstate = validateWithdraw;

@@ -20,7 +20,11 @@ export function mapCollectionGroupsError(error: unknown): CollectionGroupsErrorM
   if (error.code === 'GROUP_NOT_FOUND') return 'groupNotFound';
   if (error.code === 'GROUP_MEMBER_NOT_FOUND') return 'groupMemberNotFound';
   if (error.code === 'GROUP_MEMBER_ALREADY_WITHDRAWN') return 'groupMemberAlreadyWithdrawn';
+  if (error.code === 'GROUP_MEMBER_ALREADY_CURRENT') return 'groupMemberAlreadyCurrent';
+  if (error.code === 'ROUND_CLOSED') return 'roundClosed';
+  if (error.code === 'STUDENT_ACCOUNT_INACTIVE') return 'studentAccountInactive';
   if (error.code === 'STUDENT_ID_LIST_INVALID') return 'studentIdListInvalid';
   if (error.code === 'WITHDRAWAL_REASON_INVALID') return 'withdrawalReasonInvalid';
+  if (error.code === 'REINSTATEMENT_REASON_INVALID') return 'reinstatementReasonInvalid';
   return 'unavailable';
 }
