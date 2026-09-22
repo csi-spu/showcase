@@ -84,6 +84,7 @@ async function loginStudentCollection(
   page: Page,
   scenario: import('./collection-fixtures.ts').CollectionLifecycleScenario,
 ): Promise<void> {
+  await page.context().setExtraHTTPHeaders({ 'x-real-ip': scenario.studentSourceAddress });
   await page.goto(scenario.studentCollectionUrl);
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.studentPassword);
@@ -91,6 +92,7 @@ async function loginStudentCollection(
   await expect(page.getByRole('heading', { name: 'เอกสารสหกิจศึกษาของคุณ' })).toBeVisible({
     timeout: 60_000,
   });
+  await page.context().setExtraHTTPHeaders({});
   await scenario.protectBrowserContext(page.context());
 }
 
@@ -98,6 +100,7 @@ async function loginInstructor(
   page: Page,
   scenario: import('./collection-fixtures.ts').CollectionLifecycleScenario,
 ): Promise<void> {
+  await page.context().setExtraHTTPHeaders({ 'x-real-ip': scenario.instructorSourceAddress });
   await page.goto('/');
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.instructorLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.instructorPassword);
@@ -105,5 +108,6 @@ async function loginInstructor(
   await expect(page.getByRole('heading', { name: 'รอบเก็บเอกสาร' })).toBeVisible({
     timeout: 60_000,
   });
+  await page.context().setExtraHTTPHeaders({});
   await scenario.protectBrowserContext(page.context());
 }

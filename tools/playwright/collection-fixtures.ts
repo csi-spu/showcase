@@ -7,6 +7,7 @@ import postgres from 'postgres';
 import { assertLocalE2EEnvironment } from './environment.ts';
 import { createIdempotentCleanup } from './fixture-lifecycle.ts';
 import { registerSensitiveValues } from './sensitive-artifacts.ts';
+import { createE2ESourceAddress } from './source-address.ts';
 
 export interface CollectionLifecycleScenario {
   answerLabel: string;
@@ -15,11 +16,13 @@ export interface CollectionLifecycleScenario {
   groupId: string;
   instructorLogin: string;
   instructorPassword: string;
+  instructorSourceAddress: string;
   instructorUrl: string;
   protectBrowserContext(context: BrowserContext): Promise<void>;
   studentId: string;
   studentName: string;
   studentPassword: string;
+  studentSourceAddress: string;
   studentCollectionUrl: string;
 }
 
@@ -207,12 +210,14 @@ async function createCollectionLifecycleScenario(): Promise<
     groupId,
     instructorLogin,
     instructorPassword,
+    instructorSourceAddress: createE2ESourceAddress(runShort, 2),
     instructorUrl: environment.instructorUrl,
     protectBrowserContext: registerBrowserContextSecrets,
     studentCollectionUrl: environment.studentCollectionUrl,
     studentId,
     studentName,
     studentPassword,
+    studentSourceAddress: createE2ESourceAddress(runShort, 1),
   };
 }
 

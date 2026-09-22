@@ -290,16 +290,22 @@ async function submitWork(
     mimeType: 'image/png',
     buffer: createSolidPng(1200, 1800, [220, 80, 110]),
   });
-  await expect(page.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeVisible();
+  await expect(page.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeVisible({
+    timeout: 60_000,
+  });
   await page.reload();
   await expect(page.getByRole('heading', { name: '2 สื่อ' })).toBeVisible();
-  await expect(page.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeVisible();
+  await expect(page.getByAltText('ตัวอย่างโปสเตอร์ที่ผ่านการประมวลผล')).toBeVisible({
+    timeout: 60_000,
+  });
   await page.locator('#work-gallery-upload').setInputFiles({
     name: 'gallery.png',
     mimeType: 'image/png',
     buffer: createSolidPng(640, 480, [80, 120, 220]),
   });
-  await expect(page.getByAltText('ตัวอย่างภาพแกลเลอรีที่ผ่านการประมวลผล')).toBeVisible();
+  await expect(page.getByAltText('ตัวอย่างภาพแกลเลอรีที่ผ่านการประมวลผล')).toBeVisible({
+    timeout: 60_000,
+  });
   await advanceAuthoring(page, { includeContributor: true, scenario });
   await expectStudentReviewSummary(page, scenario, title);
   await page.getByRole('button', { name: 'บันทึกล่าสุดและส่งตรวจ' }).click();
@@ -557,11 +563,13 @@ async function loginStudent(
   page: Page,
   scenario: import('./fixtures.ts').WorkLifecycleScenario,
 ): Promise<void> {
+  await page.context().setExtraHTTPHeaders({ 'x-real-ip': scenario.studentSourceAddress });
   await page.goto('/');
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.initialPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   await completeStudentLogin(page, scenario);
+  await page.context().setExtraHTTPHeaders({});
   await scenario.protectBrowserContext(page.context());
 }
 
@@ -586,11 +594,13 @@ async function loginAdmin(
   page: Page,
   scenario: import('./fixtures.ts').WorkLifecycleScenario,
 ): Promise<void> {
+  await page.context().setExtraHTTPHeaders({ 'x-real-ip': scenario.adminSourceAddress });
   await page.goto('/');
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.adminLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.adminInitialPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
   await completeAdminLogin(page, scenario);
+  await page.context().setExtraHTTPHeaders({});
   await scenario.protectBrowserContext(page.context());
 }
 

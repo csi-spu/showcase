@@ -12,6 +12,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
   page,
   scenario,
 }) => {
+  await page.context().setExtraHTTPHeaders({ 'x-real-ip': scenario.sourceAddress });
   await test.step('Student signs in with the initial credential', async () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'เข้าสู่ระบบนักศึกษา' })).toBeVisible();
@@ -19,6 +20,7 @@ test('Student grants and withdraws Profile Consent across the public boundary', 
     await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.initialPassword);
     await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
     await expect(page.getByRole('heading', { name: 'ตั้งรหัสผ่านใหม่' })).toBeVisible();
+    await page.context().setExtraHTTPHeaders({});
     await scenario.protectBrowserContext(page.context());
     await expect(page.getByRole('link', { name: 'แก้ไขโปรไฟล์' })).toHaveCount(0);
     await page.goto('/profile');
