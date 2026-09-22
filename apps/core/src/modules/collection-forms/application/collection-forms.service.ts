@@ -385,6 +385,7 @@ export class CollectionFormsService {
       errorCode: result.errorCode,
       fileId: claimed.id,
       isAccepted: result.isAccepted,
+      leaseId: claimed.leaseId,
       now: this.clock.now(),
     });
     return true;

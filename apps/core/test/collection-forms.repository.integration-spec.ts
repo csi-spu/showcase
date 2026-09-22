@@ -356,12 +356,13 @@ describe('PostgresCollectionFormsRepository integration', () => {
         studentAccountId: STUDENT,
       });
       // Drives the real inspection path rather than writing the row by hand.
-      await repository.claimFileForInspection();
+      const claim = await repository.claimFileForInspection();
       await repository.completeInspection({
         detectedContentType: 'application/pdf',
         errorCode: null,
         fileId: file.id,
         isAccepted: true,
+        leaseId: claim!.leaseId,
         now: NOW,
       });
 
@@ -469,7 +470,9 @@ describe('PostgresCollectionFormsRepository integration', () => {
         now: NOW,
         studentAccountId: STUDENT,
       });
-      if (!('submissionId' in submitted)) throw new Error('expected a submission');
+      if (typeof submitted !== 'object' || !('submissionId' in submitted)) {
+        throw new Error('expected a submission');
+      }
       await repository.checkSubmission({
         actorAccountId: INSTRUCTOR,
         decision: 'changes_required',
@@ -536,6 +539,54 @@ describe('PostgresCollectionFormsRepository integration', () => {
       await expect(repository.claimFileForInspection()).resolves.toBeNull();
     });
 
+    it('reclaims an expired inspection without letting the stale worker complete it', async () => {
+      const { file } = await uploadFile('collection-files/58000000-0000-4000-8000-000000000039');
+
+      const staleClaim = await repository.claimFileForInspection();
+      expect(staleClaim).not.toBeNull();
+      await database.sql`
+        update private.collection_files
+        set inspection_lease_expires_at = now() - interval '1 second'
+        where id = ${file.id}
+      `;
+
+      const replacementClaim = await repository.claimFileForInspection();
+      expect(replacementClaim).toMatchObject({ id: file.id });
+      expect(replacementClaim?.leaseId).not.toBe(staleClaim?.leaseId);
+
+      await repository.completeInspection({
+        detectedContentType: 'application/pdf',
+        errorCode: null,
+        fileId: file.id,
+        isAccepted: true,
+        leaseId: staleClaim!.leaseId,
+        now: NOW,
+      });
+      await expect(
+        repository.findReadableFile({
+          actorAccountId: STUDENT,
+          fileId: file.id,
+          isInstructor: false,
+        }),
+      ).resolves.toMatchObject({ status: 'inspecting' });
+
+      await repository.completeInspection({
+        detectedContentType: 'application/pdf',
+        errorCode: null,
+        fileId: file.id,
+        isAccepted: true,
+        leaseId: replacementClaim!.leaseId,
+        now: NOW,
+      });
+      await expect(
+        repository.findReadableFile({
+          actorAccountId: STUDENT,
+          fileId: file.id,
+          isInstructor: false,
+        }),
+      ).resolves.toMatchObject({ status: 'ready' });
+    });
+
     it('marks an accepted file ready, which is the only way it becomes submittable', async () => {
       const { file, form } = await uploadFile(
         'collection-files/58000000-0000-4000-8000-000000000031',
@@ -546,13 +597,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         studentAccountId: STUDENT,
       });
-      await repository.claimFileForInspection();
+      const claim = await repository.claimFileForInspection();
 
       await repository.completeInspection({
         detectedContentType: 'application/pdf',
         errorCode: null,
         fileId: file.id,
         isAccepted: true,
+        leaseId: claim!.leaseId,
         now: NOW,
       });
 
@@ -576,13 +628,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         studentAccountId: STUDENT,
       });
-      await repository.claimFileForInspection();
+      const claim = await repository.claimFileForInspection();
 
       await repository.completeInspection({
         detectedContentType: null,
         errorCode: 'FILE_TYPE_MISMATCH',
         fileId: file.id,
         isAccepted: false,
+        leaseId: claim!.leaseId,
         now: NOW,
       });
 
@@ -598,13 +651,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
 
     it('fails an accepted verdict that carries no detected type, rather than trusting it', async () => {
       const { file } = await uploadFile('collection-files/58000000-0000-4000-8000-000000000035');
-      await repository.claimFileForInspection();
+      const claim = await repository.claimFileForInspection();
 
       await repository.completeInspection({
         detectedContentType: null,
         errorCode: null,
         fileId: file.id,
         isAccepted: true,
+        leaseId: claim!.leaseId,
         now: NOW,
       });
 
@@ -647,12 +701,13 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         studentAccountId: STUDENT,
       });
-      await repository.claimFileForInspection();
+      const claim = await repository.claimFileForInspection();
       await repository.completeInspection({
         detectedContentType: 'application/pdf',
         errorCode: null,
         fileId: file.id,
         isAccepted: true,
+        leaseId: claim!.leaseId,
         now: NOW,
       });
 

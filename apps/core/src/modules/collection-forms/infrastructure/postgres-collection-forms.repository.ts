@@ -658,42 +658,48 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
-   * Takes one quarantined file and marks it `inspecting`, which claims it.
+   * Claims one waiting file with a bounded lease.
    *
-   * `for update skip locked` is what makes the claim exclusive: a second worker
-   * skips the locked row instead of waiting for it, so the same bytes are never
-   * inspected twice and no worker blocks behind another.
+   * The CTE and update are one statement, so the row lock is held only while
+   * changing queue state. Expired work is reclaimable after a worker crash;
+   * the lease token prevents that stale worker from completing the new claim.
    */
   async claimFileForInspection() {
-    return this.database.sql.begin(async (transaction) => {
-      const candidates = await transaction<
-        {
-          declared_content_type: string;
-          id: string;
-          original_filename: string;
-          storage_key: string;
-        }[]
-      >`
-        select id, storage_key, original_filename, declared_content_type
+    const claimed = await this.database.sql<
+      {
+        declared_content_type: string;
+        id: string;
+        inspection_lease_id: string;
+        original_filename: string;
+        storage_key: string;
+      }[]
+    >`
+      with candidate as (
+        select id
         from private.collection_files
         where status = 'quarantined'
+          or (status = 'inspecting' and inspection_lease_expires_at <= now())
         order by created_at
         limit 1
         for update skip locked
-      `;
-      const candidate = candidates[0];
-      if (candidate === undefined) return null;
-
-      await transaction`
-        update private.collection_files set status = 'inspecting' where id = ${candidate.id}
-      `;
-      return {
-        declaredContentType: candidate.declared_content_type,
-        id: candidate.id,
-        originalFilename: candidate.original_filename,
-        storageKey: candidate.storage_key,
-      };
-    });
+      )
+      update private.collection_files as file
+      set status = 'inspecting', inspection_lease_id = gen_random_uuid(),
+        inspection_lease_expires_at = now() + interval '2 minutes'
+      from candidate
+      where file.id = candidate.id
+      returning file.id, file.storage_key, file.original_filename,
+        file.declared_content_type, file.inspection_lease_id
+    `;
+    const file = claimed[0];
+    if (file === undefined) return null;
+    return {
+      declaredContentType: file.declared_content_type,
+      id: file.id,
+      leaseId: file.inspection_lease_id,
+      originalFilename: file.original_filename,
+      storageKey: file.storage_key,
+    };
   }
 
   /**
@@ -706,14 +712,17 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     errorCode: string | null;
     fileId: string;
     isAccepted: boolean;
+    leaseId: string;
     now: Date;
   }): Promise<void> {
     if (input.isAccepted && input.detectedContentType !== null) {
       await this.database.sql`
         update private.collection_files
         set status = 'ready', detected_content_type = ${input.detectedContentType},
-          inspected_at = ${input.now}, inspection_error_code = null
+          inspected_at = ${input.now}, inspection_error_code = null,
+          inspection_lease_id = null, inspection_lease_expires_at = null
         where id = ${input.fileId} and status = 'inspecting'
+          and inspection_lease_id = ${input.leaseId}
       `;
       return;
     }
@@ -726,8 +735,10 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       update private.collection_files
       set status = 'failed', detected_content_type = ${input.detectedContentType},
         inspected_at = ${input.now},
-        inspection_error_code = ${input.errorCode ?? 'FILE_INSPECTION_FAILED'}
+        inspection_error_code = ${input.errorCode ?? 'FILE_INSPECTION_FAILED'},
+        inspection_lease_id = null, inspection_lease_expires_at = null
       where id = ${input.fileId} and status = 'inspecting'
+        and inspection_lease_id = ${input.leaseId}
     `;
   }
 

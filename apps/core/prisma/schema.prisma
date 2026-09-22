@@ -1309,6 +1309,8 @@ model collection_files {
   byte_size                   BigInt
   status                      String                        @default("quarantined")
   inspection_error_code       String?
+  inspection_lease_id         String?                       @db.Uuid
+  inspection_lease_expires_at DateTime?                     @db.Timestamptz(6)
   created_at                  DateTime                      @db.Timestamptz(6)
   inspected_at                DateTime?                     @db.Timestamptz(6)
   collection_forms            collection_forms              @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

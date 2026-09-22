@@ -571,6 +571,7 @@ describe('CollectionFormsService', () => {
     const CLAIMED = {
       declaredContentType: 'application/pdf',
       id: '70000000-0000-4000-8000-000000000009',
+      leaseId: '70000000-0000-4000-8000-000000000010',
       originalFilename: 'report.pdf',
       storageKey: 'collection-files/00000000-0000-4000-8000-00000000000a',
     };
@@ -594,6 +595,7 @@ describe('CollectionFormsService', () => {
         errorCode: null,
         fileId: CLAIMED.id,
         isAccepted: true,
+        leaseId: CLAIMED.leaseId,
         now: NOW,
       });
     });

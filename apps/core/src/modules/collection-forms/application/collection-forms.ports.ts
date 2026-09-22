@@ -190,6 +190,7 @@ export interface CollectionFormsRepository {
   claimFileForInspection(): Promise<{
     declaredContentType: string;
     id: string;
+    leaseId: string;
     originalFilename: string;
     storageKey: string;
   } | null>;
@@ -199,6 +200,7 @@ export interface CollectionFormsRepository {
     errorCode: string | null;
     fileId: string;
     isAccepted: boolean;
+    leaseId: string;
     now: Date;
   }): Promise<void>;
   /**
