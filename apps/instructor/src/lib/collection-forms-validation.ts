@@ -173,6 +173,20 @@ export function validateCheckSubmission(formData: FormData): CheckSubmissionInpu
   return result.success ? result.data : null;
 }
 
+/**
+ * The reason recorded against a close or reopen.
+ *
+ * Mirrors the bound Core enforces so the Instructor sees an empty reason
+ * rejected here rather than after a round trip. Core validates it again: this
+ * is for the person, not for trust.
+ */
+const lifecycleReasonSchema = z.string().trim().min(1).max(2_000);
+
+export function validateLifecycleReason(formData: FormData): string | null {
+  const result = lifecycleReasonSchema.safeParse(formData.get('reason'));
+  return result.success ? result.data : null;
+}
+
 function readFormBody(formData: FormData): Record<string, unknown> {
   return {
     title: formData.get('title'),

@@ -1,6 +1,6 @@
 'use client';
 
-import { EyeIcon, LockIcon, PencilIcon, PlusIcon, SaveIcon } from 'lucide-react';
+import { EyeIcon, LockIcon, PencilIcon, PlusIcon, SaveIcon, UnlockIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useActionState, useId, useMemo, useState } from 'react';
@@ -45,8 +45,15 @@ type BuilderAction = (
 type OpenAction = () => Promise<CollectionFormActionState>;
 
 interface FormBuilderProps {
+  closeAction: BuilderAction;
   form: InstructorCollectionForm;
   openAction: OpenAction;
+  /**
+   * How many obligations reopening would create, read on the server so the
+   * confirmation states the real cost rather than a guess.
+   */
+  reopenNewlyAssignedCount: number | null;
+  reopenAction: BuilderAction;
   saveMetadataAction: BuilderAction;
   saveStructureAction: BuilderAction;
   saveTemplateAction: BuilderAction;
@@ -60,8 +67,11 @@ interface FormBuilderProps {
  * structure is locked for good and only the metadata form stays editable.
  */
 export function FormBuilder({
+  closeAction,
   form,
   openAction,
+  reopenAction,
+  reopenNewlyAssignedCount,
   saveMetadataAction,
   saveStructureAction,
   saveTemplateAction,
@@ -179,6 +189,10 @@ export function FormBuilder({
             <EyeIcon aria-hidden="true" data-icon="inline-start" />
             {isPreviewing ? t('builder.backToEdit') : t('builder.preview')}
           </Button>
+          {form.status === 'open' ? <CloseFormDialog action={closeAction} /> : null}
+          {form.status === 'closed' ? (
+            <ReopenFormDialog action={reopenAction} newlyAssignedCount={reopenNewlyAssignedCount} />
+          ) : null}
           <SaveAsTemplateDialog action={saveTemplateAction} defaultName={form.title} />
         </div>
       </div>
@@ -365,6 +379,144 @@ function OpenFormDialog({
             <SubmitButton label={t('builder.openConfirm')} />
           </form>
         </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/**
+ * Confirms closing an open form.
+ *
+ * The description is explicit that this ends first submissions only, because
+ * the obvious reading -- that closing freezes everything -- is wrong and would
+ * lead an Instructor to close a form when they meant to close the round.
+ */
+function CloseFormDialog({ action }: { action: BuilderAction }) {
+  const t = useTranslations('Forms');
+  const errorT = useTranslations('Forms.errors');
+  const router = useRouter();
+  const reasonId = useId();
+  const [isOpen, setIsOpen] = useState(false);
+  const [state, formAction] = useActionState(
+    async (previousState: CollectionFormActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) {
+        toast.error(errorT(nextState.error));
+        return nextState;
+      }
+      setIsOpen(false);
+      toast.success(t('builder.closedSuccess'));
+      router.refresh();
+      return nextState;
+    },
+    INITIAL_FORM_ACTION_STATE,
+  );
+
+  return (
+    <AlertDialog onOpenChange={setIsOpen} open={isOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button size="sm" type="button" variant="outline">
+            <LockIcon aria-hidden="true" data-icon="inline-start" />
+            {t('builder.close')}
+          </Button>
+        }
+      />
+      <AlertDialogContent>
+        <AlertDialogTitle>{t('builder.closeConfirmTitle')}</AlertDialogTitle>
+        <AlertDialogDescription>{t('builder.closeConfirmDescription')}</AlertDialogDescription>
+        <form action={formAction} className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel htmlFor={reasonId}>{t('builder.lifecycleReason')}</FieldLabel>
+            <Textarea id={reasonId} name="reason" required />
+            <FieldDescription>{t('builder.lifecycleReasonHint')}</FieldDescription>
+          </Field>
+          {state.error !== null ? (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(state.error)}</AlertDescription>
+            </Alert>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline">{t('builder.cancel')}</Button>} />
+            <SubmitButton label={t('builder.closeConfirm')} />
+          </AlertDialogFooter>
+        </form>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/**
+ * Confirms reopening a closed form.
+ *
+ * Shows how many Students would newly owe this form, so reopening to collect a
+ * few stragglers is not confused with asking everyone to submit again.
+ */
+function ReopenFormDialog({
+  action,
+  newlyAssignedCount,
+}: {
+  action: BuilderAction;
+  newlyAssignedCount: number | null;
+}) {
+  const t = useTranslations('Forms');
+  const errorT = useTranslations('Forms.errors');
+  const router = useRouter();
+  const reasonId = useId();
+  const [isOpen, setIsOpen] = useState(false);
+  const [state, formAction] = useActionState(
+    async (previousState: CollectionFormActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.error !== null) {
+        toast.error(errorT(nextState.error));
+        return nextState;
+      }
+      setIsOpen(false);
+      toast.success(t('builder.reopenedSuccess'));
+      router.refresh();
+      return nextState;
+    },
+    INITIAL_FORM_ACTION_STATE,
+  );
+
+  return (
+    <AlertDialog onOpenChange={setIsOpen} open={isOpen}>
+      <AlertDialogTrigger
+        render={
+          <Button size="sm" type="button" variant="outline">
+            <UnlockIcon aria-hidden="true" data-icon="inline-start" />
+            {t('builder.reopen')}
+          </Button>
+        }
+      />
+      <AlertDialogContent>
+        <AlertDialogTitle>{t('builder.reopenConfirmTitle')}</AlertDialogTitle>
+        <AlertDialogDescription>{t('builder.reopenConfirmDescription')}</AlertDialogDescription>
+        {newlyAssignedCount === null ? null : (
+          <Alert variant="information">
+            <AlertDescription>
+              {newlyAssignedCount === 0
+                ? t('builder.reopenNoneAssigned')
+                : t('builder.reopenNewlyAssigned', { count: newlyAssignedCount })}
+            </AlertDescription>
+          </Alert>
+        )}
+        <form action={formAction} className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel htmlFor={reasonId}>{t('builder.lifecycleReason')}</FieldLabel>
+            <Textarea id={reasonId} name="reason" required />
+            <FieldDescription>{t('builder.lifecycleReasonHint')}</FieldDescription>
+          </Field>
+          {state.error !== null ? (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(state.error)}</AlertDescription>
+            </Alert>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline">{t('builder.cancel')}</Button>} />
+            <SubmitButton label={t('builder.reopenConfirm')} />
+          </AlertDialogFooter>
+        </form>
       </AlertDialogContent>
     </AlertDialog>
   );

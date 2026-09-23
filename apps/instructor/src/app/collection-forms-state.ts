@@ -21,13 +21,18 @@ export type CollectionFormsErrorMessage =
   | 'formFieldCountInvalid'
   | 'formInvalid'
   | 'formNotFound'
+  | 'formNotOpen'
+  | 'formNotClosed'
   | 'formStructureLocked'
   | 'groupNotFound'
   | 'checkReasonRequired'
   | 'submissionNotFound'
   | 'submissionStale'
   | 'invalid'
+  | 'reasonRequired'
   | 'roundClosed'
+  | 'roundNotFound'
+  | 'roundAlreadyInState'
   | 'sessionExpired'
   | 'templateNameInvalid'
   | 'templateNotFound'
@@ -94,6 +99,20 @@ export function toFormsErrorMessage(code: string): CollectionFormsErrorMessage {
       return 'groupNotFound';
     case 'ROUND_CLOSED':
       return 'roundClosed';
+    case 'ROUND_NOT_FOUND':
+      return 'roundNotFound';
+    /* Someone else already closed or reopened this round. The Instructor is
+     * looking at a stale page rather than at a round that refused them. */
+    case 'ROUND_ALREADY_CLOSED':
+    case 'ROUND_ALREADY_ACTIVE':
+      return 'roundAlreadyInState';
+    case 'FORM_NOT_OPEN':
+      return 'formNotOpen';
+    case 'FORM_NOT_CLOSED':
+      return 'formNotClosed';
+    case 'REASON_REQUIRED':
+    case 'REASON_TOO_LONG':
+      return 'reasonRequired';
     case 'TEMPLATE_NOT_FOUND':
       return 'templateNotFound';
     default:

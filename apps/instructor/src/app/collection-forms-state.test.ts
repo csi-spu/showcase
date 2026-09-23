@@ -22,6 +22,26 @@ describe('toFormsErrorMessage', () => {
     expect(toFormsErrorMessage('FIELD_MAPPING_KEY_DUPLICATE')).toBe('fieldMappingKeyDuplicate');
   });
 
+  it('distinguishes a form that cannot be closed from one that cannot be reopened', () => {
+    expect(toFormsErrorMessage('FORM_NOT_OPEN')).toBe('formNotOpen');
+    expect(toFormsErrorMessage('FORM_NOT_CLOSED')).toBe('formNotClosed');
+  });
+
+  it('treats both reason failures as one message, since the field is the same', () => {
+    expect(toFormsErrorMessage('REASON_REQUIRED')).toBe('reasonRequired');
+    expect(toFormsErrorMessage('REASON_TOO_LONG')).toBe('reasonRequired');
+  });
+
+  /*
+   * Losing the race to another Instructor is not a refusal: the round reached
+   * the state that was asked for, so the message points at a stale page.
+   */
+  it('maps both round race outcomes to a stale-page message', () => {
+    expect(toFormsErrorMessage('ROUND_ALREADY_CLOSED')).toBe('roundAlreadyInState');
+    expect(toFormsErrorMessage('ROUND_ALREADY_ACTIVE')).toBe('roundAlreadyInState');
+    expect(toFormsErrorMessage('ROUND_NOT_FOUND')).toBe('roundNotFound');
+  });
+
   it('falls back to a general message for an unrecognised code', () => {
     expect(toFormsErrorMessage('SOMETHING_NEW')).toBe('unavailable');
   });

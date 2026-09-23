@@ -4,6 +4,7 @@ import {
   validateCreateForm,
   validateCreateFromTemplate,
   validateFormMetadata,
+  validateLifecycleReason,
   validateSaveAsTemplate,
 } from './collection-forms-validation';
 
@@ -191,5 +192,23 @@ describe('validateCheckSubmission', () => {
     expect(
       validateCheckSubmission(formData({ decision: 'passed', reason: '', submissionId: 'nope' })),
     ).toBeNull();
+  });
+});
+
+describe('validateLifecycleReason', () => {
+  it('requires a reason, because a closure without one leaves no record of why', () => {
+    expect(validateLifecycleReason(formData({ reason: '   ' }))).toBeNull();
+    expect(validateLifecycleReason(new FormData())).toBeNull();
+  });
+
+  it('trims the reason it forwards', () => {
+    expect(validateLifecycleReason(formData({ reason: '  หมดเขตรับเอกสาร  ' }))).toBe(
+      'หมดเขตรับเอกสาร',
+    );
+  });
+
+  it('rejects a reason longer than Core accepts, rather than failing after a round trip', () => {
+    expect(validateLifecycleReason(formData({ reason: 'ก'.repeat(2_001) }))).toBeNull();
+    expect(validateLifecycleReason(formData({ reason: 'ก'.repeat(2_000) }))).not.toBeNull();
   });
 });

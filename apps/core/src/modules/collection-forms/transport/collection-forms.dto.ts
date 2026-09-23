@@ -223,3 +223,17 @@ export class AttachCollectionFileDto {
   @IsUUID('4')
   fileId!: string;
 }
+
+/**
+ * Closing or reopening a form or a round.
+ *
+ * The reason is required at the boundary as well as in the domain: the audit
+ * trail is the only record of why first submissions stopped, and an empty
+ * string is not an explanation.
+ */
+export class CollectionLifecycleReasonDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2_000)
+  reason!: string;
+}

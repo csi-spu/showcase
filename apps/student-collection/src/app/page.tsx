@@ -26,15 +26,6 @@ interface HomeProps {
   searchParams: Promise<{ expired?: string; passwordSet?: string }>;
 }
 
-/*
- * Reading the clock is a side effect, so it is kept out of the component body
- * rather than inlined into the render. Lateness is decided here, on the server,
- * because the browser's clock is not something the platform controls.
- */
-function readServerClock(): number {
-  return Date.now();
-}
-
 export default async function Home({ searchParams }: HomeProps) {
   const { expired } = await searchParams;
   const [state, authT, homeT] = await Promise.all([
@@ -70,9 +61,6 @@ export default async function Home({ searchParams }: HomeProps) {
       ]),
     );
     const prefillsByForm = new Map(prefillEntries);
-    /* One reading of the clock for the whole page, taken on the server. */
-    const renderedAt = readServerClock();
-
     return (
       <AppShell>
         <PageHeader
@@ -96,10 +84,7 @@ export default async function Home({ searchParams }: HomeProps) {
           <div className="flex flex-col gap-6">
             {obligations.map((obligation) => (
               <CollectionForm
-                isLate={
-                  obligation.form.deadlineAt !== null &&
-                  new Date(obligation.form.deadlineAt).getTime() < renderedAt
-                }
+                isLate={obligation.isLate}
                 key={obligation.form.id}
                 obligation={obligation}
                 prefills={prefillsByForm.get(obligation.form.id) ?? []}

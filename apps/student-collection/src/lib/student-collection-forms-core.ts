@@ -5,12 +5,14 @@ import {
   draftSaveSchema,
   obligationSchema,
   prefillSchema,
+  submissionHistorySchema,
   submitSchema,
   uploadTicketSchema,
 } from './student-collection-forms-contract';
 import type {
   StudentCollectionObligation,
   StudentCollectionPrefill,
+  StudentCollectionSubmissionHistory,
   StudentCollectionUploadTicket,
 } from './student-collection-forms-contract';
 
@@ -45,6 +47,20 @@ export class StudentCollectionFormsCoreClient {
       method: 'GET',
       path: BASE,
       responseSchema: z.array(obligationSchema),
+      sessionToken: token,
+    });
+  }
+
+  /**
+   * Every version this Student has submitted for one form.
+   *
+   * Core scopes this to the caller, so a Student can only ever read their own.
+   */
+  listHistory(token: string, formId: string): Promise<StudentCollectionSubmissionHistory> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/${formId}/history`,
+      responseSchema: submissionHistorySchema,
       sessionToken: token,
     });
   }

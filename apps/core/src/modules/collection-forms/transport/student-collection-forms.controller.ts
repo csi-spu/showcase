@@ -22,7 +22,7 @@ import {
   SubmitCollectionFormDto,
 } from './collection-forms.dto';
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
-import { toFileView, toObligationView } from './student-collection-forms.view';
+import { toFileView, toObligationView, toSubmissionHistoryView } from './collection-forms.view';
 
 @Controller('internal/student-collection/forms')
 @UseFilters(CollectionFormsExceptionFilter)
@@ -50,6 +50,28 @@ export class StudentCollectionFormsController {
   ) {
     const actor = await this.auth.authorizeRead(token(authorization));
     return this.forms.listPrefills({ formId, studentAccountId: actor.accountId });
+  }
+
+  /**
+   * Every version this Student has submitted for one form, with the decisions.
+   *
+   * Prior versions stay readable after a correction is requested, so the
+   * Student can see what they sent before and why it came back.
+   */
+  @Get(':formId/history')
+  @Header('Cache-Control', 'no-store')
+  async history(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeRead(token(authorization));
+    const history = await this.forms.getSubmissionHistory({
+      actorAccountId: actor.accountId,
+      formId,
+      isInstructor: false,
+      studentAccountId: actor.accountId,
+    });
+    return toSubmissionHistoryView(history);
   }
 
   @Post(':formId/draft')

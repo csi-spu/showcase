@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import { findAnswerError } from '../application/collection-field';
 import { findSubmissionFileError } from '../application/collection-files';
+import { hasDeadlinePassed, isFirstSubmissionLate } from '../application/collection-lifecycle';
 import type {
   CollectionAnswers,
   CollectionField,
@@ -11,7 +12,10 @@ import type {
   CollectionFormTemplate,
   CollectionFormsRepository,
   CollectionReviewEntry,
+  CollectionSubmissionHistory,
+  CollectionSubmissionHistoryEntry,
   DraftFileSelection,
+  RoundPendingWork,
   StudentObligation,
 } from '../application/collection-forms.ports';
 import type { ReusableValueCandidate } from '../application/reusable-values';
@@ -57,6 +61,7 @@ interface FileRow {
 interface ReviewRow {
   answers: unknown;
   checking_reason: string | null;
+  first_submitted_at: Date | null;
   first_name_th: string;
   last_name_th: string;
   obligation_status: CollectionReviewEntry['status'];
@@ -69,15 +74,48 @@ interface ReviewRow {
 interface ObligationRow extends FormRow {
   answers: unknown;
   checking_reason: string | null;
+  first_submitted_at: Date | null;
   draft_answers: unknown;
   draft_updated_at: Date | null;
   draft_version: number | null;
   first_name_th: string;
   last_name_th: string;
+  membership_status: string;
   obligation_status: StudentObligation['status'];
+  round_status: string;
   submission_id: string | null;
   submission_version: number | null;
   submitted_at: Date | null;
+}
+
+interface ResponseWriteState {
+  form_status: string;
+  membership_status: string;
+  round_status: string;
+  status: StudentObligation['status'];
+}
+
+/**
+ * Whether the Student may write this response right now.
+ *
+ * Three separate gates, deliberately not collapsed:
+ *
+ * - A closed *round* stops everything. It is read-only by definition.
+ * - A closed *form* still accepts a requested correction. Closing a form stops
+ *   first submissions; it does not abandon the Students already asked to fix
+ *   something, which is why `changes_required` is allowed through here.
+ * - Withdrawn membership is read-only even where the form would allow a write.
+ *
+ * Callers must have locked every row they read here, the round included. The
+ * round is a different row from the form and the obligation, so locking only
+ * the nearer one lets a closure commit between this check and the write it
+ * guards, and the write lands in a closed round.
+ */
+function isResponseWritable(state: ResponseWriteState): boolean {
+  if (state.round_status === 'closed') return false;
+  if (state.membership_status !== 'current') return false;
+  if (state.status === 'changes_required') return state.form_status !== 'draft';
+  return state.status === 'not_submitted' && state.form_status === 'open';
 }
 
 @Injectable()
@@ -148,7 +186,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
         where form.id = ${input.formId}
-        for update of form
+        for update of form, round
       `;
       const row = rows[0];
       if (row === undefined) return 'not_found' as const;
@@ -190,7 +228,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
         where form.id = ${input.formId}
-        for update of form
+        for update of form, round
       `;
       const current = rows[0];
       if (current === undefined) return 'not_found' as const;
@@ -326,6 +364,235 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
+   * Stops first submissions on an open form.
+   *
+   * Obligations are untouched: a Student holding a returned response still has
+   * corrections to make, and checking continues. Only the door for new first
+   * submissions closes, which `submit` enforces by requiring form status `open`.
+   */
+  async closeForm(input: { actorAccountId: string; formId: string; now: Date; reason: string }) {
+    return this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<(FormRow & { round_status: string })[]>`
+        select form.id, form.group_id, form.title, form.description, form.status, form.fields,
+          form.deadline_at, form.version, form.created_from_template_id, round.status as round_status
+        from public.collection_forms as form
+        join public.collection_groups as collection_group on collection_group.id = form.group_id
+        join public.collection_rounds as round on round.id = collection_group.round_id
+        where form.id = ${input.formId}
+        for update of form, round
+      `;
+      const row = rows[0];
+      if (row === undefined) return 'not_found' as const;
+      if (row.round_status === 'closed') return 'round_closed' as const;
+      if (row.status !== 'open') return 'not_open' as const;
+
+      await transaction`
+        update public.collection_forms
+        set status = 'closed', closed_at = ${input.now}, version = version + 1
+        where id = ${input.formId}
+      `;
+      await transaction`
+        insert into private.collection_form_metadata_events
+          (form_id, actor_account_id, change_kind, previous_value, next_value, reason, occurred_at)
+        values (${input.formId}, ${input.actorAccountId}, 'closed', 'open', 'closed',
+          ${input.reason}, ${input.now})
+      `;
+      return this.mapForm({ ...row, status: 'closed', version: row.version + 1 });
+    });
+  }
+
+  async previewFormReopen(formId: string) {
+    const rows = await this.database.sql<{ newly_assigned: number; status: string }[]>`
+      select form.status, (
+        select count(*)::int
+        from public.collection_group_memberships as membership
+        where membership.group_id = form.group_id
+          and membership.status = 'current'
+          and not exists (
+            select 1 from public.collection_obligations as obligation
+            where obligation.form_id = form.id
+              and obligation.student_account_id = membership.student_account_id
+          )
+      ) as newly_assigned
+      from public.collection_forms as form
+      where form.id = ${formId}
+    `;
+    const row = rows[0];
+    if (row === undefined) return 'not_found' as const;
+    if (row.status !== 'closed') return 'not_closed' as const;
+    return { newlyAssignedCount: row.newly_assigned };
+  }
+
+  /**
+   * Reopens a closed form to first submissions.
+   *
+   * Only current members without an obligation gain one, so people who already
+   * submitted are untouched and those who joined while it was closed are picked
+   * up. `on conflict do nothing` is what preserves existing progress: an
+   * obligation already carrying submissions and outcomes is never rewritten.
+   */
+  async reopenForm(input: { actorAccountId: string; formId: string; now: Date; reason: string }) {
+    return this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<(FormRow & { round_status: string })[]>`
+        select form.id, form.group_id, form.title, form.description, form.status, form.fields,
+          form.deadline_at, form.version, form.created_from_template_id, round.status as round_status
+        from public.collection_forms as form
+        join public.collection_groups as collection_group on collection_group.id = form.group_id
+        join public.collection_rounds as round on round.id = collection_group.round_id
+        where form.id = ${input.formId}
+        for update of form, round
+      `;
+      const row = rows[0];
+      if (row === undefined) return 'not_found' as const;
+      if (row.round_status === 'closed') return 'round_closed' as const;
+      if (row.status !== 'closed') return 'not_closed' as const;
+
+      await transaction`
+        update public.collection_forms
+        set status = 'open', closed_at = null, version = version + 1
+        where id = ${input.formId}
+      `;
+      const assigned = await transaction<{ student_account_id: string }[]>`
+        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
+        select ${input.formId}, membership.student_account_id, ${input.now}
+        from public.collection_group_memberships as membership
+        where membership.group_id = ${row.group_id} and membership.status = 'current'
+        on conflict do nothing
+        returning student_account_id
+      `;
+      await transaction`
+        insert into private.collection_form_metadata_events
+          (form_id, actor_account_id, change_kind, previous_value, next_value, reason,
+            assigned_count, occurred_at)
+        values (${input.formId}, ${input.actorAccountId}, 'reopened', 'closed', 'open',
+          ${input.reason}, ${assigned.length}, ${input.now})
+      `;
+      return {
+        form: this.mapForm({ ...row, status: 'open', version: row.version + 1 }),
+        newlyAssignedCount: assigned.length,
+      };
+    });
+  }
+
+  /**
+   * Unfinished obligations across every form in a round.
+   *
+   * Withdrawn obligations are excluded because a withdrawn member owes nothing;
+   * they are not outstanding work an Instructor could act on.
+   */
+  async getRoundPendingWork(roundId: string): Promise<RoundPendingWork | null> {
+    const rounds = await this.database.sql<{ id: string }[]>`
+      select id from public.collection_rounds where id = ${roundId}
+    `;
+    if (rounds[0] === undefined) return null;
+    return this.readRoundPendingWork(this.database.sql, roundId);
+  }
+
+  /**
+   * Flips a round between active and closed, recording the outstanding counts
+   * the actor decided against.
+   *
+   * `expectedStatus` makes this a compare-and-set: two Instructors closing at
+   * once produce one transition and one audit row, not two.
+   */
+  async setRoundStatus(input: {
+    actorAccountId: string;
+    expectedStatus: 'active' | 'closed';
+    nextStatus: 'active' | 'closed';
+    now: Date;
+    reason: string;
+    roundId: string;
+  }) {
+    return this.database.sql.begin(async (transaction) => {
+      const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
+        select status from public.collection_rounds where id = ${input.roundId} for update
+      `;
+      const round = rounds[0];
+      if (round === undefined) return 'not_found' as const;
+      if (round.status !== input.expectedStatus) return 'already_in_state' as const;
+
+      const pendingWork = await this.readRoundPendingWork(transaction, input.roundId);
+      await transaction`
+        update public.collection_rounds set status = ${input.nextStatus}
+        where id = ${input.roundId}
+      `;
+      await transaction`
+        insert into private.collection_round_lifecycle_events
+          (round_id, actor_account_id, action, reason, pending_not_submitted,
+            pending_awaiting_checking, pending_changes_required, occurred_at)
+        values (${input.roundId}, ${input.actorAccountId},
+          ${input.nextStatus === 'closed' ? 'closed' : 'reopened'}, ${input.reason},
+          ${pendingWork.notSubmitted}, ${pendingWork.awaitingChecking},
+          ${pendingWork.changesRequired}, ${input.now})
+      `;
+      return { pendingWork };
+    });
+  }
+
+  /**
+   * Every retained version of one response, with the decisions against each.
+   *
+   * Authorization is the `where` clause: a Student reads only their own
+   * obligation, and an Instructor any obligation, so the caller cannot widen
+   * the scope. Drafts are never joined -- unsent work stays the Student's.
+   */
+  async getSubmissionHistory(input: {
+    actorAccountId: string;
+    formId: string;
+    isInstructor: boolean;
+    studentAccountId: string;
+  }): Promise<CollectionSubmissionHistory | null> {
+    const obligations = await this.database.sql<
+      (FormRow & {
+        first_submitted_at: Date | null;
+        obligation_status: StudentObligation['status'];
+      })[]
+    >`
+      select form.id, form.group_id, form.title, form.description, form.status, form.fields,
+        form.deadline_at, form.version, form.created_from_template_id,
+        obligation.status as obligation_status, obligation.first_submitted_at
+      from public.collection_obligations as obligation
+      join public.collection_forms as form on form.id = obligation.form_id
+      where obligation.form_id = ${input.formId}
+        and obligation.student_account_id = ${input.studentAccountId}
+        and (${input.isInstructor} or obligation.student_account_id = ${input.actorAccountId})
+    `;
+    const obligation = obligations[0];
+    if (obligation === undefined) return null;
+
+    const rows = await this.database.sql<
+      { answers: unknown; id: string; submitted_at: Date; version: number }[]
+    >`
+      select id, answers, submitted_at, version
+      from private.collection_submissions
+      where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
+      order by version desc
+      limit 100
+    `;
+    const submissionIds = rows.map((row) => row.id);
+    const files = await this.loadSubmittedFiles(submissionIds);
+    const events = await this.loadCheckingEvents(submissionIds);
+
+    return {
+      entries: rows.map((row) => ({
+        answers: this.answers(row.answers),
+        checkingEvents: events.get(row.id) ?? [],
+        files: files.get(row.id) ?? {},
+        id: row.id,
+        submittedAt: row.submitted_at,
+        version: row.version,
+      })),
+      firstSubmittedAt: obligation.first_submitted_at,
+      form: this.mapForm(obligation),
+      isLate: isFirstSubmissionLate({
+        deadlineAt: obligation.deadline_at,
+        firstSubmittedAt: obligation.first_submitted_at,
+      }),
+      status: obligation.obligation_status,
+    };
+  }
+
+  /**
    * The review queue for one form.
    *
    * Reads only submitted content. Response drafts are never joined here, so an
@@ -345,6 +612,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
 
     const rows = await this.database.sql<ReviewRow[]>`
       select obligation.student_account_id, obligation.status as obligation_status,
+        obligation.first_submitted_at,
         submission.id as submission_id, submission.answers,
         submission.version as submission_version, submission.submitted_at,
         checking.reason as checking_reason,
@@ -372,6 +640,16 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
 
     return {
       entries: rows.map((row) => ({
+        firstSubmittedAt: row.first_submitted_at,
+        /*
+         * Derived here against the form's current deadline rather than stored at
+         * submit: extending a deadline must recalculate timeliness, and the
+         * retained first_submitted_at is what it is measured against.
+         */
+        isLate: isFirstSubmissionLate({
+          deadlineAt: form.deadline_at,
+          firstSubmittedAt: row.first_submitted_at,
+        }),
         latestCheckingReason:
           row.obligation_status === 'changes_required' ? row.checking_reason : null,
         latestSubmission:
@@ -392,17 +670,23 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     };
   }
 
-  async listStudentObligations(studentAccountId: string): Promise<StudentObligation[]> {
+  async listStudentObligations(studentAccountId: string, now: Date): Promise<StudentObligation[]> {
     const rows = await this.database.sql<ObligationRow[]>`
       select form.id, form.group_id, form.title, form.description, form.status, form.fields,
         form.deadline_at, form.version, form.created_from_template_id,
-        obligation.status as obligation_status,
+        obligation.status as obligation_status, obligation.first_submitted_at,
         draft.answers as draft_answers, draft.version as draft_version, draft.updated_at as draft_updated_at,
         submission.id as submission_id, submission.answers, submission.version as submission_version,
         submission.submitted_at, checking.reason as checking_reason,
-        person_name.first_name_th, person_name.last_name_th
+        person_name.first_name_th, person_name.last_name_th,
+        round.status as round_status, membership.status as membership_status
       from public.collection_obligations as obligation
       join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      join public.collection_rounds as round on round.id = collection_group.round_id
+      join public.collection_group_memberships as membership
+        on membership.group_id = collection_group.id
+        and membership.student_account_id = obligation.student_account_id
       join public.accounts as account on account.id = obligation.student_account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
       left join private.collection_response_drafts as draft
@@ -437,7 +721,23 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
               updatedAt: row.draft_updated_at,
               version: row.draft_version,
             },
+      firstSubmittedAt: row.first_submitted_at,
       form: this.mapForm(row),
+      hasDeadlinePassed: hasDeadlinePassed({ deadlineAt: row.deadline_at, now }),
+      isLate: isFirstSubmissionLate({
+        deadlineAt: row.deadline_at,
+        firstSubmittedAt: row.first_submitted_at,
+      }),
+      /*
+       * Read through the same gate the write path uses, so the form the
+       * Student sees and the write Core would accept cannot disagree.
+       */
+      isWritable: isResponseWritable({
+        form_status: row.status,
+        membership_status: row.membership_status,
+        round_status: row.round_status,
+        status: row.obligation_status,
+      }),
       latestCheckingReason:
         row.obligation_status === 'changes_required' ? row.checking_reason : null,
       latestSubmission:
@@ -507,25 +807,20 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     studentAccountId: string;
   }) {
     return this.database.sql.begin(async (transaction) => {
-      const eligible = await transaction<
-        { status: StudentObligation['status']; form_status: string; membership_status: string }[]
-      >`
-        select obligation.status, form.status as form_status, membership.status as membership_status
+      const eligible = await transaction<ResponseWriteState[]>`
+        select obligation.status, form.status as form_status, membership.status as membership_status,
+          round.status as round_status
         from public.collection_obligations as obligation
         join public.collection_forms as form on form.id = obligation.form_id
         join public.collection_groups as collection_group on collection_group.id = form.group_id
+        join public.collection_rounds as round on round.id = collection_group.round_id
         join public.collection_group_memberships as membership
           on membership.group_id = collection_group.id and membership.student_account_id = obligation.student_account_id
         where obligation.form_id = ${input.formId} and obligation.student_account_id = ${input.studentAccountId}
+        for update of obligation, round
       `;
       const state = eligible[0];
-      if (
-        state === undefined ||
-        state.form_status !== 'open' ||
-        state.membership_status !== 'current' ||
-        !['not_submitted', 'changes_required'].includes(state.status)
-      )
-        return 'forbidden' as const;
+      if (state === undefined || !isResponseWritable(state)) return 'forbidden' as const;
       const rows =
         input.expectedVersion === 0
           ? await transaction<{ version: number }[]>`
@@ -790,34 +1085,23 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         return { submissionId: prior[0].id, version: prior[0].version };
       }
       const states = await transaction<
-        {
-          draft_answers: unknown;
-          fields: unknown;
-          status: StudentObligation['status'];
-          form_status: string;
-          membership_status: string;
-        }[]
+        (ResponseWriteState & { draft_answers: unknown; fields: unknown })[]
       >`
         select draft.answers as draft_answers, form.fields, obligation.status, form.status as form_status,
-          membership.status as membership_status
+          membership.status as membership_status, round.status as round_status
         from public.collection_obligations as obligation
         join public.collection_forms as form on form.id = obligation.form_id
         join public.collection_groups as collection_group on collection_group.id = form.group_id
+        join public.collection_rounds as round on round.id = collection_group.round_id
         join public.collection_group_memberships as membership
           on membership.group_id = collection_group.id and membership.student_account_id = obligation.student_account_id
         left join private.collection_response_drafts as draft
           on draft.form_id = obligation.form_id and draft.student_account_id = obligation.student_account_id
         where obligation.form_id = ${input.formId} and obligation.student_account_id = ${input.studentAccountId}
-        for update of obligation
+        for update of obligation, round
       `;
       const state = states[0];
-      if (
-        state === undefined ||
-        state.form_status !== 'open' ||
-        state.membership_status !== 'current' ||
-        !['not_submitted', 'changes_required'].includes(state.status)
-      )
-        return 'forbidden' as const;
+      if (state === undefined || !isResponseWritable(state)) return 'forbidden' as const;
       if (state.draft_answers === null) return 'missing_draft' as const;
 
       const fields = this.fields(state.fields);
@@ -1035,6 +1319,79 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       submitted.set(row.submission_id, selection);
     }
     return submitted;
+  }
+
+  /**
+   * Counts unfinished obligations across every form in one round.
+   *
+   * Takes the client so the closing transaction can read the same counts it
+   * then stores, under the round's own row lock.
+   */
+  private async readRoundPendingWork(
+    client: DatabaseClient['sql'],
+    roundId: string,
+  ): Promise<RoundPendingWork> {
+    const rows = await client<
+      { awaiting_checking: number; changes_required: number; not_submitted: number }[]
+    >`
+      select
+        count(*) filter (where obligation.status = 'not_submitted')::int as not_submitted,
+        count(*) filter (where obligation.status = 'awaiting_checking')::int as awaiting_checking,
+        count(*) filter (where obligation.status = 'changes_required')::int as changes_required
+      from public.collection_obligations as obligation
+      join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      where collection_group.round_id = ${roundId}
+    `;
+    const row = rows[0];
+    return {
+      awaitingChecking: row?.awaiting_checking ?? 0,
+      changesRequired: row?.changes_required ?? 0,
+      notSubmitted: row?.not_submitted ?? 0,
+    };
+  }
+
+  /**
+   * Decisions recorded against each submitted version, oldest first.
+   *
+   * The Instructor is identified by display name only: history is something to
+   * read, not a directory of Account identifiers the reader could act on.
+   */
+  private async loadCheckingEvents(
+    submissionIds: string[],
+  ): Promise<Map<string, CollectionSubmissionHistoryEntry['checkingEvents']>> {
+    const bySubmission = new Map<string, CollectionSubmissionHistoryEntry['checkingEvents']>();
+    if (submissionIds.length === 0) return bySubmission;
+
+    const rows = await this.database.sql<
+      {
+        decision: 'changes_required' | 'passed';
+        first_name_th: string;
+        last_name_th: string;
+        occurred_at: Date;
+        reason: string | null;
+        submission_id: string;
+      }[]
+    >`
+      select event.submission_id, event.decision, event.reason, event.occurred_at,
+        person_name.first_name_th, person_name.last_name_th
+      from private.collection_checking_events as event
+      join public.accounts as account on account.id = event.instructor_account_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      where event.submission_id = any(${submissionIds}::uuid[])
+      order by event.submission_id, event.occurred_at
+    `;
+    for (const row of rows) {
+      const events = bySubmission.get(row.submission_id) ?? [];
+      events.push({
+        decision: row.decision,
+        instructorName: `${row.first_name_th} ${row.last_name_th}`.trim(),
+        occurredAt: row.occurred_at,
+        reason: row.reason,
+      });
+      bySubmission.set(row.submission_id, events);
+    }
+    return bySubmission;
   }
 
   private mapForm(row: FormRow): CollectionForm {

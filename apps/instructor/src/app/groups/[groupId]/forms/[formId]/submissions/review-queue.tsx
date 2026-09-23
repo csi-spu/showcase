@@ -1,9 +1,10 @@
 'use client';
 
-import { Button } from '@showcase/ui/button';
+import { Button, buttonVariants } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
 import { Textarea } from '@showcase/ui/textarea';
-import { CheckIcon, DownloadIcon, InboxIcon, UndoIcon } from 'lucide-react';
+import { CheckIcon, DownloadIcon, HistoryIcon, InboxIcon, UndoIcon } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useActionState, useId, useState } from 'react';
@@ -58,10 +59,14 @@ export function ReviewQueue({
   checkAction,
   entries,
   fields,
+  formId,
+  groupId,
 }: {
   checkAction: CheckAction;
   entries: InstructorReviewEntry[];
   fields: InstructorCollectionField[];
+  formId: string;
+  groupId: string;
 }) {
   const t = useTranslations('Forms');
 
@@ -91,6 +96,8 @@ export function ReviewQueue({
             checkAction={checkAction}
             entry={entry}
             fields={fields}
+            formId={formId}
+            groupId={groupId}
             key={entry.studentAccountId}
           />
         ))}
@@ -103,10 +110,14 @@ function ReviewRow({
   checkAction,
   entry,
   fields,
+  formId,
+  groupId,
 }: {
   checkAction: CheckAction;
   entry: InstructorReviewEntry;
   fields: InstructorCollectionField[];
+  formId: string;
+  groupId: string;
 }) {
   const t = useTranslations('Forms');
   const format = useFormatter();
@@ -130,15 +141,28 @@ function ReviewRow({
             })}
       </TableCell>
       <TableCell className="text-right">
-        {submission === null ? null : (
-          <SubmissionDialog
-            checkAction={checkAction}
-            entry={entry}
-            fields={fields}
-            name={name}
-            submission={submission}
-          />
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* History only exists once something was submitted, so it appears with the review action. */}
+          {submission === null ? null : (
+            <>
+              <Link
+                aria-label={t('history.openActionLabel', { name })}
+                className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+                href={`/groups/${groupId}/forms/${formId}/students/${entry.studentAccountId}`}
+              >
+                <HistoryIcon aria-hidden="true" data-icon="inline-start" />
+                {t('history.openAction')}
+              </Link>
+              <SubmissionDialog
+                checkAction={checkAction}
+                entry={entry}
+                fields={fields}
+                name={name}
+                submission={submission}
+              />
+            </>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );

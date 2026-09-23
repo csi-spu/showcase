@@ -80,6 +80,25 @@ class FakeRepository implements CollectionFormsRepository {
   completedInspections: Parameters<CollectionFormsRepository['completeInspection']>[0][] = [];
   readableFile: Result<'findReadableFile'> = null;
 
+  closeResult: Result<'closeForm'> = { ...FORM, status: 'closed' };
+  closedForms: Parameters<CollectionFormsRepository['closeForm']>[0][] = [];
+  reopenPreview: Result<'previewFormReopen'> = { newlyAssignedCount: 2 };
+  reopenResult: Result<'reopenForm'> = {
+    form: { ...FORM, status: 'open' },
+    newlyAssignedCount: 2,
+  };
+  reopenedForms: Parameters<CollectionFormsRepository['reopenForm']>[0][] = [];
+  pendingWork: Result<'getRoundPendingWork'> = {
+    awaitingChecking: 1,
+    changesRequired: 2,
+    notSubmitted: 3,
+  };
+  roundStatusChanges: Parameters<CollectionFormsRepository['setRoundStatus']>[0][] = [];
+  roundStatusResult: Result<'setRoundStatus'> = {
+    pendingWork: { awaitingChecking: 1, changesRequired: 2, notSubmitted: 3 },
+  };
+  history: Result<'getSubmissionHistory'> = null;
+
   attachDraftFile(): Promise<Result<'attachDraftFile'>> {
     return Promise.resolve(this.attachResult);
   }
@@ -163,6 +182,27 @@ class FakeRepository implements CollectionFormsRepository {
   }
   openForm(): Promise<Result<'openForm'>> {
     return Promise.resolve(this.openResult);
+  }
+  closeForm(input: Parameters<CollectionFormsRepository['closeForm']>[0]) {
+    this.closedForms.push(input);
+    return Promise.resolve(this.closeResult);
+  }
+  previewFormReopen(): Promise<Result<'previewFormReopen'>> {
+    return Promise.resolve(this.reopenPreview);
+  }
+  reopenForm(input: Parameters<CollectionFormsRepository['reopenForm']>[0]) {
+    this.reopenedForms.push(input);
+    return Promise.resolve(this.reopenResult);
+  }
+  getRoundPendingWork(): Promise<Result<'getRoundPendingWork'>> {
+    return Promise.resolve(this.pendingWork);
+  }
+  setRoundStatus(input: Parameters<CollectionFormsRepository['setRoundStatus']>[0]) {
+    this.roundStatusChanges.push(input);
+    return Promise.resolve(this.roundStatusResult);
+  }
+  getSubmissionHistory(): Promise<Result<'getSubmissionHistory'>> {
+    return Promise.resolve(this.history);
   }
   saveDraft(): Promise<Result<'saveDraft'>> {
     return Promise.resolve(this.saveResult);
@@ -717,6 +757,8 @@ describe('CollectionFormsService', () => {
       repository.formSubmissions = {
         entries: [
           {
+            firstSubmittedAt: NOW,
+            isLate: false,
             latestCheckingReason: null,
             latestSubmission: {
               answers: { company: 'บริษัท ก' },
@@ -748,6 +790,228 @@ describe('CollectionFormsService', () => {
       await expect(service.listFormSubmissions(FORM.id)).rejects.toEqual(
         new CollectionFormsError('FORM_NOT_FOUND', 404),
       );
+    });
+  });
+
+  describe('closeForm', () => {
+    it('stops first submissions with an audited reason', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      const form = await service.closeForm({
+        actorAccountId: ACTOR,
+        formId: FORM.id,
+        reason: '  หมดเขตรับเอกสารรอบแรก  ',
+      });
+
+      expect(form.status).toBe('closed');
+      expect(repository.closedForms[0]).toMatchObject({
+        actorAccountId: ACTOR,
+        formId: FORM.id,
+        now: NOW,
+        reason: 'หมดเขตรับเอกสารรอบแรก',
+      });
+    });
+
+    it('requires a reason', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.closeForm({ actorAccountId: ACTOR, formId: FORM.id, reason: '   ' }),
+      ).rejects.toEqual(new CollectionFormsError('REASON_REQUIRED', 422));
+    });
+
+    it('rejects closing a form that is not open', async () => {
+      const repository = new FakeRepository();
+      repository.closeResult = 'not_open';
+      const { service } = setup(repository);
+
+      await expect(
+        service.closeForm({ actorAccountId: ACTOR, formId: FORM.id, reason: 'ปิดรับ' }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_NOT_OPEN', 409));
+    });
+
+    it('rejects closing inside a closed round', async () => {
+      const repository = new FakeRepository();
+      repository.closeResult = 'round_closed';
+      const { service } = setup(repository);
+
+      await expect(
+        service.closeForm({ actorAccountId: ACTOR, formId: FORM.id, reason: 'ปิดรับ' }),
+      ).rejects.toEqual(new CollectionFormsError('ROUND_CLOSED', 409));
+    });
+  });
+
+  describe('reopenForm', () => {
+    it('previews how many obligations a reopen would create', async () => {
+      const { service } = setup();
+
+      await expect(service.previewFormReopen(FORM.id)).resolves.toEqual({ newlyAssignedCount: 2 });
+    });
+
+    it('reports the assigned count after reopening', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      const result = await service.reopenForm({
+        actorAccountId: ACTOR,
+        formId: FORM.id,
+        reason: 'เปิดรับเพิ่มสำหรับผู้เข้าร่วมใหม่',
+      });
+
+      expect(result).toEqual({ form: { ...FORM, status: 'open' }, newlyAssignedCount: 2 });
+      expect(repository.reopenedForms[0]?.reason).toBe('เปิดรับเพิ่มสำหรับผู้เข้าร่วมใหม่');
+    });
+
+    it('requires a reason to reopen', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.reopenForm({ actorAccountId: ACTOR, formId: FORM.id, reason: '' }),
+      ).rejects.toEqual(new CollectionFormsError('REASON_REQUIRED', 422));
+    });
+
+    it('rejects reopening a form that is not closed', async () => {
+      const repository = new FakeRepository();
+      repository.reopenResult = 'not_closed';
+      const { service } = setup(repository);
+
+      await expect(
+        service.reopenForm({ actorAccountId: ACTOR, formId: FORM.id, reason: 'เปิดรับ' }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_NOT_CLOSED', 409));
+    });
+  });
+
+  describe('round closure', () => {
+    const ROUND = '80000000-0000-4000-8000-000000000001';
+
+    it('summarizes outstanding work before closing', async () => {
+      const { service } = setup();
+
+      await expect(service.getRoundPendingWork(ROUND)).resolves.toEqual({
+        awaitingChecking: 1,
+        changesRequired: 2,
+        notSubmitted: 3,
+        total: 6,
+      });
+    });
+
+    it('reports a missing round as 404', async () => {
+      const repository = new FakeRepository();
+      repository.pendingWork = null;
+      const { service } = setup(repository);
+
+      await expect(service.getRoundPendingWork(ROUND)).rejects.toEqual(
+        new CollectionFormsError('ROUND_NOT_FOUND', 404),
+      );
+    });
+
+    it('closes a round with a reason and retains the confirmed counts', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      const result = await service.closeRound({
+        actorAccountId: ACTOR,
+        reason: 'สิ้นสุดภาคการศึกษา',
+        roundId: ROUND,
+      });
+
+      expect(result.pendingWork.total).toBe(6);
+      expect(repository.roundStatusChanges[0]).toMatchObject({
+        expectedStatus: 'active',
+        nextStatus: 'closed',
+        reason: 'สิ้นสุดภาคการศึกษา',
+        roundId: ROUND,
+      });
+    });
+
+    it('reopens a round with a required reason', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await service.reopenRound({
+        actorAccountId: ACTOR,
+        reason: 'ต้องรับเอกสารเพิ่ม',
+        roundId: ROUND,
+      });
+
+      expect(repository.roundStatusChanges[0]).toMatchObject({
+        expectedStatus: 'closed',
+        nextStatus: 'active',
+      });
+    });
+
+    it('requires a reason to reopen a round', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.reopenRound({ actorAccountId: ACTOR, reason: ' ', roundId: ROUND }),
+      ).rejects.toEqual(new CollectionFormsError('REASON_REQUIRED', 422));
+    });
+
+    it('rejects closing a round that is already closed', async () => {
+      const repository = new FakeRepository();
+      repository.roundStatusResult = 'already_in_state';
+      const { service } = setup(repository);
+
+      await expect(
+        service.closeRound({ actorAccountId: ACTOR, reason: 'ปิดรอบ', roundId: ROUND }),
+      ).rejects.toEqual(new CollectionFormsError('ROUND_ALREADY_CLOSED', 409));
+    });
+  });
+
+  describe('getSubmissionHistory', () => {
+    it('returns every retained version for the Student who owns it', async () => {
+      const repository = new FakeRepository();
+      repository.history = {
+        entries: [
+          {
+            answers: { company: 'บริษัท ก' },
+            checkingEvents: [
+              {
+                decision: 'changes_required',
+                instructorName: 'อาจารย์ ก',
+                occurredAt: NOW,
+                reason: 'แก้ไขชื่อบริษัท',
+              },
+            ],
+            files: {},
+            id: '50000000-0000-4000-8000-000000000001',
+            submittedAt: NOW,
+            version: 1,
+          },
+        ],
+        firstSubmittedAt: NOW,
+        form: FORM,
+        isLate: false,
+        status: 'changes_required',
+      };
+      const { service } = setup(repository);
+
+      const history = await service.getSubmissionHistory({
+        actorAccountId: STUDENT,
+        formId: FORM.id,
+        isInstructor: false,
+        studentAccountId: STUDENT,
+      });
+
+      expect(history.entries).toHaveLength(1);
+      expect(history.entries[0]?.checkingEvents[0]?.reason).toBe('แก้ไขชื่อบริษัท');
+    });
+
+    it('does not distinguish an unauthorized history from a missing one', async () => {
+      const repository = new FakeRepository();
+      repository.history = null;
+      const { service } = setup(repository);
+
+      await expect(
+        service.getSubmissionHistory({
+          actorAccountId: STUDENT,
+          formId: FORM.id,
+          isInstructor: false,
+          studentAccountId: '20000000-0000-4000-8000-00000000000f',
+        }),
+      ).rejects.toEqual(new CollectionFormsError('OBLIGATION_NOT_FOUND', 404));
     });
   });
 });

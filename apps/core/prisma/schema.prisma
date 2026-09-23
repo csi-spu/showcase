@@ -1144,10 +1144,29 @@ model collection_rounds {
   status                String              @default("active")
   created_by_account_id String              @db.Uuid
   created_at            DateTime            @default(now()) @db.Timestamptz(6)
-  accounts              accounts            @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_groups     collection_groups[]
+  accounts                           accounts                             @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_groups                  collection_groups[]
+  collection_round_lifecycle_events  collection_round_lifecycle_events[]
 
   @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_round_lifecycle_events {
+  id                        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  round_id                  String            @db.Uuid
+  actor_account_id          String            @db.Uuid
+  action                    String
+  reason                    String
+  pending_not_submitted     Int
+  pending_awaiting_checking Int
+  pending_changes_required  Int
+  occurred_at               DateTime          @db.Timestamptz(6)
+  collection_rounds         collection_rounds @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts                  accounts          @relation("collection_round_lifecycle_actor", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([round_id, occurred_at(sort: Desc)], map: "collection_round_lifecycle_events_round_time_idx")
+  @@schema("private")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1227,6 +1246,7 @@ model collection_obligations {
 
   @@id([form_id, student_account_id])
   @@index([student_account_id, status, assigned_at(sort: Desc)], map: "collection_obligations_student_status_idx")
+  @@index([form_id, status], map: "collection_obligations_form_status_idx")
   @@schema("public")
 }
 
@@ -1262,6 +1282,7 @@ model collection_submissions {
   @@unique([form_id, student_account_id, version])
   @@unique([form_id, student_account_id, idempotency_key])
   @@index([student_account_id, form_id, submitted_at(sort: Desc)], map: "collection_submissions_student_form_idx")
+  @@index([form_id, student_account_id, version(sort: Desc)], map: "collection_submissions_obligation_version_idx")
   @@schema("private")
 }
 
@@ -1288,6 +1309,8 @@ model collection_form_metadata_events {
   change_kind      String
   previous_value   String?
   next_value       String?
+  reason           String?
+  assigned_count   Int?
   occurred_at      DateTime         @db.Timestamptz(6)
   collection_forms collection_forms @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   accounts         accounts         @relation("collection_form_metadata_actor", fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1439,6 +1462,7 @@ model accounts {
   collection_checking_events_instructor                                                                    collection_checking_events[]              @relation("collection_check_instructor")
   collection_form_templates_created                                                                        collection_form_templates[]               @relation("collection_template_creator")
   collection_form_metadata_events_actor                                                                    collection_form_metadata_events[]         @relation("collection_form_metadata_actor")
+  collection_round_lifecycle_events_actor                                                                  collection_round_lifecycle_events[]       @relation("collection_round_lifecycle_actor")
   collection_files_owned                                                                                   collection_files[]                        @relation("collection_file_owner")
   person_name_correction_audit_events_person_name_correction_audit_events_actor_account_idToaccounts       person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_actor_account_idToaccounts")
   person_name_correction_audit_events_person_name_correction_audit_events_student_account_idToaccounts     person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_student_account_idToaccounts")

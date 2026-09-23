@@ -17,6 +17,7 @@ import {
   validateCreateForm,
   validateCreateFromTemplate,
   validateFormMetadata,
+  validateLifecycleReason,
   validateSaveAsTemplate,
   validateUpdateForm,
 } from '@/lib/collection-forms-validation';
@@ -90,6 +91,62 @@ export async function openCollectionFormAction(
   const sessionToken = await requireSessionToken();
   try {
     await coreClient().open(sessionToken, formId);
+  } catch (error: unknown) {
+    return await toFailure(error);
+  }
+  revalidatePath(`/groups/${groupId}/forms/${formId}`);
+  revalidatePath(`/groups/${groupId}`);
+  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+}
+
+/**
+ * Stops new first submissions on an open form.
+ *
+ * Deliberately narrower than closing the round: a closed form still accepts the
+ * corrections an Instructor asked for, and checking continues. The reason is
+ * required because this is the record of why the form stopped accepting work.
+ */
+export async function closeCollectionFormAction(
+  groupId: string,
+  formId: string,
+  _previousState: CollectionFormActionState,
+  formData: FormData,
+): Promise<CollectionFormActionState> {
+  const reason = validateLifecycleReason(formData);
+  if (reason === null) {
+    return { ...INITIAL_FORM_ACTION_STATE, error: 'reasonRequired', submitted: true };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().close(sessionToken, formId, { reason });
+  } catch (error: unknown) {
+    return await toFailure(error);
+  }
+  revalidatePath(`/groups/${groupId}/forms/${formId}`);
+  revalidatePath(`/groups/${groupId}`);
+  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+}
+
+/**
+ * Reopens a closed form for first submissions.
+ *
+ * Only current members who never received an obligation get one, so nobody who
+ * already submitted is asked to submit again. The dialog shows that count
+ * before this runs.
+ */
+export async function reopenCollectionFormAction(
+  groupId: string,
+  formId: string,
+  _previousState: CollectionFormActionState,
+  formData: FormData,
+): Promise<CollectionFormActionState> {
+  const reason = validateLifecycleReason(formData);
+  if (reason === null) {
+    return { ...INITIAL_FORM_ACTION_STATE, error: 'reasonRequired', submitted: true };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().reopen(sessionToken, formId, { reason });
   } catch (error: unknown) {
     return await toFailure(error);
   }
@@ -190,6 +247,52 @@ export async function checkCollectionSubmissionAction(
     return await toFailure(error);
   }
   revalidatePath(`/groups/${groupId}/forms/${formId}/submissions`);
+  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+}
+
+/**
+ * Closes a whole round read-only.
+ *
+ * Outstanding work does not block this -- the Instructor confirms against the
+ * counts the dialog showed and decides -- but closing stops every write in the
+ * round, including the corrections a closed form would still have allowed.
+ */
+export async function closeCollectionRoundAction(
+  roundId: string,
+  _previousState: CollectionFormActionState,
+  formData: FormData,
+): Promise<CollectionFormActionState> {
+  const reason = validateLifecycleReason(formData);
+  if (reason === null) {
+    return { ...INITIAL_FORM_ACTION_STATE, error: 'reasonRequired', submitted: true };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().closeRound(sessionToken, roundId, { reason });
+  } catch (error: unknown) {
+    return await toFailure(error);
+  }
+  revalidatePath(`/rounds/${roundId}`);
+  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+}
+
+/** Reopens a closed round so its forms accept work again. */
+export async function reopenCollectionRoundAction(
+  roundId: string,
+  _previousState: CollectionFormActionState,
+  formData: FormData,
+): Promise<CollectionFormActionState> {
+  const reason = validateLifecycleReason(formData);
+  if (reason === null) {
+    return { ...INITIAL_FORM_ACTION_STATE, error: 'reasonRequired', submitted: true };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().reopenRound(sessionToken, roundId, { reason });
+  } catch (error: unknown) {
+    return await toFailure(error);
+  }
+  revalidatePath(`/rounds/${roundId}`);
   return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
 }
 

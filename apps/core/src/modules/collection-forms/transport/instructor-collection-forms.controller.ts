@@ -17,6 +17,7 @@ import { InstructorBffGuard } from '../../auth/transport/instructor-bff.guard';
 import { CollectionFormsService } from '../application/collection-forms.service';
 import {
   CheckCollectionSubmissionDto,
+  CollectionLifecycleReasonDto,
   CreateCollectionFormDto,
   CreateCollectionTemplateDto,
   CreateFormFromTemplateDto,
@@ -26,6 +27,7 @@ import {
   UpdateCollectionTemplateDto,
 } from './collection-forms.dto';
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
+import { toSubmissionHistoryView } from './collection-forms.view';
 
 @Controller('internal/instructor/collection')
 @UseFilters(CollectionFormsExceptionFilter)
@@ -103,6 +105,101 @@ export class InstructorCollectionFormsController {
   ) {
     const actor = await this.auth.authorizeInstructor(token(authorization));
     return this.forms.openForm(actor.accountId, formId);
+  }
+
+  /**
+   * Stops first submissions on an open form.
+   *
+   * Deliberately separate from closing the round: requested corrections and
+   * checking continue on a closed form, so this ends new arrivals only.
+   */
+  @Post('forms/:formId/close')
+  @Header('Cache-Control', 'no-store')
+  async close(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Body() body: CollectionLifecycleReasonDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.closeForm({ actorAccountId: actor.accountId, formId, ...body });
+  }
+
+  /** How many obligations reopening would create, shown before confirming. */
+  @Get('forms/:formId/reopen-preview')
+  @Header('Cache-Control', 'no-store')
+  async previewReopen(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.previewFormReopen(formId);
+  }
+
+  @Post('forms/:formId/reopen')
+  @Header('Cache-Control', 'no-store')
+  async reopen(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Body() body: CollectionLifecycleReasonDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.reopenForm({ actorAccountId: actor.accountId, formId, ...body });
+  }
+
+  /** Outstanding work the Instructor confirms against before closing a round. */
+  @Get('rounds/:roundId/pending-work')
+  @Header('Cache-Control', 'no-store')
+  async pendingWork(
+    @Param('roundId', new ParseUUIDPipe({ version: '4' })) roundId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.getRoundPendingWork(roundId);
+  }
+
+  @Post('rounds/:roundId/close')
+  @Header('Cache-Control', 'no-store')
+  async closeRound(
+    @Param('roundId', new ParseUUIDPipe({ version: '4' })) roundId: string,
+    @Body() body: CollectionLifecycleReasonDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.closeRound({ actorAccountId: actor.accountId, roundId, ...body });
+  }
+
+  @Post('rounds/:roundId/reopen')
+  @Header('Cache-Control', 'no-store')
+  async reopenRound(
+    @Param('roundId', new ParseUUIDPipe({ version: '4' })) roundId: string,
+    @Body() body: CollectionLifecycleReasonDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.reopenRound({ actorAccountId: actor.accountId, roundId, ...body });
+  }
+
+  /**
+   * Every retained version of one Student's response, with its decisions.
+   *
+   * Reads submitted versions only. A Student's current draft is not history and
+   * is never joined here.
+   */
+  @Get('forms/:formId/students/:studentAccountId/history')
+  @Header('Cache-Control', 'no-store')
+  async history(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Param('studentAccountId', new ParseUUIDPipe({ version: '4' })) studentAccountId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    const history = await this.forms.getSubmissionHistory({
+      actorAccountId: actor.accountId,
+      formId,
+      isInstructor: true,
+      studentAccountId,
+    });
+    return toSubmissionHistoryView(history);
   }
 
   @Post('forms/:formId/save-as-template')

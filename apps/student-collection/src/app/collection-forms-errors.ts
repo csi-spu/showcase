@@ -42,7 +42,16 @@ export function toErrorMessage(code: string): StudentFormsErrorMessage {
     case 'FILE_NAME_INVALID':
     case 'FILE_TYPE_NOT_ALLOWED':
       return 'fileTypeNotAllowed';
+    /*
+     * A closed form, and a closed round, both refuse the write for the same
+     * reason from the Student's side: this form no longer takes answers. Left
+     * unmapped they read as an outage, which sends the Student to support over
+     * a decision an Instructor made deliberately.
+     */
+    case 'FORM_NOT_EDITABLE':
     case 'FORM_NOT_OPEN':
+    case 'FORM_NOT_SUBMITTABLE':
+    case 'ROUND_CLOSED':
       return 'formNotOpen';
     case 'FIELD_NOT_FOUND':
     case 'FILE_NOT_ACCESSIBLE':

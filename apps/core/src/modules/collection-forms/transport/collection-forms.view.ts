@@ -1,11 +1,12 @@
 import type {
   CollectionFile,
+  CollectionSubmissionHistory,
   DraftFileSelection,
   StudentObligation,
 } from '../application/collection-forms.ports';
 
 /*
- * Transport views for the Student surface.
+ * Transport views for the collection surfaces.
  *
  * The domain objects carry `studentAccountId` because persistence needs it to
  * scope every row. The Student's own client has no use for it -- it can only
@@ -65,6 +66,10 @@ export function toObligationView(obligation: StudentObligation) {
       title: obligation.form.title,
       version: obligation.form.version,
     },
+    firstSubmittedAt: obligation.firstSubmittedAt?.toISOString() ?? null,
+    hasDeadlinePassed: obligation.hasDeadlinePassed,
+    isLate: obligation.isLate,
+    isWritable: obligation.isWritable,
     latestCheckingReason: obligation.latestCheckingReason,
     latestSubmission:
       obligation.latestSubmission === null
@@ -78,5 +83,40 @@ export function toObligationView(obligation: StudentObligation) {
           },
     rosterName: obligation.rosterName,
     status: obligation.status,
+  };
+}
+
+/**
+ * Every retained version of one response.
+ *
+ * The same projection serves both audiences: it carries only submitted content
+ * and the decisions against it, so there is nothing here an Instructor may see
+ * that the Student who wrote it may not.
+ */
+export function toSubmissionHistoryView(history: CollectionSubmissionHistory) {
+  return {
+    entries: history.entries.map((entry) => ({
+      answers: entry.answers,
+      checkingEvents: entry.checkingEvents.map((event) => ({
+        decision: event.decision,
+        instructorName: event.instructorName,
+        occurredAt: event.occurredAt.toISOString(),
+        reason: event.reason,
+      })),
+      files: toFileSelectionView(entry.files),
+      id: entry.id,
+      submittedAt: entry.submittedAt.toISOString(),
+      version: entry.version,
+    })),
+    firstSubmittedAt: history.firstSubmittedAt?.toISOString() ?? null,
+    form: {
+      deadlineAt: history.form.deadlineAt?.toISOString() ?? null,
+      fields: history.form.fields,
+      id: history.form.id,
+      status: history.form.status,
+      title: history.form.title,
+    },
+    isLate: history.isLate,
+    status: history.status,
   };
 }

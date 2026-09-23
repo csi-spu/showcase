@@ -14,11 +14,17 @@ import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getInstructorAuthPageState } from '@/lib/instructor-auth-page-state';
 import { readInstructorSessionToken } from '@/lib/instructor-auth-session';
+import { InstructorCollectionFormsCoreClient } from '@/lib/instructor-collection-forms-core';
 import { InstructorCollectionGroupsCoreClient } from '@/lib/instructor-collection-groups-core';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../../app-shell';
+import {
+  closeCollectionRoundAction,
+  reopenCollectionRoundAction,
+} from '../../collection-forms.actions';
 import { createGroupAction } from '../../collection-groups.actions';
 import { CreateGroupPanel } from './create-group-form';
+import { RoundLifecyclePanel } from './round-lifecycle-panel';
 
 interface RoundPageProps {
   params: Promise<{ roundId: string }>;
@@ -32,7 +38,8 @@ export default async function RoundPage({ params }: RoundPageProps) {
   if (sessionToken === null) redirect('/?expired=1');
 
   const t = await getTranslations('Groups');
-  const client = new InstructorCollectionGroupsCoreClient(getInstructorServerEnvironment());
+  const environment = getInstructorServerEnvironment();
+  const client = new InstructorCollectionGroupsCoreClient(environment);
   let round;
   let groups;
   try {
@@ -52,6 +59,17 @@ export default async function RoundPage({ params }: RoundPageProps) {
   const boundCreateGroupAction = createGroupAction.bind(null, roundId);
   const isActive = round.status === 'active';
 
+  /*
+   * Outstanding work is only asked for when it can change the decision, which
+   * is when closing. A failure here leaves the counts out of the confirmation
+   * rather than taking the page down.
+   */
+  const pendingWork = isActive
+    ? await new InstructorCollectionFormsCoreClient(environment)
+        .roundPendingWork(sessionToken, roundId)
+        .catch(() => null)
+    : null;
+
   return (
     <AppShell trail={[{ href: '/rounds', label: t('round.pageTitle') }, { label: round.name }]}>
       <PageHeader
@@ -66,6 +84,15 @@ export default async function RoundPage({ params }: RoundPageProps) {
         }
         title={round.name}
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <RoundLifecyclePanel
+          closeAction={closeCollectionRoundAction.bind(null, roundId)}
+          isActive={isActive}
+          pendingWork={pendingWork}
+          reopenAction={reopenCollectionRoundAction.bind(null, roundId)}
+        />
+      </div>
 
       <CreateGroupPanel action={boundCreateGroupAction} />
 
