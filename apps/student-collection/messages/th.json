@@ -175,5 +175,17 @@
       "answersHeading": "คำตอบ",
       "backToList": "กลับไปรายการเอกสาร"
     }
+  },
+  "Notifications": {
+    "title": "การแจ้งเตือน",
+    "unread": "ยังไม่ได้อ่าน {count} รายการ",
+    "unreadItem": "ยังไม่ได้อ่าน",
+    "markAllRead": "ทำเครื่องหมายว่าอ่านแล้ว",
+    "kind": {
+      "obligation_assigned": "มีเอกสารที่ต้องส่ง",
+      "changes_requested": "ขอให้แก้ไข",
+      "submission_passed": "ผ่านการตรวจแล้ว",
+      "deadline_reminder": "ใกล้ถึงกำหนดส่ง"
+    }
   }
 }

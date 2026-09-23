@@ -105,7 +105,8 @@ export function buildMatrixRows(input: {
 }): CollectionMatrixRow[] {
   const byStudent = new Map<string, Map<string, MatrixObligationInput>>();
   for (const obligation of input.obligations) {
-    const forStudent = byStudent.get(obligation.studentAccountId) ?? new Map();
+    const forStudent =
+      byStudent.get(obligation.studentAccountId) ?? new Map<string, MatrixObligationInput>();
     forStudent.set(obligation.formId, obligation);
     byStudent.set(obligation.studentAccountId, forStudent);
   }

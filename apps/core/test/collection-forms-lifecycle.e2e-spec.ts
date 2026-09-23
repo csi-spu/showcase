@@ -17,6 +17,7 @@ const OTHER_STUDENT_ACCOUNT = '58000000-0000-4000-8000-000000000003';
 const FORM_ID = '58000000-0000-4000-8000-000000000004';
 const ROUND_ID = '58000000-0000-4000-8000-000000000005';
 const SUBMISSION_ID = '58000000-0000-4000-8000-000000000006';
+const NOTIFICATION_ID = '58000000-0000-4000-8000-000000000007';
 
 /*
  * Transport boundaries for the correction, lateness and lifecycle routes.
@@ -77,6 +78,23 @@ describe('collection forms lifecycle (e2e)', () => {
       .fn()
       .mockResolvedValue({ form: { id: FORM_ID, status: 'open' }, newlyAssignedCount: 2 }),
     reopenRound: jest.fn().mockResolvedValue({ pendingWork: pendingWork() }),
+    markNotificationsRead: jest.fn().mockResolvedValue({ readCount: 1 }),
+    readNotificationFeed: jest.fn().mockResolvedValue({
+      notifications: [
+        {
+          createdAt: new Date('2026-09-23T03:00:00.000Z'),
+          deadlineAt: new Date('2026-09-25T16:59:59.000Z'),
+          formId: FORM_ID,
+          formTitle: 'แบบฟอร์มสหกิจศึกษา',
+          groupId: ROUND_ID,
+          id: NOTIFICATION_ID,
+          isRead: false,
+          kind: 'deadline_reminder' as const,
+          studentAccountId: STUDENT_ACCOUNT,
+        },
+      ],
+      unreadCount: 1,
+    }),
   };
 
   beforeEach(async () => {
@@ -336,6 +354,96 @@ describe('collection forms lifecycle (e2e)', () => {
       .set('x-student-collection-bff-secret', studentSecret)
       .set('Authorization', 'Bearer opaque-session');
   }
+
+  describe('notifications', () => {
+    it('refuses the feed without the Student collection BFF secret', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('authorization', 'Bearer student-token')
+        .expect(403);
+      expect(forms.readNotificationFeed).not.toHaveBeenCalled();
+    });
+
+    it('does not expose the feed on the Instructor surface', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('x-instructor-bff-secret', instructorSecret)
+        .set('authorization', 'Bearer instructor-token')
+        .expect(403);
+      expect(forms.readNotificationFeed).not.toHaveBeenCalled();
+    });
+
+    /*
+     * The account id is internal scoping. It must not travel back to a browser
+     * even though the caller could only ever be that Student.
+     */
+    it('returns the feed without the account id that scoped it', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .expect(200);
+
+      const feed = response.body as {
+        notifications: Record<string, unknown>[];
+        unreadCount: number;
+      };
+      expect(feed.unreadCount).toBe(1);
+      expect(feed.notifications[0]).toEqual({
+        createdAt: '2026-09-23T03:00:00.000Z',
+        deadlineAt: '2026-09-25T16:59:59.000Z',
+        formId: FORM_ID,
+        formTitle: 'แบบฟอร์มสหกิจศึกษา',
+        groupId: ROUND_ID,
+        id: NOTIFICATION_ID,
+        isRead: false,
+        kind: 'deadline_reminder',
+      });
+    });
+
+    it('takes the reading Student from the session, never the body', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID] })
+        .expect(201);
+
+      expect(forms.markNotificationsRead).toHaveBeenCalledWith({
+        notificationIds: [NOTIFICATION_ID],
+        studentAccountId: STUDENT_ACCOUNT,
+      });
+    });
+
+    it('rejects an attempt to name another Student in the body', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID], studentAccountId: OTHER_STUDENT_ACCOUNT })
+        .expect(400);
+    });
+
+    it('rejects an identifier that is not a notification id', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: ['not-a-uuid'] })
+        .expect(400);
+    });
+
+    it('refuses a read receipt from an expired session', async () => {
+      studentAuthorized = false;
+
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID] })
+        .expect(403);
+    });
+  });
 });
 
 function pendingWork() {

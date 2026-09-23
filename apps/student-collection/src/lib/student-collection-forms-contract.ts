@@ -206,6 +206,43 @@ export const submitSchema = z
   .object({ submissionId: z.uuid(), version: z.number().int() })
   .strict();
 
+export const NOTIFICATION_KINDS = [
+  'obligation_assigned',
+  'changes_requested',
+  'submission_passed',
+  'deadline_reminder',
+] as const;
+
+/*
+ * One notification as Core sends it.
+ *
+ * `.strict()` here is what keeps the contract honest: a field Core starts
+ * sending that this schema does not declare fails the parse rather than
+ * reaching the browser unexamined.
+ */
+export const notificationSchema = z
+  .object({
+    createdAt: z.iso.datetime(),
+    deadlineAt: z.iso.datetime().nullable(),
+    formId: z.uuid(),
+    formTitle: z.string(),
+    groupId: z.uuid(),
+    id: z.uuid(),
+    isRead: z.boolean(),
+    kind: z.enum(NOTIFICATION_KINDS),
+  })
+  .strict();
+
+export const notificationFeedSchema = z
+  .object({
+    notifications: z.array(notificationSchema),
+    /* Counted across every notification, not just the page shown. */
+    unreadCount: z.number().int(),
+  })
+  .strict();
+
+export const markNotificationsReadSchema = z.object({ readCount: z.number().int() }).strict();
+
 export type StudentCollectionField = z.infer<typeof fieldSchema>;
 export type StudentCollectionFile = z.infer<typeof fileSchema>;
 export type StudentCollectionFileStatus = StudentCollectionFile['status'];
@@ -213,3 +250,6 @@ export type StudentCollectionUploadTicket = z.infer<typeof uploadTicketSchema>;
 export type StudentCollectionObligation = z.infer<typeof obligationSchema>;
 export type StudentCollectionPrefill = z.infer<typeof prefillSchema>;
 export type StudentCollectionSubmissionHistory = z.infer<typeof submissionHistorySchema>;
+export type StudentCollectionNotification = z.infer<typeof notificationSchema>;
+export type StudentCollectionNotificationKind = StudentCollectionNotification['kind'];
+export type StudentCollectionNotificationFeed = z.infer<typeof notificationFeedSchema>;

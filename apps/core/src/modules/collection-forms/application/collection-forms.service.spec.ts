@@ -214,6 +214,25 @@ class FakeRepository implements CollectionFormsRepository {
   getRoundPendingWork(): Promise<Result<'getRoundPendingWork'>> {
     return Promise.resolve(this.pendingWork);
   }
+  recordedNotifications: Parameters<CollectionFormsRepository['recordNotifications']>[0][] = [];
+  dueReminders: Result<'findDueReminders'> = [];
+  notificationFeed: Result<'readNotificationFeed'> = { notifications: [], unreadCount: 0 };
+  notificationReads: Parameters<CollectionFormsRepository['markNotificationsRead']>[0][] = [];
+
+  recordNotifications(input: Parameters<CollectionFormsRepository['recordNotifications']>[0]) {
+    this.recordedNotifications.push(input);
+    return Promise.resolve(input.notifications.length);
+  }
+  findDueReminders(): Promise<Result<'findDueReminders'>> {
+    return Promise.resolve(this.dueReminders);
+  }
+  readNotificationFeed(): Promise<Result<'readNotificationFeed'>> {
+    return Promise.resolve(this.notificationFeed);
+  }
+  markNotificationsRead(input: Parameters<CollectionFormsRepository['markNotificationsRead']>[0]) {
+    this.notificationReads.push(input);
+    return Promise.resolve(input.notificationIds.length);
+  }
   readGroupMatrix(input: Parameters<CollectionFormsRepository['readGroupMatrix']>[0]) {
     this.matrixReads.push(input);
     return Promise.resolve(this.matrixPage);
@@ -1089,6 +1108,82 @@ describe('CollectionFormsService', () => {
           studentAccountId: '20000000-0000-4000-8000-00000000000f',
         }),
       ).rejects.toEqual(new CollectionFormsError('OBLIGATION_NOT_FOUND', 404));
+    });
+  });
+
+  describe('notifications', () => {
+    const STUDENT = 'b0000000-0000-4000-8000-000000000001';
+    const NOTIFICATION = 'c0000000-0000-4000-8000-000000000001';
+
+    it('records the reminders the repository reported as due', async () => {
+      const repository = new FakeRepository();
+      repository.dueReminders = [
+        { formId: FORM.id, kind: 'deadline_reminder', studentAccountId: STUDENT, subjectKey: '3' },
+      ];
+      const { service } = setup(repository);
+
+      await expect(service.dispatchDueReminders()).resolves.toBe(1);
+      expect(repository.recordedNotifications[0]?.notifications).toEqual(repository.dueReminders);
+    });
+
+    /* Nothing due must cost nothing: an empty batch is not a write. */
+    it('writes nothing when no reminder is due', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await expect(service.dispatchDueReminders()).resolves.toBe(0);
+      expect(repository.recordedNotifications).toHaveLength(0);
+    });
+
+    it('sends an announcement through to the repository', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await expect(
+        service.notify([
+          {
+            formId: FORM.id,
+            kind: 'submission_passed',
+            studentAccountId: STUDENT,
+            subjectKey: 'submission-1',
+          },
+        ]),
+      ).resolves.toBe(1);
+    });
+
+    it('reads the feed for the caller only', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await expect(service.readNotificationFeed(STUDENT)).resolves.toEqual({
+        notifications: [],
+        unreadCount: 0,
+      });
+    });
+
+    it('marks notifications read scoped to the caller', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await expect(
+        service.markNotificationsRead({
+          notificationIds: [NOTIFICATION],
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual({ readCount: 1 });
+      expect(repository.notificationReads[0]?.studentAccountId).toBe(STUDENT);
+    });
+
+    /* An unbounded id list would turn one read receipt into an unbounded write. */
+    it('refuses a read batch larger than one page of the feed', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.markNotificationsRead({
+          notificationIds: Array.from({ length: 51 }, () => NOTIFICATION),
+          studentAccountId: STUDENT,
+        }),
+      ).rejects.toEqual(new CollectionFormsError('NOTIFICATION_BATCH_TOO_LARGE', 422));
     });
   });
 });

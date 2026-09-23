@@ -4,18 +4,19 @@
 
 Create one `production` environment containing these Docker Image applications and workers. Add staging later as a separate delivery decision when the team is ready to operate it:
 
-| App                            | Image name                                    | Container port | Health path        |
-| ------------------------------ | --------------------------------------------- | -------------: | ------------------ |
-| core                           | `ghcr.io/csi-spu/showcase-core`               |           4100 | `/v1/health/ready` |
-| core-media-processor           | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
-| core-cache-worker              | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
-| core-collection-file-inspector | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
-| admin                          | `ghcr.io/csi-spu/showcase-admin`              |           3001 | `/health`          |
-| instructor                     | `ghcr.io/csi-spu/showcase-instructor`         |           3003 | `/health`          |
-| student                        | `ghcr.io/csi-spu/showcase-student`            |           3002 | `/health`          |
-| student-collection             | `ghcr.io/csi-spu/showcase-student-collection` |           3004 | `/health`          |
-| visitor                        | `ghcr.io/csi-spu/showcase-visitor`            |           3000 | `/health`          |
-| media                          | `ghcr.io/csi-spu/showcase-media`              |           4191 | `/health`          |
+| App                                 | Image name                                    | Container port | Health path        |
+| ----------------------------------- | --------------------------------------------- | -------------: | ------------------ |
+| core                                | `ghcr.io/csi-spu/showcase-core`               |           4100 | `/v1/health/ready` |
+| core-media-processor                | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| core-cache-worker                   | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| core-collection-file-inspector      | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| core-collection-reminder-dispatcher | `ghcr.io/csi-spu/showcase-core`               |            n/a | n/a                |
+| admin                               | `ghcr.io/csi-spu/showcase-admin`              |           3001 | `/health`          |
+| instructor                          | `ghcr.io/csi-spu/showcase-instructor`         |           3003 | `/health`          |
+| student                             | `ghcr.io/csi-spu/showcase-student`            |           3002 | `/health`          |
+| student-collection                  | `ghcr.io/csi-spu/showcase-student-collection` |           3004 | `/health`          |
+| visitor                             | `ghcr.io/csi-spu/showcase-visitor`            |           3000 | `/health`          |
+| media                               | `ghcr.io/csi-spu/showcase-media`              |           4191 | `/health`          |
 
 Give Coolify read-only GHCR access. Configure an initial valid SHA tag before first start. Do not connect these applications to a Git source or enable automatic deploy.
 
@@ -54,6 +55,8 @@ Create `core-media-processor` as a non-HTTP Coolify resource from the exact Core
 Create `core-cache-worker` as another non-HTTP Coolify resource from the exact Core image. It runs `node dist/modules/catalog/commands/process-cache-invalidations.js` continuously, uses the Core database plus Cloudflare/Visitor cache values, and restarts on failure. The worker polls idle state once per second, coalesces up to four events per purge, spaces provider calls by 12 seconds to respect the lowest Cloudflare plan limit, leases each durable delivery for 30 seconds, retries at bounded backoff up to eight attempts, and is horizontally safe through `FOR UPDATE SKIP LOCKED`. Run one worker per environment so aggregate provider calls retain that rate bound. Alert when pending lag exceeds 30 seconds or a delivery reaches `failed`; run `private.reconcile_public_cache_invalidations()` during reconciliation to restore missing derived jobs without duplicating completed deliveries.
 
 Create `core-collection-file-inspector` as another non-HTTP Coolify resource from the exact Core image. Run `node dist/modules/collection-forms/commands/inspect-collection-files.js` on a one-minute schedule. Give it the same runtime configuration as Core because the shared environment schema validates the whole Core contract; `DATABASE_URL`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, and the Core project's `SENTRY_DSN` are the values it actively uses. One run inspects at most 50 files and exits; concurrent runs claim different rows through `FOR UPDATE SKIP LOCKED`. Alert when the oldest `quarantined` or `inspecting` file exceeds two minutes, or when the process exits unsuccessfully. A missing inspector is fail-closed: files remain quarantined and cannot be submitted.
+
+Create `core-collection-reminder-dispatcher` as another non-HTTP Coolify resource from the exact Core image. Run `node dist/modules/collection-forms/commands/dispatch-collection-reminders.js` on a five-minute schedule with the same runtime configuration as Core; `DATABASE_URL` and the Core project's `SENTRY_DSN` are the values it actively uses. One run delivers at most ten batches of 200 reminders and exits. Reminders are derived from the obligation rather than queued ahead, so a missed run delays reminders instead of losing them, and a closed round or a withdrawn membership suppresses delivery at dispatch rather than needing a backfill. A unique index makes redelivery a no-op, so overlapping runs cannot notify a Student twice. Alert when the process exits unsuccessfully. A missing dispatcher degrades quietly: Students still see their obligations and deadlines, they are simply not reminded.
 
 Configure Cloudflare to cache eligible Core API and Visitor HTML responses using their origin `Cache-Control`, retain the origin `Cache-Tag` values, and keep private/no-store routes out of shared cache. The cache worker expires matching Next.js data/path cache first and then calls Cloudflare's zone cache-purge API by tag. HTML/API remains capped at two minutes if purge delivery is delayed.
 

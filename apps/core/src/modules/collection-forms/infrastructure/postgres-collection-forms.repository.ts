@@ -9,6 +9,7 @@ import {
   summarizeMatrix,
   type CollectionMatrixCellStatus,
 } from '../application/collection-matrix';
+import { REMINDER_LEAD_DAYS } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
   CollectionField,
@@ -18,10 +19,13 @@ import type {
   CollectionFormTemplate,
   CollectionFormsRepository,
   CollectionMatrixPage,
+  CollectionNotificationFeed,
+  CollectionNotificationKind,
   CollectionReviewEntry,
   CollectionSubmissionHistory,
   CollectionSubmissionHistoryEntry,
   DraftFileSelection,
+  PendingNotification,
   RoundPendingWork,
   StudentObligation,
 } from '../application/collection-forms.ports';
@@ -359,13 +363,26 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         update public.collection_forms set status = 'open', opened_at = ${input.now}, version = version + 1
         where id = ${input.formId}
       `;
-      await transaction`
+      const assigned = await transaction<{ student_account_id: string }[]>`
         insert into public.collection_obligations (form_id, student_account_id, assigned_at)
         select ${input.formId}, student_account_id, ${input.now}
         from public.collection_group_memberships
         where group_id = ${row.group_id} and status = 'current'
         on conflict do nothing
+        returning student_account_id
       `;
+      /*
+       * Notified in the same transaction as the obligation, so the two cannot
+       * disagree: a Student is never told about work that was rolled back, and
+       * never assigned work in silence.
+       */
+      await this.insertNotifications(transaction, {
+        formId: input.formId,
+        kind: 'obligation_assigned',
+        now: input.now,
+        studentAccountIds: assigned.map((obligation) => obligation.student_account_id),
+        subjectKey: 'opened',
+      });
       return this.mapForm({ ...row, status: 'open', version: row.version + 1 });
     });
   }
@@ -474,6 +491,14 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         values (${input.formId}, ${input.actorAccountId}, 'reopened', 'closed', 'open',
           ${input.reason}, ${assigned.length}, ${input.now})
       `;
+      /* Only the newly assigned are told. Reopening is not a nudge to everyone. */
+      await this.insertNotifications(transaction, {
+        formId: input.formId,
+        kind: 'obligation_assigned',
+        now: input.now,
+        studentAccountIds: assigned.map((obligation) => obligation.student_account_id),
+        subjectKey: 'reopened',
+      });
       return {
         form: this.mapForm({ ...row, status: 'open', version: row.version + 1 }),
         newlyAssignedCount: assigned.length,
@@ -630,6 +655,167 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
    * `expectedStatus` makes this a compare-and-set: two Instructors closing at
    * once produce one transition and one audit row, not two.
    */
+  /**
+   * Records notifications that survive an eligibility recheck.
+   *
+   * The recheck is the insert's own `where`, not a prior read: a round that
+   * closed or a membership that was withdrawn between queueing and dispatch
+   * silently drops the row. The unique index makes a retry a no-op, so the same
+   * reminder never reaches a Student twice.
+   */
+  async recordNotifications(input: {
+    notifications: PendingNotification[];
+    now: Date;
+  }): Promise<number> {
+    if (input.notifications.length === 0) return 0;
+    const formIds = input.notifications.map((notification) => notification.formId);
+    const studentAccountIds = input.notifications.map(
+      (notification) => notification.studentAccountId,
+    );
+    const kinds = input.notifications.map((notification) => notification.kind);
+    const subjectKeys = input.notifications.map((notification) => notification.subjectKey);
+
+    const inserted = await this.database.sql<{ id: string }[]>`
+      insert into private.collection_notifications
+        (form_id, student_account_id, kind, subject_key, created_at)
+      select intent.form_id, intent.student_account_id, intent.kind, intent.subject_key, ${input.now}
+      from unnest(
+        ${formIds}::uuid[], ${studentAccountIds}::uuid[], ${kinds}::text[], ${subjectKeys}::text[]
+      ) as intent(form_id, student_account_id, kind, subject_key)
+      join public.collection_obligations as obligation
+        on obligation.form_id = intent.form_id
+        and obligation.student_account_id = intent.student_account_id
+      join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      join public.collection_rounds as round on round.id = collection_group.round_id
+      join public.collection_group_memberships as membership
+        on membership.group_id = collection_group.id
+        and membership.student_account_id = obligation.student_account_id
+      where round.status <> 'closed' and membership.status = 'current'
+      on conflict do nothing
+      returning id
+    `;
+    return inserted.length;
+  }
+
+  /**
+   * Obligations whose deadline reminders have come due.
+   *
+   * Bounded, and narrowed in the database rather than in the worker: only open
+   * forms with a deadline, in open rounds, for current members who have not
+   * submitted, and only where that lead time has not already been delivered.
+   */
+  async findDueReminders(input: { limit: number; now: Date }): Promise<PendingNotification[]> {
+    const leadDays = [...REMINDER_LEAD_DAYS];
+    const rows = await this.database.sql<
+      { form_id: string; lead_days: number; student_account_id: string }[]
+    >`
+      select obligation.form_id, obligation.student_account_id, lead.days as lead_days
+      from public.collection_obligations as obligation
+      join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      join public.collection_rounds as round on round.id = collection_group.round_id
+      join public.collection_group_memberships as membership
+        on membership.group_id = collection_group.id
+        and membership.student_account_id = obligation.student_account_id
+      cross join unnest(${leadDays}::int[]) as lead(days)
+      where form.deadline_at is not null
+        and form.status = 'open'
+        and round.status <> 'closed'
+        and membership.status = 'current'
+        and obligation.status = 'not_submitted'
+        and obligation.first_submitted_at is null
+        /* Due once the lead time is reached, and pointless after the deadline. */
+        and ${input.now} >= form.deadline_at - make_interval(days => lead.days)
+        and ${input.now} < form.deadline_at
+        and not exists (
+          select 1 from private.collection_notifications as sent
+          where sent.form_id = obligation.form_id
+            and sent.student_account_id = obligation.student_account_id
+            and sent.kind = 'deadline_reminder'
+            and sent.subject_key = lead.days::text
+        )
+      order by form.deadline_at, obligation.form_id, obligation.student_account_id
+      limit ${input.limit}
+    `;
+    return rows.map((row) => ({
+      formId: row.form_id,
+      kind: 'deadline_reminder' as const,
+      studentAccountId: row.student_account_id,
+      subjectKey: String(row.lead_days),
+    }));
+  }
+
+  /**
+   * One Student's notifications, newest first.
+   *
+   * Scoped to the reader throughout: the feed is keyed by their account id, so
+   * there is no filter to get wrong and no way to read another Student's rows.
+   */
+  async readNotificationFeed(input: {
+    limit: number;
+    studentAccountId: string;
+  }): Promise<CollectionNotificationFeed> {
+    const rows = await this.database.sql<
+      {
+        created_at: Date;
+        deadline_at: Date | null;
+        form_id: string;
+        group_id: string;
+        id: string;
+        kind: CollectionNotificationKind;
+        read_at: Date | null;
+        title: string;
+      }[]
+    >`
+      select notification.id, notification.form_id, notification.kind,
+        notification.created_at, notification.read_at,
+        form.title, form.deadline_at, form.group_id
+      from private.collection_notifications as notification
+      join public.collection_forms as form on form.id = notification.form_id
+      where notification.student_account_id = ${input.studentAccountId}
+      order by notification.created_at desc, notification.id desc
+      limit ${input.limit}
+    `;
+    /* Counted across every notification, so a full page never hides the rest. */
+    const unread = await this.database.sql<{ total: number }[]>`
+      select count(*)::int as total
+      from private.collection_notifications
+      where student_account_id = ${input.studentAccountId} and read_at is null
+    `;
+    return {
+      notifications: rows.map((row) => ({
+        createdAt: row.created_at,
+        deadlineAt: row.deadline_at,
+        formId: row.form_id,
+        formTitle: row.title,
+        groupId: row.group_id,
+        id: row.id,
+        isRead: row.read_at !== null,
+        kind: row.kind,
+      })),
+      unreadCount: unread[0]?.total ?? 0,
+    };
+  }
+
+  /** Marks rows read. The account id is part of the predicate, not a check after. */
+  async markNotificationsRead(input: {
+    notificationIds: string[];
+    now: Date;
+    studentAccountId: string;
+  }): Promise<number> {
+    if (input.notificationIds.length === 0) return 0;
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_notifications
+      set read_at = ${input.now}
+      where student_account_id = ${input.studentAccountId}
+        and id = any(${input.notificationIds}::uuid[])
+        and read_at is null
+      returning id
+    `;
+    return updated.length;
+  }
+
   async setRoundStatus(input: {
     actorAccountId: string;
     expectedStatus: 'active' | 'closed';
@@ -1335,8 +1521,49 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           (submission_id, instructor_account_id, decision, reason, occurred_at)
         values (${input.expectedSubmissionId}, ${input.actorAccountId}, ${input.decision}, ${input.reason}, ${input.now})
       `;
+      /*
+       * Keyed by the submission, not by the decision, so re-checking a later
+       * version notifies again while a retry of this same check does not.
+       */
+      const decided = rows[0];
+      if (decided !== undefined) {
+        await this.insertNotifications(transaction, {
+          formId: decided.form_id,
+          kind: input.decision === 'passed' ? 'submission_passed' : 'changes_requested',
+          now: input.now,
+          studentAccountIds: [decided.student_account_id],
+          subjectKey: input.expectedSubmissionId,
+        });
+      }
       return 'checked';
     });
+  }
+
+  /**
+   * Writes notification rows inside the caller's transaction.
+   *
+   * No eligibility check here: the caller is already holding the rows that
+   * caused the event, so the round is open and the membership is current by
+   * construction. `on conflict do nothing` keeps a retried write idempotent.
+   */
+  private async insertNotifications(
+    transaction: DatabaseClient['sql'],
+    input: {
+      formId: string;
+      kind: CollectionNotificationKind;
+      now: Date;
+      studentAccountIds: string[];
+      subjectKey: string;
+    },
+  ): Promise<void> {
+    if (input.studentAccountIds.length === 0) return;
+    await transaction`
+      insert into private.collection_notifications
+        (form_id, student_account_id, kind, subject_key, created_at)
+      select ${input.formId}, recipient, ${input.kind}, ${input.subjectKey}, ${input.now}
+      from unnest(${input.studentAccountIds}::uuid[]) as recipient
+      on conflict do nothing
+    `;
   }
 
   private async renumberDraftField(

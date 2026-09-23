@@ -26,6 +26,7 @@ import {
   MAX_OPTIONS_PER_FIELD,
 } from '../application/collection-field';
 import { MAX_MATRIX_ROWS } from '../application/collection-matrix';
+import { MAX_NOTIFICATION_FEED } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
   CollectionFieldType,
@@ -257,4 +258,17 @@ export class CollectionMatrixQueryDto {
   @Min(1)
   @Max(MAX_MATRIX_ROWS)
   limit?: number;
+}
+
+/**
+ * Notifications the Student has seen.
+ *
+ * The ids are only a scoping hint: the update is keyed by the caller's own
+ * account id in the query, so an id belonging to someone else marks nothing.
+ */
+export class MarkNotificationsReadDto {
+  @IsArray()
+  @ArrayMaxSize(MAX_NOTIFICATION_FEED)
+  @IsUUID('4', { each: true })
+  notificationIds!: string[];
 }

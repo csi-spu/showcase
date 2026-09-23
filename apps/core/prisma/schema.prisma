@@ -1170,6 +1170,23 @@ model collection_round_lifecycle_events {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model collection_notifications {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  form_id            String           @db.Uuid
+  student_account_id String           @db.Uuid
+  kind               String
+  subject_key        String
+  created_at         DateTime         @db.Timestamptz(6)
+  read_at            DateTime?        @db.Timestamptz(6)
+  collection_forms   collection_forms @relation(fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accounts           accounts         @relation("collection_notification_student", fields: [student_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([form_id, student_account_id, kind, subject_key], map: "collection_notifications_idempotency_idx")
+  @@index([student_account_id, created_at(sort: Desc)], map: "collection_notifications_student_time_idx")
+  @@schema("private")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model collection_groups {
   id                                 String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   round_id                           String                               @db.Uuid
@@ -1208,6 +1225,7 @@ model collection_forms {
   collection_response_drafts      collection_response_drafts[]
   collection_files                collection_files[]
   collection_form_metadata_events collection_form_metadata_events[]
+  collection_notifications        collection_notifications[]
 
   @@index([group_id, status, created_at(sort: Desc)], map: "collection_forms_group_status_idx")
   @@schema("public")
@@ -1464,6 +1482,7 @@ model accounts {
   collection_form_metadata_events_actor                                                                    collection_form_metadata_events[]         @relation("collection_form_metadata_actor")
   collection_round_lifecycle_events_actor                                                                  collection_round_lifecycle_events[]       @relation("collection_round_lifecycle_actor")
   collection_files_owned                                                                                   collection_files[]                        @relation("collection_file_owner")
+  collection_notifications_student                                                                          collection_notifications[]                @relation("collection_notification_student")
   person_name_correction_audit_events_person_name_correction_audit_events_actor_account_idToaccounts       person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_actor_account_idToaccounts")
   person_name_correction_audit_events_person_name_correction_audit_events_student_account_idToaccounts     person_name_correction_audit_events[]     @relation("person_name_correction_audit_events_student_account_idToaccounts")
   profile_operations                                                                                       profile_operations[]

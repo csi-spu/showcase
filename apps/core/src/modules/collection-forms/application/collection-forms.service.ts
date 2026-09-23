@@ -12,6 +12,7 @@ import {
 import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
 import { findCloseReasonError, summarizePendingWork } from './collection-lifecycle';
 import { boundMatrixLimit } from './collection-matrix';
+import { MAX_NOTIFICATION_FEED, MAX_REMINDER_BATCH } from './collection-notifications';
 import {
   COLLECTION_FILE_INSPECTOR,
   COLLECTION_FILE_STORAGE,
@@ -22,6 +23,7 @@ import type {
   CollectionFileInspector,
   CollectionFileStorage,
   CollectionFormsRepository,
+  PendingNotification,
 } from './collection-forms.ports';
 import { resolvePrefills, type ResolvedPrefill } from './reusable-values';
 
@@ -290,6 +292,53 @@ export class CollectionFormsService {
     });
     if (page === null) throw new CollectionFormsError('GROUP_NOT_FOUND', 404);
     return page;
+  }
+
+  /**
+   * Delivers one bounded batch of due deadline reminders.
+   *
+   * Returns how many were recorded, so a worker can drain the queue and back
+   * off when it empties. Reminders are derived from the obligation rather than
+   * scheduled ahead, so a moved deadline or a closed round needs no backfill:
+   * the next query simply stops selecting the row.
+   */
+  async dispatchDueReminders(): Promise<number> {
+    const now = this.clock.now();
+    const due = await this.repository.findDueReminders({ limit: MAX_REMINDER_BATCH, now });
+    if (due.length === 0) return 0;
+    return this.repository.recordNotifications({ notifications: due, now });
+  }
+
+  /**
+   * Announces an event to the Students it concerns.
+   *
+   * Eligibility is not decided here. The repository rechecks the round and the
+   * membership inside the write, so a notification queued before a round closed
+   * is suppressed rather than delivered.
+   */
+  async notify(notifications: PendingNotification[]): Promise<number> {
+    if (notifications.length === 0) return 0;
+    return this.repository.recordNotifications({ notifications, now: this.clock.now() });
+  }
+
+  /** One Student's own notifications. Scoped to them by the query, not by a filter here. */
+  async readNotificationFeed(studentAccountId: string) {
+    return this.repository.readNotificationFeed({
+      limit: MAX_NOTIFICATION_FEED,
+      studentAccountId,
+    });
+  }
+
+  async markNotificationsRead(input: { notificationIds: string[]; studentAccountId: string }) {
+    if (input.notificationIds.length > MAX_NOTIFICATION_FEED) {
+      throw new CollectionFormsError('NOTIFICATION_BATCH_TOO_LARGE', 422);
+    }
+    const readCount = await this.repository.markNotificationsRead({
+      notificationIds: input.notificationIds,
+      now: this.clock.now(),
+      studentAccountId: input.studentAccountId,
+    });
+    return { readCount };
   }
 
   /** Outstanding work an Instructor must see before closing a round. */

@@ -36,6 +36,7 @@ test('a Core deployment updates every Core-image worker before frontends', () =>
   const workerJobs = [
     'deploy-cache-worker',
     'deploy-collection-file-inspector',
+    'deploy-collection-reminder-dispatcher',
     'deploy-media-processor',
   ];
 
@@ -49,6 +50,10 @@ test('a Core deployment updates every Core-image worker before frontends', () =>
     production.jobs['deploy-collection-file-inspector'].with.application_uuid,
     '${{ vars.COOLIFY_PRODUCTION_COLLECTION_FILE_INSPECTOR }}',
   );
+  assert.equal(
+    production.jobs['deploy-collection-reminder-dispatcher'].with.application_uuid,
+    '${{ vars.COOLIFY_PRODUCTION_COLLECTION_REMINDER_DISPATCHER }}',
+  );
 
   for (const frontend of [
     'deploy-admin',
@@ -59,6 +64,13 @@ test('a Core deployment updates every Core-image worker before frontends', () =>
   ]) {
     assert.ok(production.jobs[frontend].needs.includes('deploy-collection-file-inspector'));
     assert.match(production.jobs[frontend].if, /needs\.deploy-collection-file-inspector\.result/u);
+    assert.ok(
+      production.jobs[frontend].needs.includes('deploy-collection-reminder-dispatcher'),
+    );
+    assert.match(
+      production.jobs[frontend].if,
+      /needs\.deploy-collection-reminder-dispatcher\.result/u,
+    );
   }
 });
 

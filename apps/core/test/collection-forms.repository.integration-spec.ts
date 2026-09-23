@@ -1328,6 +1328,251 @@ describe('PostgresCollectionFormsRepository integration', () => {
     });
   });
 
+  /* Submits without checking, so the notification under test is the only one. */
+  async function submitOnly(formId: string, idempotencyKey: string) {
+    await repository.saveDraft({
+      answers: { [TEXT_FIELD.id]: 'คำตอบ' },
+      expectedVersion: 0,
+      formId,
+      now: NOW,
+      studentAccountId: STUDENT,
+    });
+    const submitted = await repository.submit({
+      formId,
+      idempotencyKey,
+      now: NOW,
+      studentAccountId: STUDENT,
+    });
+    if (typeof submitted === 'string' || 'outcome' in submitted) {
+      throw new Error('expected submission');
+    }
+    return submitted;
+  }
+
+  describe('notifications', () => {
+    it('tells a Student about an obligation the moment opening a form creates it', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const feed = await repository.readNotificationFeed({ limit: 50, studentAccountId: STUDENT });
+      expect(feed.unreadCount).toBe(1);
+      expect(feed.notifications[0]).toMatchObject({
+        formId: form.id,
+        formTitle: 'แบบฟอร์ม',
+        isRead: false,
+        kind: 'obligation_assigned',
+      });
+    });
+
+    /* One Student's feed is their own. The query is what keeps it that way. */
+    it('never shows one Student another Student notification', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const peerFeed = await repository.readNotificationFeed({ limit: 50, studentAccountId: PEER });
+      expect(peerFeed.notifications).toHaveLength(1);
+      expect(peerFeed.notifications.every((notification) => notification.formId === form.id)).toBe(
+        true,
+      );
+    });
+
+    it('records a decision once however many times the same check is retried', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const submission = await submitOnly(form.id, '58000000-0000-4000-8000-000000000090');
+      await repository.checkSubmission({
+        actorAccountId: INSTRUCTOR,
+        decision: 'passed',
+        expectedSubmissionId: submission.submissionId,
+        now: NOW,
+        reason: null,
+      });
+
+      /* A duplicate delivery of the same decision is suppressed by the index. */
+      const recorded = await repository.recordNotifications({
+        notifications: [
+          {
+            formId: form.id,
+            kind: 'submission_passed',
+            studentAccountId: STUDENT,
+            subjectKey: submission.submissionId,
+          },
+        ],
+        now: NOW,
+      });
+
+      expect(recorded).toBe(0);
+      const feed = await repository.readNotificationFeed({ limit: 50, studentAccountId: STUDENT });
+      const passed = feed.notifications.filter(
+        (notification) => notification.kind === 'submission_passed',
+      );
+      expect(passed).toHaveLength(1);
+    });
+
+    it('suppresses a queued notification once the round has closed', async () => {
+      const { groupId, roundId } = await createRoundAndGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.setRoundStatus({
+        actorAccountId: INSTRUCTOR,
+        expectedStatus: 'active',
+        nextStatus: 'closed',
+        now: NOW,
+        reason: 'ปิดรอบ',
+        roundId,
+      });
+
+      const recorded = await repository.recordNotifications({
+        notifications: [
+          {
+            formId: form.id,
+            kind: 'deadline_reminder',
+            studentAccountId: STUDENT,
+            subjectKey: '3',
+          },
+        ],
+        now: NOW,
+      });
+
+      expect(recorded).toBe(0);
+    });
+
+    it('suppresses a queued notification for a withdrawn member', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await database.sql`
+        update public.collection_group_memberships
+        set status = 'withdrawn', withdrawn_at = ${NOW},
+          withdrawn_by_account_id = ${INSTRUCTOR}, withdrawal_reason = 'ลาออก'
+        where group_id = ${groupId} and student_account_id = ${STUDENT}
+      `;
+
+      const recorded = await repository.recordNotifications({
+        notifications: [
+          {
+            formId: form.id,
+            kind: 'deadline_reminder',
+            studentAccountId: STUDENT,
+            subjectKey: '3',
+          },
+        ],
+        now: NOW,
+      });
+
+      expect(recorded).toBe(0);
+    });
+
+    it('finds a reminder once its lead time is reached and not before', async () => {
+      const groupId = await createGroup();
+      const deadline = new Date('2026-09-30T17:00:00.000Z');
+      const form = await createForm(groupId, [TEXT_FIELD], deadline);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const tooEarly = await repository.findDueReminders({
+        limit: 200,
+        now: new Date('2026-09-26T17:00:00.000Z'),
+      });
+      expect(tooEarly).toHaveLength(0);
+
+      const due = await repository.findDueReminders({
+        limit: 200,
+        now: new Date('2026-09-27T18:00:00.000Z'),
+      });
+      expect(due).toEqual([
+        { formId: form.id, kind: 'deadline_reminder', studentAccountId: STUDENT, subjectKey: '3' },
+      ]);
+    });
+
+    /* Reminding someone after the deadline has passed is noise, not a reminder. */
+    it('stops finding a reminder once the deadline has passed', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], new Date('2026-09-30T17:00:00.000Z'));
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      await expect(
+        repository.findDueReminders({ limit: 200, now: new Date('2026-10-01T00:00:00.000Z') }),
+      ).resolves.toHaveLength(0);
+    });
+
+    it('stops finding a reminder once the Student has submitted', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], new Date('2026-09-30T17:00:00.000Z'));
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      /* Both lead times have come due by now, which is why this asserts on both. */
+      const now = new Date('2026-09-29T18:00:00.000Z');
+      await expect(repository.findDueReminders({ limit: 200, now })).resolves.toHaveLength(2);
+
+      await submitOnly(form.id, '58000000-0000-4000-8000-000000000091');
+
+      await expect(repository.findDueReminders({ limit: 200, now })).resolves.toHaveLength(0);
+    });
+
+    it('stops finding a reminder it has already delivered', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], new Date('2026-09-30T17:00:00.000Z'));
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const now = new Date('2026-09-29T18:00:00.000Z');
+      const due = await repository.findDueReminders({ limit: 200, now });
+      expect(await repository.recordNotifications({ notifications: due, now })).toBe(due.length);
+
+      const remaining = await repository.findDueReminders({ limit: 200, now });
+      expect(remaining.some((reminder) => reminder.subjectKey === '3')).toBe(false);
+    });
+
+    it('marks only the caller own notifications read', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const peerFeed = await repository.readNotificationFeed({ limit: 50, studentAccountId: PEER });
+      const peerNotificationId = peerFeed.notifications[0]?.id ?? '';
+
+      const readCount = await repository.markNotificationsRead({
+        notificationIds: [peerNotificationId],
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+
+      expect(readCount).toBe(0);
+      await expect(
+        repository.readNotificationFeed({ limit: 50, studentAccountId: PEER }),
+      ).resolves.toMatchObject({ unreadCount: 1 });
+    });
+
+    it('marks a notification read once and does not count it again', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const feed = await repository.readNotificationFeed({ limit: 50, studentAccountId: STUDENT });
+      const notificationId = feed.notifications[0]?.id ?? '';
+
+      await expect(
+        repository.markNotificationsRead({
+          notificationIds: [notificationId],
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe(1);
+      await expect(
+        repository.markNotificationsRead({
+          notificationIds: [notificationId],
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe(0);
+      await expect(
+        repository.readNotificationFeed({ limit: 50, studentAccountId: STUDENT }),
+      ).resolves.toMatchObject({ unreadCount: 0 });
+    });
+  });
+
   async function addMember(groupId: string, studentAccountId: string) {
     await database.sql`
       insert into public.collection_group_memberships
@@ -1391,6 +1636,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       await transaction`update public.collection_obligations set latest_submission_id = null where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from private.collection_submissions where student_account_id = ${STUDENT}`;
       await transaction`delete from public.collection_obligations where student_account_id in (${STUDENT}, ${PEER})`;
+      await transaction`delete from private.collection_notifications where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from private.collection_form_metadata_events where actor_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_forms where created_by_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_form_templates where created_by_account_id = ${INSTRUCTOR}`;

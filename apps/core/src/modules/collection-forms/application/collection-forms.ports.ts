@@ -1,6 +1,7 @@
 import type { CollectionAnswers, CollectionField } from './collection-field';
 import type { CollectionFile, CollectionFileStatus } from './collection-files';
 import type { CollectionMatrixRow, CollectionMatrixSummary } from './collection-matrix';
+import type { CollectionNotificationKind } from './collection-notifications';
 import type { ReusableValueCandidate } from './reusable-values';
 
 export const COLLECTION_FORMS_REPOSITORY = Symbol('COLLECTION_FORMS_REPOSITORY');
@@ -61,6 +62,7 @@ export type {
   CollectionMatrixRow,
   CollectionMatrixSummary,
 } from './collection-matrix';
+export type { CollectionNotificationKind } from './collection-notifications';
 
 export interface CollectionForm {
   createdFromTemplateId: string | null;
@@ -204,6 +206,38 @@ export interface RoundPendingWork {
   awaitingChecking: number;
   changesRequired: number;
   notSubmitted: number;
+}
+
+/**
+ * One in-website notification, as a Student reads it.
+ *
+ * Carries the form it concerns rather than its contents: a notification tells a
+ * Student where to go, and the page they land on enforces its own authorization.
+ */
+export interface CollectionNotification {
+  createdAt: Date;
+  formId: string;
+  formTitle: string;
+  groupId: string;
+  id: string;
+  isRead: boolean;
+  kind: CollectionNotificationKind;
+  /** Set for a deadline reminder, so the Student sees what they are being reminded of. */
+  deadlineAt: Date | null;
+}
+
+export interface CollectionNotificationFeed {
+  notifications: CollectionNotification[];
+  /** Unread across every obligation, not only the ones on this page. */
+  unreadCount: number;
+}
+
+/** One notification the worker intends to deliver, before eligibility is rechecked. */
+export interface PendingNotification {
+  formId: string;
+  kind: CollectionNotificationKind;
+  studentAccountId: string;
+  subjectKey: string;
 }
 
 export class CollectionFormsError extends Error {
@@ -378,6 +412,26 @@ export interface CollectionFormsRepository {
     groupId: string;
     limit: number;
   }): Promise<CollectionMatrixPage | null>;
+  /**
+   * Records notifications that are still eligible when they are delivered.
+   *
+   * Eligibility is rechecked inside the write, so a round that closed or a
+   * membership that was withdrawn between queueing and dispatch suppresses the
+   * row rather than delivering it. Returns how many were actually recorded.
+   */
+  recordNotifications(input: { notifications: PendingNotification[]; now: Date }): Promise<number>;
+  /** Obligations whose deadline reminders are now due and not yet delivered. */
+  findDueReminders(input: { limit: number; now: Date }): Promise<PendingNotification[]>;
+  readNotificationFeed(input: {
+    limit: number;
+    studentAccountId: string;
+  }): Promise<CollectionNotificationFeed>;
+  /** Marks a Student's notifications read. Only their own rows are touched. */
+  markNotificationsRead(input: {
+    notificationIds: string[];
+    now: Date;
+    studentAccountId: string;
+  }): Promise<number>;
   setRoundStatus(input: {
     actorAccountId: string;
     expectedStatus: 'active' | 'closed';

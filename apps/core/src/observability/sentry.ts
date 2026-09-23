@@ -4,7 +4,12 @@ interface OperationalErrorContext {
   errorCode: string;
   operation: string;
   runtime:
-    'api' | 'cache-worker' | 'collection-file-inspector' | 'media-processor' | 'roster-worker';
+    | 'api'
+    | 'cache-worker'
+    | 'collection-file-inspector'
+    | 'collection-reminder-dispatcher'
+    | 'media-processor'
+    | 'roster-worker';
 }
 
 export function reportOperationalError(error: unknown, context: OperationalErrorContext): void {

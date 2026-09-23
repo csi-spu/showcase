@@ -15,9 +15,14 @@ import { UnavailableCollectionFileStorage } from './infrastructure/unavailable-c
 import { CollectionFormsExceptionFilter } from './transport/collection-forms-exception.filter';
 import { InstructorCollectionFormsController } from './transport/instructor-collection-forms.controller';
 import { StudentCollectionFormsController } from './transport/student-collection-forms.controller';
+import { StudentCollectionNotificationsController } from './transport/student-collection-notifications.controller';
 
 @Module({
-  controllers: [InstructorCollectionFormsController, StudentCollectionFormsController],
+  controllers: [
+    InstructorCollectionFormsController,
+    StudentCollectionFormsController,
+    StudentCollectionNotificationsController,
+  ],
   imports: [AuthModule],
   providers: [
     CollectionFormsService,
