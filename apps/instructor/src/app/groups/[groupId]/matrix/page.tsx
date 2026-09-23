@@ -66,46 +66,51 @@ export default async function GroupMatrixPage({ params, searchParams }: MatrixPa
     >
       <PageHeader description={t('matrix.pageDescription')} title={t('matrix.pageTitle')} />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          icon={UsersIcon}
-          label={t('matrix.statTotalMembers')}
-          tone="primary"
-          value={page.totalMembers}
-        />
-        <StatCard
-          icon={CheckCircle2Icon}
-          label={t('matrix.statPassed')}
-          tone="success"
-          value={page.summary.passed}
-        />
-        <StatCard
-          icon={ClockIcon}
-          label={t('matrix.statAwaitingChecking')}
-          tone="information"
-          value={page.summary.awaitingChecking}
-        />
-        <StatCard
-          icon={PencilLineIcon}
-          label={t('matrix.statChangesRequired')}
-          value={page.summary.changesRequired}
-        />
-        <StatCard
-          icon={CircleDashedIcon}
-          label={t('matrix.statNotSubmitted')}
-          value={page.summary.notSubmitted}
-        />
-        <StatCard icon={TimerOffIcon} label={t('matrix.statLate')} value={page.summary.late} />
-      </div>
+      <section aria-labelledby="matrix-summary-heading" className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold text-foreground" id="matrix-summary-heading">
+          {t('matrix.summaryHeading')}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard
+            icon={UsersIcon}
+            label={t('matrix.statTotalMembers')}
+            tone="primary"
+            value={page.totalMembers}
+          />
+          <StatCard
+            icon={CheckCircle2Icon}
+            label={t('matrix.statPassed')}
+            tone="success"
+            value={page.summary.passed}
+          />
+          <StatCard
+            icon={ClockIcon}
+            label={t('matrix.statAwaitingChecking')}
+            tone="information"
+            value={page.summary.awaitingChecking}
+          />
+          <StatCard
+            icon={PencilLineIcon}
+            label={t('matrix.statChangesRequired')}
+            value={page.summary.changesRequired}
+          />
+          <StatCard
+            icon={CircleDashedIcon}
+            label={t('matrix.statNotSubmitted')}
+            value={page.summary.notSubmitted}
+          />
+          <StatCard icon={TimerOffIcon} label={t('matrix.statLate')} value={page.summary.late} />
+        </div>
 
-      {/*
-       * Said plainly, because the totals above describe this page rather than the
-       * whole group: a summary that silently means something narrower than it
-       * looks is worse than no summary.
-       */}
-      <p className="text-xs text-muted-foreground">
-        {t('matrix.summaryScope', { shown: page.rows.length, total: page.totalMembers })}
-      </p>
+        {/*
+         * Said plainly, because the totals above describe this page rather than the
+         * whole group: a summary that silently means something narrower than it
+         * looks is worse than no summary.
+         */}
+        <p className="text-xs text-muted-foreground">
+          {t('matrix.summaryScope', { shown: page.rows.length, total: page.totalMembers })}
+        </p>
+      </section>
 
       {page.forms.length === 0 ? (
         <EmptyState
