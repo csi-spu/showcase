@@ -33,10 +33,12 @@ test.describe('Collection Milestone 4', () => {
     try {
       await loginStudentCollection(studentPage, collectionScenario);
 
-      await test.step('an assigned obligation is announced in the feed', async () => {
-        await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
-        await expect(studentPage.getByText('มีเอกสารที่ต้องส่ง').first()).toBeVisible();
-      });
+      /*
+       * The feed starts empty. The fixture inserts the obligation as a row
+       * rather than through the assignment use case, so nothing has announced
+       * itself yet -- the panel renders only once a decision produces an entry.
+       */
+      await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeHidden();
 
       await submitAnswer(studentPage, collectionScenario, answer);
       await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
@@ -87,7 +89,13 @@ test.describe('Collection Milestone 4', () => {
       await test.step('passing the submission notifies the Student', async () => {
         await passSubmission(instructorPage, collectionScenario, answer);
 
+        /*
+         * The decision is what reaches the Student: the feed appears for the
+         * first time and names the result, which is the AC16 behaviour this
+         * journey can actually observe end to end.
+         */
         await studentPage.reload();
+        await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
         await expect(studentPage.getByText('ผ่านการตรวจแล้ว').first()).toBeVisible();
       });
 
