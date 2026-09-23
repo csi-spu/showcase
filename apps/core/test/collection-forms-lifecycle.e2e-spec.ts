@@ -17,6 +17,9 @@ const OTHER_STUDENT_ACCOUNT = '58000000-0000-4000-8000-000000000003';
 const FORM_ID = '58000000-0000-4000-8000-000000000004';
 const ROUND_ID = '58000000-0000-4000-8000-000000000005';
 const SUBMISSION_ID = '58000000-0000-4000-8000-000000000006';
+const NOTIFICATION_ID = '58000000-0000-4000-8000-000000000007';
+const GROUP_ID = '58000000-0000-4000-8000-000000000008';
+const EXPORT_ID = '58000000-0000-4000-8000-000000000009';
 
 /*
  * Transport boundaries for the correction, lateness and lifecycle routes.
@@ -67,7 +70,27 @@ describe('collection forms lifecycle (e2e)', () => {
     status: 'changes_required' as const,
   };
 
+  const exportJob = {
+    byteSize: 2_048,
+    errorCode: null,
+    expiresAt: new Date('2026-09-24T03:00:00.000Z'),
+    groupId: GROUP_ID,
+    id: EXPORT_ID,
+    kind: 'excel' as const,
+    readyAt: new Date('2026-09-23T03:00:00.000Z'),
+    requestedAt: new Date('2026-09-23T02:59:00.000Z'),
+    /* Present on the domain object and deliberately absent from the view. */
+    requestedByAccountId: INSTRUCTOR_ACCOUNT,
+    status: 'ready' as const,
+  };
+
   const forms = {
+    createExport: jest.fn().mockResolvedValue({ ...exportJob, status: 'pending' }),
+    createExportDownload: jest
+      .fn()
+      .mockResolvedValue({ url: 'https://media.internal/objects/abc?expires=1&signature=x' }),
+    getExport: jest.fn().mockResolvedValue(exportJob),
+    listGroupExports: jest.fn().mockResolvedValue([exportJob]),
     closeForm: jest.fn().mockResolvedValue({ id: FORM_ID, status: 'closed' }),
     closeRound: jest.fn().mockResolvedValue({ pendingWork: pendingWork() }),
     getRoundPendingWork: jest.fn().mockResolvedValue({ ...pendingWork(), total: 3 }),
@@ -77,6 +100,23 @@ describe('collection forms lifecycle (e2e)', () => {
       .fn()
       .mockResolvedValue({ form: { id: FORM_ID, status: 'open' }, newlyAssignedCount: 2 }),
     reopenRound: jest.fn().mockResolvedValue({ pendingWork: pendingWork() }),
+    markNotificationsRead: jest.fn().mockResolvedValue({ readCount: 1 }),
+    readNotificationFeed: jest.fn().mockResolvedValue({
+      notifications: [
+        {
+          createdAt: new Date('2026-09-23T03:00:00.000Z'),
+          deadlineAt: new Date('2026-09-25T16:59:59.000Z'),
+          formId: FORM_ID,
+          formTitle: 'แบบฟอร์มสหกิจศึกษา',
+          groupId: ROUND_ID,
+          id: NOTIFICATION_ID,
+          isRead: false,
+          kind: 'deadline_reminder' as const,
+          studentAccountId: STUDENT_ACCOUNT,
+        },
+      ],
+      unreadCount: 1,
+    }),
   };
 
   beforeEach(async () => {
@@ -323,6 +363,135 @@ describe('collection forms lifecycle (e2e)', () => {
     });
   });
 
+  describe('exports', () => {
+    it('freezes a requested export against the session actor, not a body field', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({ formIds: [FORM_ID], kind: 'excel' })
+        .expect(201);
+
+      expect(forms.createExport).toHaveBeenCalledWith({
+        formIds: [FORM_ID],
+        groupId: GROUP_ID,
+        kind: 'excel',
+        requestedByAccountId: INSTRUCTOR_ACCOUNT,
+      });
+    });
+
+    /*
+     * Who asked for an export is an internal fact. It is not needed to render
+     * the history and would put one member of staff's account id on another's
+     * screen, so the view omits it.
+     */
+    it('never returns the requesting account id', async () => {
+      const response = await instructorRequest('get', `exports/${EXPORT_ID}`).expect(200);
+
+      expect(response.body).toEqual({
+        byteSize: 2_048,
+        errorCode: null,
+        expiresAt: '2026-09-24T03:00:00.000Z',
+        id: EXPORT_ID,
+        kind: 'excel',
+        readyAt: '2026-09-23T03:00:00.000Z',
+        requestedAt: '2026-09-23T02:59:00.000Z',
+        status: 'ready',
+      });
+      expect(JSON.stringify(response.body)).not.toContain(INSTRUCTOR_ACCOUNT);
+    });
+
+    it('lists a group history without the requesting account id', async () => {
+      const response = await instructorRequest('get', `groups/${GROUP_ID}/exports`).expect(200);
+
+      const page = response.body as { exports: Record<string, unknown>[] };
+      expect(page.exports).toHaveLength(1);
+      expect(page.exports[0]).not.toHaveProperty('requestedByAccountId');
+    });
+
+    /*
+     * Rechecked at download rather than trusted from the request that froze the
+     * snapshot: an Instructor whose access ended must not still fetch bytes.
+     */
+    it('refuses a download once the session is no longer authorized', async () => {
+      instructorAuthorized = false;
+
+      await instructorRequest('get', `exports/${EXPORT_ID}/download`)
+        .expect(403)
+        .expect({ error: { code: 'FORBIDDEN' } });
+
+      expect(forms.createExportDownload).not.toHaveBeenCalled();
+    });
+
+    it('does not expose export routes on the Student surface', async () => {
+      await studentRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({ formIds: [FORM_ID], kind: 'excel' })
+        .expect(404);
+      await studentRequest('get', `exports/${EXPORT_ID}/download`).expect(404);
+      expect(forms.createExport).not.toHaveBeenCalled();
+      expect(forms.createExportDownload).not.toHaveBeenCalled();
+    });
+
+    it('rejects a kind outside the supported formats', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({ formIds: [FORM_ID], kind: 'pdf' })
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.createExport).not.toHaveBeenCalled();
+    });
+
+    it('rejects an export naming no form', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({ formIds: [], kind: 'zip' })
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.createExport).not.toHaveBeenCalled();
+    });
+
+    /* Beyond the snapshot bound the request is refused, never quietly trimmed. */
+    it('rejects an export naming more forms than the snapshot allows', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({
+          formIds: Array.from(
+            { length: 31 },
+            (_, index) => `58000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+          ),
+          kind: 'zip',
+        })
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.createExport).not.toHaveBeenCalled();
+    });
+
+    it('rejects a form id that is not a uuid', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({ formIds: ['not-a-uuid'], kind: 'excel' })
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.createExport).not.toHaveBeenCalled();
+    });
+
+    /* A stale client must not believe it chose the actor or the expiry. */
+    it('rejects an unknown field on an export request', async () => {
+      await instructorRequest('post', `groups/${GROUP_ID}/exports`)
+        .send({
+          formIds: [FORM_ID],
+          kind: 'excel',
+          requestedByAccountId: OTHER_STUDENT_ACCOUNT,
+        })
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.createExport).not.toHaveBeenCalled();
+    });
+
+    /* An export artifact is private and short-lived; a shared cache must not keep it. */
+    it('marks export responses no-store', async () => {
+      await instructorRequest('get', `exports/${EXPORT_ID}`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+      await instructorRequest('get', `exports/${EXPORT_ID}/download`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+    });
+  });
+
   function instructorRequest(method: 'get' | 'post', path: string) {
     return request(app.getHttpServer())
       [method](`/v1/internal/instructor/collection/${path}`)
@@ -336,6 +505,96 @@ describe('collection forms lifecycle (e2e)', () => {
       .set('x-student-collection-bff-secret', studentSecret)
       .set('Authorization', 'Bearer opaque-session');
   }
+
+  describe('notifications', () => {
+    it('refuses the feed without the Student collection BFF secret', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('authorization', 'Bearer student-token')
+        .expect(403);
+      expect(forms.readNotificationFeed).not.toHaveBeenCalled();
+    });
+
+    it('does not expose the feed on the Instructor surface', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('x-instructor-bff-secret', instructorSecret)
+        .set('authorization', 'Bearer instructor-token')
+        .expect(403);
+      expect(forms.readNotificationFeed).not.toHaveBeenCalled();
+    });
+
+    /*
+     * The account id is internal scoping. It must not travel back to a browser
+     * even though the caller could only ever be that Student.
+     */
+    it('returns the feed without the account id that scoped it', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/v1/internal/student-collection/notifications')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .expect(200);
+
+      const feed = response.body as {
+        notifications: Record<string, unknown>[];
+        unreadCount: number;
+      };
+      expect(feed.unreadCount).toBe(1);
+      expect(feed.notifications[0]).toEqual({
+        createdAt: '2026-09-23T03:00:00.000Z',
+        deadlineAt: '2026-09-25T16:59:59.000Z',
+        formId: FORM_ID,
+        formTitle: 'แบบฟอร์มสหกิจศึกษา',
+        groupId: ROUND_ID,
+        id: NOTIFICATION_ID,
+        isRead: false,
+        kind: 'deadline_reminder',
+      });
+    });
+
+    it('takes the reading Student from the session, never the body', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID] })
+        .expect(201);
+
+      expect(forms.markNotificationsRead).toHaveBeenCalledWith({
+        notificationIds: [NOTIFICATION_ID],
+        studentAccountId: STUDENT_ACCOUNT,
+      });
+    });
+
+    it('rejects an attempt to name another Student in the body', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID], studentAccountId: OTHER_STUDENT_ACCOUNT })
+        .expect(400);
+    });
+
+    it('rejects an identifier that is not a notification id', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: ['not-a-uuid'] })
+        .expect(400);
+    });
+
+    it('refuses a read receipt from an expired session', async () => {
+      studentAuthorized = false;
+
+      await request(app.getHttpServer())
+        .post('/v1/internal/student-collection/notifications/read')
+        .set('x-student-collection-bff-secret', studentSecret)
+        .set('authorization', 'Bearer student-token')
+        .send({ notificationIds: [NOTIFICATION_ID] })
+        .expect(403);
+    });
+  });
 });
 
 function pendingWork() {

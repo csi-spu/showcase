@@ -3,6 +3,8 @@ import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
 import {
   draftSaveSchema,
+  markNotificationsReadSchema,
+  notificationFeedSchema,
   obligationSchema,
   prefillSchema,
   submissionHistorySchema,
@@ -10,6 +12,7 @@ import {
   uploadTicketSchema,
 } from './student-collection-forms-contract';
 import type {
+  StudentCollectionNotificationFeed,
   StudentCollectionObligation,
   StudentCollectionPrefill,
   StudentCollectionSubmissionHistory,
@@ -24,6 +27,8 @@ import type {
 export * from './student-collection-forms-contract';
 
 const BASE = '/v1/internal/student-collection/forms';
+/* Notifications span every group, so they are not scoped under one form. */
+const NOTIFICATIONS = '/v1/internal/student-collection/notifications';
 
 export class StudentCollectionFormsCoreClient {
   private readonly client: CoreClient;
@@ -167,6 +172,26 @@ export class StudentCollectionFormsCoreClient {
       path: `${BASE}/${formId}/submit`,
       body: { idempotencyKey },
       responseSchema: submitSchema,
+      sessionToken: token,
+    });
+  }
+
+  /** This Student's own notifications. Core scopes the feed; no id is sent. */
+  readNotifications(token: string): Promise<StudentCollectionNotificationFeed> {
+    return this.client.request({
+      method: 'GET',
+      path: NOTIFICATIONS,
+      responseSchema: notificationFeedSchema,
+      sessionToken: token,
+    });
+  }
+
+  markNotificationsRead(token: string, notificationIds: string[]): Promise<{ readCount: number }> {
+    return this.client.request({
+      method: 'POST',
+      path: `${NOTIFICATIONS}/read`,
+      body: { notificationIds },
+      responseSchema: markNotificationsReadSchema,
       sessionToken: token,
     });
   }

@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ import { CollectionFormsService } from '../application/collection-forms.service'
 import {
   CheckCollectionSubmissionDto,
   CollectionLifecycleReasonDto,
+  CollectionMatrixQueryDto,
+  CreateCollectionExportDto,
   CreateCollectionFormDto,
   CreateCollectionTemplateDto,
   CreateFormFromTemplateDto,
@@ -27,7 +30,7 @@ import {
   UpdateCollectionTemplateDto,
 } from './collection-forms.dto';
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
-import { toSubmissionHistoryView } from './collection-forms.view';
+import { toExportView, toSubmissionHistoryView } from './collection-forms.view';
 
 @Controller('internal/instructor/collection')
 @UseFilters(CollectionFormsExceptionFilter)
@@ -144,6 +147,28 @@ export class InstructorCollectionFormsController {
   ) {
     const actor = await this.auth.authorizeInstructor(token(authorization));
     return this.forms.reopenForm({ actorAccountId: actor.accountId, formId, ...body });
+  }
+
+  /**
+   * One page of the group's Student-by-form matrix.
+   *
+   * Bounded in both directions by Core: the page size is capped and the form
+   * columns are capped, so a large group cannot turn this into an unbounded
+   * read whatever the caller asks for.
+   */
+  @Get('groups/:groupId/matrix')
+  @Header('Cache-Control', 'no-store')
+  async matrix(
+    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
+    @Query() query: CollectionMatrixQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.readGroupMatrix({
+      afterStudentAccountId: query.after ?? null,
+      groupId,
+      limit: query.limit,
+    });
   }
 
   /** Outstanding work the Instructor confirms against before closing a round. */
@@ -291,6 +316,71 @@ export class InstructorCollectionFormsController {
       fileId,
       isInstructor: true,
     });
+  }
+
+  /**
+   * Requests an export of selected forms in a group.
+   *
+   * Returns a pending job rather than bytes: the snapshot is frozen here and
+   * the artifact is built by a worker, so an Instructor never holds an HTTP
+   * request open for a group archive.
+   */
+  @Post('groups/:groupId/exports')
+  @Header('Cache-Control', 'no-store')
+  async createExport(
+    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
+    @Body() body: CreateCollectionExportDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    const job = await this.forms.createExport({
+      formIds: body.formIds,
+      groupId,
+      kind: body.kind,
+      requestedByAccountId: actor.accountId,
+    });
+    return toExportView(job);
+  }
+
+  /** One bounded page of a group's export history, newest first. */
+  @Get('groups/:groupId/exports')
+  @Header('Cache-Control', 'no-store')
+  async listExports(
+    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    const jobs = await this.forms.listGroupExports(groupId);
+    return { exports: jobs.map(toExportView) };
+  }
+
+  /** One export's current state, for a status poll while it builds. */
+  @Get('exports/:exportId')
+  @Header('Cache-Control', 'no-store')
+  async getExport(
+    @Param('exportId', new ParseUUIDPipe({ version: '4' })) exportId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return toExportView(await this.forms.getExport(exportId));
+  }
+
+  /**
+   * Issues a short-lived signed URL for a ready artifact.
+   *
+   * Authorization is rechecked here against the current actor even though the
+   * exported data was frozen at creation: an Instructor whose role was
+   * withdrawn since requesting the export must be denied, which is what
+   * `authorizeInstructor` on this request does.
+   */
+  @Get('exports/:exportId/download')
+  @Header('Cache-Control', 'no-store')
+  async downloadExport(
+    @Param('exportId', new ParseUUIDPipe({ version: '4' })) exportId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.createExportDownload({ exportId });
   }
 }
 

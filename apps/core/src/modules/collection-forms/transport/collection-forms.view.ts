@@ -1,5 +1,7 @@
 import type {
+  CollectionExportJob,
   CollectionFile,
+  CollectionNotification,
   CollectionSubmissionHistory,
   DraftFileSelection,
   StudentObligation,
@@ -118,5 +120,68 @@ export function toSubmissionHistoryView(history: CollectionSubmissionHistory) {
     },
     isLate: history.isLate,
     status: history.status,
+  };
+}
+
+/**
+ * One notification as the Student's client sees it.
+ *
+ * `studentAccountId` is dropped for the same reason as everywhere else here: it
+ * can only be the caller's own, so sending it back adds nothing.
+ */
+export interface CollectionNotificationView {
+  createdAt: string;
+  deadlineAt: string | null;
+  formId: string;
+  formTitle: string;
+  groupId: string;
+  id: string;
+  isRead: boolean;
+  kind: string;
+}
+
+export function toNotificationView(
+  notification: CollectionNotification,
+): CollectionNotificationView {
+  return {
+    createdAt: notification.createdAt.toISOString(),
+    deadlineAt: notification.deadlineAt?.toISOString() ?? null,
+    formId: notification.formId,
+    formTitle: notification.formTitle,
+    groupId: notification.groupId,
+    id: notification.id,
+    isRead: notification.isRead,
+    kind: notification.kind,
+  };
+}
+
+/**
+ * One export job as the Instructor surface sees it.
+ *
+ * `requestedByAccountId` is deliberately absent: an Instructor acts on any
+ * group's exports, so who requested one is audit information rather than
+ * something the dashboard needs. Nothing here names a Student.
+ */
+export interface CollectionExportView {
+  byteSize: number | null;
+  errorCode: string | null;
+  expiresAt: string | null;
+  id: string;
+  kind: string;
+  readyAt: string | null;
+  requestedAt: string;
+  status: string;
+}
+
+export function toExportView(job: CollectionExportJob): CollectionExportView {
+  return {
+    byteSize: job.byteSize,
+    errorCode: job.errorCode,
+    expiresAt: job.expiresAt?.toISOString() ?? null,
+    id: job.id,
+    kind: job.kind,
+    readyAt: job.readyAt?.toISOString() ?? null,
+    requestedAt: job.requestedAt.toISOString(),
+    status: job.status,
   };
 }

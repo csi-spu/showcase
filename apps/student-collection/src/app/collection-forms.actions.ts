@@ -206,3 +206,25 @@ async function expireSessionIfRequired(error: unknown): Promise<void> {
 function coreClient(): StudentCollectionFormsCoreClient {
   return new StudentCollectionFormsCoreClient(getStudentCollectionServerEnvironment());
 }
+
+/**
+ * Marks notifications the Student has now seen.
+ *
+ * The ids are a scoping hint only: Core keys the update by the caller's own
+ * account, so an id belonging to someone else marks nothing. A failure is
+ * swallowed deliberately -- a read receipt that does not land is not worth
+ * interrupting the Student over, and the next visit simply shows them again.
+ */
+export async function markNotificationsReadAction(notificationIds: string[]): Promise<void> {
+  if (notificationIds.length === 0) return;
+  const token = await readStudentCollectionSessionToken();
+  if (token === null) return;
+  const client = new StudentCollectionFormsCoreClient(getStudentCollectionServerEnvironment());
+  try {
+    await client.markNotificationsRead(token, notificationIds);
+  } catch (error: unknown) {
+    if (!(error instanceof CoreClientError)) throw error;
+    return;
+  }
+  revalidatePath('/');
+}

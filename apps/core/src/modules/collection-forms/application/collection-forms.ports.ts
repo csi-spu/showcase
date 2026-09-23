@@ -1,5 +1,8 @@
 import type { CollectionAnswers, CollectionField } from './collection-field';
 import type { CollectionFile, CollectionFileStatus } from './collection-files';
+import type { CollectionMatrixRow, CollectionMatrixSummary } from './collection-matrix';
+import type { CollectionExportKind, CollectionExportStatus } from './collection-exports';
+import type { CollectionNotificationKind } from './collection-notifications';
 import type { ReusableValueCandidate } from './reusable-values';
 
 export const COLLECTION_FORMS_REPOSITORY = Symbol('COLLECTION_FORMS_REPOSITORY');
@@ -22,6 +25,25 @@ export interface CollectionFileStorage {
   createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string>;
   deleteObject(key: string): Promise<void>;
   getObject(key: string, maximumBytes: number): Promise<Buffer>;
+  /**
+   * Streams an object into storage without holding it in memory.
+   *
+   * A group ZIP is far larger than any single document, so the export worker
+   * writes it as it is generated. Returns how many bytes were stored, which is
+   * what the export job records.
+   */
+  putObjectStream(input: {
+    body: AsyncIterable<Buffer>;
+    contentType: string;
+    key: string;
+  }): Promise<number>;
+  /**
+   * Streams an object out of storage in chunks.
+   *
+   * Used to copy one submitted document into the archive; the whole file is
+   * never assembled, so a 5 MB document costs one chunk at a time.
+   */
+  getObjectStream(key: string): AsyncIterable<Buffer>;
 }
 
 /**
@@ -54,6 +76,14 @@ export type {
   CollectionFileType,
 } from './collection-field';
 export type { CollectionFile, CollectionFileStatus } from './collection-files';
+export type {
+  CollectionMatrixCell,
+  CollectionMatrixCellStatus,
+  CollectionMatrixRow,
+  CollectionMatrixSummary,
+} from './collection-matrix';
+export type { CollectionExportKind, CollectionExportStatus } from './collection-exports';
+export type { CollectionNotificationKind } from './collection-notifications';
 
 export interface CollectionForm {
   createdFromTemplateId: string | null;
@@ -176,11 +206,124 @@ export interface CollectionSubmissionHistory {
   status: StudentObligation['status'];
 }
 
+/**
+ * One page of the Student-by-form matrix for a group.
+ *
+ * Both dimensions are bounded: rows are a cursor page over members and forms
+ * are capped, because every row carries a cell per form. `nextCursor` is null
+ * on the last page.
+ */
+export interface CollectionMatrixPage {
+  forms: { deadlineAt: Date | null; id: string; status: CollectionForm['status']; title: string }[];
+  nextCursor: string | null;
+  rows: CollectionMatrixRow[];
+  summary: CollectionMatrixSummary;
+  /** Every current and withdrawn member of the group, not just this page. */
+  totalMembers: number;
+}
+
 /** Unfinished obligations across a round, shown before closing it. */
 export interface RoundPendingWork {
   awaitingChecking: number;
   changesRequired: number;
   notSubmitted: number;
+}
+
+/**
+ * One in-website notification, as a Student reads it.
+ *
+ * Carries the form it concerns rather than its contents: a notification tells a
+ * Student where to go, and the page they land on enforces its own authorization.
+ */
+export interface CollectionNotification {
+  createdAt: Date;
+  formId: string;
+  formTitle: string;
+  groupId: string;
+  id: string;
+  isRead: boolean;
+  kind: CollectionNotificationKind;
+  /** Set for a deadline reminder, so the Student sees what they are being reminded of. */
+  deadlineAt: Date | null;
+}
+
+export interface CollectionNotificationFeed {
+  notifications: CollectionNotification[];
+  /** Unread across every obligation, not only the ones on this page. */
+  unreadCount: number;
+}
+
+/** One notification the worker intends to deliver, before eligibility is rechecked. */
+/**
+ * One export job as an Instructor sees it.
+ *
+ * `expiresAt` is present only once the artifact is ready, which is also when
+ * the 24-hour clock starts. It is stored rather than derived so what the
+ * Instructor is shown and what a download decision uses cannot disagree.
+ */
+export interface CollectionExportJob {
+  byteSize: number | null;
+  errorCode: string | null;
+  expiresAt: Date | null;
+  groupId: string;
+  id: string;
+  kind: CollectionExportKind;
+  readyAt: Date | null;
+  requestedAt: Date;
+  requestedByAccountId: string;
+  status: CollectionExportStatus;
+}
+
+/** One form frozen into an export's snapshot, with its title and fields copied. */
+export interface CollectionExportForm {
+  fields: CollectionField[];
+  formId: string;
+  position: number;
+  title: string;
+}
+
+/**
+ * One frozen cell: what one Student had submitted for one form at creation.
+ *
+ * `submissionId` names an immutable row, which is what makes a later
+ * submission unable to change a finished export without copying answers here.
+ * It is null when nothing was submitted; a draft never appears.
+ */
+export interface CollectionExportEntry {
+  formId: string;
+  isLate: boolean;
+  obligationStatus: string;
+  position: number;
+  studentAccountId: string;
+  studentDisplayName: string;
+  submissionId: string | null;
+  submittedAt: Date | null;
+}
+
+/** An export claimed by a worker, with the snapshot it must rebuild from. */
+export interface ClaimedCollectionExport {
+  attemptCount: number;
+  entries: CollectionExportEntry[];
+  forms: CollectionExportForm[];
+  groupId: string;
+  id: string;
+  kind: CollectionExportKind;
+  leaseId: string;
+}
+
+/** One submitted document named by an export entry, in stable field order. */
+export interface CollectionExportDocument {
+  fieldId: string;
+  originalFilename: string;
+  position: number;
+  storageKey: string;
+}
+
+export interface PendingNotification {
+  formId: string;
+  kind: CollectionNotificationKind;
+  studentAccountId: string;
+  subjectKey: string;
 }
 
 export class CollectionFormsError extends Error {
@@ -344,6 +487,121 @@ export interface CollectionFormsRepository {
   >;
   /** Outstanding obligations across a round, excluding withdrawn members. */
   getRoundPendingWork(roundId: string): Promise<RoundPendingWork | null>;
+  /**
+   * One bounded page of the group matrix.
+   *
+   * Members are paged by a cursor over the stable ordering; forms are capped.
+   * Returns null when the group does not exist.
+   */
+  readGroupMatrix(input: {
+    afterStudentAccountId: string | null;
+    groupId: string;
+    limit: number;
+  }): Promise<CollectionMatrixPage | null>;
+  /**
+   * Records notifications that are still eligible when they are delivered.
+   *
+   * Eligibility is rechecked inside the write, so a round that closed or a
+   * membership that was withdrawn between queueing and dispatch suppresses the
+   * row rather than delivering it. Returns how many were actually recorded.
+   */
+  recordNotifications(input: { notifications: PendingNotification[]; now: Date }): Promise<number>;
+  /** Obligations whose deadline reminders are now due and not yet delivered. */
+  findDueReminders(input: { limit: number; now: Date }): Promise<PendingNotification[]>;
+  readNotificationFeed(input: {
+    limit: number;
+    studentAccountId: string;
+  }): Promise<CollectionNotificationFeed>;
+  /** Marks a Student's notifications read. Only their own rows are touched. */
+  markNotificationsRead(input: {
+    notificationIds: string[];
+    now: Date;
+    studentAccountId: string;
+  }): Promise<number>;
+  /**
+   * Creates an export and freezes its snapshot in one transaction.
+   *
+   * The selected forms, the Students in scope, their display names, and the
+   * exact submission each had at this instant are all written here. Nothing
+   * read later can change what this export will contain, which is what makes a
+   * retry reproduce the same artifact.
+   *
+   * Returns null when the group does not exist.
+   */
+  createExport(input: {
+    formIds: string[];
+    groupId: string;
+    kind: CollectionExportKind;
+    maxForms: number;
+    maxStudents: number;
+    now: Date;
+    requestedByAccountId: string;
+  }): Promise<CollectionExportJob | null>;
+  /** One export, for a status poll or a download authorization check. */
+  getExport(exportId: string): Promise<CollectionExportJob | null>;
+  /**
+   * The answers of one frozen submission.
+   *
+   * Read one at a time by the export builder, which is what keeps a workbook
+   * covering a whole cohort bounded. A submission row is immutable, so this
+   * returns the same answers however long after the snapshot it is called.
+   */
+  readSubmissionAnswers(submissionId: string): Promise<CollectionAnswers | null>;
+  /** One bounded page of a group's export history, newest first. */
+  listGroupExports(input: { groupId: string; limit: number }): Promise<CollectionExportJob[]>;
+  /**
+   * Claims the oldest unfinished export for this worker.
+   *
+   * Leased the same way file inspection is, so a worker that dies mid-archive
+   * releases the job by letting the lease lapse rather than stranding it.
+   * Returns the frozen snapshot with the claim, because the worker must never
+   * re-read live data to build the artifact.
+   */
+  claimExportForBuilding(input: {
+    leaseSeconds: number;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<ClaimedCollectionExport | null>;
+  /**
+   * Documents belonging to one frozen submission, in stable field order.
+   *
+   * Read one submission at a time so the worker never holds a whole group's
+   * file list, let alone its bytes.
+   */
+  listExportDocuments(submissionId: string): Promise<CollectionExportDocument[]>;
+  /**
+   * Marks an export ready. The lease must still be held, so a worker whose
+   * claim lapsed and was retried elsewhere cannot overwrite the newer result.
+   */
+  completeExport(input: {
+    byteSize: number;
+    exportId: string;
+    expiresAt: Date;
+    leaseId: string;
+    now: Date;
+    storageKey: string;
+  }): Promise<boolean>;
+  /**
+   * Records a failed attempt. Below the retry limit the job returns to
+   * `pending`; at it the job fails for good so the Instructor sees retry
+   * rather than an export that never resolves.
+   */
+  failExportAttempt(input: {
+    errorCode: string;
+    exportId: string;
+    leaseId: string;
+    maxAttempts: number;
+    now: Date;
+  }): Promise<boolean>;
+  /**
+   * One ready export whose expiry has passed, claimed for cleanup.
+   *
+   * Cleanup deletes the generated artifact only. Source submissions and their
+   * documents are never touched by this path.
+   */
+  claimExpiredExport(input: { now: Date }): Promise<{ id: string; storageKey: string } | null>;
+  /** Marks an expired export's artifact gone once storage has confirmed it. */
+  markExportExpired(input: { exportId: string; now: Date }): Promise<void>;
   setRoundStatus(input: {
     actorAccountId: string;
     expectedStatus: 'active' | 'closed';

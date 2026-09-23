@@ -3,24 +3,79 @@ import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import { findAnswerError } from '../application/collection-field';
 import { findSubmissionFileError } from '../application/collection-files';
 import { hasDeadlinePassed, isFirstSubmissionLate } from '../application/collection-lifecycle';
+import {
+  MAX_MATRIX_FORMS,
+  buildMatrixRows,
+  summarizeMatrix,
+  type CollectionMatrixCellStatus,
+} from '../application/collection-matrix';
+import { CollectionExportTooLargeError } from '../application/collection-exports';
+import { REMINDER_LEAD_DAYS } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
+  CollectionExportJob,
+  CollectionExportKind,
+  CollectionExportStatus,
   CollectionField,
   CollectionFile,
   CollectionFileStatus,
   CollectionForm,
   CollectionFormTemplate,
   CollectionFormsRepository,
+  CollectionMatrixPage,
+  CollectionNotificationFeed,
+  CollectionNotificationKind,
   CollectionReviewEntry,
   CollectionSubmissionHistory,
   CollectionSubmissionHistoryEntry,
   DraftFileSelection,
+  PendingNotification,
   RoundPendingWork,
   StudentObligation,
 } from '../application/collection-forms.ports';
 import type { ReusableValueCandidate } from '../application/reusable-values';
 
 const MAX_FILES_PER_FIELD = 5;
+
+interface ExportRow {
+  byte_size: string | number | null;
+  error_code: string | null;
+  expires_at: Date | null;
+  group_id: string;
+  id: string;
+  kind: string;
+  ready_at: Date | null;
+  requested_at: Date;
+  requested_by_account_id: string;
+  status: string;
+}
+
+interface ExportEntryRow {
+  form_id: string;
+  is_late: boolean;
+  obligation_status: string;
+  position: number;
+  student_account_id: string;
+  student_display_name: string;
+  submission_id: string | null;
+  submitted_at: Date | null;
+}
+
+/* `byte_size` is a bigint, which the driver returns as a string. */
+function mapExportRow(row: ExportRow): CollectionExportJob {
+  return {
+    byteSize: row.byte_size === null ? null : Number(row.byte_size),
+    errorCode: row.error_code,
+    expiresAt: row.expires_at,
+    groupId: row.group_id,
+    id: row.id,
+    kind: row.kind as CollectionExportKind,
+    readyAt: row.ready_at,
+    requestedAt: row.requested_at,
+    requestedByAccountId: row.requested_by_account_id,
+    status: row.status as CollectionExportStatus,
+  };
+}
 
 interface FormRow {
   created_from_template_id: string | null;
@@ -352,13 +407,26 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         update public.collection_forms set status = 'open', opened_at = ${input.now}, version = version + 1
         where id = ${input.formId}
       `;
-      await transaction`
+      const assigned = await transaction<{ student_account_id: string }[]>`
         insert into public.collection_obligations (form_id, student_account_id, assigned_at)
         select ${input.formId}, student_account_id, ${input.now}
         from public.collection_group_memberships
         where group_id = ${row.group_id} and status = 'current'
         on conflict do nothing
+        returning student_account_id
       `;
+      /*
+       * Notified in the same transaction as the obligation, so the two cannot
+       * disagree: a Student is never told about work that was rolled back, and
+       * never assigned work in silence.
+       */
+      await this.insertNotifications(transaction, {
+        formId: input.formId,
+        kind: 'obligation_assigned',
+        now: input.now,
+        studentAccountIds: assigned.map((obligation) => obligation.student_account_id),
+        subjectKey: 'opened',
+      });
       return this.mapForm({ ...row, status: 'open', version: row.version + 1 });
     });
   }
@@ -467,6 +535,14 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         values (${input.formId}, ${input.actorAccountId}, 'reopened', 'closed', 'open',
           ${input.reason}, ${assigned.length}, ${input.now})
       `;
+      /* Only the newly assigned are told. Reopening is not a nudge to everyone. */
+      await this.insertNotifications(transaction, {
+        formId: input.formId,
+        kind: 'obligation_assigned',
+        now: input.now,
+        studentAccountIds: assigned.map((obligation) => obligation.student_account_id),
+        subjectKey: 'reopened',
+      });
       return {
         form: this.mapForm({ ...row, status: 'open', version: row.version + 1 }),
         newlyAssignedCount: assigned.length,
@@ -489,12 +565,656 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
+   * One bounded page of the group matrix.
+   *
+   * Three separate reads rather than one wide join, because they answer three
+   * differently-shaped questions and joining them would multiply members by
+   * forms in the database before the page is even cut:
+   *
+   * - the forms that make up the columns, capped;
+   * - one cursor page of members, ordered so paging is stable;
+   * - the obligations for exactly those members and those forms.
+   *
+   * A member with no obligation on a form simply has no row in the third read,
+   * which is what `buildMatrixRows` turns into `not_required`.
+   */
+  async readGroupMatrix(input: {
+    afterStudentAccountId: string | null;
+    groupId: string;
+    limit: number;
+  }): Promise<CollectionMatrixPage | null> {
+    const groups = await this.database.sql<{ id: string }[]>`
+      select id from public.collection_groups where id = ${input.groupId}
+    `;
+    if (groups[0] === undefined) return null;
+
+    const formRows = await this.database.sql<
+      { deadline_at: Date | null; id: string; status: CollectionForm['status']; title: string }[]
+    >`
+      select id, title, status, deadline_at
+      from public.collection_forms
+      where group_id = ${input.groupId} and status <> 'draft'
+      order by created_at, id
+      limit ${MAX_MATRIX_FORMS}
+    `;
+
+    /*
+     * Ordered by name then account id: the name is what an Instructor scans,
+     * and the id breaks ties so the cursor cannot skip or repeat a member whose
+     * name is shared. The cursor is the account id of the last row shown.
+     */
+    const memberRows = await this.database.sql<
+      {
+        first_name_th: string;
+        last_name_th: string;
+        status: string;
+        student_account_id: string;
+      }[]
+    >`
+      select membership.student_account_id, membership.status,
+        person_name.first_name_th, person_name.last_name_th
+      from public.collection_group_memberships as membership
+      join public.accounts as account on account.id = membership.student_account_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      where membership.group_id = ${input.groupId}
+        and (
+          ${input.afterStudentAccountId}::uuid is null
+          or (person_name.first_name_th, person_name.last_name_th, membership.student_account_id) > (
+            select cursor_name.first_name_th, cursor_name.last_name_th, ${input.afterStudentAccountId}::uuid
+            from public.accounts as cursor_account
+            join private.person_names as cursor_name on cursor_name.person_id = cursor_account.person_id
+            where cursor_account.id = ${input.afterStudentAccountId}::uuid
+          )
+        )
+      order by person_name.first_name_th, person_name.last_name_th, membership.student_account_id
+      limit ${input.limit + 1}
+    `;
+
+    /* One row beyond the page proves there is a next page without counting. */
+    const hasMore = memberRows.length > input.limit;
+    const pageRows = hasMore ? memberRows.slice(0, input.limit) : memberRows;
+
+    const totals = await this.database.sql<{ total: number }[]>`
+      select count(*)::int as total
+      from public.collection_group_memberships
+      where group_id = ${input.groupId}
+    `;
+
+    const studentAccountIds = pageRows.map((row) => row.student_account_id);
+    const formIds = formRows.map((row) => row.id);
+    const obligationRows =
+      studentAccountIds.length === 0 || formIds.length === 0
+        ? []
+        : await this.database.sql<
+            {
+              deadline_at: Date | null;
+              first_submitted_at: Date | null;
+              form_id: string;
+              status: Exclude<CollectionMatrixCellStatus, 'not_required'>;
+              student_account_id: string;
+            }[]
+          >`
+            select obligation.form_id, obligation.student_account_id, obligation.status,
+              obligation.first_submitted_at, form.deadline_at
+            from public.collection_obligations as obligation
+            join public.collection_forms as form on form.id = obligation.form_id
+            where obligation.form_id = any(${formIds}::uuid[])
+              and obligation.student_account_id = any(${studentAccountIds}::uuid[])
+          `;
+
+    const rows = buildMatrixRows({
+      formIds,
+      members: pageRows.map((row) => ({
+        isWithdrawn: row.status === 'withdrawn',
+        rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
+        studentAccountId: row.student_account_id,
+      })),
+      obligations: obligationRows.map((row) => ({
+        deadlineAt: row.deadline_at,
+        firstSubmittedAt: row.first_submitted_at,
+        formId: row.form_id,
+        status: row.status,
+        studentAccountId: row.student_account_id,
+      })),
+    });
+
+    return {
+      forms: formRows.map((row) => ({
+        deadlineAt: row.deadline_at,
+        id: row.id,
+        status: row.status,
+        title: row.title,
+      })),
+      nextCursor: hasMore ? (pageRows.at(-1)?.student_account_id ?? null) : null,
+      rows,
+      summary: summarizeMatrix(rows),
+      totalMembers: totals[0]?.total ?? 0,
+    };
+  }
+
+  /**
    * Flips a round between active and closed, recording the outstanding counts
    * the actor decided against.
    *
    * `expectedStatus` makes this a compare-and-set: two Instructors closing at
    * once produce one transition and one audit row, not two.
    */
+  /**
+   * Records notifications that survive an eligibility recheck.
+   *
+   * The recheck is the insert's own `where`, not a prior read: a round that
+   * closed or a membership that was withdrawn between queueing and dispatch
+   * silently drops the row. The unique index makes a retry a no-op, so the same
+   * reminder never reaches a Student twice.
+   */
+  async recordNotifications(input: {
+    notifications: PendingNotification[];
+    now: Date;
+  }): Promise<number> {
+    if (input.notifications.length === 0) return 0;
+    const formIds = input.notifications.map((notification) => notification.formId);
+    const studentAccountIds = input.notifications.map(
+      (notification) => notification.studentAccountId,
+    );
+    const kinds = input.notifications.map((notification) => notification.kind);
+    const subjectKeys = input.notifications.map((notification) => notification.subjectKey);
+
+    const inserted = await this.database.sql<{ id: string }[]>`
+      insert into private.collection_notifications
+        (form_id, student_account_id, kind, subject_key, created_at)
+      select intent.form_id, intent.student_account_id, intent.kind, intent.subject_key, ${input.now}
+      from unnest(
+        ${formIds}::uuid[], ${studentAccountIds}::uuid[], ${kinds}::text[], ${subjectKeys}::text[]
+      ) as intent(form_id, student_account_id, kind, subject_key)
+      join public.collection_obligations as obligation
+        on obligation.form_id = intent.form_id
+        and obligation.student_account_id = intent.student_account_id
+      join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      join public.collection_rounds as round on round.id = collection_group.round_id
+      join public.collection_group_memberships as membership
+        on membership.group_id = collection_group.id
+        and membership.student_account_id = obligation.student_account_id
+      where round.status <> 'closed' and membership.status = 'current'
+      on conflict do nothing
+      returning id
+    `;
+    return inserted.length;
+  }
+
+  /**
+   * Obligations whose deadline reminders have come due.
+   *
+   * Bounded, and narrowed in the database rather than in the worker: only open
+   * forms with a deadline, in open rounds, for current members who have not
+   * submitted, and only where that lead time has not already been delivered.
+   */
+  async findDueReminders(input: { limit: number; now: Date }): Promise<PendingNotification[]> {
+    const leadDays = [...REMINDER_LEAD_DAYS];
+    const rows = await this.database.sql<
+      { form_id: string; lead_days: number; student_account_id: string }[]
+    >`
+      select obligation.form_id, obligation.student_account_id, lead.days as lead_days
+      from public.collection_obligations as obligation
+      join public.collection_forms as form on form.id = obligation.form_id
+      join public.collection_groups as collection_group on collection_group.id = form.group_id
+      join public.collection_rounds as round on round.id = collection_group.round_id
+      join public.collection_group_memberships as membership
+        on membership.group_id = collection_group.id
+        and membership.student_account_id = obligation.student_account_id
+      cross join unnest(${leadDays}::int[]) as lead(days)
+      where form.deadline_at is not null
+        and form.status = 'open'
+        and round.status <> 'closed'
+        and membership.status = 'current'
+        and obligation.status = 'not_submitted'
+        and obligation.first_submitted_at is null
+        /* Due once the lead time is reached, and pointless after the deadline. */
+        and ${input.now} >= form.deadline_at - make_interval(days => lead.days)
+        and ${input.now} < form.deadline_at
+        and not exists (
+          select 1 from private.collection_notifications as sent
+          where sent.form_id = obligation.form_id
+            and sent.student_account_id = obligation.student_account_id
+            and sent.kind = 'deadline_reminder'
+            and sent.subject_key = lead.days::text
+        )
+      order by form.deadline_at, obligation.form_id, obligation.student_account_id
+      limit ${input.limit}
+    `;
+    return rows.map((row) => ({
+      formId: row.form_id,
+      kind: 'deadline_reminder' as const,
+      studentAccountId: row.student_account_id,
+      subjectKey: String(row.lead_days),
+    }));
+  }
+
+  /**
+   * One Student's notifications, newest first.
+   *
+   * Scoped to the reader throughout: the feed is keyed by their account id, so
+   * there is no filter to get wrong and no way to read another Student's rows.
+   */
+  async readNotificationFeed(input: {
+    limit: number;
+    studentAccountId: string;
+  }): Promise<CollectionNotificationFeed> {
+    const rows = await this.database.sql<
+      {
+        created_at: Date;
+        deadline_at: Date | null;
+        form_id: string;
+        group_id: string;
+        id: string;
+        kind: CollectionNotificationKind;
+        read_at: Date | null;
+        title: string;
+      }[]
+    >`
+      select notification.id, notification.form_id, notification.kind,
+        notification.created_at, notification.read_at,
+        form.title, form.deadline_at, form.group_id
+      from private.collection_notifications as notification
+      join public.collection_forms as form on form.id = notification.form_id
+      where notification.student_account_id = ${input.studentAccountId}
+      order by notification.created_at desc, notification.id desc
+      limit ${input.limit}
+    `;
+    /* Counted across every notification, so a full page never hides the rest. */
+    const unread = await this.database.sql<{ total: number }[]>`
+      select count(*)::int as total
+      from private.collection_notifications
+      where student_account_id = ${input.studentAccountId} and read_at is null
+    `;
+    return {
+      notifications: rows.map((row) => ({
+        createdAt: row.created_at,
+        deadlineAt: row.deadline_at,
+        formId: row.form_id,
+        formTitle: row.title,
+        groupId: row.group_id,
+        id: row.id,
+        isRead: row.read_at !== null,
+        kind: row.kind,
+      })),
+      unreadCount: unread[0]?.total ?? 0,
+    };
+  }
+
+  /** Marks rows read. The account id is part of the predicate, not a check after. */
+  async markNotificationsRead(input: {
+    notificationIds: string[];
+    now: Date;
+    studentAccountId: string;
+  }): Promise<number> {
+    if (input.notificationIds.length === 0) return 0;
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_notifications
+      set read_at = ${input.now}
+      where student_account_id = ${input.studentAccountId}
+        and id = any(${input.notificationIds}::uuid[])
+        and read_at is null
+      returning id
+    `;
+    return updated.length;
+  }
+
+  /**
+   * Creates an export and freezes its snapshot in one transaction.
+   *
+   * The whole point of this method is what happens in a single write: the
+   * selected forms, their titles and field definitions, every Student in scope
+   * with their display name, and the exact submission each had at this instant.
+   * Everything the artifact will contain is decided here, so a submission made
+   * a second later, a renamed form, or a corrected name cannot change what a
+   * retry produces.
+   */
+  async createExport(input: {
+    formIds: string[];
+    groupId: string;
+    kind: 'excel' | 'zip';
+    maxForms: number;
+    maxStudents: number;
+    now: Date;
+    requestedByAccountId: string;
+  }) {
+    return this.database.sql.begin(async (transaction) => {
+      /*
+       * Locked for the duration: the snapshot must not be taken across a
+       * concurrent submission that would leave half the rows on each side.
+       */
+      const groups = await transaction<{ id: string }[]>`
+        select id from public.collection_groups where id = ${input.groupId} for share
+      `;
+      if (groups[0] === undefined) return null;
+
+      const forms = await transaction<{ fields: unknown; id: string; title: string }[]>`
+        select id, title, fields
+        from public.collection_forms
+        where group_id = ${input.groupId}
+          and id = any(${input.formIds}::uuid[])
+          /* A draft form has no submissions to export and no locked schema. */
+          and status <> 'draft'
+        order by created_at, id
+        limit ${input.maxForms}
+      `;
+      if (forms.length === 0) return null;
+
+      const exported = await transaction<{ id: string; requested_at: Date }[]>`
+        insert into private.collection_exports
+          (group_id, kind, requested_by_account_id, requested_at)
+        values (${input.groupId}, ${input.kind}, ${input.requestedByAccountId}, ${input.now})
+        returning id, requested_at
+      `;
+      const job = exported[0];
+      /* The insert above returns exactly one row or throws; this narrows it. */
+      if (job === undefined) throw new Error('COLLECTION_EXPORT_NOT_CREATED');
+
+      await transaction`
+        insert into private.collection_export_forms (export_id, form_id, position, title, fields)
+        select ${job.id}, form.form_id, form.position, form.title, form.fields
+        from unnest(
+          ${forms.map((form) => form.id)}::uuid[],
+          ${forms.map((_form, index) => index)}::int[],
+          ${forms.map((form) => form.title)}::text[],
+          ${forms.map((form) => JSON.stringify(form.fields))}::jsonb[]
+        ) as form(form_id, position, title, fields)
+      `;
+
+      /*
+       * One row per obligation in scope, including Students who submitted
+       * nothing: the tracking sheet has to show the gaps, and the archive has
+       * to be able to say a folder is legitimately empty.
+       *
+       * Withdrawn members are excluded from the scope but their retained
+       * submissions are not deleted; a later export of an active membership
+       * still sees them.
+       */
+      await transaction`
+        insert into private.collection_export_entries
+          (export_id, form_id, student_account_id, student_display_name, position,
+           obligation_status, submission_id, submitted_at, is_late)
+        select ${job.id}, obligation.form_id, obligation.student_account_id,
+          btrim(person_name.first_name_th || ' ' || person_name.last_name_th),
+          dense_rank() over (
+            order by person_name.first_name_th, person_name.last_name_th,
+              obligation.student_account_id
+          )::int - 1,
+          obligation.status, submission.id, submission.submitted_at,
+          coalesce(
+            form.deadline_at is not null
+              and obligation.first_submitted_at is not null
+              and obligation.first_submitted_at > form.deadline_at,
+            false
+          )
+        from private.collection_export_forms as scope
+        join public.collection_obligations as obligation on obligation.form_id = scope.form_id
+        join public.collection_forms as form on form.id = obligation.form_id
+        join public.collection_group_memberships as membership
+          on membership.group_id = ${input.groupId}
+          and membership.student_account_id = obligation.student_account_id
+          and membership.status = 'current'
+        join public.accounts as account on account.id = obligation.student_account_id
+        join private.person_names as person_name on person_name.person_id = account.person_id
+        /*
+         * The latest submitted version, which is what the specification means
+         * by "latest submitted versions, never drafts". A draft lives in a
+         * different table and can never be selected here.
+         */
+        left join private.collection_submissions as submission
+          on submission.id = obligation.latest_submission_id
+        where scope.export_id = ${job.id}
+      `;
+
+      /*
+       * Bounded after the fact rather than by a LIMIT, because a partial
+       * snapshot would silently omit Students from a tracking sheet. Too large
+       * is a refusal, not a truncation.
+       */
+      const counted = await transaction<{ students: number }[]>`
+        select count(distinct student_account_id)::int as students
+        from private.collection_export_entries where export_id = ${job.id}
+      `;
+      if ((counted[0]?.students ?? 0) > input.maxStudents) {
+        throw new CollectionExportTooLargeError();
+      }
+
+      return {
+        byteSize: null,
+        errorCode: null,
+        expiresAt: null,
+        groupId: input.groupId,
+        id: job.id,
+        kind: input.kind,
+        readyAt: null,
+        requestedAt: job.requested_at,
+        requestedByAccountId: input.requestedByAccountId,
+        status: 'pending' as const,
+      };
+    });
+  }
+
+  async getExport(exportId: string) {
+    const rows = await this.database.sql<ExportRow[]>`
+      select id, group_id, kind, status, requested_by_account_id, requested_at,
+        ready_at, expires_at, byte_size, error_code
+      from private.collection_exports where id = ${exportId}
+    `;
+    const row = rows[0];
+    return row === undefined ? null : mapExportRow(row);
+  }
+
+  async readSubmissionAnswers(submissionId: string) {
+    const rows = await this.database.sql<{ answers: unknown }[]>`
+      select answers from private.collection_submissions where id = ${submissionId}
+    `;
+    const row = rows[0];
+    return row === undefined ? null : (row.answers as CollectionAnswers);
+  }
+
+  async listGroupExports(input: { groupId: string; limit: number }) {
+    const rows = await this.database.sql<ExportRow[]>`
+      select id, group_id, kind, status, requested_by_account_id, requested_at,
+        ready_at, expires_at, byte_size, error_code
+      from private.collection_exports
+      where group_id = ${input.groupId}
+      order by requested_at desc, id desc
+      limit ${input.limit}
+    `;
+    return rows.map(mapExportRow);
+  }
+
+  /**
+   * Claims the oldest unfinished export.
+   *
+   * `for update skip locked` is what lets several workers run without two of
+   * them building the same archive, and the lapsed-lease branch is what lets a
+   * job whose worker died be retried rather than stranded in `building`.
+   */
+  async claimExportForBuilding(input: { leaseSeconds: number; maxAttempts: number; now: Date }) {
+    const claimed = await this.database.sql<
+      { attempt_count: number; group_id: string; id: string; kind: string; lease_id: string }[]
+    >`
+      with candidate as (
+        select id from private.collection_exports
+        where (status = 'pending' or (status = 'building' and lease_expires_at <= ${input.now}))
+          and attempt_count < ${input.maxAttempts}
+        order by requested_at
+        limit 1
+        for update skip locked
+      )
+      update private.collection_exports as job
+      set status = 'building', attempt_count = job.attempt_count + 1,
+        lease_id = gen_random_uuid(),
+        lease_expires_at = ${input.now} + make_interval(secs => ${input.leaseSeconds})
+      from candidate
+      where job.id = candidate.id
+      returning job.id, job.group_id, job.kind, job.lease_id, job.attempt_count
+    `;
+    const job = claimed[0];
+    if (job === undefined) return null;
+
+    const forms = await this.database.sql<
+      { fields: unknown; form_id: string; position: number; title: string }[]
+    >`
+      select form_id, position, title, fields
+      from private.collection_export_forms
+      where export_id = ${job.id}
+      order by position
+    `;
+    const entries = await this.database.sql<ExportEntryRow[]>`
+      select form_id, student_account_id, student_display_name, position,
+        obligation_status, submission_id, submitted_at, is_late
+      from private.collection_export_entries
+      where export_id = ${job.id}
+      order by position, form_id
+    `;
+
+    return {
+      attemptCount: job.attempt_count,
+      entries: entries.map((entry) => ({
+        formId: entry.form_id,
+        isLate: entry.is_late,
+        obligationStatus: entry.obligation_status,
+        position: entry.position,
+        studentAccountId: entry.student_account_id,
+        studentDisplayName: entry.student_display_name,
+        submissionId: entry.submission_id,
+        submittedAt: entry.submitted_at,
+      })),
+      forms: forms.map((form) => ({
+        fields: form.fields as CollectionField[],
+        formId: form.form_id,
+        position: form.position,
+        title: form.title,
+      })),
+      groupId: job.group_id,
+      id: job.id,
+      kind: job.kind as 'excel' | 'zip',
+      leaseId: job.lease_id,
+    };
+  }
+
+  /**
+   * Documents of one frozen submission.
+   *
+   * Only files that passed inspection are exported: a quarantined or rejected
+   * upload is not a document the platform vouches for.
+   */
+  async listExportDocuments(submissionId: string) {
+    const rows = await this.database.sql<
+      { field_id: string; original_filename: string; position: number; storage_key: string }[]
+    >`
+      select submission_file.field_id, submission_file.position,
+        file.storage_key, file.original_filename
+      from private.collection_submission_files as submission_file
+      join private.collection_files as file on file.id = submission_file.file_id
+      where submission_file.submission_id = ${submissionId} and file.status = 'ready'
+      order by submission_file.field_id, submission_file.position
+    `;
+    return rows.map((row) => ({
+      fieldId: row.field_id,
+      originalFilename: row.original_filename,
+      position: row.position,
+      storageKey: row.storage_key,
+    }));
+  }
+
+  /**
+   * Marks an export ready.
+   *
+   * The lease is part of the `where`, so a worker whose claim lapsed while it
+   * was building cannot overwrite the result of the worker that retried it.
+   */
+  async completeExport(input: {
+    byteSize: number;
+    exportId: string;
+    expiresAt: Date;
+    leaseId: string;
+    now: Date;
+    storageKey: string;
+  }) {
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_exports
+      set status = 'ready', ready_at = ${input.now}, expires_at = ${input.expiresAt},
+        storage_key = ${input.storageKey}, byte_size = ${input.byteSize},
+        error_code = null, lease_id = null, lease_expires_at = null
+      where id = ${input.exportId} and lease_id = ${input.leaseId} and status = 'building'
+      returning id
+    `;
+    return updated.length === 1;
+  }
+
+  /**
+   * Records a failed attempt.
+   *
+   * Below the limit the job returns to `pending` and will be claimed again,
+   * rebuilding from the same frozen snapshot. At the limit it fails for good,
+   * because an Instructor waiting forever is worse than an Instructor told to
+   * retry.
+   */
+  async failExportAttempt(input: {
+    errorCode: string;
+    exportId: string;
+    leaseId: string;
+    maxAttempts: number;
+    now: Date;
+  }) {
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_exports
+      set status = case when attempt_count >= ${input.maxAttempts} then 'failed' else 'pending' end,
+        error_code = ${input.errorCode}, lease_id = null, lease_expires_at = null
+      where id = ${input.exportId} and lease_id = ${input.leaseId} and status = 'building'
+      returning id
+    `;
+    void input.now;
+    return updated.length === 1;
+  }
+
+  /**
+   * Claims one expired artifact for cleanup.
+   *
+   * `cleanup_attempted_at` is what makes the sweep retryable without spinning:
+   * a storage failure leaves the row expired and claimable again on a later
+   * pass rather than being retried immediately forever.
+   */
+  async claimExpiredExport(input: { now: Date }) {
+    const claimed = await this.database.sql<{ id: string; storage_key: string }[]>`
+      with candidate as (
+        select id from private.collection_exports
+        where status = 'ready' and expires_at <= ${input.now} and storage_key is not null
+          and (cleanup_attempted_at is null or cleanup_attempted_at <= ${input.now} - interval '5 minutes')
+        order by expires_at
+        limit 1
+        for update skip locked
+      )
+      update private.collection_exports as job
+      set cleanup_attempted_at = ${input.now}
+      from candidate
+      where job.id = candidate.id
+      returning job.id, job.storage_key
+    `;
+    const row = claimed[0];
+    if (row === undefined || row.storage_key === null) return null;
+    return { id: row.id, storageKey: row.storage_key };
+  }
+
+  /**
+   * Marks an expired artifact gone.
+   *
+   * Clears the storage key so nothing can attempt to serve bytes that are no
+   * longer there. The snapshot rows stay: they are the record of what was
+   * exported, and they name no file content.
+   */
+  async markExportExpired(input: { exportId: string; now: Date }) {
+    await this.database.sql`
+      update private.collection_exports
+      set status = 'expired', storage_key = null, cleanup_attempted_at = ${input.now}
+      where id = ${input.exportId} and status = 'ready'
+    `;
+  }
+
   async setRoundStatus(input: {
     actorAccountId: string;
     expectedStatus: 'active' | 'closed';
@@ -1200,8 +1920,49 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           (submission_id, instructor_account_id, decision, reason, occurred_at)
         values (${input.expectedSubmissionId}, ${input.actorAccountId}, ${input.decision}, ${input.reason}, ${input.now})
       `;
+      /*
+       * Keyed by the submission, not by the decision, so re-checking a later
+       * version notifies again while a retry of this same check does not.
+       */
+      const decided = rows[0];
+      if (decided !== undefined) {
+        await this.insertNotifications(transaction, {
+          formId: decided.form_id,
+          kind: input.decision === 'passed' ? 'submission_passed' : 'changes_requested',
+          now: input.now,
+          studentAccountIds: [decided.student_account_id],
+          subjectKey: input.expectedSubmissionId,
+        });
+      }
       return 'checked';
     });
+  }
+
+  /**
+   * Writes notification rows inside the caller's transaction.
+   *
+   * No eligibility check here: the caller is already holding the rows that
+   * caused the event, so the round is open and the membership is current by
+   * construction. `on conflict do nothing` keeps a retried write idempotent.
+   */
+  private async insertNotifications(
+    transaction: DatabaseClient['sql'],
+    input: {
+      formId: string;
+      kind: CollectionNotificationKind;
+      now: Date;
+      studentAccountIds: string[];
+      subjectKey: string;
+    },
+  ): Promise<void> {
+    if (input.studentAccountIds.length === 0) return;
+    await transaction`
+      insert into private.collection_notifications
+        (form_id, student_account_id, kind, subject_key, created_at)
+      select ${input.formId}, recipient, ${input.kind}, ${input.subjectKey}, ${input.now}
+      from unnest(${input.studentAccountIds}::uuid[]) as recipient
+      on conflict do nothing
+    `;
   }
 
   private async renumberDraftField(

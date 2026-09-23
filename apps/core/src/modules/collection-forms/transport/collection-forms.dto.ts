@@ -25,6 +25,9 @@ import {
   MAX_FILES_PER_FIELD,
   MAX_OPTIONS_PER_FIELD,
 } from '../application/collection-field';
+import { MAX_MATRIX_ROWS } from '../application/collection-matrix';
+import { MAX_EXPORT_FORMS } from '../application/collection-exports';
+import { MAX_NOTIFICATION_FEED } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
   CollectionFieldType,
@@ -236,4 +239,54 @@ export class CollectionLifecycleReasonDto {
   @MinLength(1)
   @MaxLength(2_000)
   reason!: string;
+}
+
+/**
+ * One page of the group matrix.
+ *
+ * The cursor is the account id of the last row already shown, which is opaque
+ * to the reader and safe in a URL -- unlike a Student ID, which never appears
+ * in one.
+ */
+export class CollectionMatrixQueryDto {
+  @IsOptional()
+  @IsUUID('4')
+  after?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_MATRIX_ROWS)
+  limit?: number;
+}
+
+/**
+ * Notifications the Student has seen.
+ *
+ * The ids are only a scoping hint: the update is keyed by the caller's own
+ * account id in the query, so an id belonging to someone else marks nothing.
+ */
+export class MarkNotificationsReadDto {
+  @IsArray()
+  @ArrayMaxSize(MAX_NOTIFICATION_FEED)
+  @IsUUID('4', { each: true })
+  notificationIds!: string[];
+}
+
+/**
+ * The scope one export request freezes.
+ *
+ * The forms are named explicitly rather than defaulted to the whole group: an
+ * Instructor exporting one form must not silently snapshot thirty.
+ */
+export class CreateCollectionExportDto {
+  @IsIn(['excel', 'zip'])
+  kind!: 'excel' | 'zip';
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_EXPORT_FORMS)
+  @IsUUID('4', { each: true })
+  formIds!: string[];
 }

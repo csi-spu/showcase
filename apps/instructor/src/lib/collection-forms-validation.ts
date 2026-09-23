@@ -187,6 +187,33 @@ export function validateLifecycleReason(formData: FormData): string | null {
   return result.success ? result.data : null;
 }
 
+/**
+ * The scope of one export request.
+ *
+ * The forms are named explicitly rather than defaulted to the whole group, and
+ * the bound mirrors the snapshot limit Core enforces so an oversized request is
+ * refused here with a sentence rather than after a round trip.
+ */
+const MAX_EXPORT_FORMS = 30;
+
+const createExportSchema = z
+  .object({
+    formIds: z.array(z.uuid()).min(1).max(MAX_EXPORT_FORMS),
+    kind: z.enum(['excel', 'zip']),
+  })
+  .strict();
+
+type CreateExportInput = z.infer<typeof createExportSchema>;
+
+export function validateCreateExport(formData: FormData): CreateExportInput | null {
+  const result = createExportSchema.safeParse({
+    /* The checkbox group arrives as one entry per checked form. */
+    formIds: formData.getAll('formIds'),
+    kind: formData.get('kind'),
+  });
+  return result.success ? result.data : null;
+}
+
 function readFormBody(formData: FormData): Record<string, unknown> {
   return {
     title: formData.get('title'),

@@ -14,6 +14,7 @@ import { InstructorCollectionFormsCoreClient } from '@/lib/instructor-collection
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import {
   validateCheckSubmission,
+  validateCreateExport,
   validateCreateForm,
   validateCreateFromTemplate,
   validateFormMetadata,
@@ -293,6 +294,30 @@ export async function reopenCollectionRoundAction(
     return await toFailure(error);
   }
   revalidatePath(`/rounds/${roundId}`);
+  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+}
+
+/**
+ * Requests an export of selected forms in a group.
+ *
+ * Returns as soon as the snapshot is frozen rather than waiting for bytes: a
+ * worker builds the artifact, so the Instructor is never left holding a request
+ * open for a whole group archive. The page then shows the job building.
+ */
+export async function createCollectionExportAction(
+  groupId: string,
+  _previousState: CollectionFormActionState,
+  formData: FormData,
+): Promise<CollectionFormActionState> {
+  const input = validateCreateExport(formData);
+  if (input === null) return { ...INITIAL_FORM_ACTION_STATE, error: 'invalid', submitted: true };
+  const sessionToken = await requireSessionToken();
+  try {
+    await coreClient().createExport(sessionToken, groupId, input);
+  } catch (error: unknown) {
+    return await toFailure(error);
+  }
+  revalidatePath(`/groups/${groupId}/exports`);
   return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
 }
 

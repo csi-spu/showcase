@@ -2,7 +2,10 @@ import 'server-only';
 import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
 import {
+  exportJobSchema,
+  exportListSchema,
   formSchema,
+  matrixPageSchema,
   pendingWorkSchema,
   reopenPreviewSchema,
   reopenResultSchema,
@@ -13,7 +16,10 @@ import {
 } from './instructor-collection-forms-contract';
 import type {
   InstructorCollectionForm,
+  InstructorExportJob,
+  InstructorExportKind,
   InstructorCollectionTemplate,
+  InstructorMatrixPage,
   InstructorPendingWork,
   InstructorReopenPreview,
   InstructorReopenResult,
@@ -157,6 +163,30 @@ export class InstructorCollectionFormsCoreClient {
     });
   }
 
+  /**
+   * One page of the group's Student-by-form matrix.
+   *
+   * `after` is the account id of the last row already shown. Core bounds the
+   * page size whatever is asked for, so an oversized `limit` is clamped rather
+   * than refused.
+   */
+  groupMatrix(
+    sessionToken: string,
+    groupId: string,
+    params: { after?: string | null; limit?: number } = {},
+  ): Promise<InstructorMatrixPage> {
+    const query = new URLSearchParams();
+    if (params.after != null) query.set('after', params.after);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/groups/${groupId}/matrix${suffix}`,
+      responseSchema: matrixPageSchema,
+      sessionToken,
+    });
+  }
+
   /** Outstanding work in a round, shown before an Instructor confirms a closure. */
   roundPendingWork(sessionToken: string, roundId: string): Promise<InstructorPendingWork> {
     return this.client.request({
@@ -262,6 +292,70 @@ export class InstructorCollectionFormsCoreClient {
       method: 'GET',
       path: `${BASE}/files/${fileId}/download`,
       responseSchema: z.object({ downloadUrl: z.url(), filename: z.string() }).strict(),
+      sessionToken,
+    });
+  }
+
+  /**
+   * Requests an export of selected forms in a group.
+   *
+   * Returns a pending job, not bytes: the snapshot is frozen by this call and
+   * a worker builds the artifact, so the Instructor is never left holding a
+   * request open for a group archive.
+   */
+  createExport(
+    sessionToken: string,
+    groupId: string,
+    body: { formIds: string[]; kind: InstructorExportKind },
+  ): Promise<InstructorExportJob> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/groups/${groupId}/exports`,
+      body,
+      responseSchema: exportJobSchema,
+      sessionToken,
+    });
+  }
+
+  /** A group's recent exports, newest first. */
+  listExports(sessionToken: string, groupId: string): Promise<InstructorExportJob[]> {
+    return this.client
+      .request({
+        method: 'GET',
+        path: `${BASE}/groups/${groupId}/exports`,
+        responseSchema: exportListSchema,
+        sessionToken,
+      })
+      .then((page) => page.exports);
+  }
+
+  /** One export's current state, polled while it builds. */
+  getExport(sessionToken: string, exportId: string): Promise<InstructorExportJob> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/exports/${exportId}`,
+      responseSchema: exportJobSchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * A short-lived signed URL for a ready export artifact.
+   *
+   * Core rechecks authorization on this request rather than trusting the one
+   * that froze the snapshot, so access that has since ended is refused here.
+   * The URL is used server-side and never handed to the browser.
+   */
+  createExportDownload(
+    sessionToken: string,
+    exportId: string,
+  ): Promise<{ contentType: string; downloadUrl: string; filename: string }> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/exports/${exportId}/download`,
+      responseSchema: z
+        .object({ contentType: z.string(), downloadUrl: z.url(), filename: z.string() })
+        .strict(),
       sessionToken,
     });
   }

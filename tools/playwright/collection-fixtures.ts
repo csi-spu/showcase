@@ -279,6 +279,19 @@ async function cleanupCollectionResources(
   let databaseFailure = false;
   try {
     await database.begin(async (transaction) => {
+      /*
+       * Exports go first: a frozen entry names the submission it copied, so the
+       * rows below cannot be removed while a snapshot still points at them.
+       * `collection_export_forms` and `collection_export_entries` cascade.
+       */
+      await transaction`
+        delete from private.collection_exports where group_id = ${resources.groupId}
+      `;
+      /* An obligation announces itself, so a Student who was never on an export
+       * surface still owns notification rows for this form. */
+      await transaction`
+        delete from private.collection_notifications where form_id = ${resources.formId}
+      `;
       await transaction`
         delete from private.collection_checking_events
         where submission_id in (

@@ -35,7 +35,9 @@ test('production consumes the CI plan and builds only its application matrix', (
 test('a Core deployment updates every Core-image worker before frontends', () => {
   const workerJobs = [
     'deploy-cache-worker',
+    'deploy-collection-export-builder',
     'deploy-collection-file-inspector',
+    'deploy-collection-reminder-dispatcher',
     'deploy-media-processor',
   ];
 
@@ -46,8 +48,16 @@ test('a Core deployment updates every Core-image worker before frontends', () =>
     assert.equal(job.with.image_tag, 'sha-${{ needs.resolve-plan.outputs.source_sha }}');
   }
   assert.equal(
+    production.jobs['deploy-collection-export-builder'].with.application_uuid,
+    '${{ vars.COOLIFY_PRODUCTION_COLLECTION_EXPORT_BUILDER }}',
+  );
+  assert.equal(
     production.jobs['deploy-collection-file-inspector'].with.application_uuid,
     '${{ vars.COOLIFY_PRODUCTION_COLLECTION_FILE_INSPECTOR }}',
+  );
+  assert.equal(
+    production.jobs['deploy-collection-reminder-dispatcher'].with.application_uuid,
+    '${{ vars.COOLIFY_PRODUCTION_COLLECTION_REMINDER_DISPATCHER }}',
   );
 
   for (const frontend of [
@@ -57,8 +67,15 @@ test('a Core deployment updates every Core-image worker before frontends', () =>
     'deploy-student-collection',
     'deploy-visitor',
   ]) {
+    assert.ok(production.jobs[frontend].needs.includes('deploy-collection-export-builder'));
+    assert.match(production.jobs[frontend].if, /needs\.deploy-collection-export-builder\.result/u);
     assert.ok(production.jobs[frontend].needs.includes('deploy-collection-file-inspector'));
     assert.match(production.jobs[frontend].if, /needs\.deploy-collection-file-inspector\.result/u);
+    assert.ok(production.jobs[frontend].needs.includes('deploy-collection-reminder-dispatcher'));
+    assert.match(
+      production.jobs[frontend].if,
+      /needs\.deploy-collection-reminder-dispatcher\.result/u,
+    );
   }
 });
 

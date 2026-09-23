@@ -14,6 +14,8 @@ import type { StudentCollectionPrefill } from '@/lib/student-collection-forms-co
 import { getStudentCollectionServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from './app-shell';
 import { CollectionForm } from './collection-form';
+import { NotificationsPanel } from './notifications-panel';
+import { markNotificationsReadAction } from './collection-forms.actions';
 import {
   changePasswordAction,
   clearExpiredSessionAction,
@@ -43,7 +45,20 @@ export default async function Home({ searchParams }: HomeProps) {
     if (token === null) redirect('/?expired=1');
 
     const client = new StudentCollectionFormsCoreClient(getStudentCollectionServerEnvironment());
-    const obligations = await client.list(token);
+    const [obligations, feed] = await Promise.all([
+      client.list(token),
+      client.readNotifications(token),
+    ]);
+    /*
+     * Bound at the server action, not the button: the ids shown are the ids
+     * marked, so a stale page cannot ask Core to mark anything newer.
+     */
+    const markShownRead = markNotificationsReadAction.bind(
+      null,
+      feed.notifications
+        .filter((notification) => !notification.isRead)
+        .map((notification) => notification.id),
+    );
 
     /*
      * Prefills are fetched per form because each one is scoped to that form's
@@ -73,6 +88,11 @@ export default async function Home({ searchParams }: HomeProps) {
             </StatusBadge>
           }
           title={homeT('dashboardTitle')}
+        />
+        <NotificationsPanel
+          markReadAction={markShownRead}
+          notifications={feed.notifications}
+          unreadCount={feed.unreadCount}
         />
         {obligations.length === 0 ? (
           <EmptyState

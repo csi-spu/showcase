@@ -85,6 +85,21 @@ export const fileSchema = z
 export const fileSelectionSchema = z.record(z.string(), z.array(fileSchema));
 
 /**
+ * What one Student owes on one form, as Core stores it.
+ *
+ * Declared once because three surfaces read it: the review queue, submission
+ * history, and the matrix. The matrix widens it with `not_required`, which is
+ * the absence of an obligation rather than a stored state.
+ */
+export const obligationStatusSchema = z.enum([
+  'not_submitted',
+  'awaiting_checking',
+  'changes_required',
+  'passed',
+  'withdrawn',
+]);
+
+/**
  * One Student's standing on a form, as the review queue shows it.
  *
  * Carries submitted content only. What a Student is still drafting is not part
@@ -108,13 +123,7 @@ export const reviewEntrySchema = z
       .strict()
       .nullable(),
     rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
-    status: z.enum([
-      'not_submitted',
-      'awaiting_checking',
-      'changes_required',
-      'passed',
-      'withdrawn',
-    ]),
+    status: obligationStatusSchema,
     studentAccountId: z.uuid(),
   })
   .strict();
@@ -202,15 +211,97 @@ export const submissionHistorySchema = z
       })
       .strict(),
     isLate: z.boolean(),
-    status: z.enum([
-      'not_submitted',
-      'awaiting_checking',
-      'changes_required',
-      'passed',
-      'withdrawn',
-    ]),
+    status: obligationStatusSchema,
   })
   .strict();
+
+/**
+ * One page of the group's Student-by-form matrix.
+ *
+ * Bounded by Core in both directions: `rows` is a cursor page of members and
+ * `forms` is a capped set of columns, so a large group cannot turn this view
+ * into an unbounded read.
+ */
+export const matrixCellSchema = z
+  .object({
+    formId: z.uuid(),
+    /*
+     * Orthogonal to `status`: a passed submission can still have arrived late,
+     * and Core derives this against the form's current deadline.
+     */
+    isLate: z.boolean(),
+    /* `not_required` means no obligation exists, not that nothing was sent. */
+    status: z.union([obligationStatusSchema, z.literal('not_required')]),
+  })
+  .strict();
+
+export const matrixRowSchema = z
+  .object({
+    cells: z.array(matrixCellSchema),
+    isWithdrawn: z.boolean(),
+    rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
+    studentAccountId: z.uuid(),
+  })
+  .strict();
+
+/* Counts for the rows on this page. Group-wide totals are `pendingWorkSchema`. */
+export const matrixSummarySchema = z
+  .object({
+    awaitingChecking: z.number().int(),
+    changesRequired: z.number().int(),
+    late: z.number().int(),
+    notRequired: z.number().int(),
+    notSubmitted: z.number().int(),
+    passed: z.number().int(),
+    withdrawn: z.number().int(),
+  })
+  .strict();
+
+export const matrixPageSchema = z
+  .object({
+    forms: z.array(
+      z
+        .object({
+          deadlineAt: z.iso.datetime().nullable(),
+          id: z.uuid(),
+          status: z.enum(['draft', 'open', 'closed']),
+          title: z.string(),
+        })
+        .strict(),
+    ),
+    /** The account id of the last row shown, or null at the end of the group. */
+    nextCursor: z.uuid().nullable(),
+    rows: z.array(matrixRowSchema),
+    summary: matrixSummarySchema,
+    /** Every current and withdrawn member, not only the rows on this page. */
+    totalMembers: z.number().int(),
+  })
+  .strict();
+
+/**
+ * One export job.
+ *
+ * An export is asynchronous: the request freezes a snapshot and returns a
+ * pending job, and a worker builds the artifact. Everything optional here is
+ * absent until the artifact is ready, which is also when the expiry clock
+ * starts. Who requested it is deliberately not part of the contract.
+ */
+export const exportJobSchema = z
+  .object({
+    /** Null until the artifact exists. */
+    byteSize: z.number().int().nullable(),
+    /** Set only when the job failed for good, after its retries. */
+    errorCode: z.string().nullable(),
+    expiresAt: z.iso.datetime().nullable(),
+    id: z.uuid(),
+    kind: z.enum(['excel', 'zip']),
+    readyAt: z.iso.datetime().nullable(),
+    requestedAt: z.iso.datetime(),
+    status: z.enum(['pending', 'building', 'ready', 'failed', 'expired']),
+  })
+  .strict();
+
+export const exportListSchema = z.object({ exports: z.array(exportJobSchema) }).strict();
 
 export type InstructorCollectionField = z.infer<typeof fieldSchema>;
 export type InstructorCollectionFile = z.infer<typeof fileSchema>;
@@ -223,3 +314,11 @@ export type InstructorReopenPreview = z.infer<typeof reopenPreviewSchema>;
 export type InstructorReopenResult = z.infer<typeof reopenResultSchema>;
 export type InstructorRoundStatusChange = z.infer<typeof roundStatusChangeSchema>;
 export type InstructorSubmissionHistory = z.infer<typeof submissionHistorySchema>;
+export type InstructorMatrixCell = z.infer<typeof matrixCellSchema>;
+export type InstructorMatrixCellStatus = InstructorMatrixCell['status'];
+export type InstructorMatrixPage = z.infer<typeof matrixPageSchema>;
+export type InstructorMatrixRow = z.infer<typeof matrixRowSchema>;
+export type InstructorMatrixSummary = z.infer<typeof matrixSummarySchema>;
+export type InstructorExportJob = z.infer<typeof exportJobSchema>;
+export type InstructorExportKind = InstructorExportJob['kind'];
+export type InstructorExportStatus = InstructorExportJob['status'];

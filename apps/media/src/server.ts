@@ -2,13 +2,23 @@ import './instrument.js';
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { flushMediaSentry, reportMediaError } from './sentry.js';
 
 const MAX_OBJECT_BYTES = 5 * 1_024 * 1_024;
+// Generated collection exports are the one object class that legitimately
+// exceeds a single document: a group ZIP is many documents at once. They are
+// streamed to disk rather than buffered, so the ceiling bounds storage, not
+// this process's heap.
+const MAX_EXPORT_BYTES = 2 * 1_024 * 1_024 * 1_024;
+const EXPORT_KEY = /^collection-exports\/[0-9a-f-]{36}\.(xlsx|zip)$/u;
+
+function isExportKey(key: string): boolean {
+  return EXPORT_KEY.test(key);
+}
 // Processed Work variants are the bytes the Public Catalog already serves to
 // anyone, so a GET for one needs no signature. Keeping them unsigned is what
 // lets Cloudflare cache them: a signed URL expires within a minute and can
@@ -91,8 +101,14 @@ async function handleRequest(
   }
 
   if (method === 'PUT') {
-    const body = await readBody(request, MAX_OBJECT_BYTES);
     await mkdir(path.dirname(objectPath), { recursive: true });
+    if (isExportKey(key)) {
+      // Streamed straight to disk: an export can be gigabytes, and buffering it
+      // would put the whole archive on the heap of a 2 GB host.
+      await writeObjectStream(request, objectPath, MAX_EXPORT_BYTES);
+      return send(response, 200, 'ok');
+    }
+    const body = await readBody(request, MAX_OBJECT_BYTES);
     await writeFile(objectPath, body, { flag: 'w' });
     return send(response, 200, 'ok');
   }
@@ -199,6 +215,33 @@ function safeObjectPath(root: string, key: string): string | null {
 }
 
 class BodyTooLargeError extends Error {}
+
+/*
+ * Counts as it writes so an oversized upload is cut off partway rather than
+ * after the fact, and removes the partial file so a failed export never looks
+ * like a complete one.
+ */
+async function writeObjectStream(
+  request: IncomingMessage,
+  objectPath: string,
+  maximumBytes: number,
+): Promise<void> {
+  let size = 0;
+  const guard = async function* (): AsyncGenerator<Buffer> {
+    for await (const chunk of request) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.byteLength;
+      if (size > maximumBytes) throw new BodyTooLargeError();
+      yield bytes;
+    }
+  };
+  try {
+    await pipeline(guard(), createWriteStream(objectPath, { flags: 'w' }));
+  } catch (error: unknown) {
+    await rm(objectPath, { force: true });
+    throw error;
+  }
+}
 
 async function readBody(request: IncomingMessage, maximumBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
