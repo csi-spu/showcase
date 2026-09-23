@@ -2,8 +2,14 @@ import type { Clock } from '../../auth/application/auth.ports';
 import type { CollectionField } from './collection-field';
 import { CollectionFormsService } from './collection-forms.service';
 import { CollectionFormsError } from './collection-forms.ports';
+import {
+  CollectionExportTooLargeError,
+  EXPORT_CONTENT_TYPES,
+  MAX_EXPORT_FORMS,
+} from './collection-exports';
 import { MAX_MATRIX_ROWS } from './collection-matrix';
 import type {
+  CollectionExportJob,
   CollectionFile,
   CollectionFileInspection,
   CollectionFileInspector,
@@ -219,6 +225,59 @@ class FakeRepository implements CollectionFormsRepository {
   notificationFeed: Result<'readNotificationFeed'> = { notifications: [], unreadCount: 0 };
   notificationReads: Parameters<CollectionFormsRepository['markNotificationsRead']>[0][] = [];
 
+  createdExports: Parameters<CollectionFormsRepository['createExport']>[0][] = [];
+  createExportResult: Result<'createExport'> | Error = null;
+  exportsById = new Map<string, NonNullable<Result<'getExport'>>>();
+  groupExports: Result<'listGroupExports'> = [];
+  claimedExport: Result<'claimExportForBuilding'> = null;
+  completedExports: Parameters<CollectionFormsRepository['completeExport']>[0][] = [];
+  failedExports: Parameters<CollectionFormsRepository['failExportAttempt']>[0][] = [];
+  expiredClaim: Result<'claimExpiredExport'> = null;
+  markedExpired: Parameters<CollectionFormsRepository['markExportExpired']>[0][] = [];
+  exportDocuments = new Map<string, Result<'listExportDocuments'>>();
+  submissionAnswers = new Map<string, NonNullable<Result<'readSubmissionAnswers'>>>();
+
+  createExport(input: Parameters<CollectionFormsRepository['createExport']>[0]) {
+    this.createdExports.push(input);
+    if (this.createExportResult instanceof Error) return Promise.reject(this.createExportResult);
+    return Promise.resolve(this.createExportResult);
+  }
+  getExport(exportId: string): Promise<Result<'getExport'>> {
+    return Promise.resolve(this.exportsById.get(exportId) ?? null);
+  }
+  readSubmissionAnswers(submissionId: string): Promise<Result<'readSubmissionAnswers'>> {
+    return Promise.resolve(this.submissionAnswers.get(submissionId) ?? null);
+  }
+  listGroupExports(): Promise<Result<'listGroupExports'>> {
+    return Promise.resolve(this.groupExports);
+  }
+  claimExportForBuilding(): Promise<Result<'claimExportForBuilding'>> {
+    const claimed = this.claimedExport;
+    /* Claimed once, like the real lease: a second poll finds the queue empty. */
+    this.claimedExport = null;
+    return Promise.resolve(claimed);
+  }
+  listExportDocuments(submissionId: string): Promise<Result<'listExportDocuments'>> {
+    return Promise.resolve(this.exportDocuments.get(submissionId) ?? []);
+  }
+  completeExport(input: Parameters<CollectionFormsRepository['completeExport']>[0]) {
+    this.completedExports.push(input);
+    return Promise.resolve(true);
+  }
+  failExportAttempt(input: Parameters<CollectionFormsRepository['failExportAttempt']>[0]) {
+    this.failedExports.push(input);
+    return Promise.resolve(true);
+  }
+  claimExpiredExport(): Promise<Result<'claimExpiredExport'>> {
+    const claim = this.expiredClaim;
+    this.expiredClaim = null;
+    return Promise.resolve(claim);
+  }
+  markExportExpired(input: Parameters<CollectionFormsRepository['markExportExpired']>[0]) {
+    this.markedExpired.push(input);
+    return Promise.resolve();
+  }
+
   recordNotifications(input: Parameters<CollectionFormsRepository['recordNotifications']>[0]) {
     this.recordedNotifications.push(input);
     return Promise.resolve(input.notifications.length);
@@ -265,7 +324,10 @@ class FakeRepository implements CollectionFormsRepository {
 
 /** Records what was asked of storage without moving any bytes. */
 class FakeStorage implements CollectionFileStorage {
+  deletedKeys: string[] = [];
   getObjectResult: Buffer | Error = Buffer.from('%PDF-1.7');
+  putError: Error | null = null;
+  storedObjects = new Map<string, Buffer>();
   presignedGets: { expiresInSeconds: number; key: string }[] = [];
   presignedPuts: { contentType: string; expiresInSeconds: number; key: string }[] = [];
 
@@ -277,12 +339,28 @@ class FakeStorage implements CollectionFileStorage {
     this.presignedGets.push(input);
     return Promise.resolve(`https://storage.example/get/${input.key}`);
   }
-  deleteObject(): Promise<void> {
+  deleteObject(key: string): Promise<void> {
+    this.deletedKeys.push(key);
     return Promise.resolve();
   }
   getObject(): Promise<Buffer> {
     if (this.getObjectResult instanceof Error) return Promise.reject(this.getObjectResult);
     return Promise.resolve(this.getObjectResult);
+  }
+  async putObjectStream(input: {
+    body: AsyncIterable<Buffer>;
+    contentType: string;
+    key: string;
+  }): Promise<number> {
+    if (this.putError !== null) throw this.putError;
+    const chunks: Buffer[] = [];
+    for await (const chunk of input.body) chunks.push(chunk);
+    const stored = Buffer.concat(chunks);
+    this.storedObjects.set(input.key, stored);
+    return stored.byteLength;
+  }
+  async *getObjectStream(key: string): AsyncIterable<Buffer> {
+    yield Buffer.from(`bytes:${key}`, 'utf8');
   }
 }
 
@@ -1184,6 +1262,353 @@ describe('CollectionFormsService', () => {
           studentAccountId: STUDENT,
         }),
       ).rejects.toEqual(new CollectionFormsError('NOTIFICATION_BATCH_TOO_LARGE', 422));
+    });
+  });
+
+  describe('exports', () => {
+    const GROUP = FORM.groupId;
+    const EXPORT_ID = '70000000-0000-4000-8000-000000000001';
+    const SUBMISSION = '71000000-0000-4000-8000-000000000001';
+
+    function job(overrides: Partial<CollectionExportJob> = {}): CollectionExportJob {
+      return {
+        byteSize: null,
+        errorCode: null,
+        expiresAt: null,
+        groupId: GROUP,
+        id: EXPORT_ID,
+        kind: 'excel',
+        readyAt: null,
+        requestedAt: NOW,
+        requestedByAccountId: ACTOR,
+        status: 'pending',
+        ...overrides,
+      };
+    }
+
+    describe('creation', () => {
+      it('freezes a snapshot and returns a pending job rather than building inline', async () => {
+        const repository = new FakeRepository();
+        repository.createExportResult = job();
+        const { service } = setup(repository);
+
+        const created = await service.createExport({
+          formIds: [FORM.id],
+          groupId: GROUP,
+          kind: 'excel',
+          requestedByAccountId: ACTOR,
+        });
+
+        expect(created.status).toBe('pending');
+        expect(repository.createdExports[0]).toMatchObject({
+          formIds: [FORM.id],
+          groupId: GROUP,
+          kind: 'excel',
+          now: NOW,
+          requestedByAccountId: ACTOR,
+        });
+      });
+
+      it('refuses an empty selection instead of exporting the whole group', async () => {
+        const { service } = setup();
+        await expect(
+          service.createExport({
+            formIds: [],
+            groupId: GROUP,
+            kind: 'zip',
+            requestedByAccountId: ACTOR,
+          }),
+        ).rejects.toEqual(new CollectionFormsError('EXPORT_FORMS_REQUIRED', 422));
+      });
+
+      it('refuses more forms than one snapshot may hold', async () => {
+        const { service, repository } = setup();
+        await expect(
+          service.createExport({
+            formIds: Array.from({ length: MAX_EXPORT_FORMS + 1 }, (_value, index) =>
+              index.toString(),
+            ),
+            groupId: GROUP,
+            kind: 'excel',
+            requestedByAccountId: ACTOR,
+          }),
+        ).rejects.toEqual(new CollectionFormsError('EXPORT_FORM_COUNT_EXCEEDED', 422));
+        expect(repository.createdExports).toHaveLength(0);
+      });
+
+      /* Refused, not truncated: a tracking sheet missing Students is worse. */
+      it('refuses a snapshot that exceeded the scope limit', async () => {
+        const repository = new FakeRepository();
+        repository.createExportResult = new CollectionExportTooLargeError();
+        const { service } = setup(repository);
+
+        await expect(
+          service.createExport({
+            formIds: [FORM.id],
+            groupId: GROUP,
+            kind: 'zip',
+            requestedByAccountId: ACTOR,
+          }),
+        ).rejects.toEqual(new CollectionFormsError('EXPORT_SCOPE_TOO_LARGE', 422));
+      });
+
+      it('reports a group or selection that resolved to nothing', async () => {
+        const repository = new FakeRepository();
+        repository.createExportResult = null;
+        const { service } = setup(repository);
+
+        await expect(
+          service.createExport({
+            formIds: [FORM.id],
+            groupId: GROUP,
+            kind: 'excel',
+            requestedByAccountId: ACTOR,
+          }),
+        ).rejects.toEqual(new CollectionFormsError('EXPORT_SCOPE_EMPTY', 404));
+      });
+    });
+
+    describe('download authorization', () => {
+      it('issues a short-lived URL for a ready artifact', async () => {
+        const repository = new FakeRepository();
+        repository.exportsById.set(
+          EXPORT_ID,
+          job({
+            byteSize: 1_024,
+            expiresAt: new Date(NOW.getTime() + 60_000),
+            readyAt: NOW,
+            status: 'ready',
+          }),
+        );
+        const { service, storage } = setup(repository);
+
+        const download = await service.createExportDownload({ exportId: EXPORT_ID });
+
+        expect(download.contentType).toBe(EXPORT_CONTENT_TYPES.excel);
+        expect(storage.presignedGets[0]?.key).toBe(`collection-exports/${EXPORT_ID}.xlsx`);
+        /* The URL outlives the click and nothing more. */
+        expect(storage.presignedGets[0]?.expiresInSeconds).toBeLessThanOrEqual(300);
+      });
+
+      /* Expiry is decided from the recorded instant, never from whether the
+       * cleanup sweep has physically removed the bytes yet. */
+      it('denies a download past expiry even though cleanup may not have run', async () => {
+        const repository = new FakeRepository();
+        repository.exportsById.set(
+          EXPORT_ID,
+          job({
+            expiresAt: new Date(NOW.getTime() - 1),
+            readyAt: new Date(NOW.getTime() - 86_400_000),
+            status: 'ready',
+          }),
+        );
+        const { service, storage } = setup(repository);
+
+        await expect(service.createExportDownload({ exportId: EXPORT_ID })).rejects.toEqual(
+          new CollectionFormsError('EXPORT_EXPIRED', 409),
+        );
+        expect(storage.presignedGets).toHaveLength(0);
+      });
+
+      it('denies a download while the artifact is still being built', async () => {
+        const repository = new FakeRepository();
+        repository.exportsById.set(EXPORT_ID, job({ status: 'building' }));
+        const { service } = setup(repository);
+
+        await expect(service.createExportDownload({ exportId: EXPORT_ID })).rejects.toEqual(
+          new CollectionFormsError('EXPORT_NOT_READY', 409),
+        );
+      });
+
+      it('exposes retry rather than a partial archive when the build failed', async () => {
+        const repository = new FakeRepository();
+        repository.exportsById.set(
+          EXPORT_ID,
+          job({ errorCode: 'EXPORT_BUILD_FAILED', status: 'failed' }),
+        );
+        const { service } = setup(repository);
+
+        await expect(service.createExportDownload({ exportId: EXPORT_ID })).rejects.toEqual(
+          new CollectionFormsError('EXPORT_FAILED', 409),
+        );
+      });
+
+      it('reports an unknown export as missing', async () => {
+        const { service } = setup();
+        await expect(service.createExportDownload({ exportId: EXPORT_ID })).rejects.toEqual(
+          new CollectionFormsError('EXPORT_NOT_FOUND', 404),
+        );
+      });
+    });
+
+    describe('building', () => {
+      function claim(
+        overrides: Partial<
+          NonNullable<Awaited<ReturnType<FakeRepository['claimExportForBuilding']>>>
+        > = {},
+      ) {
+        return {
+          attemptCount: 1,
+          entries: [
+            {
+              formId: FORM.id,
+              isLate: false,
+              obligationStatus: 'passed',
+              position: 0,
+              studentAccountId: STUDENT,
+              studentDisplayName: 'สมชาย ใจดี',
+              submissionId: SUBMISSION,
+              submittedAt: NOW,
+            },
+          ],
+          forms: [
+            {
+              fields: [
+                { description: '', id: 'name', label: 'ชื่อ', required: true, type: 'short_text' },
+              ] as CollectionField[],
+              formId: FORM.id,
+              position: 0,
+              title: 'ใบสมัคร',
+            },
+          ],
+          groupId: GROUP,
+          id: EXPORT_ID,
+          kind: 'excel' as const,
+          leaseId: '72000000-0000-4000-8000-000000000001',
+          ...overrides,
+        };
+      }
+
+      it('reports an empty queue without writing, so a worker can back off', async () => {
+        const { service, storage } = setup();
+        await expect(service.buildNextExport()).resolves.toBe(false);
+        expect(storage.storedObjects.size).toBe(0);
+      });
+
+      it('streams a workbook into storage and marks the export ready', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = claim();
+        repository.submissionAnswers.set(SUBMISSION, { name: 'สมชาย' });
+        const { service, storage } = setup(repository);
+
+        await expect(service.buildNextExport()).resolves.toBe(true);
+
+        const key = `collection-exports/${EXPORT_ID}.xlsx`;
+        const stored = storage.storedObjects.get(key);
+        expect(stored?.byteLength).toBeGreaterThan(0);
+        /* An .xlsx is a ZIP, so it starts with the local file header magic. */
+        expect(stored?.subarray(0, 2).toString('latin1')).toBe('PK');
+        expect(repository.completedExports[0]).toMatchObject({
+          byteSize: stored?.byteLength,
+          exportId: EXPORT_ID,
+          leaseId: claim().leaseId,
+          storageKey: key,
+        });
+      });
+
+      it('starts the twenty-four hour clock when the artifact becomes ready', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = claim();
+        const { service } = setup(repository);
+
+        await service.buildNextExport();
+
+        expect(repository.completedExports[0]?.expiresAt.getTime()).toBe(
+          NOW.getTime() + 86_400_000,
+        );
+      });
+
+      it('streams an archive of the frozen documents for a ZIP export', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = claim({ kind: 'zip' });
+        repository.exportDocuments.set(SUBMISSION, [
+          {
+            fieldId: 'transcript',
+            originalFilename: 'เอกสาร.pdf',
+            position: 0,
+            storageKey: 'collection-files/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          },
+        ]);
+        const { service, storage } = setup(repository);
+
+        await expect(service.buildNextExport()).resolves.toBe(true);
+
+        const stored = storage.storedObjects.get(`collection-exports/${EXPORT_ID}.zip`);
+        expect(stored).toBeDefined();
+        const text = stored?.toString('utf8') ?? '';
+        /* The document's path carries the display name, never a Student ID. */
+        expect(text).toContain('001-สมชาย ใจดี/01-ใบสมัคร/transcript-01-เอกสาร.pdf');
+      });
+
+      /* A failed build must not leave bytes a later download would serve. */
+      it('removes the partial object and records the attempt when a build fails', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = claim();
+        const { service, storage } = setup(repository);
+        storage.putError = new Error('COLLECTION_EXPORT_PUT_FAILED');
+
+        await expect(service.buildNextExport()).resolves.toBe(true);
+
+        expect(storage.deletedKeys).toContain(`collection-exports/${EXPORT_ID}.xlsx`);
+        expect(repository.completedExports).toHaveLength(0);
+        expect(repository.failedExports[0]).toMatchObject({
+          errorCode: 'COLLECTION_EXPORT_PUT_FAILED',
+          exportId: EXPORT_ID,
+          leaseId: claim().leaseId,
+        });
+      });
+
+      /* The lease is what stops a lapsed worker overwriting a newer result. */
+      it('completes and fails against the lease it claimed with', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = claim();
+        const { service } = setup(repository);
+
+        await service.buildNextExport();
+
+        expect(repository.completedExports[0]?.leaseId).toBe(claim().leaseId);
+      });
+    });
+
+    describe('cleanup', () => {
+      it('deletes an expired artifact and never its source submissions', async () => {
+        const repository = new FakeRepository();
+        repository.expiredClaim = {
+          id: EXPORT_ID,
+          storageKey: `collection-exports/${EXPORT_ID}.zip`,
+        };
+        const { service, storage } = setup(repository);
+
+        await expect(service.cleanUpExpiredExport()).resolves.toBe(true);
+
+        expect(storage.deletedKeys).toEqual([`collection-exports/${EXPORT_ID}.zip`]);
+        expect(repository.markedExpired[0]).toMatchObject({ exportId: EXPORT_ID });
+      });
+
+      it('reports nothing to clean without writing', async () => {
+        const repository = new FakeRepository();
+        const { service, storage } = setup(repository);
+
+        await expect(service.cleanUpExpiredExport()).resolves.toBe(false);
+        expect(storage.deletedKeys).toHaveLength(0);
+        expect(repository.markedExpired).toHaveLength(0);
+      });
+
+      /* Retryable: a storage failure must leave the row claimable, not marked gone. */
+      it('does not mark an export expired when storage deletion fails', async () => {
+        const repository = new FakeRepository();
+        repository.expiredClaim = {
+          id: EXPORT_ID,
+          storageKey: `collection-exports/${EXPORT_ID}.zip`,
+        };
+        const { service, storage } = setup(repository);
+        jest
+          .spyOn(storage, 'deleteObject')
+          .mockRejectedValueOnce(new Error('COLLECTION_FILE_DELETE_FAILED'));
+
+        await expect(service.cleanUpExpiredExport()).rejects.toThrow();
+        expect(repository.markedExpired).toHaveLength(0);
+      });
     });
   });
 });

@@ -27,7 +27,7 @@ CI checks out full Git history because Turbo affected calculation depends on the
 
 For a successful push to `main`, CI asks Turbo for `build` tasks affected since `github.event.before`. Turbo expands shared-package changes to dependent applications. `tools/ci/create-deployment-plan.mjs` filters that graph to the five deployable images: `core`, `admin`, `student`, `visitor`, and `media`. A first push with an unavailable base marks all five affected. A change with no deployable application impact produces an empty plan and no production build or deployment.
 
-Repository files copied into every application build context are Turbo global dependencies. Changing one marks every deployable application affected. A Core image change deploys `core`, `core-cache-worker`, `core-collection-file-inspector`, `core-collection-reminder-dispatcher`, and `core-media-processor` because those five Coolify resources run the same image.
+Repository files copied into every application build context are Turbo global dependencies. Changing one marks every deployable application affected. A Core image change deploys `core`, `core-cache-worker`, `core-collection-export-builder`, `core-collection-file-inspector`, `core-collection-reminder-dispatcher`, and `core-media-processor` because those six Coolify resources run the same image.
 
 CI uploads the versioned JSON plan as a workflow artifact. The production workflow downloads it only from the successful triggering CI run, verifies its source SHA, and uses its matrix directly. This preserves the exact multi-commit push range that CI evaluated instead of guessing a parent commit in the later `workflow_run` event.
 

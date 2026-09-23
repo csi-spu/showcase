@@ -12,6 +12,22 @@ import {
 import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
 import { findCloseReasonError, summarizePendingWork } from './collection-lifecycle';
 import { boundMatrixLimit } from './collection-matrix';
+import { buildExportArchive, buildExportWorkbook } from './collection-export-builder';
+import {
+  EXPORT_CONTENT_TYPES,
+  EXPORT_DOWNLOAD_URL_SECONDS,
+  EXPORT_LEASE_SECONDS,
+  MAX_EXPORT_ATTEMPTS,
+  MAX_EXPORT_FORMS,
+  MAX_EXPORT_LIST,
+  MAX_EXPORT_STUDENTS,
+  CollectionExportTooLargeError,
+  isExportDownloadable,
+  toExportErrorCode,
+  toExportExpiry,
+  toExportStorageKey,
+  type CollectionExportKind,
+} from './collection-exports';
 import { MAX_NOTIFICATION_FEED, MAX_REMINDER_BATCH } from './collection-notifications';
 import {
   COLLECTION_FILE_INSPECTOR,
@@ -20,6 +36,7 @@ import {
   CollectionFormsError,
 } from './collection-forms.ports';
 import type {
+  CollectionExportJob,
   CollectionFileInspector,
   CollectionFileStorage,
   CollectionFormsRepository,
@@ -339,6 +356,179 @@ export class CollectionFormsService {
       studentAccountId: input.studentAccountId,
     });
     return { readCount };
+  }
+
+  /**
+   * Requests an export and freezes its snapshot.
+   *
+   * Returns immediately with a pending job: building is the worker's work, and
+   * an Instructor waiting on an HTTP request for a group archive is exactly the
+   * shape the specification rules out.
+   */
+  async createExport(input: {
+    formIds: string[];
+    groupId: string;
+    kind: CollectionExportKind;
+    requestedByAccountId: string;
+  }) {
+    if (input.formIds.length === 0) throw new CollectionFormsError('EXPORT_FORMS_REQUIRED', 422);
+    if (input.formIds.length > MAX_EXPORT_FORMS) {
+      throw new CollectionFormsError('EXPORT_FORM_COUNT_EXCEEDED', 422);
+    }
+    let job: CollectionExportJob | null;
+    try {
+      job = await this.repository.createExport({
+        formIds: input.formIds,
+        groupId: input.groupId,
+        kind: input.kind,
+        maxForms: MAX_EXPORT_FORMS,
+        maxStudents: MAX_EXPORT_STUDENTS,
+        now: this.clock.now(),
+        requestedByAccountId: input.requestedByAccountId,
+      });
+    } catch (error: unknown) {
+      /*
+       * The snapshot exceeded the scope limit and was rolled back. Refused
+       * rather than truncated: a tracking sheet missing Students silently is
+       * worse than one the Instructor has to narrow.
+       */
+      if (error instanceof CollectionExportTooLargeError) {
+        throw new CollectionFormsError('EXPORT_SCOPE_TOO_LARGE', 422);
+      }
+      throw error;
+    }
+    if (job === null) throw new CollectionFormsError('EXPORT_SCOPE_EMPTY', 404);
+    return job;
+  }
+
+  async listGroupExports(groupId: string) {
+    return this.repository.listGroupExports({ groupId, limit: MAX_EXPORT_LIST });
+  }
+
+  async getExport(exportId: string) {
+    const job = await this.repository.getExport(exportId);
+    if (job === null) throw new CollectionFormsError('EXPORT_NOT_FOUND', 404);
+    return job;
+  }
+
+  /**
+   * Issues a download URL for a ready artifact.
+   *
+   * Authorization is the caller's responsibility at the transport guard and is
+   * rechecked here against the *current* actor, not the one recorded on the
+   * job: an Instructor whose role was withdrawn after requesting an export must
+   * not be able to collect it. Expiry is decided from the recorded instant, so
+   * a cleanup sweep that has not run yet never extends an artifact's life.
+   */
+  async createExportDownload(input: { exportId: string }) {
+    const job = await this.repository.getExport(input.exportId);
+    if (job === null) throw new CollectionFormsError('EXPORT_NOT_FOUND', 404);
+    if (job.status === 'failed') throw new CollectionFormsError('EXPORT_FAILED', 409);
+    if (
+      !isExportDownloadable({ expiresAt: job.expiresAt, now: this.clock.now(), status: job.status })
+    ) {
+      throw new CollectionFormsError(
+        job.status === 'ready' || job.status === 'expired' ? 'EXPORT_EXPIRED' : 'EXPORT_NOT_READY',
+        409,
+      );
+    }
+    const downloadUrl = await this.storage.createPresignedGet({
+      expiresInSeconds: EXPORT_DOWNLOAD_URL_SECONDS,
+      key: toExportStorageKey(job.id, job.kind),
+    });
+    return {
+      contentType: EXPORT_CONTENT_TYPES[job.kind],
+      downloadUrl,
+      filename: `collection-export-${job.id}.${job.kind === 'excel' ? 'xlsx' : 'zip'}`,
+    };
+  }
+
+  /**
+   * Builds the next pending export, if there is one.
+   *
+   * Returns false when the queue is empty so a worker can back off. A failure
+   * is recorded against the attempt rather than thrown, because the job must
+   * either retry from the same snapshot or surface retry to the Instructor —
+   * never vanish.
+   */
+  async buildNextExport(): Promise<boolean> {
+    const now = this.clock.now();
+    const claimed = await this.repository.claimExportForBuilding({
+      leaseSeconds: EXPORT_LEASE_SECONDS,
+      maxAttempts: MAX_EXPORT_ATTEMPTS,
+      now,
+    });
+    if (claimed === null) return false;
+
+    const sources = {
+      listDocuments: (submissionId: string) => this.repository.listExportDocuments(submissionId),
+      readAnswers: (submissionId: string) => this.repository.readSubmissionAnswers(submissionId),
+      readDocument: (storageKey: string) => this.storage.getObjectStream(storageKey),
+    };
+    const snapshot = { entries: claimed.entries, forms: claimed.forms };
+    const storageKey = toExportStorageKey(claimed.id, claimed.kind);
+
+    try {
+      /*
+       * Streamed straight into storage as it is generated, so neither the
+       * workbook nor the archive is ever held whole in this process.
+       */
+      const byteSize = await this.storage.putObjectStream({
+        body:
+          claimed.kind === 'excel'
+            ? buildExportWorkbook(snapshot, sources)
+            : buildExportArchive(snapshot, sources),
+        contentType: EXPORT_CONTENT_TYPES[claimed.kind],
+        key: storageKey,
+      });
+      const readyAt = this.clock.now();
+      await this.repository.completeExport({
+        byteSize,
+        expiresAt: toExportExpiry(readyAt),
+        exportId: claimed.id,
+        leaseId: claimed.leaseId,
+        now: readyAt,
+        storageKey,
+      });
+      return true;
+    } catch (error: unknown) {
+      /*
+       * The partial object is removed before the attempt is recorded, so a
+       * failed build can never leave bytes that a later download would serve
+       * as a complete archive. A delete that itself fails is not allowed to
+       * hide the original failure.
+       */
+      try {
+        await this.storage.deleteObject(storageKey);
+      } catch {
+        /* Cleanup is best effort; the job is failed either way. */
+      }
+      await this.repository.failExportAttempt({
+        errorCode: toExportErrorCode(error),
+        exportId: claimed.id,
+        leaseId: claimed.leaseId,
+        maxAttempts: MAX_EXPORT_ATTEMPTS,
+        now: this.clock.now(),
+      });
+      return true;
+    }
+  }
+
+  /**
+   * Deletes one expired artifact.
+   *
+   * Only the generated file: the snapshot rows and every source submission and
+   * document stay. A storage failure leaves the row claimable on a later pass
+   * rather than marking it gone, so cleanup is retryable and never lies about
+   * what it removed.
+   */
+  async cleanUpExpiredExport(): Promise<boolean> {
+    const now = this.clock.now();
+    const expired = await this.repository.claimExpiredExport({ now });
+    if (expired === null) return false;
+    await this.storage.deleteObject(expired.storageKey);
+    await this.repository.markExportExpired({ exportId: expired.id, now: this.clock.now() });
+    return true;
   }
 
   /** Outstanding work an Instructor must see before closing a round. */

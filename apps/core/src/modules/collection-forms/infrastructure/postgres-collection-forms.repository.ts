@@ -9,9 +9,13 @@ import {
   summarizeMatrix,
   type CollectionMatrixCellStatus,
 } from '../application/collection-matrix';
+import { CollectionExportTooLargeError } from '../application/collection-exports';
 import { REMINDER_LEAD_DAYS } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
+  CollectionExportJob,
+  CollectionExportKind,
+  CollectionExportStatus,
   CollectionField,
   CollectionFile,
   CollectionFileStatus,
@@ -32,6 +36,46 @@ import type {
 import type { ReusableValueCandidate } from '../application/reusable-values';
 
 const MAX_FILES_PER_FIELD = 5;
+
+interface ExportRow {
+  byte_size: string | number | null;
+  error_code: string | null;
+  expires_at: Date | null;
+  group_id: string;
+  id: string;
+  kind: string;
+  ready_at: Date | null;
+  requested_at: Date;
+  requested_by_account_id: string;
+  status: string;
+}
+
+interface ExportEntryRow {
+  form_id: string;
+  is_late: boolean;
+  obligation_status: string;
+  position: number;
+  student_account_id: string;
+  student_display_name: string;
+  submission_id: string | null;
+  submitted_at: Date | null;
+}
+
+/* `byte_size` is a bigint, which the driver returns as a string. */
+function mapExportRow(row: ExportRow): CollectionExportJob {
+  return {
+    byteSize: row.byte_size === null ? null : Number(row.byte_size),
+    errorCode: row.error_code,
+    expiresAt: row.expires_at,
+    groupId: row.group_id,
+    id: row.id,
+    kind: row.kind as CollectionExportKind,
+    readyAt: row.ready_at,
+    requestedAt: row.requested_at,
+    requestedByAccountId: row.requested_by_account_id,
+    status: row.status as CollectionExportStatus,
+  };
+}
 
 interface FormRow {
   created_from_template_id: string | null;
@@ -814,6 +858,361 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       returning id
     `;
     return updated.length;
+  }
+
+  /**
+   * Creates an export and freezes its snapshot in one transaction.
+   *
+   * The whole point of this method is what happens in a single write: the
+   * selected forms, their titles and field definitions, every Student in scope
+   * with their display name, and the exact submission each had at this instant.
+   * Everything the artifact will contain is decided here, so a submission made
+   * a second later, a renamed form, or a corrected name cannot change what a
+   * retry produces.
+   */
+  async createExport(input: {
+    formIds: string[];
+    groupId: string;
+    kind: 'excel' | 'zip';
+    maxForms: number;
+    maxStudents: number;
+    now: Date;
+    requestedByAccountId: string;
+  }) {
+    return this.database.sql.begin(async (transaction) => {
+      /*
+       * Locked for the duration: the snapshot must not be taken across a
+       * concurrent submission that would leave half the rows on each side.
+       */
+      const groups = await transaction<{ id: string }[]>`
+        select id from public.collection_groups where id = ${input.groupId} for share
+      `;
+      if (groups[0] === undefined) return null;
+
+      const forms = await transaction<{ fields: unknown; id: string; title: string }[]>`
+        select id, title, fields
+        from public.collection_forms
+        where group_id = ${input.groupId}
+          and id = any(${input.formIds}::uuid[])
+          /* A draft form has no submissions to export and no locked schema. */
+          and status <> 'draft'
+        order by created_at, id
+        limit ${input.maxForms}
+      `;
+      if (forms.length === 0) return null;
+
+      const exported = await transaction<{ id: string; requested_at: Date }[]>`
+        insert into private.collection_exports
+          (group_id, kind, requested_by_account_id, requested_at)
+        values (${input.groupId}, ${input.kind}, ${input.requestedByAccountId}, ${input.now})
+        returning id, requested_at
+      `;
+      const job = exported[0];
+      /* The insert above returns exactly one row or throws; this narrows it. */
+      if (job === undefined) throw new Error('COLLECTION_EXPORT_NOT_CREATED');
+
+      await transaction`
+        insert into private.collection_export_forms (export_id, form_id, position, title, fields)
+        select ${job.id}, form.form_id, form.position, form.title, form.fields
+        from unnest(
+          ${forms.map((form) => form.id)}::uuid[],
+          ${forms.map((_form, index) => index)}::int[],
+          ${forms.map((form) => form.title)}::text[],
+          ${forms.map((form) => JSON.stringify(form.fields))}::jsonb[]
+        ) as form(form_id, position, title, fields)
+      `;
+
+      /*
+       * One row per obligation in scope, including Students who submitted
+       * nothing: the tracking sheet has to show the gaps, and the archive has
+       * to be able to say a folder is legitimately empty.
+       *
+       * Withdrawn members are excluded from the scope but their retained
+       * submissions are not deleted; a later export of an active membership
+       * still sees them.
+       */
+      await transaction`
+        insert into private.collection_export_entries
+          (export_id, form_id, student_account_id, student_display_name, position,
+           obligation_status, submission_id, submitted_at, is_late)
+        select ${job.id}, obligation.form_id, obligation.student_account_id,
+          btrim(person_name.first_name_th || ' ' || person_name.last_name_th),
+          dense_rank() over (
+            order by person_name.first_name_th, person_name.last_name_th,
+              obligation.student_account_id
+          )::int - 1,
+          obligation.status, submission.id, submission.submitted_at,
+          coalesce(
+            form.deadline_at is not null
+              and obligation.first_submitted_at is not null
+              and obligation.first_submitted_at > form.deadline_at,
+            false
+          )
+        from private.collection_export_forms as scope
+        join public.collection_obligations as obligation on obligation.form_id = scope.form_id
+        join public.collection_forms as form on form.id = obligation.form_id
+        join public.collection_group_memberships as membership
+          on membership.group_id = ${input.groupId}
+          and membership.student_account_id = obligation.student_account_id
+          and membership.status = 'current'
+        join public.accounts as account on account.id = obligation.student_account_id
+        join private.person_names as person_name on person_name.person_id = account.person_id
+        /*
+         * The latest submitted version, which is what the specification means
+         * by "latest submitted versions, never drafts". A draft lives in a
+         * different table and can never be selected here.
+         */
+        left join private.collection_submissions as submission
+          on submission.id = obligation.latest_submission_id
+        where scope.export_id = ${job.id}
+      `;
+
+      /*
+       * Bounded after the fact rather than by a LIMIT, because a partial
+       * snapshot would silently omit Students from a tracking sheet. Too large
+       * is a refusal, not a truncation.
+       */
+      const counted = await transaction<{ students: number }[]>`
+        select count(distinct student_account_id)::int as students
+        from private.collection_export_entries where export_id = ${job.id}
+      `;
+      if ((counted[0]?.students ?? 0) > input.maxStudents) {
+        throw new CollectionExportTooLargeError();
+      }
+
+      return {
+        byteSize: null,
+        errorCode: null,
+        expiresAt: null,
+        groupId: input.groupId,
+        id: job.id,
+        kind: input.kind,
+        readyAt: null,
+        requestedAt: job.requested_at,
+        requestedByAccountId: input.requestedByAccountId,
+        status: 'pending' as const,
+      };
+    });
+  }
+
+  async getExport(exportId: string) {
+    const rows = await this.database.sql<ExportRow[]>`
+      select id, group_id, kind, status, requested_by_account_id, requested_at,
+        ready_at, expires_at, byte_size, error_code
+      from private.collection_exports where id = ${exportId}
+    `;
+    const row = rows[0];
+    return row === undefined ? null : mapExportRow(row);
+  }
+
+  async readSubmissionAnswers(submissionId: string) {
+    const rows = await this.database.sql<{ answers: unknown }[]>`
+      select answers from private.collection_submissions where id = ${submissionId}
+    `;
+    const row = rows[0];
+    return row === undefined ? null : (row.answers as CollectionAnswers);
+  }
+
+  async listGroupExports(input: { groupId: string; limit: number }) {
+    const rows = await this.database.sql<ExportRow[]>`
+      select id, group_id, kind, status, requested_by_account_id, requested_at,
+        ready_at, expires_at, byte_size, error_code
+      from private.collection_exports
+      where group_id = ${input.groupId}
+      order by requested_at desc, id desc
+      limit ${input.limit}
+    `;
+    return rows.map(mapExportRow);
+  }
+
+  /**
+   * Claims the oldest unfinished export.
+   *
+   * `for update skip locked` is what lets several workers run without two of
+   * them building the same archive, and the lapsed-lease branch is what lets a
+   * job whose worker died be retried rather than stranded in `building`.
+   */
+  async claimExportForBuilding(input: { leaseSeconds: number; maxAttempts: number; now: Date }) {
+    const claimed = await this.database.sql<
+      { attempt_count: number; group_id: string; id: string; kind: string; lease_id: string }[]
+    >`
+      with candidate as (
+        select id from private.collection_exports
+        where (status = 'pending' or (status = 'building' and lease_expires_at <= ${input.now}))
+          and attempt_count < ${input.maxAttempts}
+        order by requested_at
+        limit 1
+        for update skip locked
+      )
+      update private.collection_exports as job
+      set status = 'building', attempt_count = job.attempt_count + 1,
+        lease_id = gen_random_uuid(),
+        lease_expires_at = ${input.now} + make_interval(secs => ${input.leaseSeconds})
+      from candidate
+      where job.id = candidate.id
+      returning job.id, job.group_id, job.kind, job.lease_id, job.attempt_count
+    `;
+    const job = claimed[0];
+    if (job === undefined) return null;
+
+    const forms = await this.database.sql<
+      { fields: unknown; form_id: string; position: number; title: string }[]
+    >`
+      select form_id, position, title, fields
+      from private.collection_export_forms
+      where export_id = ${job.id}
+      order by position
+    `;
+    const entries = await this.database.sql<ExportEntryRow[]>`
+      select form_id, student_account_id, student_display_name, position,
+        obligation_status, submission_id, submitted_at, is_late
+      from private.collection_export_entries
+      where export_id = ${job.id}
+      order by position, form_id
+    `;
+
+    return {
+      attemptCount: job.attempt_count,
+      entries: entries.map((entry) => ({
+        formId: entry.form_id,
+        isLate: entry.is_late,
+        obligationStatus: entry.obligation_status,
+        position: entry.position,
+        studentAccountId: entry.student_account_id,
+        studentDisplayName: entry.student_display_name,
+        submissionId: entry.submission_id,
+        submittedAt: entry.submitted_at,
+      })),
+      forms: forms.map((form) => ({
+        fields: form.fields as CollectionField[],
+        formId: form.form_id,
+        position: form.position,
+        title: form.title,
+      })),
+      groupId: job.group_id,
+      id: job.id,
+      kind: job.kind as 'excel' | 'zip',
+      leaseId: job.lease_id,
+    };
+  }
+
+  /**
+   * Documents of one frozen submission.
+   *
+   * Only files that passed inspection are exported: a quarantined or rejected
+   * upload is not a document the platform vouches for.
+   */
+  async listExportDocuments(submissionId: string) {
+    const rows = await this.database.sql<
+      { field_id: string; original_filename: string; position: number; storage_key: string }[]
+    >`
+      select submission_file.field_id, submission_file.position,
+        file.storage_key, file.original_filename
+      from private.collection_submission_files as submission_file
+      join private.collection_files as file on file.id = submission_file.file_id
+      where submission_file.submission_id = ${submissionId} and file.status = 'ready'
+      order by submission_file.field_id, submission_file.position
+    `;
+    return rows.map((row) => ({
+      fieldId: row.field_id,
+      originalFilename: row.original_filename,
+      position: row.position,
+      storageKey: row.storage_key,
+    }));
+  }
+
+  /**
+   * Marks an export ready.
+   *
+   * The lease is part of the `where`, so a worker whose claim lapsed while it
+   * was building cannot overwrite the result of the worker that retried it.
+   */
+  async completeExport(input: {
+    byteSize: number;
+    exportId: string;
+    expiresAt: Date;
+    leaseId: string;
+    now: Date;
+    storageKey: string;
+  }) {
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_exports
+      set status = 'ready', ready_at = ${input.now}, expires_at = ${input.expiresAt},
+        storage_key = ${input.storageKey}, byte_size = ${input.byteSize},
+        error_code = null, lease_id = null, lease_expires_at = null
+      where id = ${input.exportId} and lease_id = ${input.leaseId} and status = 'building'
+      returning id
+    `;
+    return updated.length === 1;
+  }
+
+  /**
+   * Records a failed attempt.
+   *
+   * Below the limit the job returns to `pending` and will be claimed again,
+   * rebuilding from the same frozen snapshot. At the limit it fails for good,
+   * because an Instructor waiting forever is worse than an Instructor told to
+   * retry.
+   */
+  async failExportAttempt(input: {
+    errorCode: string;
+    exportId: string;
+    leaseId: string;
+    maxAttempts: number;
+    now: Date;
+  }) {
+    const updated = await this.database.sql<{ id: string }[]>`
+      update private.collection_exports
+      set status = case when attempt_count >= ${input.maxAttempts} then 'failed' else 'pending' end,
+        error_code = ${input.errorCode}, lease_id = null, lease_expires_at = null
+      where id = ${input.exportId} and lease_id = ${input.leaseId} and status = 'building'
+      returning id
+    `;
+    void input.now;
+    return updated.length === 1;
+  }
+
+  /**
+   * Claims one expired artifact for cleanup.
+   *
+   * `cleanup_attempted_at` is what makes the sweep retryable without spinning:
+   * a storage failure leaves the row expired and claimable again on a later
+   * pass rather than being retried immediately forever.
+   */
+  async claimExpiredExport(input: { now: Date }) {
+    const claimed = await this.database.sql<{ id: string; storage_key: string }[]>`
+      with candidate as (
+        select id from private.collection_exports
+        where status = 'ready' and expires_at <= ${input.now} and storage_key is not null
+          and (cleanup_attempted_at is null or cleanup_attempted_at <= ${input.now} - interval '5 minutes')
+        order by expires_at
+        limit 1
+        for update skip locked
+      )
+      update private.collection_exports as job
+      set cleanup_attempted_at = ${input.now}
+      from candidate
+      where job.id = candidate.id
+      returning job.id, job.storage_key
+    `;
+    const row = claimed[0];
+    if (row === undefined || row.storage_key === null) return null;
+    return { id: row.id, storageKey: row.storage_key };
+  }
+
+  /**
+   * Marks an expired artifact gone.
+   *
+   * Clears the storage key so nothing can attempt to serve bytes that are no
+   * longer there. The snapshot rows stay: they are the record of what was
+   * exported, and they name no file content.
+   */
+  async markExportExpired(input: { exportId: string; now: Date }) {
+    await this.database.sql`
+      update private.collection_exports
+      set status = 'expired', storage_key = null, cleanup_attempted_at = ${input.now}
+      where id = ${input.exportId} and status = 'ready'
+    `;
   }
 
   async setRoundStatus(input: {

@@ -6,6 +6,7 @@ interface OperationalErrorContext {
   runtime:
     | 'api'
     | 'cache-worker'
+    | 'collection-export-builder'
     | 'collection-file-inspector'
     | 'collection-reminder-dispatcher'
     | 'media-processor'

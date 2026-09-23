@@ -26,6 +26,7 @@ import {
   MAX_OPTIONS_PER_FIELD,
 } from '../application/collection-field';
 import { MAX_MATRIX_ROWS } from '../application/collection-matrix';
+import { MAX_EXPORT_FORMS } from '../application/collection-exports';
 import { MAX_NOTIFICATION_FEED } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
@@ -271,4 +272,21 @@ export class MarkNotificationsReadDto {
   @ArrayMaxSize(MAX_NOTIFICATION_FEED)
   @IsUUID('4', { each: true })
   notificationIds!: string[];
+}
+
+/**
+ * The scope one export request freezes.
+ *
+ * The forms are named explicitly rather than defaulted to the whole group: an
+ * Instructor exporting one form must not silently snapshot thirty.
+ */
+export class CreateCollectionExportDto {
+  @IsIn(['excel', 'zip'])
+  kind!: 'excel' | 'zip';
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_EXPORT_FORMS)
+  @IsUUID('4', { each: true })
+  formIds!: string[];
 }

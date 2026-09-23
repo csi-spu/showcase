@@ -31,4 +31,18 @@ export class UnavailableCollectionFileStorage implements CollectionFileStorage {
     void _maximumBytes;
     return Promise.reject(new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE'));
   }
+
+  putObjectStream(_input: {
+    body: AsyncIterable<Buffer>;
+    contentType: string;
+    key: string;
+  }): Promise<number> {
+    void _input;
+    return Promise.reject(new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE'));
+  }
+
+  async *getObjectStream(_key: string): AsyncIterable<Buffer> {
+    void _key;
+    throw new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE');
+  }
 }

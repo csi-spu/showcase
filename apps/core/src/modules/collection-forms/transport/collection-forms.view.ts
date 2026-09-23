@@ -1,4 +1,5 @@
 import type {
+  CollectionExportJob,
   CollectionFile,
   CollectionNotification,
   CollectionSubmissionHistory,
@@ -151,5 +152,36 @@ export function toNotificationView(
     id: notification.id,
     isRead: notification.isRead,
     kind: notification.kind,
+  };
+}
+
+/**
+ * One export job as the Instructor surface sees it.
+ *
+ * `requestedByAccountId` is deliberately absent: an Instructor acts on any
+ * group's exports, so who requested one is audit information rather than
+ * something the dashboard needs. Nothing here names a Student.
+ */
+export interface CollectionExportView {
+  byteSize: number | null;
+  errorCode: string | null;
+  expiresAt: string | null;
+  id: string;
+  kind: string;
+  readyAt: string | null;
+  requestedAt: string;
+  status: string;
+}
+
+export function toExportView(job: CollectionExportJob): CollectionExportView {
+  return {
+    byteSize: job.byteSize,
+    errorCode: job.errorCode,
+    expiresAt: job.expiresAt?.toISOString() ?? null,
+    id: job.id,
+    kind: job.kind,
+    readyAt: job.readyAt?.toISOString() ?? null,
+    requestedAt: job.requestedAt.toISOString(),
+    status: job.status,
   };
 }

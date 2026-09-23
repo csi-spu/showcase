@@ -1573,6 +1573,343 @@ describe('PostgresCollectionFormsRepository integration', () => {
     });
   });
 
+  describe('exports', () => {
+    const LEASE = { leaseSeconds: 600, maxAttempts: 3, now: NOW };
+
+    /*
+     * The freeze is the whole point of snapshotting at creation: an Instructor
+     * who exports on Friday must get Friday's picture even if the worker runs
+     * on Monday and a Student submitted over the weekend.
+     */
+    it('freezes the submission each Student had when the export was requested', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const first = await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000060');
+
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+
+      /* A newer submission lands after the snapshot was taken. */
+      await repository.saveDraft({
+        answers: { company: 'CSI ใหม่' },
+        expectedVersion: 1,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      const later = await repository.submit({
+        formId: form.id,
+        idempotencyKey: '58000000-0000-4000-8000-000000000061',
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      if (typeof later === 'string' || 'outcome' in later) throw new Error('expected submission');
+
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      expect(claimed?.id).toBe(job.id);
+      const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
+      expect(entry?.submissionId).toBe(first.submissionId);
+      expect(entry?.submissionId).not.toBe(later.submissionId);
+      await expect(repository.readSubmissionAnswers(first.submissionId)).resolves.toEqual({
+        company: 'CSI',
+      });
+    });
+
+    /* A rename after the request must not rewrite a workbook already promised. */
+    it('copies the form title into the snapshot so a later rename cannot change it', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], null, 'ชื่อเดิม');
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+      await repository.updateFormMetadata({
+        actorAccountId: INSTRUCTOR,
+        deadlineAt: null,
+        description: '',
+        formId: form.id,
+        now: NOW,
+        title: 'ชื่อใหม่',
+      });
+
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      expect(claimed?.forms[0]?.title).toBe('ชื่อเดิม');
+    });
+
+    /*
+     * A draft is not an answer the Student has stood behind, so it must never
+     * reach an export even though the row exists.
+     */
+    it('records no submission for a Student who has only a draft', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.saveDraft({
+        answers: { company: 'ยังไม่ส่ง' },
+        expectedVersion: 0,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
+      expect(entry?.submissionId).toBeNull();
+      expect(entry?.submittedAt).toBeNull();
+    });
+
+    /* Two workers must never build the same archive twice. */
+    it('gives one claim to one worker and leaves nothing for the next', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'zip',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+
+      const first = await repository.claimExportForBuilding(LEASE);
+      const second = await repository.claimExportForBuilding(LEASE);
+
+      expect(first).not.toBeNull();
+      expect(second).toBeNull();
+    });
+
+    /*
+     * A worker whose lease lapsed has lost the job: letting it complete would
+     * overwrite whatever the worker that took over produced.
+     */
+    it('refuses a completion from a lease that is no longer held', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      if (claimed === null) throw new Error('expected claim');
+
+      await expect(
+        repository.completeExport({
+          byteSize: 10,
+          expiresAt: new Date(NOW.getTime() + 86_400_000),
+          exportId: job.id,
+          leaseId: '58000000-0000-4000-8000-0000000000ff',
+          now: NOW,
+          storageKey: `collection-exports/${job.id}.xlsx`,
+        }),
+      ).resolves.toBe(false);
+      await expect(
+        repository.completeExport({
+          byteSize: 10,
+          expiresAt: new Date(NOW.getTime() + 86_400_000),
+          exportId: job.id,
+          leaseId: claimed.leaseId,
+          now: NOW,
+          storageKey: `collection-exports/${job.id}.xlsx`,
+        }),
+      ).resolves.toBe(true);
+      await expect(repository.getExport(job.id)).resolves.toMatchObject({ status: 'ready' });
+    });
+
+    /*
+     * A retry must rebuild the same artifact, so the snapshot has to survive
+     * the failed attempt rather than being retaken from live data.
+     */
+    it('returns a failed attempt to pending with its snapshot intact, then fails for good', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const submitted = await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000062');
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'zip',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const claimed = await repository.claimExportForBuilding(LEASE);
+        if (claimed === null) throw new Error(`expected claim on attempt ${attempt}`);
+        expect(claimed.entries.find((row) => row.studentAccountId === STUDENT)?.submissionId).toBe(
+          submitted.submissionId,
+        );
+        await expect(
+          repository.failExportAttempt({
+            errorCode: 'COLLECTION_EXPORT_BUILD_FAILED',
+            exportId: job.id,
+            leaseId: claimed.leaseId,
+            maxAttempts: 3,
+            now: NOW,
+          }),
+        ).resolves.toBe(true);
+      }
+
+      await expect(repository.getExport(job.id)).resolves.toMatchObject({
+        errorCode: 'COLLECTION_EXPORT_BUILD_FAILED',
+        status: 'failed',
+      });
+      /* A job that failed for good is not handed out again. */
+      await expect(repository.claimExportForBuilding(LEASE)).resolves.toBeNull();
+    });
+
+    /* A Student removed from the group is no longer someone the group reports on. */
+    it('snapshots only current members', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await database.sql`
+        delete from public.collection_group_memberships
+        where group_id = ${groupId} and student_account_id = ${PEER}
+      `;
+      await database.sql`
+        delete from public.collection_obligations
+        where form_id = ${form.id} and student_account_id = ${PEER}
+      `;
+
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      expect(claimed?.entries.map((row) => row.studentAccountId)).toEqual([STUDENT]);
+    });
+
+    /* Refusing is safer than truncating: a sheet silently missing Students lies. */
+    it('refuses a snapshot larger than the limit rather than trimming it', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      await expect(
+        repository.createExport({
+          formIds: [form.id],
+          groupId,
+          kind: 'excel',
+          maxForms: 30,
+          maxStudents: 1,
+          now: NOW,
+          requestedByAccountId: INSTRUCTOR,
+        }),
+      ).rejects.toThrow();
+      /* The refusal leaves no half-created job behind. */
+      await expect(repository.listGroupExports({ groupId, limit: 20 })).resolves.toEqual([]);
+    });
+
+    it('returns null for an export requested against a group that does not exist', async () => {
+      await expect(
+        repository.createExport({
+          formIds: ['58000000-0000-4000-8000-0000000000aa'],
+          groupId: '58000000-0000-4000-8000-0000000000ab',
+          kind: 'excel',
+          maxForms: 30,
+          maxStudents: 1_000,
+          now: NOW,
+          requestedByAccountId: INSTRUCTOR,
+        }),
+      ).resolves.toBeNull();
+    });
+
+    /*
+     * Expiry is a recorded instant, so a cleanup sweep that runs late deletes
+     * the artifact without ever extending the window it was downloadable in.
+     */
+    it('claims only exports whose recorded expiry has passed and marks them expired', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const job = await repository.createExport({
+        formIds: [form.id],
+        groupId,
+        kind: 'excel',
+        maxForms: 30,
+        maxStudents: 1_000,
+        now: NOW,
+        requestedByAccountId: INSTRUCTOR,
+      });
+      if (job === null) throw new Error('expected export');
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      if (claimed === null) throw new Error('expected claim');
+      const expiresAt = new Date(NOW.getTime() + 86_400_000);
+      const storageKey = `collection-exports/${job.id}.xlsx`;
+      await repository.completeExport({
+        byteSize: 128,
+        expiresAt,
+        exportId: job.id,
+        leaseId: claimed.leaseId,
+        now: NOW,
+        storageKey,
+      });
+
+      /* Still inside the window: nothing to sweep. */
+      await expect(
+        repository.claimExpiredExport({ now: new Date(expiresAt.getTime() - 1_000) }),
+      ).resolves.toBeNull();
+
+      const after = new Date(expiresAt.getTime() + 1_000);
+      await expect(repository.claimExpiredExport({ now: after })).resolves.toEqual({
+        id: job.id,
+        storageKey,
+      });
+      await repository.markExportExpired({ exportId: job.id, now: after });
+      await expect(repository.getExport(job.id)).resolves.toMatchObject({ status: 'expired' });
+      await expect(repository.claimExpiredExport({ now: after })).resolves.toBeNull();
+    });
+  });
+
   async function addMember(groupId: string, studentAccountId: string) {
     await database.sql`
       insert into public.collection_group_memberships
@@ -1625,6 +1962,19 @@ describe('PostgresCollectionFormsRepository integration', () => {
 
   async function cleanupCollectionData() {
     await database.sql.begin(async (transaction) => {
+      await transaction`
+        delete from private.collection_export_entries
+        where export_id in (
+          select id from private.collection_exports where requested_by_account_id = ${INSTRUCTOR}
+        )
+      `;
+      await transaction`
+        delete from private.collection_export_forms
+        where export_id in (
+          select id from private.collection_exports where requested_by_account_id = ${INSTRUCTOR}
+        )
+      `;
+      await transaction`delete from private.collection_exports where requested_by_account_id = ${INSTRUCTOR}`;
       await transaction`delete from private.collection_checking_events where instructor_account_id = ${INSTRUCTOR}`;
       await transaction`delete from private.collection_draft_files where student_account_id = ${STUDENT}`;
       await transaction`
