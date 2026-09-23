@@ -25,6 +25,7 @@ import {
   MAX_FILES_PER_FIELD,
   MAX_OPTIONS_PER_FIELD,
 } from '../application/collection-field';
+import { MAX_MATRIX_ROWS } from '../application/collection-matrix';
 import type {
   CollectionAnswers,
   CollectionFieldType,
@@ -236,4 +237,24 @@ export class CollectionLifecycleReasonDto {
   @MinLength(1)
   @MaxLength(2_000)
   reason!: string;
+}
+
+/**
+ * One page of the group matrix.
+ *
+ * The cursor is the account id of the last row already shown, which is opaque
+ * to the reader and safe in a URL -- unlike a Student ID, which never appears
+ * in one.
+ */
+export class CollectionMatrixQueryDto {
+  @IsOptional()
+  @IsUUID('4')
+  after?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_MATRIX_ROWS)
+  limit?: number;
 }

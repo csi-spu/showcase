@@ -2,6 +2,7 @@ import type { Clock } from '../../auth/application/auth.ports';
 import type { CollectionField } from './collection-field';
 import { CollectionFormsService } from './collection-forms.service';
 import { CollectionFormsError } from './collection-forms.ports';
+import { MAX_MATRIX_ROWS } from './collection-matrix';
 import type {
   CollectionFile,
   CollectionFileInspection,
@@ -93,6 +94,22 @@ class FakeRepository implements CollectionFormsRepository {
     changesRequired: 2,
     notSubmitted: 3,
   };
+  matrixPage: Result<'readGroupMatrix'> = {
+    forms: [],
+    nextCursor: null,
+    rows: [],
+    summary: {
+      awaitingChecking: 0,
+      changesRequired: 0,
+      late: 0,
+      notRequired: 0,
+      notSubmitted: 0,
+      passed: 0,
+      withdrawn: 0,
+    },
+    totalMembers: 0,
+  };
+  matrixReads: Parameters<CollectionFormsRepository['readGroupMatrix']>[0][] = [];
   roundStatusChanges: Parameters<CollectionFormsRepository['setRoundStatus']>[0][] = [];
   roundStatusResult: Result<'setRoundStatus'> = {
     pendingWork: { awaitingChecking: 1, changesRequired: 2, notSubmitted: 3 },
@@ -196,6 +213,10 @@ class FakeRepository implements CollectionFormsRepository {
   }
   getRoundPendingWork(): Promise<Result<'getRoundPendingWork'>> {
     return Promise.resolve(this.pendingWork);
+  }
+  readGroupMatrix(input: Parameters<CollectionFormsRepository['readGroupMatrix']>[0]) {
+    this.matrixReads.push(input);
+    return Promise.resolve(this.matrixPage);
   }
   setRoundStatus(input: Parameters<CollectionFormsRepository['setRoundStatus']>[0]) {
     this.roundStatusChanges.push(input);
@@ -879,6 +900,62 @@ describe('CollectionFormsService', () => {
       await expect(
         service.reopenForm({ actorAccountId: ACTOR, formId: FORM.id, reason: 'เปิดรับ' }),
       ).rejects.toEqual(new CollectionFormsError('FORM_NOT_CLOSED', 409));
+    });
+  });
+
+  describe('group matrix', () => {
+    const GROUP = '90000000-0000-4000-8000-000000000001';
+
+    it('clamps an oversized page request to the bound', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await service.readGroupMatrix({
+        afterStudentAccountId: null,
+        groupId: GROUP,
+        limit: 10_000,
+      });
+
+      expect(repository.matrixReads[0]?.limit).toBe(MAX_MATRIX_ROWS);
+    });
+
+    it('bounds a page request that asked for nothing', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await service.readGroupMatrix({
+        afterStudentAccountId: null,
+        groupId: GROUP,
+        limit: undefined,
+      });
+
+      expect(repository.matrixReads[0]?.limit).toBe(MAX_MATRIX_ROWS);
+    });
+
+    it('passes a smaller page request through', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await service.readGroupMatrix({
+        afterStudentAccountId: 'a0000000-0000-4000-8000-000000000001',
+        groupId: GROUP,
+        limit: 5,
+      });
+
+      expect(repository.matrixReads[0]).toMatchObject({
+        afterStudentAccountId: 'a0000000-0000-4000-8000-000000000001',
+        limit: 5,
+      });
+    });
+
+    it('reports an unknown group as not found', async () => {
+      const repository = new FakeRepository();
+      repository.matrixPage = null;
+      const { service } = setup(repository);
+
+      await expect(
+        service.readGroupMatrix({ afterStudentAccountId: null, groupId: GROUP, limit: undefined }),
+      ).rejects.toEqual(new CollectionFormsError('GROUP_NOT_FOUND', 404));
     });
   });
 

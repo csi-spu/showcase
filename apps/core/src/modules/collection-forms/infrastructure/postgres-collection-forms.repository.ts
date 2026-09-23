@@ -3,6 +3,12 @@ import { DatabaseClient } from '../../auth/infrastructure/database.client';
 import { findAnswerError } from '../application/collection-field';
 import { findSubmissionFileError } from '../application/collection-files';
 import { hasDeadlinePassed, isFirstSubmissionLate } from '../application/collection-lifecycle';
+import {
+  MAX_MATRIX_FORMS,
+  buildMatrixRows,
+  summarizeMatrix,
+  type CollectionMatrixCellStatus,
+} from '../application/collection-matrix';
 import type {
   CollectionAnswers,
   CollectionField,
@@ -11,6 +17,7 @@ import type {
   CollectionForm,
   CollectionFormTemplate,
   CollectionFormsRepository,
+  CollectionMatrixPage,
   CollectionReviewEntry,
   CollectionSubmissionHistory,
   CollectionSubmissionHistoryEntry,
@@ -486,6 +493,134 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     `;
     if (rounds[0] === undefined) return null;
     return this.readRoundPendingWork(this.database.sql, roundId);
+  }
+
+  /**
+   * One bounded page of the group matrix.
+   *
+   * Three separate reads rather than one wide join, because they answer three
+   * differently-shaped questions and joining them would multiply members by
+   * forms in the database before the page is even cut:
+   *
+   * - the forms that make up the columns, capped;
+   * - one cursor page of members, ordered so paging is stable;
+   * - the obligations for exactly those members and those forms.
+   *
+   * A member with no obligation on a form simply has no row in the third read,
+   * which is what `buildMatrixRows` turns into `not_required`.
+   */
+  async readGroupMatrix(input: {
+    afterStudentAccountId: string | null;
+    groupId: string;
+    limit: number;
+  }): Promise<CollectionMatrixPage | null> {
+    const groups = await this.database.sql<{ id: string }[]>`
+      select id from public.collection_groups where id = ${input.groupId}
+    `;
+    if (groups[0] === undefined) return null;
+
+    const formRows = await this.database.sql<
+      { deadline_at: Date | null; id: string; status: CollectionForm['status']; title: string }[]
+    >`
+      select id, title, status, deadline_at
+      from public.collection_forms
+      where group_id = ${input.groupId} and status <> 'draft'
+      order by created_at, id
+      limit ${MAX_MATRIX_FORMS}
+    `;
+
+    /*
+     * Ordered by name then account id: the name is what an Instructor scans,
+     * and the id breaks ties so the cursor cannot skip or repeat a member whose
+     * name is shared. The cursor is the account id of the last row shown.
+     */
+    const memberRows = await this.database.sql<
+      {
+        first_name_th: string;
+        last_name_th: string;
+        status: string;
+        student_account_id: string;
+      }[]
+    >`
+      select membership.student_account_id, membership.status,
+        person_name.first_name_th, person_name.last_name_th
+      from public.collection_group_memberships as membership
+      join public.accounts as account on account.id = membership.student_account_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      where membership.group_id = ${input.groupId}
+        and (
+          ${input.afterStudentAccountId}::uuid is null
+          or (person_name.first_name_th, person_name.last_name_th, membership.student_account_id) > (
+            select cursor_name.first_name_th, cursor_name.last_name_th, ${input.afterStudentAccountId}::uuid
+            from public.accounts as cursor_account
+            join private.person_names as cursor_name on cursor_name.person_id = cursor_account.person_id
+            where cursor_account.id = ${input.afterStudentAccountId}::uuid
+          )
+        )
+      order by person_name.first_name_th, person_name.last_name_th, membership.student_account_id
+      limit ${input.limit + 1}
+    `;
+
+    /* One row beyond the page proves there is a next page without counting. */
+    const hasMore = memberRows.length > input.limit;
+    const pageRows = hasMore ? memberRows.slice(0, input.limit) : memberRows;
+
+    const totals = await this.database.sql<{ total: number }[]>`
+      select count(*)::int as total
+      from public.collection_group_memberships
+      where group_id = ${input.groupId}
+    `;
+
+    const studentAccountIds = pageRows.map((row) => row.student_account_id);
+    const formIds = formRows.map((row) => row.id);
+    const obligationRows =
+      studentAccountIds.length === 0 || formIds.length === 0
+        ? []
+        : await this.database.sql<
+            {
+              deadline_at: Date | null;
+              first_submitted_at: Date | null;
+              form_id: string;
+              status: Exclude<CollectionMatrixCellStatus, 'not_required'>;
+              student_account_id: string;
+            }[]
+          >`
+            select obligation.form_id, obligation.student_account_id, obligation.status,
+              obligation.first_submitted_at, form.deadline_at
+            from public.collection_obligations as obligation
+            join public.collection_forms as form on form.id = obligation.form_id
+            where obligation.form_id = any(${formIds}::uuid[])
+              and obligation.student_account_id = any(${studentAccountIds}::uuid[])
+          `;
+
+    const rows = buildMatrixRows({
+      formIds,
+      members: pageRows.map((row) => ({
+        isWithdrawn: row.status === 'withdrawn',
+        rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
+        studentAccountId: row.student_account_id,
+      })),
+      obligations: obligationRows.map((row) => ({
+        deadlineAt: row.deadline_at,
+        firstSubmittedAt: row.first_submitted_at,
+        formId: row.form_id,
+        status: row.status,
+        studentAccountId: row.student_account_id,
+      })),
+    });
+
+    return {
+      forms: formRows.map((row) => ({
+        deadlineAt: row.deadline_at,
+        id: row.id,
+        status: row.status,
+        title: row.title,
+      })),
+      nextCursor: hasMore ? (pageRows.at(-1)?.student_account_id ?? null) : null,
+      rows,
+      summary: summarizeMatrix(rows),
+      totalMembers: totals[0]?.total ?? 0,
+    };
   }
 
   /**

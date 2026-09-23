@@ -11,6 +11,7 @@ import {
 } from './collection-field';
 import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
 import { findCloseReasonError, summarizePendingWork } from './collection-lifecycle';
+import { boundMatrixLimit } from './collection-matrix';
 import {
   COLLECTION_FILE_INSPECTOR,
   COLLECTION_FILE_STORAGE,
@@ -268,6 +269,27 @@ export class CollectionFormsService {
     if (result === 'round_closed') throw new CollectionFormsError('ROUND_CLOSED', 409);
     if (result === 'not_closed') throw new CollectionFormsError('FORM_NOT_CLOSED', 409);
     return result;
+  }
+
+  /**
+   * One bounded page of the group's Student-by-form matrix.
+   *
+   * The page is cut in the database, not the browser: a group may hold far more
+   * members than a screen, and downloading all of them to count them is exactly
+   * what the specification rules out.
+   */
+  async readGroupMatrix(input: {
+    afterStudentAccountId: string | null;
+    groupId: string;
+    limit: number | undefined;
+  }) {
+    const page = await this.repository.readGroupMatrix({
+      afterStudentAccountId: input.afterStudentAccountId,
+      groupId: input.groupId,
+      limit: boundMatrixLimit(input.limit),
+    });
+    if (page === null) throw new CollectionFormsError('GROUP_NOT_FOUND', 404);
+    return page;
   }
 
   /** Outstanding work an Instructor must see before closing a round. */

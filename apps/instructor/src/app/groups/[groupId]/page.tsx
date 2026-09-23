@@ -1,4 +1,5 @@
-import { UserCheckIcon, UserXIcon, UsersIcon } from 'lucide-react';
+import { TableIcon, UserCheckIcon, UserXIcon, UsersIcon } from 'lucide-react';
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CoreClientError } from '@showcase/core-client';
@@ -48,6 +49,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
   if (sessionToken === null) redirect('/?expired=1');
 
   const t = await getTranslations('Groups');
+  const tForms = await getTranslations('Forms');
   const client = new InstructorCollectionGroupsCoreClient(getInstructorServerEnvironment());
   let detail;
   let rounds;
@@ -107,6 +109,16 @@ export default async function GroupPage({ params }: GroupPageProps) {
         addByEntryYearAction={boundAddByEntryYear}
         addByStudentIdsAction={boundAddByStudentIds}
       />
+
+      <nav aria-label={tForms('matrix.pageTitle')}>
+        <Link
+          className="inline-flex items-center gap-2 rounded-surface border border-input bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none motion-reduce:transition-none"
+          href={`/groups/${groupId}/matrix`}
+        >
+          <TableIcon aria-hidden="true" className="size-4" />
+          {tForms('matrix.openAction')}
+        </Link>
+      </nav>
 
       <FormsSection
         createAction={createCollectionFormAction.bind(null, groupId)}

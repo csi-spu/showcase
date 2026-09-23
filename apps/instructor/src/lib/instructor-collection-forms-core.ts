@@ -3,6 +3,7 @@ import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
 import {
   formSchema,
+  matrixPageSchema,
   pendingWorkSchema,
   reopenPreviewSchema,
   reopenResultSchema,
@@ -14,6 +15,7 @@ import {
 import type {
   InstructorCollectionForm,
   InstructorCollectionTemplate,
+  InstructorMatrixPage,
   InstructorPendingWork,
   InstructorReopenPreview,
   InstructorReopenResult,
@@ -153,6 +155,30 @@ export class InstructorCollectionFormsCoreClient {
       path: `${BASE}/forms/${formId}/reopen`,
       body,
       responseSchema: reopenResultSchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * One page of the group's Student-by-form matrix.
+   *
+   * `after` is the account id of the last row already shown. Core bounds the
+   * page size whatever is asked for, so an oversized `limit` is clamped rather
+   * than refused.
+   */
+  groupMatrix(
+    sessionToken: string,
+    groupId: string,
+    params: { after?: string | null; limit?: number } = {},
+  ): Promise<InstructorMatrixPage> {
+    const query = new URLSearchParams();
+    if (params.after != null) query.set('after', params.after);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/groups/${groupId}/matrix${suffix}`,
+      responseSchema: matrixPageSchema,
       sessionToken,
     });
   }

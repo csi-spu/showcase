@@ -1,5 +1,6 @@
 import type { CollectionAnswers, CollectionField } from './collection-field';
 import type { CollectionFile, CollectionFileStatus } from './collection-files';
+import type { CollectionMatrixRow, CollectionMatrixSummary } from './collection-matrix';
 import type { ReusableValueCandidate } from './reusable-values';
 
 export const COLLECTION_FORMS_REPOSITORY = Symbol('COLLECTION_FORMS_REPOSITORY');
@@ -54,6 +55,12 @@ export type {
   CollectionFileType,
 } from './collection-field';
 export type { CollectionFile, CollectionFileStatus } from './collection-files';
+export type {
+  CollectionMatrixCell,
+  CollectionMatrixCellStatus,
+  CollectionMatrixRow,
+  CollectionMatrixSummary,
+} from './collection-matrix';
 
 export interface CollectionForm {
   createdFromTemplateId: string | null;
@@ -174,6 +181,22 @@ export interface CollectionSubmissionHistory {
   firstSubmittedAt: Date | null;
   form: CollectionForm;
   status: StudentObligation['status'];
+}
+
+/**
+ * One page of the Student-by-form matrix for a group.
+ *
+ * Both dimensions are bounded: rows are a cursor page over members and forms
+ * are capped, because every row carries a cell per form. `nextCursor` is null
+ * on the last page.
+ */
+export interface CollectionMatrixPage {
+  forms: { deadlineAt: Date | null; id: string; status: CollectionForm['status']; title: string }[];
+  nextCursor: string | null;
+  rows: CollectionMatrixRow[];
+  summary: CollectionMatrixSummary;
+  /** Every current and withdrawn member of the group, not just this page. */
+  totalMembers: number;
 }
 
 /** Unfinished obligations across a round, shown before closing it. */
@@ -344,6 +367,17 @@ export interface CollectionFormsRepository {
   >;
   /** Outstanding obligations across a round, excluding withdrawn members. */
   getRoundPendingWork(roundId: string): Promise<RoundPendingWork | null>;
+  /**
+   * One bounded page of the group matrix.
+   *
+   * Members are paged by a cursor over the stable ordering; forms are capped.
+   * Returns null when the group does not exist.
+   */
+  readGroupMatrix(input: {
+    afterStudentAccountId: string | null;
+    groupId: string;
+    limit: number;
+  }): Promise<CollectionMatrixPage | null>;
   setRoundStatus(input: {
     actorAccountId: string;
     expectedStatus: 'active' | 'closed';

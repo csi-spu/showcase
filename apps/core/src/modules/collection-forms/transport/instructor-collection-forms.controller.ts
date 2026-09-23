@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { CollectionFormsService } from '../application/collection-forms.service'
 import {
   CheckCollectionSubmissionDto,
   CollectionLifecycleReasonDto,
+  CollectionMatrixQueryDto,
   CreateCollectionFormDto,
   CreateCollectionTemplateDto,
   CreateFormFromTemplateDto,
@@ -144,6 +146,28 @@ export class InstructorCollectionFormsController {
   ) {
     const actor = await this.auth.authorizeInstructor(token(authorization));
     return this.forms.reopenForm({ actorAccountId: actor.accountId, formId, ...body });
+  }
+
+  /**
+   * One page of the group's Student-by-form matrix.
+   *
+   * Bounded in both directions by Core: the page size is capped and the form
+   * columns are capped, so a large group cannot turn this into an unbounded
+   * read whatever the caller asks for.
+   */
+  @Get('groups/:groupId/matrix')
+  @Header('Cache-Control', 'no-store')
+  async matrix(
+    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
+    @Query() query: CollectionMatrixQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.readGroupMatrix({
+      afterStudentAccountId: query.after ?? null,
+      groupId,
+      limit: query.limit,
+    });
   }
 
   /** Outstanding work the Instructor confirms against before closing a round. */

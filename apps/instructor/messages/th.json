@@ -306,7 +306,8 @@
       "awaiting_checking": "รอตรวจ",
       "changes_required": "ต้องแก้ไข",
       "passed": "ผ่านแล้ว",
-      "withdrawn": "ถอนออกจากกลุ่มแล้ว"
+      "withdrawn": "ถอนออกจากกลุ่มแล้ว",
+      "not_required": "ไม่ต้องส่ง"
     },
     "preview": {
       "untitled": "(ยังไม่ได้ตั้งชื่อแบบฟอร์ม)",
@@ -402,6 +403,31 @@
       "late": "ส่งครั้งแรกช้ากว่ากำหนด",
       "onTime": "ส่งครั้งแรกภายในกำหนด",
       "backToReview": "กลับไปหน้าตรวจคำตอบ"
+    },
+    "matrix": {
+      "pageTitle": "ตารางติดตามการส่ง",
+      "pageDescription": "ภาพรวมว่านักศึกษาแต่ละคนส่งแบบฟอร์มใดแล้วบ้าง แถวคือนักศึกษา คอลัมน์คือแบบฟอร์ม",
+      "openAction": "ดูตารางติดตาม",
+      "columnName": "นักศึกษา",
+      "empty": "ยังไม่มีข้อมูลให้ติดตาม",
+      "emptyDescription": "เพิ่มนักศึกษาเข้ากลุ่ม และเปิดรับคำตอบอย่างน้อยหนึ่งแบบฟอร์ม จึงจะเห็นตารางนี้",
+      "noForms": "ยังไม่มีแบบฟอร์มที่เปิดรับคำตอบ",
+      "noFormsDescription": "แบบร่างจะยังไม่แสดงในตารางนี้ เพราะยังไม่ได้มอบหมายให้นักศึกษา",
+      "late": "ส่งช้า",
+      "lateLabel": "ส่งครั้งแรกช้ากว่ากำหนด",
+      "withdrawnRow": "ถอนออกจากกลุ่มแล้ว",
+      "cellLabel": "{name} · {form}: {status}",
+      "summaryHeading": "สรุปหน้านี้",
+      "summaryScope": "นับเฉพาะ {shown} คนที่แสดงในหน้านี้ จากทั้งหมด {total} คน",
+      "statTotalMembers": "นักศึกษาทั้งหมด",
+      "statPassed": "ผ่านแล้ว",
+      "statAwaitingChecking": "รอตรวจ",
+      "statChangesRequired": "ต้องแก้ไข",
+      "statNotSubmitted": "ยังไม่ได้ส่ง",
+      "statLate": "ส่งช้า",
+      "previousPage": "หน้าก่อนหน้า",
+      "nextPage": "หน้าถัดไป",
+      "backToGroup": "กลับไปหน้ากลุ่ม"
     }
   }
 }
