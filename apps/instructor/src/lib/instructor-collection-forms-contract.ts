@@ -278,6 +278,31 @@ export const matrixPageSchema = z
   })
   .strict();
 
+/**
+ * One export job.
+ *
+ * An export is asynchronous: the request freezes a snapshot and returns a
+ * pending job, and a worker builds the artifact. Everything optional here is
+ * absent until the artifact is ready, which is also when the expiry clock
+ * starts. Who requested it is deliberately not part of the contract.
+ */
+export const exportJobSchema = z
+  .object({
+    /** Null until the artifact exists. */
+    byteSize: z.number().int().nullable(),
+    /** Set only when the job failed for good, after its retries. */
+    errorCode: z.string().nullable(),
+    expiresAt: z.iso.datetime().nullable(),
+    id: z.uuid(),
+    kind: z.enum(['excel', 'zip']),
+    readyAt: z.iso.datetime().nullable(),
+    requestedAt: z.iso.datetime(),
+    status: z.enum(['pending', 'building', 'ready', 'failed', 'expired']),
+  })
+  .strict();
+
+export const exportListSchema = z.object({ exports: z.array(exportJobSchema) }).strict();
+
 export type InstructorCollectionField = z.infer<typeof fieldSchema>;
 export type InstructorCollectionFile = z.infer<typeof fileSchema>;
 export type InstructorCollectionForm = z.infer<typeof formSchema>;
@@ -294,3 +319,6 @@ export type InstructorMatrixCellStatus = InstructorMatrixCell['status'];
 export type InstructorMatrixPage = z.infer<typeof matrixPageSchema>;
 export type InstructorMatrixRow = z.infer<typeof matrixRowSchema>;
 export type InstructorMatrixSummary = z.infer<typeof matrixSummarySchema>;
+export type InstructorExportJob = z.infer<typeof exportJobSchema>;
+export type InstructorExportKind = InstructorExportJob['kind'];
+export type InstructorExportStatus = InstructorExportJob['status'];

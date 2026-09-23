@@ -2,6 +2,8 @@ import 'server-only';
 import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
 import {
+  exportJobSchema,
+  exportListSchema,
   formSchema,
   matrixPageSchema,
   pendingWorkSchema,
@@ -14,6 +16,8 @@ import {
 } from './instructor-collection-forms-contract';
 import type {
   InstructorCollectionForm,
+  InstructorExportJob,
+  InstructorExportKind,
   InstructorCollectionTemplate,
   InstructorMatrixPage,
   InstructorPendingWork,
@@ -288,6 +292,70 @@ export class InstructorCollectionFormsCoreClient {
       method: 'GET',
       path: `${BASE}/files/${fileId}/download`,
       responseSchema: z.object({ downloadUrl: z.url(), filename: z.string() }).strict(),
+      sessionToken,
+    });
+  }
+
+  /**
+   * Requests an export of selected forms in a group.
+   *
+   * Returns a pending job, not bytes: the snapshot is frozen by this call and
+   * a worker builds the artifact, so the Instructor is never left holding a
+   * request open for a group archive.
+   */
+  createExport(
+    sessionToken: string,
+    groupId: string,
+    body: { formIds: string[]; kind: InstructorExportKind },
+  ): Promise<InstructorExportJob> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/groups/${groupId}/exports`,
+      body,
+      responseSchema: exportJobSchema,
+      sessionToken,
+    });
+  }
+
+  /** A group's recent exports, newest first. */
+  listExports(sessionToken: string, groupId: string): Promise<InstructorExportJob[]> {
+    return this.client
+      .request({
+        method: 'GET',
+        path: `${BASE}/groups/${groupId}/exports`,
+        responseSchema: exportListSchema,
+        sessionToken,
+      })
+      .then((page) => page.exports);
+  }
+
+  /** One export's current state, polled while it builds. */
+  getExport(sessionToken: string, exportId: string): Promise<InstructorExportJob> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/exports/${exportId}`,
+      responseSchema: exportJobSchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * A short-lived signed URL for a ready export artifact.
+   *
+   * Core rechecks authorization on this request rather than trusting the one
+   * that froze the snapshot, so access that has since ended is refused here.
+   * The URL is used server-side and never handed to the browser.
+   */
+  createExportDownload(
+    sessionToken: string,
+    exportId: string,
+  ): Promise<{ contentType: string; downloadUrl: string; filename: string }> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/exports/${exportId}/download`,
+      responseSchema: z
+        .object({ contentType: z.string(), downloadUrl: z.url(), filename: z.string() })
+        .strict(),
       sessionToken,
     });
   }

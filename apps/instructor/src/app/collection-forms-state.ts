@@ -11,6 +11,11 @@ import type {
 export type CollectionFormsErrorMessage =
   | 'deadlineInvalid'
   | 'deadlineNotExtendable'
+  | 'exportExpired'
+  | 'exportFailed'
+  | 'exportNotFound'
+  | 'exportNotReady'
+  | 'exportTooLarge'
   | 'fieldDescriptionInvalid'
   | 'fieldIdInvalid'
   | 'fieldLabelInvalid'
@@ -97,6 +102,21 @@ export function toFormsErrorMessage(code: string): CollectionFormsErrorMessage {
       return 'submissionStale';
     case 'GROUP_NOT_FOUND':
       return 'groupNotFound';
+    case 'EXPORT_NOT_FOUND':
+      return 'exportNotFound';
+    /* The artifact was never built, so there is nothing to download yet. */
+    case 'EXPORT_NOT_READY':
+      return 'exportNotReady';
+    case 'EXPORT_EXPIRED':
+      return 'exportExpired';
+    case 'EXPORT_FAILED':
+      return 'exportFailed';
+    /*
+     * Refused rather than trimmed: a workbook silently missing Students would
+     * be read as a complete record of the group.
+     */
+    case 'EXPORT_TOO_LARGE':
+      return 'exportTooLarge';
     case 'ROUND_CLOSED':
       return 'roundClosed';
     case 'ROUND_NOT_FOUND':
