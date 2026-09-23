@@ -401,8 +401,9 @@ describe('collection forms lifecycle (e2e)', () => {
     it('lists a group history without the requesting account id', async () => {
       const response = await instructorRequest('get', `groups/${GROUP_ID}/exports`).expect(200);
 
-      expect(response.body.exports).toHaveLength(1);
-      expect(response.body.exports[0]).not.toHaveProperty('requestedByAccountId');
+      const page = response.body as { exports: Record<string, unknown>[] };
+      expect(page.exports).toHaveLength(1);
+      expect(page.exports[0]).not.toHaveProperty('requestedByAccountId');
     });
 
     /*

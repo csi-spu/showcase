@@ -108,7 +108,7 @@ describe('continuous collection export builder', () => {
         return Promise.reject(new Error('unavailable'));
       }),
     });
-    const onFailure = jest.fn();
+    const onFailure = jest.fn<void, [unknown, number]>();
 
     await runContinuousCollectionExportBuilder({
       forms,

@@ -41,8 +41,18 @@ export class UnavailableCollectionFileStorage implements CollectionFileStorage {
     return Promise.reject(new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE'));
   }
 
-  async *getObjectStream(_key: string): AsyncIterable<Buffer> {
+  getObjectStream(_key: string): AsyncIterable<Buffer> {
     void _key;
-    throw new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE');
+    /*
+     * Rejects on first pull rather than on the call, which is what a real
+     * stream does: the caller always fails inside its `for await`, never at
+     * the seam, so both storages fail the same way.
+     */
+    return {
+      [Symbol.asyncIterator]: (): AsyncIterator<Buffer> => ({
+        next: (): Promise<IteratorResult<Buffer>> =>
+          Promise.reject(new Error('COLLECTION_FILE_STORAGE_UNAVAILABLE')),
+      }),
+    };
   }
 }

@@ -10,6 +10,7 @@ async function collect(entries: ZipEntry[]): Promise<Buffer> {
 function entry(path: string, ...parts: string[]): ZipEntry {
   return {
     path,
+    // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
     read: async function* () {
       for (const part of parts) yield Buffer.from(part, 'utf8');
     },
@@ -95,6 +96,7 @@ describe('zip writer', () => {
         path: 'once.txt',
         read: () => {
           reads += 1;
+          // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
           return (async function* () {
             yield Buffer.from('x');
           })();
@@ -112,6 +114,7 @@ describe('zip writer', () => {
     const generator = writeZipArchive([
       {
         path: 'big.bin',
+        // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
         read: async function* () {
           for (let index = 0; index < 20; index += 1) {
             live += 1;

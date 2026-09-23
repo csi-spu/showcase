@@ -98,6 +98,7 @@ export function isExportDownloadable(input: {
  * Windows-reserved punctuation, and control characters. Replaced rather than
  * dropped so two different names cannot silently collapse into one.
  */
+// eslint-disable-next-line no-control-regex -- excluding control characters is the point
 const UNSAFE_PATH_CHARACTERS = /[\\/:*?"<>|\u0000-\u001f\u007f]/gu;
 const MAX_PATH_SEGMENT_LENGTH = 80;
 

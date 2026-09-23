@@ -359,6 +359,7 @@ class FakeStorage implements CollectionFileStorage {
     this.storedObjects.set(input.key, stored);
     return stored.byteLength;
   }
+  // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
   async *getObjectStream(key: string): AsyncIterable<Buffer> {
     yield Buffer.from(`bytes:${key}`, 'utf8');
   }

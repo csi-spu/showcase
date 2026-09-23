@@ -66,6 +66,7 @@ export function buildExportWorkbook(
     {
       headers: TRACKING_HEADERS,
       name: 'ติดตาม',
+      // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
       rows: async function* () {
         for (const entry of orderedEntries(snapshot.entries)) {
           yield [
@@ -158,6 +159,7 @@ async function* archiveEntries(
     const folder = toStudentFolderName({ displayName, position });
     yield {
       path: `${folder}/ไม่มีเอกสาร.txt`,
+      // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
       read: async function* () {
         yield Buffer.from('ไม่มีเอกสารที่ส่งแล้วสำหรับนักศึกษารายนี้\n', 'utf8');
       },

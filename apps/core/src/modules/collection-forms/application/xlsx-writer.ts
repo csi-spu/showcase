@@ -158,6 +158,7 @@ function staticPart(path: string, xml: string): ZipEntry {
   const bytes = Buffer.from(xml, 'utf8');
   return {
     path,
+    // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
     read: async function* () {
       yield bytes;
     },
@@ -169,11 +170,14 @@ function staticPart(path: string, xml: string): ZipEntry {
  * one in a pasted answer would otherwise make the whole workbook unreadable.
  */
 function escapeXml(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/gu, '')
-    .replace(/&/gu, '&amp;')
-    .replace(/</gu, '&lt;')
-    .replace(/>/gu, '&gt;')
-    .replace(/"/gu, '&quot;')
-    .replace(/'/gu, '&apos;');
+  return (
+    value
+      // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/gu, '')
+      .replace(/&/gu, '&amp;')
+      .replace(/</gu, '&lt;')
+      .replace(/>/gu, '&gt;')
+      .replace(/"/gu, '&quot;')
+      .replace(/'/gu, '&apos;')
+  );
 }

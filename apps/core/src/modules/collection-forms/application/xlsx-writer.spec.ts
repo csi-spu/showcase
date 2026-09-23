@@ -34,6 +34,7 @@ function sheet(name: string, headers: string[], rows: string[][]): XlsxSheet {
   return {
     headers,
     name,
+    // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
     rows: async function* () {
       for (const row of rows) yield row;
     },
@@ -125,6 +126,7 @@ describe('xlsx writer', () => {
       {
         headers: ['h'],
         name: 'S',
+        // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not
         rows: async function* () {
           for (let index = 0; index < 50; index += 1) {
             live += 1;
