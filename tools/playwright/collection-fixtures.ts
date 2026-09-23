@@ -11,9 +11,12 @@ import { createE2ESourceAddress } from './source-address.ts';
 
 export interface CollectionLifecycleScenario {
   answerLabel: string;
+  /** Already in the past, so a first submission is late until it is extended. */
+  deadlineAt: Date;
   formId: string;
   formTitle: string;
   groupId: string;
+  roundId: string;
   instructorLogin: string;
   instructorPassword: string;
   instructorSourceAddress: string;
@@ -87,6 +90,12 @@ async function createCollectionLifecycleScenario(): Promise<
   const formTitle = `แบบฟอร์ม E2E ${runShort}`;
   const studentName = `อีทูอี นักศึกษาคอลเลกชัน-${runShort}`;
   const now = new Date();
+  /*
+   * Already past, so the first submission is late the moment it is sent. The
+   * journey then extends the deadline to prove lateness is decided against the
+   * current deadline rather than stamped when the Student submitted.
+   */
+  const deadlineAt = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const resources: CollectionOwnedResources = {
     formId,
     groupId,
@@ -175,7 +184,7 @@ async function createCollectionLifecycleScenario(): Promise<
       await transaction`
         insert into public.collection_forms
           (id, group_id, title, description, status, fields, created_by_account_id,
-           created_at, opened_at, version)
+           created_at, opened_at, deadline_at, version)
         values (
           ${formId}, ${groupId}, ${formTitle}, 'ใช้ทดสอบวงจรส่งและขอแก้ไข', 'open',
           ${transaction.json([
@@ -187,7 +196,7 @@ async function createCollectionLifecycleScenario(): Promise<
               type: 'short_text',
             },
           ])},
-          ${instructorAccountId}, ${now}, ${now}, 1
+          ${instructorAccountId}, ${now}, ${now}, ${deadlineAt}, 1
         )
       `;
       await transaction`
@@ -205,9 +214,11 @@ async function createCollectionLifecycleScenario(): Promise<
   return {
     answerLabel,
     cleanup,
+    deadlineAt,
     formId,
     formTitle,
     groupId,
+    roundId,
     instructorLogin,
     instructorPassword,
     instructorSourceAddress: createE2ESourceAddress(runShort, 2),
@@ -291,6 +302,13 @@ async function cleanupCollectionResources(
       await transaction`delete from public.collection_obligations where form_id = ${resources.formId}`;
       await transaction`delete from private.collection_form_metadata_events where form_id = ${resources.formId}`;
       await transaction`delete from public.collection_forms where id = ${resources.formId}`;
+      /*
+       * Round lifecycle events reference both the round and the acting account,
+       * so they have to go before either is removed.
+       */
+      await transaction`
+        delete from private.collection_round_lifecycle_events where round_id = ${resources.roundId}
+      `;
       await transaction`
         delete from private.collection_membership_audit_events where group_id = ${resources.groupId}
       `;

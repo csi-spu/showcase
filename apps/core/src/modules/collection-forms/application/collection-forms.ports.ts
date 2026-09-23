@@ -87,7 +87,25 @@ export interface StudentObligation {
     updatedAt: Date;
     version: number;
   } | null;
+  /** When the Student first submitted. Retained unchanged across corrections. */
+  firstSubmittedAt: Date | null;
   form: CollectionForm;
+  /**
+   * Whether the deadline is already behind us. Unlike `isLate` this is true
+   * before anything is submitted, which is when the Student needs the warning.
+   */
+  hasDeadlinePassed: boolean;
+  /**
+   * Whether the first submission missed the deadline, derived against the
+   * form's current deadline so an extension recalculates it.
+   */
+  isLate: boolean;
+  /**
+   * Whether a write would be accepted right now. The same decision the write
+   * path enforces, so a closed round or form reaches the Student as a
+   * read-only form rather than as a refusal after they have typed.
+   */
+  isWritable: boolean;
   /** Why the latest checking returned the submission, shown so the Student can act on it. */
   latestCheckingReason: string | null;
   latestSubmission: {
@@ -109,6 +127,9 @@ export interface StudentObligation {
  * they have merely selected stay private until they choose to submit.
  */
 export interface CollectionReviewEntry {
+  firstSubmittedAt: Date | null;
+  /** Derived against the form's current deadline, so an extension recalculates it. */
+  isLate: boolean;
   latestCheckingReason: string | null;
   /** Null until the Student submits, which is what `not_submitted` means. */
   latestSubmission: {
@@ -122,6 +143,44 @@ export interface CollectionReviewEntry {
   rosterName: { firstNameTh: string; lastNameTh: string };
   status: 'awaiting_checking' | 'changes_required' | 'not_submitted' | 'passed' | 'withdrawn';
   studentAccountId: string;
+}
+
+/**
+ * One retained submitted version with the decision that followed it.
+ *
+ * History is append-only: checking the latest version never edits an older one,
+ * so every entry here is exactly what was submitted at that time.
+ */
+export interface CollectionSubmissionHistoryEntry {
+  answers: CollectionAnswers;
+  /** Every decision recorded against this version, oldest first. */
+  checkingEvents: {
+    decision: 'changes_required' | 'passed';
+    occurredAt: Date;
+    /** The Instructor's display name; never an Account identifier the UI could act on. */
+    instructorName: string;
+    reason: string | null;
+  }[];
+  files: DraftFileSelection;
+  id: string;
+  submittedAt: Date;
+  version: number;
+}
+
+export interface CollectionSubmissionHistory {
+  /** Derived against the form's current deadline, not stamped at submit time. */
+  isLate: boolean;
+  entries: CollectionSubmissionHistoryEntry[];
+  firstSubmittedAt: Date | null;
+  form: CollectionForm;
+  status: StudentObligation['status'];
+}
+
+/** Unfinished obligations across a round, shown before closing it. */
+export interface RoundPendingWork {
+  awaitingChecking: number;
+  changesRequired: number;
+  notSubmitted: number;
 }
 
 export class CollectionFormsError extends Error {
@@ -243,13 +302,68 @@ export interface CollectionFormsRepository {
     form: CollectionForm;
     entries: CollectionReviewEntry[];
   } | null>;
-  listStudentObligations(studentAccountId: string): Promise<StudentObligation[]>;
+  listStudentObligations(studentAccountId: string, now: Date): Promise<StudentObligation[]>;
   listTemplates(): Promise<CollectionFormTemplate[]>;
   openForm(input: {
     actorAccountId: string;
     formId: string;
     now: Date;
   }): Promise<CollectionForm | 'not_found' | 'not_draft' | 'round_closed'>;
+  /**
+   * Stops first submissions on an open form. Requested corrections and checking
+   * continue, so this closes one door rather than ending the form.
+   */
+  closeForm(input: {
+    actorAccountId: string;
+    formId: string;
+    now: Date;
+    reason: string;
+  }): Promise<CollectionForm | 'not_found' | 'not_open' | 'round_closed'>;
+  /**
+   * How many current members would gain an obligation if the form reopened now.
+   * Shown for confirmation before the reopen is committed.
+   */
+  previewFormReopen(
+    formId: string,
+  ): Promise<{ newlyAssignedCount: number } | 'not_found' | 'not_closed'>;
+  /**
+   * Reopens a closed form to current members who have no obligation yet.
+   * Existing submissions and checking outcomes are left untouched: reopening is
+   * not a request for everyone to submit again.
+   */
+  reopenForm(input: {
+    actorAccountId: string;
+    formId: string;
+    now: Date;
+    reason: string;
+  }): Promise<
+    | { form: CollectionForm; newlyAssignedCount: number }
+    | 'not_found'
+    | 'not_closed'
+    | 'round_closed'
+  >;
+  /** Outstanding obligations across a round, excluding withdrawn members. */
+  getRoundPendingWork(roundId: string): Promise<RoundPendingWork | null>;
+  setRoundStatus(input: {
+    actorAccountId: string;
+    expectedStatus: 'active' | 'closed';
+    nextStatus: 'active' | 'closed';
+    now: Date;
+    reason: string;
+    roundId: string;
+  }): Promise<{ pendingWork: RoundPendingWork } | 'not_found' | 'already_in_state'>;
+  /**
+   * Every retained version of one Student's response to one form.
+   *
+   * `actorAccountId` scopes a Student to their own history; an Instructor may
+   * read any assigned Student's submitted versions, never their drafts.
+   */
+  getSubmissionHistory(input: {
+    actorAccountId: string;
+    formId: string;
+    isInstructor: boolean;
+    studentAccountId: string;
+  }): Promise<CollectionSubmissionHistory | null>;
   saveDraft(input: {
     answers: CollectionAnswers;
     expectedVersion: number;

@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertCircleIcon, CheckIcon, RefreshCwIcon, SendIcon } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
@@ -65,7 +66,19 @@ export function CollectionForm({
   const baseId = useId();
 
   const { form, status } = obligation;
-  const isReadOnly = status !== 'not_submitted' && status !== 'changes_required';
+  /*
+   * Core decides this, because a closed form or round is read-only at a
+   * status that otherwise accepts writes. Deriving it from `status` alone
+   * left the form editable until the submit came back refused.
+   */
+  const isReadOnly = !obligation.isWritable;
+  /*
+   * The status messages explain the states a Student reached themselves.
+   * Closure is someone else's decision arriving at a status that would
+   * otherwise be writable, so it has its own reason.
+   */
+  const readOnlyReason =
+    status === 'not_submitted' || status === 'changes_required' ? 'closed' : status;
 
   const initial = useMemo(
     () => buildInitialAnswers(form.fields, obligation.draft?.answers ?? {}, prefills),
@@ -212,7 +225,11 @@ export function CollectionForm({
                 timeZone: 'Asia/Bangkok',
               }).format(deadline),
             })}
-            {isLate ? ` · ${t('deadlineLate')}` : ''}
+            {/*
+             * Shown while the deadline is past and nothing has been sent, and
+             * kept afterwards when the first submission was itself late.
+             */}
+            {obligation.hasDeadlinePassed || isLate ? ` · ${t('deadlineLate')}` : ''}
           </p>
         ) : null}
       </header>
@@ -225,16 +242,25 @@ export function CollectionForm({
         </Alert>
       ) : null}
 
+      {/* History only exists once something was submitted, so the link appears with it. */}
       {obligation.latestSubmission !== null ? (
-        <p className="text-sm text-muted-foreground">
-          {t('lastSubmitted', {
-            date: new Intl.DateTimeFormat('th-TH', {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-              timeZone: 'Asia/Bangkok',
-            }).format(new Date(obligation.latestSubmission.submittedAt)),
-          })}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            {t('lastSubmitted', {
+              date: new Intl.DateTimeFormat('th-TH', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: 'Asia/Bangkok',
+              }).format(new Date(obligation.latestSubmission.submittedAt)),
+            })}
+          </p>
+          <Link
+            className="rounded-control text-sm font-medium text-accent-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+            href={`/history/${obligation.form.id}`}
+          >
+            {t('history.openAction')}
+          </Link>
+        </div>
       ) : null}
 
       <Field>
@@ -304,7 +330,7 @@ export function CollectionForm({
 
       {isReadOnly ? (
         <Alert>
-          <AlertDescription>{t(`readOnly.${status}`)}</AlertDescription>
+          <AlertDescription>{t(`readOnly.${readOnlyReason}`)}</AlertDescription>
         </Alert>
       ) : (
         <>

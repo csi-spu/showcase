@@ -92,6 +92,10 @@ export const fileSelectionSchema = z.record(z.string(), z.array(fileSchema));
  */
 export const reviewEntrySchema = z
   .object({
+    /** When the first version was sent, retained even if the deadline later moves. */
+    firstSubmittedAt: z.iso.datetime().nullable(),
+    /** Decided by Core against the current deadline, so an extension clears it. */
+    isLate: z.boolean(),
     latestCheckingReason: z.string().nullable(),
     latestSubmission: z
       .object({
@@ -119,9 +123,103 @@ export const reviewQueueSchema = z
   .object({ entries: z.array(reviewEntrySchema), form: formSchema })
   .strict();
 
+/**
+ * How many obligations reopening a closed form would create.
+ *
+ * Reopening is not a request for everyone to submit again, so this counts only
+ * current members who never received an obligation.
+ */
+export const reopenPreviewSchema = z.object({ newlyAssignedCount: z.number().int() }).strict();
+
+/** The reopened form, plus how many obligations the reopen actually created. */
+export const reopenResultSchema = z
+  .object({ form: formSchema, newlyAssignedCount: z.number().int() })
+  .strict();
+
+/**
+ * Work still outstanding in a round, shown before an Instructor confirms a
+ * closure. Closing does not require this to be zero; it requires seeing it.
+ */
+export const pendingWorkSchema = z
+  .object({
+    awaitingChecking: z.number().int(),
+    changesRequired: z.number().int(),
+    notSubmitted: z.number().int(),
+    total: z.number().int(),
+  })
+  .strict();
+
+/*
+ * Core answers a status change with the same summary the preview reads, so it
+ * reuses that schema rather than restating the shape. A second copy drifted
+ * once already: it omitted `total`, and the strict parse turned every closure
+ * into a generic failure.
+ */
+export const roundStatusChangeSchema = z
+  .object({
+    pendingWork: pendingWorkSchema,
+  })
+  .strict();
+
+const checkingEventSchema = z
+  .object({
+    decision: z.enum(['changes_required', 'passed']),
+    /** A display name only. Core never sends the checking Account's id here. */
+    instructorName: z.string(),
+    occurredAt: z.iso.datetime(),
+    reason: z.string().nullable(),
+  })
+  .strict();
+
+/**
+ * Every retained version of one Student's response, newest first.
+ *
+ * Carries submitted content and the decisions against it. A current draft is
+ * not history and is not part of this contract.
+ */
+export const submissionHistorySchema = z
+  .object({
+    entries: z.array(
+      z
+        .object({
+          answers: z.record(z.string(), z.unknown()),
+          checkingEvents: z.array(checkingEventSchema),
+          files: fileSelectionSchema,
+          id: z.uuid(),
+          submittedAt: z.iso.datetime(),
+          version: z.number().int(),
+        })
+        .strict(),
+    ),
+    firstSubmittedAt: z.iso.datetime().nullable(),
+    form: z
+      .object({
+        deadlineAt: z.iso.datetime().nullable(),
+        fields: z.array(fieldSchema),
+        id: z.uuid(),
+        status: z.enum(['draft', 'open', 'closed']),
+        title: z.string(),
+      })
+      .strict(),
+    isLate: z.boolean(),
+    status: z.enum([
+      'not_submitted',
+      'awaiting_checking',
+      'changes_required',
+      'passed',
+      'withdrawn',
+    ]),
+  })
+  .strict();
+
 export type InstructorCollectionField = z.infer<typeof fieldSchema>;
 export type InstructorCollectionFile = z.infer<typeof fileSchema>;
 export type InstructorCollectionForm = z.infer<typeof formSchema>;
 export type InstructorCollectionTemplate = z.infer<typeof templateSchema>;
 export type InstructorReviewEntry = z.infer<typeof reviewEntrySchema>;
 export type InstructorReviewQueue = z.infer<typeof reviewQueueSchema>;
+export type InstructorPendingWork = z.infer<typeof pendingWorkSchema>;
+export type InstructorReopenPreview = z.infer<typeof reopenPreviewSchema>;
+export type InstructorReopenResult = z.infer<typeof reopenResultSchema>;
+export type InstructorRoundStatusChange = z.infer<typeof roundStatusChangeSchema>;
+export type InstructorSubmissionHistory = z.infer<typeof submissionHistorySchema>;

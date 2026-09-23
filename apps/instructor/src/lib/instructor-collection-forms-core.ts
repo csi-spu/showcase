@@ -3,13 +3,23 @@ import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
 import {
   formSchema,
+  pendingWorkSchema,
+  reopenPreviewSchema,
+  reopenResultSchema,
   reviewQueueSchema,
+  roundStatusChangeSchema,
+  submissionHistorySchema,
   templateSchema,
 } from './instructor-collection-forms-contract';
 import type {
   InstructorCollectionForm,
   InstructorCollectionTemplate,
+  InstructorPendingWork,
+  InstructorReopenPreview,
+  InstructorReopenResult,
   InstructorReviewQueue,
+  InstructorRoundStatusChange,
+  InstructorSubmissionHistory,
 } from './instructor-collection-forms-contract';
 
 /*
@@ -99,6 +109,102 @@ export class InstructorCollectionFormsCoreClient {
       path: `${BASE}/forms/${formId}/open`,
       body: {},
       responseSchema: formSchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * Stops new first submissions on an open form.
+   *
+   * Requested corrections and checking continue on a closed form, so this ends
+   * new arrivals only rather than freezing the form.
+   */
+  close(
+    sessionToken: string,
+    formId: string,
+    body: { reason: string },
+  ): Promise<InstructorCollectionForm> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/forms/${formId}/close`,
+      body,
+      responseSchema: formSchema,
+      sessionToken,
+    });
+  }
+
+  /** How many obligations reopening would create, read before confirming. */
+  previewReopen(sessionToken: string, formId: string): Promise<InstructorReopenPreview> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/reopen-preview`,
+      responseSchema: reopenPreviewSchema,
+      sessionToken,
+    });
+  }
+
+  reopen(
+    sessionToken: string,
+    formId: string,
+    body: { reason: string },
+  ): Promise<InstructorReopenResult> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/forms/${formId}/reopen`,
+      body,
+      responseSchema: reopenResultSchema,
+      sessionToken,
+    });
+  }
+
+  /** Outstanding work in a round, shown before an Instructor confirms a closure. */
+  roundPendingWork(sessionToken: string, roundId: string): Promise<InstructorPendingWork> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/rounds/${roundId}/pending-work`,
+      responseSchema: pendingWorkSchema,
+      sessionToken,
+    });
+  }
+
+  closeRound(
+    sessionToken: string,
+    roundId: string,
+    body: { reason: string },
+  ): Promise<InstructorRoundStatusChange> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/rounds/${roundId}/close`,
+      body,
+      responseSchema: roundStatusChangeSchema,
+      sessionToken,
+    });
+  }
+
+  reopenRound(
+    sessionToken: string,
+    roundId: string,
+    body: { reason: string },
+  ): Promise<InstructorRoundStatusChange> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/rounds/${roundId}/reopen`,
+      body,
+      responseSchema: roundStatusChangeSchema,
+      sessionToken,
+    });
+  }
+
+  /** Every retained version of one Student's response, with its decisions. */
+  listHistory(
+    sessionToken: string,
+    formId: string,
+    studentAccountId: string,
+  ): Promise<InstructorSubmissionHistory> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/students/${studentAccountId}/history`,
+      responseSchema: submissionHistorySchema,
       sessionToken,
     });
   }

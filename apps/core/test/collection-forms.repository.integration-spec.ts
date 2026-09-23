@@ -91,7 +91,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         reason: null,
       }),
     ).resolves.toBe('checked');
-    const obligations = await repository.listStudentObligations(STUDENT);
+    const obligations = await repository.listStudentObligations(STUDENT, NOW);
     expect(obligations).toHaveLength(1);
     expect(obligations[0]?.status).toBe('passed');
     expect(obligations[0]?.latestSubmission?.answers).toEqual({ company: 'CSI' });
@@ -129,7 +129,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       now: NOW,
       reason: 'กรุณาระบุชื่อบริษัทเต็ม',
     });
-    const obligations = await repository.listStudentObligations(STUDENT);
+    const obligations = await repository.listStudentObligations(STUDENT, NOW);
     expect(obligations[0]?.status).toBe('changes_required');
     expect(obligations[0]?.latestCheckingReason).toBe('กรุณาระบุชื่อบริษัทเต็ม');
   });
@@ -374,7 +374,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       });
       expect(submitted).toMatchObject({ version: 1 });
 
-      const obligations = await repository.listStudentObligations(STUDENT);
+      const obligations = await repository.listStudentObligations(STUDENT, NOW);
       expect(obligations[0]?.latestSubmission?.files.doc?.[0]?.id).toBe(file.id);
     });
 
@@ -737,7 +737,444 @@ describe('PostgresCollectionFormsRepository integration', () => {
     });
   });
 
+  /**
+   * Drives one obligation to a returned correction, which is the state most of
+   * the lifecycle rules below are about.
+   */
+  async function submitAndReturn(
+    formId: string,
+    idempotencyKey: string,
+    answers: Record<string, string> = { company: 'CSI' },
+  ) {
+    await repository.saveDraft({
+      answers,
+      expectedVersion: 0,
+      formId,
+      now: NOW,
+      studentAccountId: STUDENT,
+    });
+    const submitted = await repository.submit({
+      formId,
+      idempotencyKey,
+      now: NOW,
+      studentAccountId: STUDENT,
+    });
+    if (typeof submitted === 'string' || 'outcome' in submitted) {
+      throw new Error('expected submission');
+    }
+    await repository.checkSubmission({
+      actorAccountId: INSTRUCTOR,
+      decision: 'changes_required',
+      expectedSubmissionId: submitted.submissionId,
+      now: NOW,
+      reason: 'แก้ไขชื่อบริษัท',
+    });
+    return submitted;
+  }
+
+  describe('first-submission lateness', () => {
+    const DEADLINE = new Date('2026-09-22T09:00:00.000Z');
+
+    it('measures lateness from the first submission and recalculates when the deadline moves', async () => {
+      const groupId = await createGroup();
+      // NOW is 10:00; the deadline is 09:00, so this first submission is late.
+      const form = await createForm(groupId, [TEXT_FIELD], DEADLINE);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000040');
+
+      const late = await repository.listStudentObligations(STUDENT, NOW);
+      expect(late[0]?.isLate).toBe(true);
+      expect(late[0]?.firstSubmittedAt).toEqual(NOW);
+
+      // Extending past the retained first submission makes it on time again.
+      await repository.updateFormMetadata({
+        actorAccountId: INSTRUCTOR,
+        deadlineAt: new Date('2026-09-30T09:00:00.000Z'),
+        description: '',
+        formId: form.id,
+        now: NOW,
+        title: 'แบบฟอร์ม',
+      });
+
+      const extended = await repository.listStudentObligations(STUDENT, NOW);
+      expect(extended[0]?.isLate).toBe(false);
+      // The original submission time is retained, not rewritten by the extension.
+      expect(extended[0]?.firstSubmittedAt).toEqual(NOW);
+    });
+
+    it('reports a passed deadline before anything is submitted', async () => {
+      const groupId = await createGroup();
+      // NOW is 10:00 and the deadline was 09:00, with nothing submitted yet.
+      const form = await createForm(groupId, [TEXT_FIELD], DEADLINE);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const obligations = await repository.listStudentObligations(STUDENT, NOW);
+      /*
+       * Lateness describes a submission, so it stays false while none exists.
+       * The passed deadline is what the Student has to be told about.
+       */
+      expect(obligations[0]?.isLate).toBe(false);
+      expect(obligations[0]?.firstSubmittedAt).toBeNull();
+      expect(obligations[0]?.hasDeadlinePassed).toBe(true);
+      // A passed deadline is not a closure: an open form still takes the answer.
+      expect(obligations[0]?.isWritable).toBe(true);
+    });
+
+    it('does not report a passed deadline while the deadline is still ahead', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], new Date('2026-09-30T09:00:00.000Z'));
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const obligations = await repository.listStudentObligations(STUDENT, NOW);
+      expect(obligations[0]?.hasDeadlinePassed).toBe(false);
+    });
+
+    it('does not make an on-time first submission late when a correction arrives later', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], new Date('2026-09-23T09:00:00.000Z'));
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000041');
+
+      await repository.saveDraft({
+        answers: { company: 'CSI แก้ไข' },
+        expectedVersion: 1,
+        formId: form.id,
+        now: new Date('2026-09-25T10:00:00.000Z'),
+        studentAccountId: STUDENT,
+      });
+      await repository.submit({
+        formId: form.id,
+        idempotencyKey: '58000000-0000-4000-8000-000000000042',
+        now: new Date('2026-09-25T10:00:00.000Z'),
+        studentAccountId: STUDENT,
+      });
+
+      const obligations = await repository.listStudentObligations(STUDENT, NOW);
+      expect(obligations[0]?.isLate).toBe(false);
+      expect(obligations[0]?.firstSubmittedAt).toEqual(NOW);
+    });
+
+    it('rejects shortening a deadline after opening', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD], DEADLINE);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      await expect(
+        repository.updateFormMetadata({
+          actorAccountId: INSTRUCTOR,
+          deadlineAt: new Date('2026-09-21T09:00:00.000Z'),
+          description: '',
+          formId: form.id,
+          now: NOW,
+          title: 'แบบฟอร์ม',
+        }),
+      ).resolves.toBe('deadline_earlier');
+    });
+  });
+
+  describe('closing and reopening first submissions', () => {
+    it('stops first submissions while a requested correction still goes through', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000043');
+
+      await expect(
+        repository.closeForm({
+          actorAccountId: INSTRUCTOR,
+          formId: form.id,
+          now: NOW,
+          reason: 'หมดเขตรับรอบแรก',
+        }),
+      ).resolves.toMatchObject({ status: 'closed' });
+
+      // The returned Student can still fix and resend on a closed form.
+      await expect(
+        repository.saveDraft({
+          answers: { company: 'CSI แก้ไข' },
+          expectedVersion: 1,
+          formId: form.id,
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual({ version: 2 });
+      await expect(
+        repository.submit({
+          formId: form.id,
+          idempotencyKey: '58000000-0000-4000-8000-000000000044',
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toMatchObject({ version: 2 });
+
+      const events = await database.sql<{ change_kind: string; reason: string | null }[]>`
+        select change_kind, reason from private.collection_form_metadata_events
+        where form_id = ${form.id} and change_kind = 'closed'
+      `;
+      expect(events[0]).toEqual({ change_kind: 'closed', reason: 'หมดเขตรับรอบแรก' });
+    });
+
+    it('blocks a first submission once the form is closed', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.saveDraft({
+        answers: { company: 'CSI' },
+        expectedVersion: 0,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      await repository.closeForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+        reason: 'หมดเขต',
+      });
+
+      await expect(
+        repository.submit({
+          formId: form.id,
+          idempotencyKey: '58000000-0000-4000-8000-000000000045',
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe('forbidden');
+    });
+
+    it('previews and assigns only members without an obligation, preserving prior outcomes', async () => {
+      const { groupId } = await createRoundAndGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000046');
+      await repository.closeForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+        reason: 'หมดเขต',
+      });
+
+      // The one member already holds an obligation, so a reopen assigns nobody.
+      await expect(repository.previewFormReopen(form.id)).resolves.toEqual({
+        newlyAssignedCount: 0,
+      });
+      const reopened = await repository.reopenForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+        reason: 'เปิดรับเพิ่ม',
+      });
+      expect(reopened).toMatchObject({ newlyAssignedCount: 0 });
+
+      // Reopening is not a request to submit again: the returned state survives.
+      const obligations = await repository.listStudentObligations(STUDENT, NOW);
+      expect(obligations[0]?.status).toBe('changes_required');
+      expect(obligations[0]?.latestSubmission?.version).toBe(1);
+      expect(obligations[0]?.firstSubmittedAt).toEqual(NOW);
+    });
+
+    it('refuses to reopen a form that was never closed', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      await expect(repository.previewFormReopen(form.id)).resolves.toBe('not_closed');
+      await expect(
+        repository.reopenForm({
+          actorAccountId: INSTRUCTOR,
+          formId: form.id,
+          now: NOW,
+          reason: 'เปิดรับ',
+        }),
+      ).resolves.toBe('not_closed');
+    });
+  });
+
+  describe('round closure', () => {
+    it('freezes writes and checking, retains the confirmed counts, and reverses with a reason', async () => {
+      const { groupId, roundId } = await createRoundAndGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const submitted = await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000047');
+
+      await expect(repository.getRoundPendingWork(roundId)).resolves.toEqual({
+        awaitingChecking: 0,
+        changesRequired: 1,
+        notSubmitted: 0,
+      });
+
+      const closed = await repository.setRoundStatus({
+        actorAccountId: INSTRUCTOR,
+        expectedStatus: 'active',
+        nextStatus: 'closed',
+        now: NOW,
+        reason: 'สิ้นสุดภาคการศึกษา',
+        roundId,
+      });
+      expect(closed).toEqual({
+        pendingWork: { awaitingChecking: 0, changesRequired: 1, notSubmitted: 0 },
+      });
+
+      // A closed round is read-only: the correction that a closed *form* would
+      // still have allowed is blocked here.
+      await expect(
+        repository.saveDraft({
+          answers: { company: 'CSI แก้ไข' },
+          expectedVersion: 1,
+          formId: form.id,
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe('forbidden');
+      await expect(
+        repository.submit({
+          formId: form.id,
+          idempotencyKey: '58000000-0000-4000-8000-000000000048',
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe('forbidden');
+      await expect(
+        repository.checkSubmission({
+          actorAccountId: INSTRUCTOR,
+          decision: 'passed',
+          expectedSubmissionId: submitted.submissionId,
+          now: NOW,
+          reason: null,
+        }),
+      ).resolves.toBe('round_closed');
+
+      // Closure never turns unfinished work into passed work.
+      const duringClosure = await repository.listStudentObligations(STUDENT, NOW);
+      expect(duringClosure[0]?.status).toBe('changes_required');
+      /*
+       * The Student's own view has to agree with the refusals above. Reported
+       * as writable, the form renders as editable and the refusal only arrives
+       * after they have typed.
+       */
+      expect(duringClosure[0]?.isWritable).toBe(false);
+
+      // Closing twice is refused, so two Instructors produce one transition.
+      await expect(
+        repository.setRoundStatus({
+          actorAccountId: INSTRUCTOR,
+          expectedStatus: 'active',
+          nextStatus: 'closed',
+          now: NOW,
+          reason: 'ปิดซ้ำ',
+          roundId,
+        }),
+      ).resolves.toBe('already_in_state');
+
+      await expect(
+        repository.setRoundStatus({
+          actorAccountId: INSTRUCTOR,
+          expectedStatus: 'closed',
+          nextStatus: 'active',
+          now: NOW,
+          reason: 'ต้องรับเอกสารเพิ่ม',
+          roundId,
+        }),
+      ).resolves.toMatchObject({ pendingWork: { changesRequired: 1 } });
+
+      // Reopening the round restores the write the closure had blocked.
+      await expect(
+        repository.saveDraft({
+          answers: { company: 'CSI แก้ไข' },
+          expectedVersion: 1,
+          formId: form.id,
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual({ version: 2 });
+
+      const events = await database.sql<
+        { action: string; pending_changes_required: number; reason: string }[]
+      >`
+        select action, reason, pending_changes_required
+        from private.collection_round_lifecycle_events
+        where round_id = ${roundId} order by occurred_at, action
+      `;
+      expect(events).toHaveLength(2);
+      expect(events.map((event) => event.action).sort()).toEqual(['closed', 'reopened']);
+      expect(events.every((event) => event.pending_changes_required === 1)).toBe(true);
+    });
+  });
+
+  describe('submission history', () => {
+    it("retains every version with its decisions and hides another Student's history", async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000049');
+      await repository.saveDraft({
+        answers: { company: 'CSI แก้ไข' },
+        expectedVersion: 1,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      const resubmitted = await repository.submit({
+        formId: form.id,
+        idempotencyKey: '58000000-0000-4000-8000-000000000050',
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      if (typeof resubmitted === 'string' || 'outcome' in resubmitted) {
+        throw new Error('expected submission');
+      }
+      await repository.checkSubmission({
+        actorAccountId: INSTRUCTOR,
+        decision: 'passed',
+        expectedSubmissionId: resubmitted.submissionId,
+        now: NOW,
+        reason: null,
+      });
+
+      const history = await repository.getSubmissionHistory({
+        actorAccountId: STUDENT,
+        formId: form.id,
+        isInstructor: false,
+        studentAccountId: STUDENT,
+      });
+      expect(history?.entries).toHaveLength(2);
+      // Newest first, and the first version keeps exactly what was sent then.
+      expect(history?.entries[0]?.version).toBe(2);
+      expect(history?.entries[1]?.answers).toEqual({ company: 'CSI' });
+      expect(history?.entries[1]?.checkingEvents[0]).toMatchObject({
+        decision: 'changes_required',
+        instructorName: 'ผู้สอน ทดสอบ',
+        reason: 'แก้ไขชื่อบริษัท',
+      });
+      expect(history?.entries[0]?.checkingEvents[0]?.decision).toBe('passed');
+
+      // An Instructor reads the same submitted history.
+      await expect(
+        repository.getSubmissionHistory({
+          actorAccountId: INSTRUCTOR,
+          formId: form.id,
+          isInstructor: true,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toMatchObject({ status: 'passed' });
+
+      // A Student asking for someone else's history gets nothing to distinguish.
+      await expect(
+        repository.getSubmissionHistory({
+          actorAccountId: INSTRUCTOR,
+          formId: form.id,
+          isInstructor: false,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBeNull();
+    });
+  });
+
   async function createGroup(): Promise<string> {
+    return (await createRoundAndGroup()).groupId;
+  }
+
+  async function createRoundAndGroup(): Promise<{ groupId: string; roundId: string }> {
     const rounds = await database.sql<{ id: string }[]>`
       insert into public.collection_rounds (name, created_by_account_id, created_at)
       values ('รอบ', ${INSTRUCTOR}, ${NOW}) returning id
@@ -751,7 +1188,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         (group_id, student_account_id, membership_source, added_by_account_id, added_at)
       values (${groups[0]!.id}, ${STUDENT}, 'individual', ${INSTRUCTOR}, ${NOW})
     `;
-    return groups[0]!.id;
+    return { groupId: groups[0]!.id, roundId: rounds[0]!.id };
   }
 
   async function createForm(
@@ -792,6 +1229,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       await transaction`delete from public.collection_form_templates where created_by_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_group_memberships where student_account_id = ${STUDENT}`;
       await transaction`delete from public.collection_groups where created_by_account_id = ${INSTRUCTOR}`;
+      await transaction`delete from private.collection_round_lifecycle_events where actor_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_rounds where created_by_account_id = ${INSTRUCTOR}`;
     });
   }

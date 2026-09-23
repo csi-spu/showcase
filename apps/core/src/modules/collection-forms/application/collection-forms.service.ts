@@ -10,6 +10,7 @@ import {
   type CollectionField,
 } from './collection-field';
 import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
+import { findCloseReasonError, summarizePendingWork } from './collection-lifecycle';
 import {
   COLLECTION_FILE_INSPECTOR,
   COLLECTION_FILE_STORAGE,
@@ -220,8 +221,124 @@ export class CollectionFormsService {
     return result;
   }
 
+  /**
+   * Stops first submissions without ending the form.
+   *
+   * A closed form still accepts requested corrections and still allows checking,
+   * which is the whole point of closing it separately from the round: the
+   * Instructor stops new arrivals and works through what is already in.
+   */
+  async closeForm(input: { actorAccountId: string; formId: string; reason: string }) {
+    const reason = this.requireReason(input.reason);
+    const result = await this.repository.closeForm({
+      actorAccountId: input.actorAccountId,
+      formId: input.formId,
+      now: this.clock.now(),
+      reason,
+    });
+    if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    if (result === 'round_closed') throw new CollectionFormsError('ROUND_CLOSED', 409);
+    if (result === 'not_open') throw new CollectionFormsError('FORM_NOT_OPEN', 409);
+    return result;
+  }
+
+  /**
+   * How many obligations a reopen would create, shown before confirming.
+   *
+   * Reopening is not a request for everyone to submit again: only current
+   * members who never received an obligation get one, so the count is the
+   * honest measure of who this puts to work.
+   */
+  async previewFormReopen(formId: string) {
+    const result = await this.repository.previewFormReopen(formId);
+    if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    if (result === 'not_closed') throw new CollectionFormsError('FORM_NOT_CLOSED', 409);
+    return result;
+  }
+
+  async reopenForm(input: { actorAccountId: string; formId: string; reason: string }) {
+    const reason = this.requireReason(input.reason);
+    const result = await this.repository.reopenForm({
+      actorAccountId: input.actorAccountId,
+      formId: input.formId,
+      now: this.clock.now(),
+      reason,
+    });
+    if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    if (result === 'round_closed') throw new CollectionFormsError('ROUND_CLOSED', 409);
+    if (result === 'not_closed') throw new CollectionFormsError('FORM_NOT_CLOSED', 409);
+    return result;
+  }
+
+  /** Outstanding work an Instructor must see before closing a round. */
+  async getRoundPendingWork(roundId: string) {
+    const counts = await this.repository.getRoundPendingWork(roundId);
+    if (counts === null) throw new CollectionFormsError('ROUND_NOT_FOUND', 404);
+    return summarizePendingWork(counts);
+  }
+
+  /**
+   * Closes a round read-only.
+   *
+   * Pending work does not block this -- the Instructor confirms against the
+   * counts and decides -- but the counts at the moment of the decision are
+   * retained with the audit, because they cannot be reconstructed afterwards.
+   * Closure never converts unfinished work into passed work.
+   */
+  async closeRound(input: { actorAccountId: string; reason: string; roundId: string }) {
+    return this.changeRoundStatus({ ...input, expectedStatus: 'active', nextStatus: 'closed' });
+  }
+
+  async reopenRound(input: { actorAccountId: string; reason: string; roundId: string }) {
+    return this.changeRoundStatus({ ...input, expectedStatus: 'closed', nextStatus: 'active' });
+  }
+
+  private async changeRoundStatus(input: {
+    actorAccountId: string;
+    expectedStatus: 'active' | 'closed';
+    nextStatus: 'active' | 'closed';
+    reason: string;
+    roundId: string;
+  }) {
+    const reason = this.requireReason(input.reason);
+    const result = await this.repository.setRoundStatus({
+      actorAccountId: input.actorAccountId,
+      expectedStatus: input.expectedStatus,
+      nextStatus: input.nextStatus,
+      now: this.clock.now(),
+      reason,
+      roundId: input.roundId,
+    });
+    if (result === 'not_found') throw new CollectionFormsError('ROUND_NOT_FOUND', 404);
+    if (result === 'already_in_state') {
+      throw new CollectionFormsError(
+        input.nextStatus === 'closed' ? 'ROUND_ALREADY_CLOSED' : 'ROUND_ALREADY_ACTIVE',
+        409,
+      );
+    }
+    return { pendingWork: summarizePendingWork(result.pendingWork) };
+  }
+
+  /**
+   * Every retained version of one response, with the decisions against each.
+   *
+   * Authorization is the repository query, so an unauthorized read and a
+   * missing one are the same 404 here: telling them apart would confirm that
+   * another Student has an obligation on this form.
+   */
+  async getSubmissionHistory(input: {
+    actorAccountId: string;
+    formId: string;
+    isInstructor: boolean;
+    studentAccountId: string;
+  }) {
+    const history = await this.repository.getSubmissionHistory(input);
+    if (history === null) throw new CollectionFormsError('OBLIGATION_NOT_FOUND', 404);
+    return history;
+  }
+
   async listStudentObligations(studentAccountId: string) {
-    return this.repository.listStudentObligations(studentAccountId);
+    return this.repository.listStudentObligations(studentAccountId, this.clock.now());
   }
 
   /**
@@ -465,6 +582,13 @@ export class CollectionFormsService {
     if (result === 'not_found') throw new CollectionFormsError('SUBMISSION_NOT_FOUND', 404);
     if (result === 'round_closed') throw new CollectionFormsError('ROUND_CLOSED', 409);
     if (result === 'stale') throw new CollectionFormsError('SUBMISSION_STALE', 409);
+  }
+
+  /** Every lifecycle change carries a reason the next person can act on. */
+  private requireReason(reason: string): string {
+    const error = findCloseReasonError(reason);
+    if (error !== null) throw new CollectionFormsError(error, 422);
+    return reason.trim();
   }
 
   private validateMetadata(title: string, description: string) {

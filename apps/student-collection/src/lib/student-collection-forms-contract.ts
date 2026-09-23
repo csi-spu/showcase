@@ -102,6 +102,23 @@ export const obligationSchema = z
       .strict()
       .nullable(),
     form: formSchema,
+    /** When the first version was sent, retained even if the deadline later moves. */
+    firstSubmittedAt: z.iso.datetime().nullable(),
+    /**
+     * Whether the deadline is already behind us, decided by Core. True before a
+     * first submission exists, which is the case `isLate` cannot cover.
+     */
+    hasDeadlinePassed: z.boolean(),
+    /**
+     * Decided by Core against the current deadline, never re-derived here: the
+     * browser clock is not authoritative and an extension must clear lateness.
+     */
+    isLate: z.boolean(),
+    /**
+     * Whether Core would accept a write. A closed round or form is read-only,
+     * and deciding that here from `status` alone would miss both.
+     */
+    isWritable: z.boolean(),
     latestCheckingReason: z.string().nullable(),
     latestSubmission: z
       .object({
@@ -132,6 +149,58 @@ export const prefillSchema = z
   })
   .strict();
 
+const checkingEventSchema = z
+  .object({
+    decision: z.enum(['changes_required', 'passed']),
+    /** A display name only. Core never sends the checking Account's id here. */
+    instructorName: z.string(),
+    occurredAt: z.iso.datetime(),
+    reason: z.string().nullable(),
+  })
+  .strict();
+
+/**
+ * Every version this Student has submitted, newest first.
+ *
+ * Submitted content only: the draft they are editing now is not history. Each
+ * version keeps exactly what was sent at the time, so a correction never
+ * rewrites what an earlier decision was made against.
+ */
+export const submissionHistorySchema = z
+  .object({
+    entries: z.array(
+      z
+        .object({
+          answers: z.record(z.string(), z.unknown()),
+          checkingEvents: z.array(checkingEventSchema),
+          files: fileSelectionSchema,
+          id: z.uuid(),
+          submittedAt: z.iso.datetime(),
+          version: z.number().int(),
+        })
+        .strict(),
+    ),
+    firstSubmittedAt: z.iso.datetime().nullable(),
+    form: z
+      .object({
+        deadlineAt: z.iso.datetime().nullable(),
+        fields: z.array(fieldSchema),
+        id: z.uuid(),
+        status: z.enum(['draft', 'open', 'closed']),
+        title: z.string(),
+      })
+      .strict(),
+    isLate: z.boolean(),
+    status: z.enum([
+      'not_submitted',
+      'awaiting_checking',
+      'changes_required',
+      'passed',
+      'withdrawn',
+    ]),
+  })
+  .strict();
+
 export const draftSaveSchema = z.object({ version: z.number().int() }).strict();
 export const submitSchema = z
   .object({ submissionId: z.uuid(), version: z.number().int() })
@@ -143,3 +212,4 @@ export type StudentCollectionFileStatus = StudentCollectionFile['status'];
 export type StudentCollectionUploadTicket = z.infer<typeof uploadTicketSchema>;
 export type StudentCollectionObligation = z.infer<typeof obligationSchema>;
 export type StudentCollectionPrefill = z.infer<typeof prefillSchema>;
+export type StudentCollectionSubmissionHistory = z.infer<typeof submissionHistorySchema>;
