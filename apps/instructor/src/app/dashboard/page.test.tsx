@@ -78,7 +78,33 @@ describe('Instructor dashboard layout', () => {
     vi.clearAllMocks();
   });
 
-  it('keeps zero-response progress content full width inside stable panels', async () => {
+  it('lets progress panels grow with every form row', async () => {
+    services.getOverview.mockResolvedValue({
+      activeFormProgress: Array.from({ length: 6 }, (_, index) => ({
+        completedStudents: 0,
+        deadlineAt: null,
+        formId: `form-${index + 1}`,
+        formTitle: `เอกสารฝึกงาน ${index + 1}`,
+        groupId: 'group-1',
+        groupName: 'CS67-1',
+        roundId: 'round-1',
+        roundName: 'ชุดงานฝึกงาน',
+        totalStudents: 28,
+      })),
+      activeRoundTotals: {
+        groups: 1,
+        students: 28,
+        studentsFullyComplete: 0,
+        studentsPartiallyComplete: 0,
+        studentsWithNoSubmission: 28,
+        studentsWithObligations: 28,
+        submissionsPendingReview: 0,
+      },
+      needsAttention: [],
+      roundCounts: { active: 1, closed: 0 },
+      upcomingDeadlines: [],
+    });
+
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
     const progressPanel = screen.getByRole('heading', { name: 'progressTitle' }).closest('section');
@@ -86,11 +112,12 @@ describe('Instructor dashboard layout', () => {
 
     expect(progressPanel).not.toBeNull();
     expect(progressPanel?.className).toContain('min-h-48');
+    expect(progressPanel?.className).not.toContain('h-full');
     expect(upcomingPanel?.className).toContain('min-h-48');
 
     const progressList = within(progressPanel as HTMLElement).getByRole('list');
     expect(progressList.className).toContain('flex-col');
     expect(progressList.className).not.toContain('xl:grid-cols-3');
-    expect(within(progressPanel as HTMLElement).getByText('0%')).toBeTruthy();
+    expect(within(progressPanel as HTMLElement).getAllByText('0%')).toHaveLength(6);
   });
 });
