@@ -18,10 +18,25 @@ interface HistoryPageProps {
 
 export default async function HistoryPage({ params }: HistoryPageProps) {
   const { formId } = await params;
+  /*
+   * A signed-out visit to a deeplink still lands here first, since the page
+   * needs a session to fetch anything from Core. The return path is carried
+   * on the redirect so "/" can send the Student straight back after login,
+   * instead of stranding them on the dashboard.
+   */
+  const returnTo = `/history/${formId}`;
   const state = await getStudentCollectionAuthPageState(false);
-  if (state.kind !== 'active') redirect(state.kind === 'expired' ? '/?expired=1' : '/');
+  if (state.kind !== 'active') {
+    redirect(
+      state.kind === 'expired'
+        ? `/?expired=1&returnTo=${encodeURIComponent(returnTo)}`
+        : `/?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  }
   const sessionToken = await readStudentCollectionSessionToken();
-  if (sessionToken === null) redirect('/?expired=1');
+  if (sessionToken === null) {
+    redirect(`/?expired=1&returnTo=${encodeURIComponent(returnTo)}`);
+  }
 
   const t = await getTranslations('Forms.history');
 

@@ -38,6 +38,7 @@ test.describe('Collection Milestone 3', () => {
 
     try {
       await loginStudentCollection(studentPage, collectionScenario);
+      await openStudentForm(studentPage, collectionScenario);
 
       /*
        * The seeded deadline is already past, so this is late before anything is
@@ -59,7 +60,9 @@ test.describe('Collection Milestone 3', () => {
       await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
       await test.step('the Student can read both versions and the decision', async () => {
-        await studentPage.getByRole('link', { name: 'ดูประวัติการส่ง' }).click();
+        await studentPage.goto(
+          `${collectionScenario.studentCollectionUrl}/history/${collectionScenario.formId}`,
+        );
         await expect(studentPage.getByRole('heading', { name: 'ฉบับที่ 2' })).toBeVisible();
         await expect(studentPage.getByRole('heading', { name: 'ฉบับที่ 1' })).toBeVisible();
 
@@ -101,7 +104,7 @@ test.describe('Collection Milestone 3', () => {
         await expect(studentPage.getByText('ส่งครั้งแรกภายในกำหนด')).toBeVisible();
         await expect(studentPage.getByText('ส่งครั้งแรกช้ากว่ากำหนด')).toBeHidden();
 
-        await studentPage.goto(`${collectionScenario.studentCollectionUrl}/`);
+        await studentPage.goto(collectionScenario.studentCollectionUrl);
         await expect(studentPage.getByText('เลยกำหนดส่งแล้ว')).toBeHidden();
       });
 
@@ -165,7 +168,7 @@ test.describe('Collection Milestone 3', () => {
          * is the state that would otherwise still be editable, so it is where a
          * form that ignored the closed round would show it.
          */
-        await studentPage.goto(`${collectionScenario.studentCollectionUrl}/`);
+        await openStudentForm(studentPage, collectionScenario);
         await expect(studentPage.getByLabel(collectionScenario.answerLabel)).toBeDisabled();
         await expect(
           studentPage.getByText('แบบฟอร์มนี้ปิดรับคำตอบแล้ว จึงดูได้อย่างเดียว'),
@@ -177,6 +180,10 @@ test.describe('Collection Milestone 3', () => {
     }
   });
 });
+
+async function openStudentForm(page: Page, scenario: CollectionLifecycleScenario): Promise<void> {
+  await page.goto(`${scenario.studentCollectionUrl}/forms/${scenario.formId}`);
+}
 
 /** Fills a draft, waits for the autosave to land, then submits it. */
 async function submitAnswer(

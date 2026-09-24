@@ -2,7 +2,10 @@
 
 import { useTranslations } from 'next-intl';
 import { Textarea } from '@showcase/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { CollectionAnswerValue } from './collection-answers';
 import type { StudentCollectionField } from '@/lib/student-collection-forms-contract';
 
@@ -80,25 +83,28 @@ export function FormFieldControl({
   if (field.type === 'single_choice') {
     const options = field.options ?? [];
     return (
-      <div aria-describedby={describedBy} className="flex flex-col gap-2" role="radiogroup">
+      <RadioGroup
+        aria-describedby={describedBy}
+        aria-invalid={isInvalid}
+        className="gap-0"
+        disabled={isReadOnly}
+        id={controlId}
+        onValueChange={(next) => onChange(String(next))}
+        value={value === undefined ? null : String(value)}
+      >
         {options.map((option) => (
-          <label className="flex items-center gap-2 text-sm" key={option}>
-            <input
-              checked={value === option}
-              className="size-4 accent-primary"
-              disabled={isReadOnly}
-              name={controlId}
-              onChange={() => onChange(option)}
-              type="radio"
-              value={option}
-            />
+          <FieldLabel
+            className="cursor-pointer rounded-control px-2 py-2 font-normal has-[[data-checked]]:bg-primary-soft has-disabled:cursor-not-allowed has-disabled:opacity-50"
+            key={option}
+          >
+            <RadioGroupItem value={option} />
             {option}
-          </label>
+          </FieldLabel>
         ))}
         {options.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('field.noOptions')}</p>
         ) : null}
-      </div>
+      </RadioGroup>
     );
   }
 
@@ -106,16 +112,18 @@ export function FormFieldControl({
     const options = field.options ?? [];
     const selected = Array.isArray(value) ? value : [];
     return (
-      <div aria-describedby={describedBy} className="flex flex-col gap-2">
+      <div aria-describedby={describedBy} aria-invalid={isInvalid} className="grid w-full gap-0">
         {options.map((option) => (
-          <label className="flex items-center gap-2 text-sm" key={option}>
-            <input
+          <FieldLabel
+            className="cursor-pointer rounded-control px-2 py-2 font-normal has-[[data-checked]]:bg-primary-soft has-disabled:cursor-not-allowed has-disabled:opacity-50"
+            key={option}
+          >
+            <Checkbox
               checked={selected.includes(option)}
-              className="size-4 rounded-sm accent-primary"
               disabled={isReadOnly}
-              onChange={(event) =>
+              onCheckedChange={(checked) =>
                 onChange(
-                  event.target.checked
+                  checked === true
                     ? /* Keep the Instructor's order so the answer reads consistently. */
                       options.filter(
                         (candidate) => candidate === option || selected.includes(candidate),
@@ -123,11 +131,9 @@ export function FormFieldControl({
                     : selected.filter((candidate) => candidate !== option),
                 )
               }
-              type="checkbox"
-              value={option}
             />
             {option}
-          </label>
+          </FieldLabel>
         ))}
         {options.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('field.noOptions')}</p>
