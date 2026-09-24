@@ -86,6 +86,7 @@ export default async function StudentHistoryPage({ params }: HistoryPageProps) {
         { href: `/groups/${groupId}/forms/${formId}/submissions`, label: t('review.pageTitle') },
         { label: t('history.pageTitle') },
       ]}
+      roundId={detail.group.roundId}
     >
       <PageHeader
         action={

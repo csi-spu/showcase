@@ -164,22 +164,24 @@ export function TemplateEditor({
           <h2 className="text-base font-semibold">{t('builder.fieldsHeading')}</h2>
           <div className="flex flex-wrap items-center gap-2">
             {isDirty ? <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge> : null}
+            {/* Below `lg` only: from `lg` up the preview beside the editor is always on. */}
             <Button
-              aria-pressed={isPreviewing}
+              aria-controls={`${baseId}-preview`}
+              aria-expanded={isPreviewing}
+              className="lg:hidden"
               onClick={() => setIsPreviewing((current) => !current)}
               size="sm"
               type="button"
               variant="outline"
             >
               <EyeIcon aria-hidden="true" data-icon="inline-start" />
-              {isPreviewing ? t('builder.backToEdit') : t('builder.preview')}
+              {isPreviewing ? t('builder.hidePreview') : t('builder.preview')}
             </Button>
           </div>
         </div>
 
-        {isPreviewing ? (
-          <FormPreview description={description} fields={fields} title={name} />
-        ) : (
+        {/* Editor and preview side by side, matching the form builder. */}
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <div className="flex flex-col gap-4">
             {fields.map((field, index) => (
               <FieldEditor
@@ -192,7 +194,6 @@ export function TemplateEditor({
                 onChange={updateField}
                 onMove={moveField}
                 onRemove={removeField}
-                totalCount={fields.length}
               />
             ))}
             <Button onClick={addField} type="button" variant="outline">
@@ -200,7 +201,28 @@ export function TemplateEditor({
               {t('builder.addField')}
             </Button>
           </div>
-        )}
+
+          <div
+            className={`${isPreviewing ? 'block' : 'hidden'} lg:sticky lg:top-[calc(var(--app-topbar-height)+1.5rem)] lg:block`}
+            id={`${baseId}-preview`}
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">
+                {t('builder.previewHeading')}
+              </h3>
+              <StatusBadge icon={EyeIcon} tone="muted">
+                {t('builder.previewLive')}
+              </StatusBadge>
+            </div>
+            {fields.length === 0 ? (
+              <p className="rounded-surface border border-dashed border-input p-6 text-center text-sm text-muted-foreground">
+                {t('builder.previewEmpty')}
+              </p>
+            ) : (
+              <FormPreview description={description} fields={fields} title={name} />
+            )}
+          </div>
+        </div>
       </section>
 
       {state.error !== null ? (

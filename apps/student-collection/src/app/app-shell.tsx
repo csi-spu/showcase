@@ -35,15 +35,6 @@ export async function AppShell({ children }: { children: ReactNode }) {
               src="/brand/csi-computer-science-software-development-innovation.png"
               width={1280}
             />
-            <Image
-              alt="คณะเทคโนโลยีสารสนเทศ"
-              className="hidden h-auto w-16 shrink-0 border-l border-border pl-2.5 sm:block"
-              height={381}
-              priority
-              sizes="64px"
-              src="/brand/sit-school-of-information-technology-color.webp"
-              width={1280}
-            />
             <span className="truncate text-sm font-semibold tracking-tight text-foreground">
               {t('brand')}
             </span>

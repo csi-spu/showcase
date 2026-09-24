@@ -50,6 +50,7 @@ const addMembersByEntryYearResultSchema = z
   .strict();
 
 const groupDetailSchema = z.object({ group: groupSchema, members: z.array(memberSchema) }).strict();
+const roundWithGroupSchema = z.object({ group: groupSchema, round: roundSchema }).strict();
 
 export type InstructorCollectionRound = z.infer<typeof roundSchema>;
 export type InstructorCollectionGroup = z.infer<typeof groupSchema>;
@@ -82,6 +83,19 @@ export class InstructorCollectionGroupsCoreClient {
       method: 'POST',
       path: '/v1/internal/instructor/rounds',
       responseSchema: roundSchema,
+      sessionToken,
+    });
+  }
+
+  createRoundWithGroup(
+    sessionToken: string,
+    input: { groupName: string; roundName: string },
+  ): Promise<{ group: InstructorCollectionGroup; round: InstructorCollectionRound }> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: '/v1/internal/instructor/rounds/with-group',
+      responseSchema: roundWithGroupSchema,
       sessionToken,
     });
   }

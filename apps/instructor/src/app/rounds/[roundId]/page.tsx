@@ -71,7 +71,10 @@ export default async function RoundPage({ params }: RoundPageProps) {
     : null;
 
   return (
-    <AppShell trail={[{ href: '/rounds', label: t('round.pageTitle') }, { label: round.name }]}>
+    <AppShell
+      roundId={roundId}
+      trail={[{ href: '/rounds', label: t('round.pageTitle') }, { label: round.name }]}
+    >
       <PageHeader
         description={t('group.pageDescription')}
         eyebrow={

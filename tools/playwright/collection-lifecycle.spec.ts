@@ -89,7 +89,7 @@ async function loginStudentCollection(
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.studentPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'เอกสารสหกิจศึกษาของคุณ' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'แบบฟอร์มของคุณ' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});
@@ -105,7 +105,7 @@ async function loginInstructor(
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.instructorLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.instructorPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'รอบเก็บเอกสาร' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'ภาพรวมเอกสารนักศึกษา' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});

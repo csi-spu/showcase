@@ -96,6 +96,7 @@ export default async function GroupExportsPage({ params }: ExportsPageProps) {
         { href: groupHref, label: t('backToGroup') },
         { label: t('pageTitle') },
       ]}
+      roundId={detail.group.roundId}
     >
       <PageHeader description={t('pageDescription')} title={t('pageTitle')} />
 
@@ -144,7 +145,7 @@ export default async function GroupExportsPage({ params }: ExportsPageProps) {
           <EmptyState description={t('emptyDescription')} icon={DownloadIcon} title={t('empty')} />
         ) : (
           <>
-            <Table>
+            <Table label={t('pageTitle')}>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t('columnKind')}</TableHead>

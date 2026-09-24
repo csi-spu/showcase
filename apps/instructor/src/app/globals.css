@@ -1,4 +1,5 @@
 @import '@showcase/ui/styles.css';
+@import '@showcase/ui/auth-page.css';
 
 @source '../components/**/*.tsx';
 
@@ -19,43 +20,82 @@
  * whole surface restyles from the shared package alone.
  */
 :root {
-  /* Dashboard shell metrics, shared by the sidebar and the content offset. */
+  /* Dashboard shell metrics, shared by the sidebar and the content column. */
   --app-sidebar-width: 17rem;
+  /* The same panel collapsed to icons: a 2.75rem round target plus the
+     panel's own 0.75rem padding either side. */
+  --app-sidebar-collapsed-width: 4.25rem;
   --app-topbar-height: 3.75rem;
+  /* The air around the floating panels. One value, so the rail, the sidebar
+     and the content column keep the same rhythm at every breakpoint. */
+  --app-shell-gap: 0.75rem;
 }
 
 /*
- * The application canvas. A single flat surface: the dashboard reads as one
- * plane with cards floating on it, so the page never competes with content.
+ * The application canvas. The sidebar and the content column float on it as
+ * separate rounded panels, so the tinted plane behind them is what separates
+ * navigation from work -- no dividing rules are needed. The
+ * wash is a few percent of brand over the page colour: enough for a white
+ * panel to read as lifted, far too little to tint the content inside one.
  */
 .app-canvas {
-  background: var(--background);
-}
-
-/* The brand panel beside the sign-in form -- the only marketing-ish surface. */
-.auth-brand-panel {
   background:
     radial-gradient(
-      circle at 15% 8%,
-      color-mix(in srgb, var(--primary) 12%, transparent),
-      transparent 30rem
+      circle at 0% 0%,
+      color-mix(in srgb, var(--primary) 7%, transparent),
+      transparent 42rem
     ),
-    radial-gradient(
-      circle at 92% 92%,
-      color-mix(in srgb, var(--primary) 8%, transparent),
-      transparent 26rem
-    ),
-    var(--primary-soft);
+    var(--background);
 }
 
-.app-sidebar {
+/*
+ * The two floating surfaces. They share a radius and a shadow so the shell
+ * reads as one set of panels; only their width and contents differ.
+ */
+.app-sidebar,
+.app-panel {
   background: var(--sidebar);
-  border-inline-end: 1px solid var(--sidebar-border);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-media);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent);
 }
 
+/*
+ * Width is animated rather than toggled so collapsing reads as the panel
+ * narrowing, not as one panel being swapped for another. Reduced motion gets
+ * the end state immediately.
+ */
+.app-sidebar {
+  transition: width 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar {
+    transition: none;
+  }
+}
+
+/*
+ * The top bar sits inside the content panel rather than across the window, so
+ * it takes the panel's own colour and rounds off with its top corners.
+ */
 .app-topbar {
-  background: color-mix(in srgb, var(--background) 86%, transparent);
+  background: color-mix(in srgb, var(--sidebar) 86%, transparent);
   backdrop-filter: blur(8px);
+  border-start-start-radius: var(--radius-media);
+  border-start-end-radius: var(--radius-media);
+}
+
+/*
+ * Anything scrolled to by an in-page link or a validation jump stops below the
+ * sticky top bar instead of under it. The bar is `position: sticky`, so the
+ * browser's own scroll anchoring has no way to know it covers the viewport top;
+ * without this the focused field lands behind it (WCAG 2.2 "Focus Not
+ * Obscured"). The extra 1rem keeps the field's label visible too, not just its
+ * top edge.
+ */
+html {
+  scroll-padding-top: calc(var(--app-topbar-height) + 1rem);
 }
 
 @media (prefers-reduced-motion: reduce) {

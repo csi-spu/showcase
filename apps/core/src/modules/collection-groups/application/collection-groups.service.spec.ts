@@ -74,6 +74,10 @@ class FakeRepository implements CollectionGroupsRepository {
     return Promise.resolve(ROUND);
   }
 
+  createRoundWithGroup(): Promise<{ group: CollectionGroup; round: CollectionRound }> {
+    return Promise.resolve({ group: GROUP, round: ROUND });
+  }
+
   findGroup(): Promise<CollectionGroup | null> {
     return Promise.resolve(this.group);
   }
@@ -118,6 +122,48 @@ function setup(repository = new FakeRepository()) {
 }
 
 describe('CollectionGroupsService rounds and groups', () => {
+  it('trims both names and creates a Round with its first Group in one repository operation', async () => {
+    const repository = new FakeRepository();
+    const createRoundWithGroup = jest.spyOn(repository, 'createRoundWithGroup');
+
+    await expect(
+      setup(repository).service.createRoundWithGroup({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupName: '  กลุ่ม 1  ',
+        roundName: '  ภาคเรียน 1/2569  ',
+      }),
+    ).resolves.toEqual({ group: GROUP, round: ROUND });
+
+    expect(createRoundWithGroup).toHaveBeenCalledWith({
+      createdByAccountId: ACTOR_ACCOUNT_ID,
+      groupName: 'กลุ่ม 1',
+      now: NOW,
+      roundName: 'ภาคเรียน 1/2569',
+    });
+  });
+
+  it('rejects either invalid setup name before touching the repository', async () => {
+    const repository = new FakeRepository();
+    const createRoundWithGroup = jest.spyOn(repository, 'createRoundWithGroup');
+
+    await expect(
+      setup(repository).service.createRoundWithGroup({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupName: 'กลุ่ม 1',
+        roundName: '   ',
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('ROUND_NAME_INVALID', 422));
+    await expect(
+      setup(repository).service.createRoundWithGroup({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupName: 'x'.repeat(201),
+        roundName: 'ภาคเรียน 1/2569',
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_NAME_INVALID', 422));
+
+    expect(createRoundWithGroup).not.toHaveBeenCalled();
+  });
+
   it('trims a Round name and rejects an empty or overlong one', async () => {
     const { service } = setup();
     await expect(

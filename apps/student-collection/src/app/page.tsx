@@ -1,5 +1,11 @@
 import { Button } from '@showcase/ui/button';
-import { ClipboardListIcon, FolderOpenIcon, InboxIcon } from 'lucide-react';
+import {
+  CheckCircle2Icon,
+  ClipboardListIcon,
+  InboxIcon,
+  ShieldCheckIcon,
+  UserRoundCheckIcon,
+} from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -76,15 +82,33 @@ export default async function Home({ searchParams }: HomeProps) {
       ]),
     );
     const prefillsByForm = new Map(prefillEntries);
+    /*
+     * "Still owed" is exactly the set that is answerable, so the same predicate
+     * decides both the prefills above and the grouping below -- the page cannot
+     * show a form as outstanding while treating it as finished.
+     */
+    const answerableIds = new Set(answerable.map((obligation) => obligation.form.id));
+    const todo = obligations.filter((obligation) => answerableIds.has(obligation.form.id));
+    const done = obligations.filter((obligation) => !answerableIds.has(obligation.form.id));
     return (
       <AppShell>
         <PageHeader
           description={homeT('dashboardDescription')}
           eyebrow={
-            <StatusBadge icon={ClipboardListIcon} tone="information">
+            /*
+             * The count that matters is what is still owed. A total told a
+             * Student who had finished everything that they had five items,
+             * which reads as work outstanding.
+             */
+            <StatusBadge
+              icon={ClipboardListIcon}
+              tone={todo.length === 0 ? 'success' : 'information'}
+            >
               {obligations.length === 0
                 ? homeT('statusUpcoming')
-                : homeT('countLabel', { count: obligations.length })}
+                : todo.length === 0
+                  ? homeT('allDone')
+                  : homeT('todoCount', { count: todo.length })}
             </StatusBadge>
           }
           title={homeT('dashboardTitle')}
@@ -101,15 +125,56 @@ export default async function Home({ searchParams }: HomeProps) {
             title={homeT('placeholderTitle')}
           />
         ) : (
-          <div className="flex flex-col gap-6">
-            {obligations.map((obligation) => (
-              <CollectionForm
-                isLate={obligation.isLate}
-                key={obligation.form.id}
-                obligation={obligation}
-                prefills={prefillsByForm.get(obligation.form.id) ?? []}
-              />
-            ))}
+          /*
+           * Split by what is still owed. Every obligation used to render as a
+           * fully expanded form in one stack, so a Student with several forms
+           * scrolled past finished work to reach the one thing left to do --
+           * and nothing on the page said how much of that there was. The two
+           * groups are the same forms in the same order, only partitioned.
+           */
+          <div className="flex flex-col gap-8">
+            {todo.length === 0 ? (
+              <Alert variant="success">
+                <CheckCircle2Icon aria-hidden="true" />
+                <AlertTitle>{homeT('allDone')}</AlertTitle>
+              </Alert>
+            ) : (
+              <section aria-labelledby="todo-heading" className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-semibold text-foreground" id="todo-heading">
+                    {homeT('todoHeading')}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">{homeT('todoDescription')}</p>
+                </div>
+                {todo.map((obligation) => (
+                  <CollectionForm
+                    isLate={obligation.isLate}
+                    key={obligation.form.id}
+                    obligation={obligation}
+                    prefills={prefillsByForm.get(obligation.form.id) ?? []}
+                  />
+                ))}
+              </section>
+            )}
+
+            {done.length === 0 ? null : (
+              <section aria-labelledby="done-heading" className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-lg font-semibold text-foreground" id="done-heading">
+                    {homeT('doneHeading')}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">{homeT('doneDescription')}</p>
+                </div>
+                {done.map((obligation) => (
+                  <CollectionForm
+                    isLate={obligation.isLate}
+                    key={obligation.form.id}
+                    obligation={obligation}
+                    prefills={prefillsByForm.get(obligation.form.id) ?? []}
+                  />
+                ))}
+              </section>
+            )}
           </div>
         )}
       </AppShell>
@@ -130,12 +195,24 @@ export default async function Home({ searchParams }: HomeProps) {
         : authT('login.description');
 
   return (
-    <AuthLayout eyebrow={authT('kicker')} icon={FolderOpenIcon} tagline={homeT('description')}>
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
-          {heading}
-        </h1>
-        <p className="text-muted-foreground">{description}</p>
+    <AuthLayout
+      eyebrow={authT('kicker')}
+      featureAssigned={homeT('features.assigned')}
+      featureDrafts={homeT('features.drafts')}
+      featureTracking={homeT('features.tracking')}
+      headline={homeT('headline')}
+      headlineAccent={homeT('headlineAccent')}
+      tagline={homeT('description')}
+    >
+      <div className="auth-card-heading">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+            {heading}
+          </h1>
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {description}
+          </p>
+        </div>
       </div>
 
       {state.kind === 'login' ? (
@@ -154,7 +231,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ) : null}
       {state.kind === 'expired' ? (
         <form action={clearExpiredSessionAction}>
-          <Button className="w-full" size="lg" type="submit">
+          <Button className="auth-submit-button w-full" size="lg" type="submit">
             {authT('expired.action')}
           </Button>
         </form>
@@ -163,8 +240,18 @@ export default async function Home({ searchParams }: HomeProps) {
       {state.kind === 'password_change_required' ? (
         <LogoutForm action={logoutAction} />
       ) : (
-        <p className="text-sm text-muted-foreground">{authT('login.privacy')}</p>
+        <div className="auth-security-note">
+          <ShieldCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          <p>{authT('login.privacy')}</p>
+        </div>
       )}
+
+      {state.kind === 'login' ? (
+        <p className="auth-account-help">
+          <UserRoundCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          {authT('login.accountHelp')}
+        </p>
+      ) : null}
     </AuthLayout>
   );
 }

@@ -169,7 +169,7 @@ async function createCollectionLifecycleScenario(): Promise<
       await transaction`
         insert into public.collection_rounds
           (id, name, status, created_by_account_id, created_at)
-        values (${roundId}, ${`รอบ E2E ${runShort}`}, 'active', ${instructorAccountId}, ${now})
+        values (${roundId}, ${`ชุดงาน E2E ${runShort}`}, 'active', ${instructorAccountId}, ${now})
       `;
       await transaction`
         insert into public.collection_groups

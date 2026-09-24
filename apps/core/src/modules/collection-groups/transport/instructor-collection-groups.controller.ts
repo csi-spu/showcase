@@ -27,6 +27,7 @@ import {
   AddMembersByStudentIdsDto,
   CreateGroupDto,
   CreateRoundDto,
+  CreateRoundWithGroupDto,
   ReinstateMemberDto,
   WithdrawMemberDto,
 } from './collection-groups.dto';
@@ -49,6 +50,20 @@ export class InstructorCollectionGroupsController {
   ): Promise<CollectionRound> {
     const actor = await this.authorize(authorization);
     return this.groups.createRound({ actorAccountId: actor.accountId, name: body.name });
+  }
+
+  @Post('rounds/with-group')
+  @Header('Cache-Control', 'no-store')
+  async createRoundWithGroup(
+    @Body() body: CreateRoundWithGroupDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ group: CollectionGroup; round: CollectionRound }> {
+    const actor = await this.authorize(authorization);
+    return this.groups.createRoundWithGroup({
+      actorAccountId: actor.accountId,
+      groupName: body.groupName,
+      roundName: body.roundName,
+    });
   }
 
   @Get('rounds')

@@ -6,6 +6,7 @@ import { INITIAL_ADD_MEMBERS_STATE } from './collection-groups-state';
 import type {
   AddMembersActionState,
   CreateGroupActionState,
+  CreateFormGroupActionState,
   CreateRoundActionState,
   WithdrawMemberActionState,
   ReinstateMemberActionState,
@@ -20,6 +21,7 @@ import {
   validateAddByEntryYear,
   validateAddByStudentIds,
   validateCreateGroup,
+  validateCreateFormGroup,
   validateCreateRound,
   validateWithdraw,
   validateReinstate,
@@ -62,6 +64,41 @@ export async function createGroupAction(
     return { error: mapCollectionGroupsError(error) };
   }
   redirect(`/groups/${group.id}`);
+}
+
+export async function createFormGroupAction(
+  _previousState: CreateFormGroupActionState,
+  formData: FormData,
+): Promise<CreateFormGroupActionState> {
+  const input = validateCreateFormGroup(formData);
+  if (input === null) return { error: 'invalid', group: null, round: null };
+
+  const sessionToken = await requireSessionToken();
+  try {
+    if (input.mode === 'new-round') {
+      const result = await coreClient().createRoundWithGroup(sessionToken, {
+        groupName: input.groupName,
+        roundName: input.roundName,
+      });
+      return {
+        error: null,
+        group: { id: result.group.id, name: result.group.name, roundId: result.group.roundId },
+        round: { id: result.round.id, name: result.round.name },
+      };
+    }
+
+    const group = await coreClient().createGroup(sessionToken, input.roundId, {
+      name: input.groupName,
+    });
+    return {
+      error: null,
+      group: { id: group.id, name: group.name, roundId: group.roundId },
+      round: null,
+    };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { error: mapCollectionGroupsError(error), group: null, round: null };
+  }
 }
 
 export async function addMembersByStudentIdsAction(

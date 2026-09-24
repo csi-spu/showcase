@@ -12,21 +12,13 @@ import {
   ShieldCheckIcon,
   type LucideIcon,
   UserRoundPenIcon,
+  UsersRoundIcon,
 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { BlurFade } from '@/components/ui/blur-fade';
-import { GridPattern } from '@/components/ui/grid-pattern';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStudentAuthPageState } from '@/lib/student-auth-page-state';
 import { readStudentSessionToken } from '@/lib/student-auth-session';
 import { getStudentServerEnvironment } from '@/lib/server-environment';
@@ -38,11 +30,10 @@ import {
   loginAction,
   logoutAction,
 } from './student-auth.actions';
-import { AuthHeroCopy } from './auth-hero-copy';
 import { AuthSuccessToast } from './auth-success-toast';
 import { ChangePasswordForm, LoginForm, LogoutForm } from './student-auth-forms';
 import { StudentWorkspaceShell } from './student-workspace-shell';
-import { StudentBrand } from './student-brand';
+import { StudentAuthLayout } from './student-auth-layout';
 
 interface HomeProps {
   searchParams: Promise<{ expired?: string; loggedIn?: string; passwordSet?: string }>;
@@ -50,10 +41,11 @@ interface HomeProps {
 
 export default async function Home({ searchParams }: HomeProps) {
   const { expired, loggedIn, passwordSet } = await searchParams;
-  const [state, t, dashboardT] = await Promise.all([
+  const [state, t, dashboardT, homeT] = await Promise.all([
     getStudentAuthPageState(expired === '1'),
     getTranslations('Auth'),
     getTranslations('Dashboard'),
+    getTranslations('Home'),
   ]);
 
   let heading: string;
@@ -213,82 +205,64 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   return (
-    <main className="student-canvas mx-auto grid min-h-svh w-full max-w-[1600px] overflow-hidden bg-background lg:grid-cols-[minmax(28rem,1.08fr)_minmax(28rem,0.92fr)]">
-      <aside className="relative isolate flex min-h-64 flex-col overflow-hidden border-b border-primary/15 bg-[var(--auth-visual-background)] p-6 text-foreground lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
-        <GridPattern
-          className="fill-primary/10 stroke-primary/20 [mask-image:linear-gradient(to_bottom_right,black,black_55%,transparent_92%)]"
-          height={42}
-          squares={[
-            [2, 2],
-            [5, 1],
-            [8, 3],
-            [3, 7],
-            [10, 8],
-          ]}
-          width={42}
-        />
-        <div className="pointer-events-none absolute -top-24 right-[-10%] size-[28rem] rounded-full bg-white/45 blur-3xl" />
-        <StudentBrand className="relative z-20" showSit />
-        <AuthHeroCopy />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[78%] lg:left-[16%] lg:right-0 lg:h-[54%]">
-          <div className="absolute inset-10 rounded-full bg-primary/12 blur-3xl" />
-          <Image
-            alt=""
-            className="object-contain object-left-bottom opacity-35 lg:opacity-100"
-            fill
-            priority
-            sizes="(max-width: 1024px) 100vw, 54vw"
-            src="/images/login-student.png"
-          />
+    <StudentAuthLayout
+      eyebrow={t('kicker')}
+      featureProfile={homeT('features.profile')}
+      featurePublishing={homeT('features.publishing')}
+      featureTracking={homeT('features.tracking')}
+      headline={homeT('authHeadline')}
+      headlineAccent={homeT('authHeadlineAccent')}
+      tagline={homeT('description')}
+    >
+      <div className="auth-card-heading">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+            {heading}
+          </h1>
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {description}
+          </p>
         </div>
-      </aside>
+      </div>
 
-      <section className="flex items-center justify-center p-4 sm:p-8 lg:p-10 xl:p-14">
-        <BlurFade className="w-full max-w-[38rem]" offset={10}>
-          <Card className="w-full border-white/80 bg-card/95 shadow-[0_1.5rem_4rem_-2rem_rgba(50,20,45,0.28)] backdrop-blur-sm">
-            <CardHeader className="gap-3">
-              <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
-              <CardTitle>
-                <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-                  {heading}
-                </h1>
-              </CardTitle>
-              <CardDescription>{description}</CardDescription>
-            </CardHeader>
+      {state.kind === 'login' ? (
+        <div className="flex flex-col gap-5">
+          {state.isServiceUnavailable ? (
+            <Alert variant="destructive">
+              <AlertTitle>{t('errors.unavailable')}</AlertTitle>
+              <AlertDescription>{t('errors.network')}</AlertDescription>
+            </Alert>
+          ) : null}
+          <LoginForm action={loginAction} />
+        </div>
+      ) : null}
+      {state.kind === 'password_change_required' ? (
+        <ChangePasswordForm action={changePasswordAction} />
+      ) : null}
+      {state.kind === 'expired' ? (
+        <form action={clearExpiredSessionAction}>
+          <Button className="auth-submit-button w-full" size="lg" type="submit">
+            {t('expired.action')}
+          </Button>
+        </form>
+      ) : null}
 
-            <CardContent>
-              {state.kind === 'login' ? (
-                <div className="flex flex-col gap-5">
-                  {state.isServiceUnavailable ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('errors.unavailable')}</AlertTitle>
-                      <AlertDescription>{t('errors.network')}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                  <LoginForm action={loginAction} />
-                </div>
-              ) : null}
-              {state.kind === 'password_change_required' ? (
-                <ChangePasswordForm action={changePasswordAction} />
-              ) : null}
-              {state.kind === 'expired' ? (
-                <form action={clearExpiredSessionAction}>
-                  <Button className="w-full" size="lg" type="submit">
-                    {t('expired.action')}
-                  </Button>
-                </form>
-              ) : null}
-            </CardContent>
+      {state.kind === 'password_change_required' ? (
+        <LogoutForm action={logoutAction} />
+      ) : (
+        <div className="auth-security-note">
+          <ShieldCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          <p>{t('securityNote')}</p>
+        </div>
+      )}
 
-            {state.kind === 'password_change_required' ? (
-              <CardFooter>
-                <LogoutForm action={logoutAction} />
-              </CardFooter>
-            ) : null}
-          </Card>
-        </BlurFade>
-      </section>
-    </main>
+      {state.kind === 'login' ? (
+        <p className="auth-account-help">
+          <UsersRoundIcon aria-hidden="true" className="size-5 shrink-0" />
+          {t('login.accountHelp')}
+        </p>
+      ) : null}
+    </StudentAuthLayout>
   );
 }
 

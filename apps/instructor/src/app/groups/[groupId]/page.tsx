@@ -2,6 +2,7 @@ import { DownloadIcon, TableIcon, UserCheckIcon, UserXIcon, UsersIcon } from 'lu
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { buttonVariants } from '@showcase/ui/button';
 import { CoreClientError } from '@showcase/core-client';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -87,46 +88,41 @@ export default async function GroupPage({ params }: GroupPageProps) {
           : { href: `/rounds/${detail.group.roundId}`, label: t('round.backToList') },
         { label: detail.group.name },
       ]}
+      roundId={detail.group.roundId}
     >
-      <PageHeader description={t('members.pageDescription')} title={detail.group.name} />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <StatCard
-          icon={UserCheckIcon}
-          label={t('members.statCurrent')}
-          tone="success"
-          value={currentMembers.length}
-        />
-        <StatCard
-          icon={UserXIcon}
-          label={t('members.statWithdrawn')}
-          tone="muted"
-          value={withdrawnMembers.length}
-        />
-      </div>
-
-      <AddMembersPanel
-        addByEntryYearAction={boundAddByEntryYear}
-        addByStudentIdsAction={boundAddByStudentIds}
+      {/*
+       * The two views onto this group sit in the header, where a page's own
+       * actions belong. They were a row of bordered links in the middle of the
+       * page, which read as content and pushed the roster further down.
+       */}
+      <PageHeader
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className={buttonVariants({ variant: 'outline' })}
+              href={`/groups/${groupId}/matrix`}
+            >
+              <TableIcon aria-hidden="true" data-icon="inline-start" />
+              {tForms('matrix.openAction')}
+            </Link>
+            <Link
+              className={buttonVariants({ variant: 'outline' })}
+              href={`/groups/${groupId}/exports`}
+            >
+              <DownloadIcon aria-hidden="true" data-icon="inline-start" />
+              {tForms('exports.openAction')}
+            </Link>
+          </div>
+        }
+        description={t('members.pageDescription')}
+        title={detail.group.name}
       />
 
-      <nav aria-label={tForms('matrix.pageTitle')} className="flex flex-wrap gap-2">
-        <Link
-          className="inline-flex items-center gap-2 rounded-surface border border-input bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none motion-reduce:transition-none"
-          href={`/groups/${groupId}/matrix`}
-        >
-          <TableIcon aria-hidden="true" className="size-4" />
-          {tForms('matrix.openAction')}
-        </Link>
-        <Link
-          className="inline-flex items-center gap-2 rounded-surface border border-input bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none motion-reduce:transition-none"
-          href={`/groups/${groupId}/exports`}
-        >
-          <DownloadIcon aria-hidden="true" className="size-4" />
-          {tForms('exports.openAction')}
-        </Link>
-      </nav>
-
+      {/*
+       * Forms first. Building and reviewing them is what this page is opened
+       * for; the roster is the supporting list, and the counts describe that
+       * roster rather than the page, so they travel with it.
+       */}
       <FormsSection
         createAction={createCollectionFormAction.bind(null, groupId)}
         createFromTemplateAction={createCollectionFormFromTemplateAction.bind(null, groupId)}
@@ -135,86 +131,127 @@ export default async function GroupPage({ params }: GroupPageProps) {
         templates={templates}
       />
 
-      <section aria-labelledby="current-members-heading" className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground" id="current-members-heading">
-          {t('members.currentTitle')} ({currentMembers.length})
-        </h2>
-        {currentMembers.length === 0 ? (
-          <EmptyState
-            description={t('members.emptyDescription')}
-            icon={UsersIcon}
-            title={t('members.empty')}
+      {/*
+       * The roster is one region, not three. Its counts, its add control and
+       * both of its lists were separate top-level sections, so withdrawing
+       * someone appeared to remove them from the page rather than move them
+       * within it.
+       */}
+      <section aria-labelledby="roster-heading" className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-foreground" id="roster-heading">
+            {t('members.rosterHeading')}
+          </h2>
+          <AddMembersPanel
+            addByEntryYearAction={boundAddByEntryYear}
+            addByStudentIdsAction={boundAddByStudentIds}
           />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('members.columnName')}</TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  {t('members.columnEntryYear')}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">{t('members.columnSource')}</TableHead>
-                <TableHead className="text-right">{t('members.columnActions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {currentMembers.map((member) => (
-                <MemberRow
-                  action={boundWithdraw}
-                  key={member.studentAccountId}
-                  member={member}
-                  t={t}
-                />
-              ))}
-            </TableBody>
-          </Table>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <StatCard
+            icon={UserCheckIcon}
+            label={t('members.statCurrent')}
+            tone="success"
+            value={currentMembers.length}
+          />
+          <StatCard
+            icon={UserXIcon}
+            label={t('members.statWithdrawn')}
+            tone="muted"
+            value={withdrawnMembers.length}
+          />
+        </div>
+
+        <div aria-labelledby="current-members-heading" className="flex flex-col gap-3" role="group">
+          <h3 className="text-sm font-semibold text-foreground" id="current-members-heading">
+            {t('members.currentTitle')} ({currentMembers.length})
+          </h3>
+          {currentMembers.length === 0 ? (
+            <EmptyState
+              description={t('members.emptyDescription')}
+              icon={UsersIcon}
+              title={t('members.empty')}
+            />
+          ) : (
+            <Table label={t('members.currentTitle')}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('members.columnName')}</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    {t('members.columnEntryYear')}
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    {t('members.columnSource')}
+                  </TableHead>
+                  <TableHead className="text-right">{t('members.columnActions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {currentMembers.map((member) => (
+                  <MemberRow
+                    action={boundWithdraw}
+                    key={member.studentAccountId}
+                    member={member}
+                    t={t}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+
+        {withdrawnMembers.length === 0 ? null : (
+          <div
+            aria-labelledby="withdrawn-members-heading"
+            className="flex flex-col gap-3"
+            role="group"
+          >
+            <h3
+              className="text-sm font-semibold text-muted-foreground"
+              id="withdrawn-members-heading"
+            >
+              {t('members.withdrawnTitle')} ({withdrawnMembers.length})
+            </h3>
+            <Table label={t('members.withdrawnTitle')}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('members.columnName')}</TableHead>
+                  <TableHead>{t('members.columnReason')}</TableHead>
+                  <TableHead className="text-right">{t('members.columnActions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {withdrawnMembers.map((member) => (
+                  <TableRow key={member.studentAccountId}>
+                    <TableCell>
+                      <span className="flex items-center gap-2.5">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <UserXIcon aria-hidden="true" className="size-4" />
+                        </span>
+                        <span className="truncate text-muted-foreground">
+                          {member.firstNameTh} {member.lastNameTh}
+                        </span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {member.withdrawalReason}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <MemberRowActions
+                        action={boundReinstate}
+                        kind="reinstate"
+                        memberName={`${member.firstNameTh} ${member.lastNameTh}`}
+                        studentAccountId={member.studentAccountId}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </section>
-
-      {withdrawnMembers.length === 0 ? null : (
-        <section aria-labelledby="withdrawn-members-heading" className="flex flex-col gap-3">
-          <h2
-            className="text-sm font-semibold text-muted-foreground"
-            id="withdrawn-members-heading"
-          >
-            {t('members.withdrawnTitle')} ({withdrawnMembers.length})
-          </h2>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('members.columnName')}</TableHead>
-                <TableHead>{t('members.columnReason')}</TableHead>
-                <TableHead className="text-right">{t('members.columnActions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {withdrawnMembers.map((member) => (
-                <TableRow key={member.studentAccountId}>
-                  <TableCell>
-                    <span className="flex items-center gap-2.5">
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                        <UserXIcon aria-hidden="true" className="size-4" />
-                      </span>
-                      <span className="truncate text-muted-foreground">
-                        {member.firstNameTh} {member.lastNameTh}
-                      </span>
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{member.withdrawalReason}</TableCell>
-                  <TableCell className="text-right">
-                    <MemberRowActions
-                      action={boundReinstate}
-                      kind="reinstate"
-                      memberName={`${member.firstNameTh} ${member.lastNameTh}`}
-                      studentAccountId={member.studentAccountId}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </section>
-      )}
     </AppShell>
   );
 }

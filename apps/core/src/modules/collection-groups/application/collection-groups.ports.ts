@@ -88,6 +88,12 @@ export interface CollectionGroupsRepository {
     name: string;
     now: Date;
   }): Promise<CollectionRound>;
+  createRoundWithGroup(input: {
+    createdByAccountId: string;
+    groupName: string;
+    now: Date;
+    roundName: string;
+  }): Promise<{ group: CollectionGroup; round: CollectionRound }>;
   findGroup(groupId: string): Promise<CollectionGroup | null>;
   findRound(roundId: string): Promise<CollectionRound | null>;
   listGroupMembers(groupId: string): Promise<GroupMember[]>;

@@ -135,7 +135,7 @@ class E2eRepository implements AuthRepository {
     });
   }
 
-  findInstructorSession(): Promise<AdminAuthenticationSessionRecord | null> {
+  findInstructorSession(): Promise<null> {
     return Promise.resolve(null);
   }
 

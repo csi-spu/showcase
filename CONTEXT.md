@@ -61,7 +61,7 @@ A Roster Batch row whose Student ID matches an existing Student but whose identi
 _Avoid_: Duplicate, overwrite
 
 **Student ID**:
-The institutional identifier assigned to a Student. Its leading digits encode the Entry Year under the university's numbering convention.
+The institutional identifier assigned to a Student, and the credential they authenticate with. Its leading digits encode the Entry Year under the university's numbering convention. Core retains only keyed hashes of it (ADR 0013), so no read path can return one; interfaces that must identify a Student use Roster name and Account ID instead (ADR 0018).
 _Avoid_: Account ID, profile ID
 
 **Entry Year**:

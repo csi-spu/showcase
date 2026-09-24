@@ -176,7 +176,17 @@ export function CollectionForm({
     const found = findSubmitBlockers(form.fields, answers, fileCounts);
     if (found.length > 0) {
       setBlockers(found);
-      document.getElementById(`${baseId}-summary`)?.scrollIntoView({ block: 'center' });
+      /*
+       * Focus moves to the summary, it is not only scrolled to. Scrolling alone
+       * leaves a keyboard or screen reader user where they were -- told that
+       * something failed, but not taken to it -- and leaves the next Tab
+       * continuing from the submit button rather than from the problem.
+       * The summary renders in the same commit that sets the blockers, so the
+       * move is queued until after that paint.
+       */
+      requestAnimationFrame(() => {
+        document.getElementById(`${baseId}-summary`)?.focus();
+      });
       return;
     }
     setBlockers([]);
@@ -335,7 +345,13 @@ export function CollectionForm({
       ) : (
         <>
           {blockers.length > 0 ? (
-            <Alert id={`${baseId}-summary`} variant="destructive">
+            <Alert
+              className="scroll-mt-24 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+              id={`${baseId}-summary`}
+              /* Focusable only as a focus target, so it never joins the tab order. */
+              tabIndex={-1}
+              variant="destructive"
+            >
               <AlertCircleIcon aria-hidden="true" />
               <AlertTitle>{t('submitBlockedTitle')}</AlertTitle>
               <AlertDescription>

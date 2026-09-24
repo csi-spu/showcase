@@ -1,5 +1,5 @@
 import { Button } from '@showcase/ui/button';
-import { GraduationCapIcon } from 'lucide-react';
+import { ShieldCheckIcon, UsersRoundIcon } from 'lucide-react';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -26,7 +26,7 @@ export default async function Home({ searchParams }: HomeProps) {
   ]);
 
   if (state.kind === 'active') {
-    redirect('/rounds');
+    redirect('/dashboard');
   }
 
   const heading =
@@ -43,12 +43,24 @@ export default async function Home({ searchParams }: HomeProps) {
         : authT('login.description');
 
   return (
-    <AuthLayout eyebrow={authT('kicker')} icon={GraduationCapIcon} tagline={homeT('description')}>
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
-          {heading}
-        </h1>
-        <p className="text-muted-foreground">{description}</p>
+    <AuthLayout
+      eyebrow={authT('kicker')}
+      featureForms={homeT('features.forms')}
+      featureReview={homeT('features.review')}
+      featureTracking={homeT('features.tracking')}
+      headline={homeT('headline')}
+      headlineAccent={homeT('headlineAccent')}
+      tagline={homeT('description')}
+    >
+      <div className="auth-card-heading">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+            {heading}
+          </h1>
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {description}
+          </p>
+        </div>
       </div>
 
       {state.kind === 'login' ? (
@@ -67,7 +79,7 @@ export default async function Home({ searchParams }: HomeProps) {
       ) : null}
       {state.kind === 'expired' ? (
         <form action={clearExpiredSessionAction}>
-          <Button className="w-full" size="lg" type="submit">
+          <Button className="auth-submit-button w-full" size="lg" type="submit">
             {authT('expired.action')}
           </Button>
         </form>
@@ -76,8 +88,18 @@ export default async function Home({ searchParams }: HomeProps) {
       {state.kind === 'password_change_required' ? (
         <LogoutForm action={logoutAction} />
       ) : (
-        <p className="text-sm text-muted-foreground">{authT('login.privacy')}</p>
+        <div className="auth-security-note">
+          <ShieldCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          <p>{authT('login.privacy')}</p>
+        </div>
       )}
+
+      {state.kind === 'login' ? (
+        <p className="auth-account-help">
+          <UsersRoundIcon aria-hidden="true" className="size-5 shrink-0" />
+          {authT('login.accountHelp')}
+        </p>
+      ) : null}
     </AuthLayout>
   );
 }

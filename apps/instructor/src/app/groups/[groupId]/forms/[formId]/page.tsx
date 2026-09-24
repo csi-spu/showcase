@@ -71,6 +71,8 @@ export default async function FormPage({ params }: FormPageProps) {
         { href: `/groups/${groupId}`, label: detail.group.name },
         { label: form.title },
       ]}
+      roundId={detail.group.roundId}
+      width="wide"
     >
       <PageHeader
         action={

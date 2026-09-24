@@ -94,6 +94,22 @@ describe('PostgresCollectionGroupsRepository integration', () => {
     await expect(repository.listGroups(round.id)).resolves.toEqual([group]);
   });
 
+  it('creates a round and its first group atomically', async () => {
+    const result = await repository.createRoundWithGroup({
+      createdByAccountId: ACTOR_ACCOUNT_ID,
+      groupName: 'กลุ่มพร้อมรอบ',
+      now: NOW,
+      roundName: 'รอบพร้อมกลุ่ม',
+    });
+
+    expect(result.round).toMatchObject({ name: 'รอบพร้อมกลุ่ม', status: 'active' });
+    expect(result.group).toMatchObject({
+      name: 'กลุ่มพร้อมรอบ',
+      roundId: result.round.id,
+    });
+    await expect(repository.findGroup(result.group.id)).resolves.toEqual(result.group);
+  });
+
   it('adds members by Student ID, reports unknown IDs, and is idempotent on retry', async () => {
     const round = await repository.createRound({
       createdByAccountId: ACTOR_ACCOUNT_ID,

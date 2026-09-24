@@ -17,9 +17,12 @@ import { getInstructorAuthPageState } from '@/lib/instructor-auth-page-state';
 import { readInstructorSessionToken } from '@/lib/instructor-auth-session';
 import { InstructorCollectionGroupsCoreClient } from '@/lib/instructor-collection-groups-core';
 import type { InstructorCollectionRound } from '@/lib/instructor-collection-groups-core';
+import { InstructorCollectionOverviewCoreClient } from '@/lib/instructor-collection-overview-core';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../app-shell';
-import { createRoundAction } from '../collection-groups.actions';
+import { createCollectionFormAction } from '../collection-forms.actions';
+import { createFormGroupAction, createRoundAction } from '../collection-groups.actions';
+import { CreateFormFlow } from './create-form-flow';
 import { CreateRoundPanel } from './create-round-form';
 
 function formatBangkokDate(value: string): string {
@@ -29,16 +32,32 @@ function formatBangkokDate(value: string): string {
   }).format(new Date(value));
 }
 
-export default async function RoundsPage() {
+export default async function RoundsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ createForm?: string | string[] }>;
+}) {
   const state = await getInstructorAuthPageState();
   if (state.kind !== 'active') redirect(state.kind === 'expired' ? '/?expired=1' : '/');
   const sessionToken = await readInstructorSessionToken();
   if (sessionToken === null) redirect('/?expired=1');
 
-  const t = await getTranslations('Groups');
-  const client = new InstructorCollectionGroupsCoreClient(getInstructorServerEnvironment());
-  const rounds = await client.listRounds(sessionToken);
+  const [t, query] = await Promise.all([getTranslations('Groups'), searchParams]);
+  const environment = getInstructorServerEnvironment();
+  const client = new InstructorCollectionGroupsCoreClient(environment);
+  const overviewClient = new InstructorCollectionOverviewCoreClient(environment);
+  const [rounds, filterOptions] = await Promise.all([
+    client.listRounds(sessionToken),
+    overviewClient.getFilterOptions(sessionToken),
+  ]);
   const activeCount = rounds.filter((round) => round.status === 'active').length;
+  const activeRounds = rounds
+    .filter((round) => round.status === 'active')
+    .map((round) => ({ id: round.id, name: round.name }));
+  const activeRoundIds = new Set(activeRounds.map((round) => round.id));
+  const activeGroups = filterOptions.groups.filter((group) => activeRoundIds.has(group.roundId));
+  const shouldOpenCreateForm =
+    query.createForm === '1' || (Array.isArray(query.createForm) && query.createForm.includes('1'));
 
   return (
     <AppShell>
@@ -59,7 +78,17 @@ export default async function RoundsPage() {
         />
       </div>
 
-      <CreateRoundPanel action={createRoundAction} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <CreateRoundPanel action={createRoundAction} />
+        <CreateFormFlow
+          createFormAction={createCollectionFormAction}
+          defaultOpen={shouldOpenCreateForm}
+          groups={activeGroups}
+          key={shouldOpenCreateForm ? 'create-form-open' : 'create-form-closed'}
+          rounds={activeRounds}
+          setupAction={createFormGroupAction}
+        />
+      </div>
 
       {rounds.length === 0 ? (
         <EmptyState

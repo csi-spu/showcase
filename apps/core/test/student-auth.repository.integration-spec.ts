@@ -30,7 +30,11 @@ describe('PostgresAuthRepository integration', () => {
       `;
       await transaction`
         insert into public.account_roles (account_id, role)
-        values (${ACCOUNT_ID}, 'student'), (${ACCOUNT_ID}, 'admin')
+        values (${ACCOUNT_ID}, 'student'), (${ACCOUNT_ID}, 'admin'), (${ACCOUNT_ID}, 'instructor')
+      `;
+      await transaction`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ผู้สอน', 'ทดสอบ')
       `;
       await transaction`
         insert into private.admin_auth_identities (
@@ -151,6 +155,37 @@ describe('PostgresAuthRepository integration', () => {
     await expect(repository.findSession(admin.sessionIdHash)).resolves.toBeNull();
   });
 
+  it('reads an Instructor session with its private Thai display name and tolerates a missing name row', async () => {
+    const instructor: NewAuthenticationSession = {
+      ...createSession('8', 'instructor_login', '2026-08-24T13:02:00.000Z'),
+      absoluteExpiresAt: new Date('2026-08-24T21:02:00.000Z'),
+      audience: 'instructor',
+    };
+    await repository.createSession(instructor);
+
+    await expect(repository.findInstructorSession(instructor.sessionIdHash)).resolves.toMatchObject(
+      {
+        displayName: 'ผู้สอน ทดสอบ',
+        sessionIdHash: instructor.sessionIdHash,
+      },
+    );
+
+    await database.sql`delete from private.person_names where person_id = ${PERSON_ID}`;
+    try {
+      await expect(
+        repository.findInstructorSession(instructor.sessionIdHash),
+      ).resolves.toMatchObject({
+        displayName: null,
+        sessionIdHash: instructor.sessionIdHash,
+      });
+    } finally {
+      await database.sql`
+        insert into private.person_names (person_id, first_name_th, last_name_th)
+        values (${PERSON_ID}, 'ผู้สอน', 'ทดสอบ')
+      `;
+    }
+  });
+
   function createSession(
     hashCharacter: string,
     eventType: NewAuthenticationSession['eventType'],
@@ -193,6 +228,7 @@ describe('PostgresAuthRepository integration', () => {
       `;
       await transaction`delete from public.account_roles where account_id = ${ACCOUNT_ID}`;
       await transaction`delete from public.accounts where id = ${ACCOUNT_ID}`;
+      await transaction`delete from private.person_names where person_id = ${PERSON_ID}`;
       await transaction`delete from public.students where person_id = ${PERSON_ID}`;
       await transaction`delete from public.people where id = ${PERSON_ID}`;
     });

@@ -5,10 +5,18 @@ import { toast } from '@showcase/ui/toast';
 import { PlusIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { DisclosurePanel } from '@/components/ui/disclosure-panel';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import type { CreateRoundAction, CreateRoundActionState } from '../collection-groups-state';
@@ -16,19 +24,34 @@ import { INITIAL_CREATE_ROUND_STATE } from '../collection-groups-state';
 
 export function CreateRoundPanel({ action }: { action: CreateRoundAction }) {
   const t = useTranslations('Groups');
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <DisclosurePanel
-      closeLabel={t('round.createClose')}
-      openLabel={t('round.create')}
-      title={t('round.createTitle')}
-    >
-      <CreateRoundForm action={action} />
-    </DisclosurePanel>
+    <Dialog onOpenChange={setIsOpen} open={isOpen}>
+      <DialogTrigger
+        render={
+          <Button type="button" variant="outline">
+            <PlusIcon aria-hidden="true" data-icon="inline-start" />
+            {t('round.create')}
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogTitle>{t('round.createTitle')}</DialogTitle>
+        <DialogDescription>{t('round.createDescription')}</DialogDescription>
+        <CreateRoundForm action={action} onCreated={() => setIsOpen(false)} />
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function CreateRoundForm({ action }: { action: CreateRoundAction }) {
+function CreateRoundForm({
+  action,
+  onCreated,
+}: {
+  action: CreateRoundAction;
+  onCreated: () => void;
+}) {
   const t = useTranslations('Groups');
   const errorT = useTranslations('Groups.errors');
   const router = useRouter();
@@ -39,6 +62,7 @@ function CreateRoundForm({ action }: { action: CreateRoundAction }) {
         toast.error(errorT(nextState.error));
       } else {
         toast.success(t('round.createSuccess'));
+        onCreated();
         router.refresh();
       }
       return nextState;
@@ -47,13 +71,21 @@ function CreateRoundForm({ action }: { action: CreateRoundAction }) {
   );
 
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3">
-      <Field className="min-w-64 flex-1">
+    <form action={formAction} className="flex flex-col gap-4">
+      <Field>
         <FieldLabel htmlFor="round-name">{t('round.name')}</FieldLabel>
         <Input id="round-name" maxLength={200} name="name" required />
-        <FieldDescription>{t('round.createDescription')}</FieldDescription>
       </Field>
-      <SubmitButton label={t('round.create')} pendingLabel={t('saving')} />
+      <DialogFooter>
+        <DialogClose
+          render={
+            <Button type="button" variant="outline">
+              {t('round.createClose')}
+            </Button>
+          }
+        />
+        <SubmitButton label={t('round.create')} pendingLabel={t('saving')} />
+      </DialogFooter>
     </form>
   );
 }

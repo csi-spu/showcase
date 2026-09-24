@@ -3,7 +3,14 @@
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
 import { toast } from '@showcase/ui/toast';
-import { EyeIcon, EyeOffIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  LockKeyholeIcon,
+  LogInIcon,
+  UserRoundIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState, type ChangeEventHandler } from 'react';
 import { useFormStatus } from 'react-dom';
@@ -30,20 +37,25 @@ export function LoginForm({ action }: { action: AuthAction }) {
   const [state, formAction] = useAuthActionWithErrorToast(action);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-4 [&_[data-slot=field-group]]:gap-4">
       <FieldSet aria-label="ข้อมูลเข้าสู่ระบบ">
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="student-id">{t('login.studentId')}</FieldLabel>
-            <Input
-              autoComplete="username"
-              id="student-id"
-              inputMode="numeric"
-              maxLength={8}
-              name="studentId"
-              pattern="[0-9]{8}"
-              required
-            />
+            <div className="auth-input-wrap">
+              <UserRoundIcon aria-hidden="true" className="auth-input-icon" />
+              <Input
+                autoComplete="username"
+                className="auth-input"
+                id="student-id"
+                inputMode="numeric"
+                maxLength={8}
+                name="studentId"
+                pattern="[0-9]{8}"
+                placeholder={t('login.studentIdPlaceholder')}
+                required
+              />
+            </div>
           </Field>
           <Field>
             <FieldLabel htmlFor="password">{t('login.password')}</FieldLabel>
@@ -52,12 +64,13 @@ export function LoginForm({ action }: { action: AuthAction }) {
               id="password"
               label={t('login.password')}
               name="password"
+              placeholder={t('login.passwordPlaceholder')}
             />
           </Field>
         </FieldGroup>
       </FieldSet>
       <ActionError error={state.error} />
-      <SubmitButton label={t('login.submit')} pendingLabel={t('submitting')} />
+      <SubmitButton icon={LogInIcon} label={t('login.submit')} pendingLabel={t('submitting')} />
     </form>
   );
 }
@@ -210,6 +223,7 @@ function PasswordInput({
   minLength,
   name,
   onChange,
+  placeholder,
 }: {
   ariaDescribedBy?: string | undefined;
   autoComplete: 'current-password' | 'new-password';
@@ -219,23 +233,26 @@ function PasswordInput({
   minLength?: number | undefined;
   name: string;
   onChange?: ChangeEventHandler<HTMLInputElement> | undefined;
+  placeholder?: string | undefined;
 }) {
   const t = useTranslations('Auth.passwordVisibility');
   const [isVisible, setIsVisible] = useState(false);
   const visibilityLabel = t(isVisible ? 'hide' : 'show', { field: label });
 
   return (
-    <div className="relative">
+    <div className="auth-input-wrap">
+      <LockKeyholeIcon aria-hidden="true" className="auth-input-icon" />
       <Input
         aria-describedby={ariaDescribedBy}
         aria-invalid={isInvalid || undefined}
         autoComplete={autoComplete}
-        className="pr-14"
+        className="auth-input auth-password-input pr-14"
         id={id}
         maxLength={128}
         minLength={minLength}
         name={name}
         onChange={onChange}
+        placeholder={placeholder}
         required
         spellCheck={false}
         type={isVisible ? 'text' : 'password'}
@@ -244,7 +261,7 @@ function PasswordInput({
         aria-controls={id}
         aria-label={visibilityLabel}
         aria-pressed={isVisible}
-        className="absolute inset-y-0 right-0 z-10 h-full w-12 rounded-l-none text-muted-foreground hover:text-foreground"
+        className="absolute inset-y-0 right-0 z-10 h-full w-12 rounded-l-none text-muted-foreground hover:bg-primary-soft hover:text-primary"
         onClick={() => setIsVisible((current) => !current)}
         size="icon-sm"
         title={visibilityLabel}
@@ -267,11 +284,13 @@ function ActionError({ error }: { error: AuthErrorMessage | null }) {
 }
 
 function SubmitButton({
+  icon: Icon,
   isDisabled = false,
   label,
   pendingLabel,
   variant = 'default',
 }: {
+  icon?: LucideIcon;
   isDisabled?: boolean;
   label: string;
   pendingLabel: string;
@@ -280,13 +299,17 @@ function SubmitButton({
   const { pending } = useFormStatus();
   return (
     <Button
-      className="w-full"
+      className="auth-submit-button w-full"
       disabled={pending || isDisabled}
       size="lg"
       type="submit"
       variant={variant}
     >
-      {pending ? <Spinner aria-label={pendingLabel} /> : null}
+      {pending ? (
+        <Spinner aria-label={pendingLabel} />
+      ) : Icon ? (
+        <Icon aria-hidden="true" data-icon="inline-start" />
+      ) : null}
       {pending ? pendingLabel : label}
     </Button>
   );

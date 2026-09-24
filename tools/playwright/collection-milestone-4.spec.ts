@@ -73,7 +73,7 @@ test.describe('Collection Milestone 4', () => {
        */
       await test.step('an export is requested against the current state', async () => {
         await instructorPage.goto(`/groups/${collectionScenario.groupId}`);
-        await instructorPage.getByRole('link', { name: 'ส่งออกข้อมูล' }).click();
+        await instructorPage.getByRole('main').getByRole('link', { name: 'ส่งออกข้อมูล' }).click();
         await expect(instructorPage.getByRole('heading', { name: 'ส่งออกข้อมูล' })).toBeVisible();
 
         // Nothing is preselected, so an export always names the forms it froze.
@@ -176,7 +176,7 @@ async function loginStudentCollection(
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.studentPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'เอกสารสหกิจศึกษาของคุณ' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'แบบฟอร์มของคุณ' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});
@@ -189,7 +189,7 @@ async function loginInstructor(page: Page, scenario: CollectionLifecycleScenario
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.instructorLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.instructorPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'รอบเก็บเอกสาร' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'ภาพรวมเอกสารนักศึกษา' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});

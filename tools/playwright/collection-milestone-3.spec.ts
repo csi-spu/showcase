@@ -31,10 +31,10 @@ test.describe('Collection Milestone 3', () => {
     const firstAnswer = 'บริษัทฉบับที่หนึ่ง';
     const correctedAnswer = 'บริษัทฉบับที่สอง หลังแก้ไขตามที่ผู้สอนขอ';
     const correctionReason = 'กรุณาระบุชื่อบริษัทให้ครบถ้วนพร้อมรูปแบบบริษัทจำกัด';
-    const secondCorrectionReason = 'กรุณาแนบเลขทะเบียนนิติบุคคลเพิ่มเติมก่อนปิดรอบ';
+    const secondCorrectionReason = 'กรุณาแนบเลขทะเบียนนิติบุคคลเพิ่มเติมก่อนปิดชุดงาน';
     const formCloseReason = 'ครบกำหนดรับเอกสารรอบแรกแล้ว จึงปิดรับการส่งครั้งแรก';
     const formReopenReason = 'เปิดรับเพิ่มให้นักศึกษาที่ติดต่อเข้ามาภายหลัง';
-    const roundCloseReason = 'สิ้นสุดภาคการศึกษา ปิดรอบเพื่อสรุปผล';
+    const roundCloseReason = 'สิ้นสุดภาคการศึกษา ปิดชุดงานเพื่อสรุปผล';
 
     try {
       await loginStudentCollection(studentPage, collectionScenario);
@@ -145,17 +145,19 @@ test.describe('Collection Milestone 3', () => {
         );
 
         await instructorPage.goto(`/rounds/${collectionScenario.roundId}`);
-        await instructorPage.getByRole('button', { name: 'ปิดรอบ', exact: true }).click();
+        await instructorPage.getByRole('button', { name: 'ปิดชุดงาน', exact: true }).click();
         const dialog = instructorPage.getByRole('alertdialog');
 
         // The outstanding work is shown before the decision, not after it.
-        await expect(dialog.getByText('งานที่ยังค้างอยู่ในรอบนี้')).toBeVisible();
+        await expect(dialog.getByText('งานที่ยังค้างอยู่ในชุดงานนี้')).toBeVisible();
         await expect(dialog.getByText(/รอแก้ไข \d+ รายการ/u)).toBeVisible();
 
         await dialog.getByLabel('เหตุผล').fill(roundCloseReason);
-        await dialog.getByRole('button', { name: 'ปิดรอบ', exact: true }).click();
-        await expect(instructorPage.getByText('ปิดรอบแล้ว', { exact: true })).toBeVisible();
-        await expect(instructorPage.getByRole('button', { name: 'เปิดรอบอีกครั้ง' })).toBeVisible();
+        await dialog.getByRole('button', { name: 'ปิดชุดงาน', exact: true }).click();
+        await expect(instructorPage.getByText('ปิดชุดงานแล้ว', { exact: true })).toBeVisible();
+        await expect(
+          instructorPage.getByRole('button', { name: 'เปิดชุดงานอีกครั้ง' }),
+        ).toBeVisible();
 
         /*
          * A closed round stops writes for the whole round, and the Student sees
@@ -285,7 +287,7 @@ async function loginStudentCollection(
   await page.getByLabel('รหัสนักศึกษา').fill(scenario.studentId);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.studentPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'เอกสารสหกิจศึกษาของคุณ' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'แบบฟอร์มของคุณ' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});
@@ -298,7 +300,7 @@ async function loginInstructor(page: Page, scenario: CollectionLifecycleScenario
   await page.getByLabel('ชื่อผู้ใช้').fill(scenario.instructorLogin);
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill(scenario.instructorPassword);
   await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click();
-  await expect(page.getByRole('heading', { name: 'รอบเก็บเอกสาร' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'ภาพรวมเอกสารนักศึกษา' })).toBeVisible({
     timeout: 60_000,
   });
   await page.context().setExtraHTTPHeaders({});

@@ -2,9 +2,17 @@
 
 import { Button } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
-import { KeyRoundIcon, LogInIcon, type LucideIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  KeyRoundIcon,
+  LockKeyholeIcon,
+  LogInIcon,
+  UserRoundIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
@@ -25,34 +33,59 @@ function useAuthActionWithErrorToast(action: AuthAction) {
 export function LoginForm({ action }: { action: AuthAction }) {
   const t = useTranslations('Auth');
   const [state, formAction] = useAuthActionWithErrorToast(action);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-4 [&_[data-slot=field-group]]:gap-4">
       <FieldSet aria-label={t('login.groupLabel')}>
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="instructor-login">{t('login.instructorLogin')}</FieldLabel>
-            <Input
-              autoCapitalize="none"
-              autoComplete="username"
-              id="instructor-login"
-              maxLength={64}
-              minLength={3}
-              name="instructorLogin"
-              pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"
-              required
-              spellCheck={false}
-            />
+            <div className="auth-input-wrap">
+              <UserRoundIcon aria-hidden="true" className="auth-input-icon" />
+              <Input
+                autoCapitalize="none"
+                autoComplete="username"
+                className="auth-input"
+                id="instructor-login"
+                maxLength={64}
+                minLength={3}
+                name="instructorLogin"
+                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"
+                placeholder={t('login.instructorLoginPlaceholder')}
+                required
+                spellCheck={false}
+              />
+            </div>
           </Field>
           <Field>
             <FieldLabel htmlFor="password">{t('login.password')}</FieldLabel>
-            <Input
-              autoComplete="current-password"
-              id="password"
-              maxLength={128}
-              name="password"
-              required
-              type="password"
-            />
+            <div className="auth-input-wrap">
+              <LockKeyholeIcon aria-hidden="true" className="auth-input-icon" />
+              <Input
+                autoComplete="current-password"
+                className="auth-input auth-password-input"
+                id="password"
+                maxLength={128}
+                name="password"
+                placeholder={t('login.passwordPlaceholder')}
+                required
+                type={isPasswordVisible ? 'text' : 'password'}
+              />
+              <button
+                aria-label={isPasswordVisible ? t('login.hidePassword') : t('login.showPassword')}
+                aria-pressed={isPasswordVisible}
+                className="auth-password-toggle"
+                onClick={() => setIsPasswordVisible((isVisible) => !isVisible)}
+                type="button"
+              >
+                {isPasswordVisible ? (
+                  <EyeOffIcon aria-hidden="true" className="size-5" />
+                ) : (
+                  <EyeIcon aria-hidden="true" className="size-5" />
+                )}
+              </button>
+            </div>
           </Field>
         </FieldGroup>
       </FieldSet>
@@ -156,7 +189,13 @@ function SubmitButton({
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button className="w-full" disabled={pending} size="lg" type="submit" variant={variant}>
+    <Button
+      className="auth-submit-button w-full"
+      disabled={pending}
+      size="lg"
+      type="submit"
+      variant={variant}
+    >
       {pending ? (
         <Spinner aria-label={pendingLabel} data-icon="inline-start" />
       ) : Icon ? (

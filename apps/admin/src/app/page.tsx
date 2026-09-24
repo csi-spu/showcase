@@ -1,19 +1,9 @@
 import { Button } from '@showcase/ui/button';
-import { ShieldCheckIcon } from 'lucide-react';
-import Image from 'next/image';
+import { ShieldCheckIcon, UsersRoundIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { GridPattern } from '@/components/ui/grid-pattern';
 import { getAdminAuthPageState } from '@/lib/admin-auth-page-state';
-import { AdminBrand } from './admin-brand';
+import { AdminAuthLayout } from './admin-auth-layout';
 import { AdminDashboard } from './admin-dashboard';
 import { AdminWorkspaceShell } from './admin-workspace-shell';
 import { AuthSuccessToast } from './auth-success-toast';
@@ -62,34 +52,17 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   return (
-    <main className="admin-canvas mx-auto grid min-h-svh w-full max-w-[1600px] overflow-hidden bg-background lg:grid-cols-[minmax(28rem,1.08fr)_minmax(28rem,0.92fr)]">
-      <aside className="relative isolate flex min-h-64 flex-col justify-between overflow-hidden border-b border-primary/15 bg-primary-soft p-6 lg:min-h-svh lg:border-r lg:border-b-0 lg:p-10 xl:p-14">
-        <GridPattern className="[mask-image:radial-gradient(60rem_40rem_at_10%_0%,black,transparent)]" />
-        <div className="absolute -top-24 right-[-10%] size-[30rem] rounded-full bg-white/55 blur-3xl" />
-        <div className="absolute bottom-[-12rem] left-[-8rem] size-[32rem] rounded-full border-[5rem] border-primary/5" />
-        <AdminBrand className="relative z-10" />
-        <div className="relative z-10 hidden max-w-xl gap-5 lg:grid">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-white/60 px-3 py-1 text-sm font-semibold tracking-[0.16em] text-primary backdrop-blur-sm">
-            <ShieldCheckIcon aria-hidden="true" className="size-4" />
-            {authT('kicker')}
-          </span>
-          <h2 className="text-[clamp(2.25rem,5vw,4.5rem)] leading-[1.05] font-semibold tracking-[-0.045em] text-balance">
-            {homeT('title')}
-          </h2>
-          <p className="max-w-[52ch] text-lg text-muted-foreground">{homeT('description')}</p>
-        </div>
-        <Image
-          alt="คณะเทคโนโลยีสารสนเทศ"
-          className="relative z-10 h-auto w-28"
-          height={381}
-          priority
-          sizes="112px"
-          src="/brand/sit-school-of-information-technology-color.webp"
-          width={1280}
-        />
-      </aside>
+    <AdminAuthLayout
+      eyebrow={authT('kicker')}
+      featureAccounts={homeT('features.accounts')}
+      featureReview={homeT('features.review')}
+      featureTracking={homeT('features.tracking')}
+      headline={homeT('authHeadline')}
+      headlineAccent={homeT('authHeadlineAccent')}
+      tagline={homeT('description')}
+    >
       <AuthPanel state={state} t={authT} />
-    </main>
+    </AdminAuthLayout>
   );
 }
 
@@ -110,48 +83,55 @@ function AuthPanel({ state, t }: { state: AuthPageState; t: AuthTranslations }) 
         ? t('change.description')
         : t('login.description');
   return (
-    <section className="flex items-center justify-center p-4 sm:p-8 lg:p-10 xl:p-14">
-      <Card className="w-full max-w-[38rem] border-white/80 bg-card/95 shadow-[0_1.5rem_4rem_-2rem_rgba(50,20,45,0.28)] backdrop-blur-sm">
-        <CardHeader className="gap-3">
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">{t('kicker')}</p>
-          <CardTitle>
-            <h1 className="text-3xl leading-[1.25] font-semibold tracking-tight sm:text-4xl">
-              {heading}
-            </h1>
-          </CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {state.kind === 'login' ? (
-            <div className="flex flex-col gap-5">
-              {state.isServiceUnavailable ? (
-                <Alert variant="destructive">
-                  <AlertTitle>{t('errors.unavailable')}</AlertTitle>
-                  <AlertDescription>{t('errors.network')}</AlertDescription>
-                </Alert>
-              ) : null}
-              <LoginForm action={loginAction} />
-            </div>
+    <>
+      <div className="auth-card-heading">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-3xl">
+            {heading}
+          </h1>
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {description}
+          </p>
+        </div>
+      </div>
+
+      {state.kind === 'login' ? (
+        <div className="flex flex-col gap-5">
+          {state.isServiceUnavailable ? (
+            <Alert variant="destructive">
+              <AlertTitle>{t('errors.unavailable')}</AlertTitle>
+              <AlertDescription>{t('errors.network')}</AlertDescription>
+            </Alert>
           ) : null}
-          {state.kind === 'password_change_required' ? (
-            <ChangePasswordForm action={changePasswordAction} />
-          ) : null}
-          {state.kind === 'expired' ? (
-            <form action={clearExpiredSessionAction}>
-              <Button className="w-full" size="lg" type="submit">
-                {t('expired.action')}
-              </Button>
-            </form>
-          ) : null}
-        </CardContent>
-        <CardFooter>
-          {state.kind === 'password_change_required' ? (
-            <LogoutForm action={logoutAction} />
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('login.privacy')}</p>
-          )}
-        </CardFooter>
-      </Card>
-    </section>
+          <LoginForm action={loginAction} />
+        </div>
+      ) : null}
+      {state.kind === 'password_change_required' ? (
+        <ChangePasswordForm action={changePasswordAction} />
+      ) : null}
+      {state.kind === 'expired' ? (
+        <form action={clearExpiredSessionAction}>
+          <Button className="auth-submit-button w-full" size="lg" type="submit">
+            {t('expired.action')}
+          </Button>
+        </form>
+      ) : null}
+
+      {state.kind === 'password_change_required' ? (
+        <LogoutForm action={logoutAction} />
+      ) : (
+        <div className="auth-security-note">
+          <ShieldCheckIcon aria-hidden="true" className="size-5 shrink-0" />
+          <p>{t('login.privacy')}</p>
+        </div>
+      )}
+
+      {state.kind === 'login' ? (
+        <p className="auth-account-help">
+          <UsersRoundIcon aria-hidden="true" className="size-5 shrink-0" />
+          {t('login.accountHelp')}
+        </p>
+      ) : null}
+    </>
   );
 }

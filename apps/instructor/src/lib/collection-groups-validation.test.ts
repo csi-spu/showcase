@@ -3,6 +3,7 @@ import {
   validateAddByEntryYear,
   validateAddByStudentIds,
   validateCreateGroup,
+  validateCreateFormGroup,
   validateCreateRound,
   validateWithdraw,
 } from './collection-groups-validation';
@@ -21,6 +22,37 @@ describe('validateCreateRound / validateCreateGroup', () => {
     expect(validateCreateRound(formData({ name: '   ' }))).toBeNull();
     expect(validateCreateGroup(formData({ name: 'กลุ่ม' }))).toEqual({ name: 'กลุ่ม' });
     expect(validateCreateGroup(formData({ name: '' }))).toBeNull();
+  });
+});
+
+describe('validateCreateFormGroup', () => {
+  it('accepts an existing Round and trims the Group name', () => {
+    expect(
+      validateCreateFormGroup(
+        formData({
+          groupName: '  กลุ่ม 1  ',
+          mode: 'existing-round',
+          roundId: '20000000-0000-4000-8000-000000000001',
+        }),
+      ),
+    ).toEqual({
+      groupName: 'กลุ่ม 1',
+      mode: 'existing-round',
+      roundId: '20000000-0000-4000-8000-000000000001',
+    });
+  });
+
+  it('requires both names when creating the first Round and Group', () => {
+    expect(
+      validateCreateFormGroup(
+        formData({ groupName: '  กลุ่ม 1 ', mode: 'new-round', roundName: ' รอบ 1 ' }),
+      ),
+    ).toEqual({ groupName: 'กลุ่ม 1', mode: 'new-round', roundName: 'รอบ 1' });
+    expect(
+      validateCreateFormGroup(
+        formData({ groupName: 'กลุ่ม 1', mode: 'new-round', roundName: '   ' }),
+      ),
+    ).toBeNull();
   });
 });
 

@@ -168,6 +168,17 @@ body {
     @apply bg-background text-foreground;
     line-height: 1.7;
   }
+  /*
+   * 1.7 is reading leading, chosen for Thai body copy and kept there. Inherited
+   * by a heading it removes the size difference that makes a heading read as
+   * one: a two-line title set at that leading occupies nearly the space of the
+   * paragraph under it, which is what flattens a page into an even column of
+   * text. Headings are set tighter so type size carries hierarchy again.
+   */
+  :is(h1, h2, h3, h4, h5, h6) {
+    line-height: 1.3;
+    text-wrap: balance;
+  }
   html {
     @apply font-sans;
   }
