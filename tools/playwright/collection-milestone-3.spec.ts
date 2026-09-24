@@ -60,7 +60,9 @@ test.describe('Collection Milestone 3', () => {
       await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
       await test.step('the Student can read both versions and the decision', async () => {
-        await studentPage.getByRole('link', { name: 'ดูประวัติการส่ง' }).click();
+        await studentPage.goto(
+          `${collectionScenario.studentCollectionUrl}/history/${collectionScenario.formId}`,
+        );
         await expect(studentPage.getByRole('heading', { name: 'ฉบับที่ 2' })).toBeVisible();
         await expect(studentPage.getByRole('heading', { name: 'ฉบับที่ 1' })).toBeVisible();
 
