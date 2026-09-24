@@ -4,6 +4,7 @@ import {
   AdminLoginAccount,
   AuthenticationSessionRecord,
   AuthRepository,
+  InstructorAuthenticationSessionRecord,
   LoginAccount,
   NewAuthenticationSession,
   ProviderSession,
@@ -54,6 +55,8 @@ interface AdminSessionRow extends AdminAccountRow {
   provider_token_expires_at: Date;
   revoked_at: Date | null;
   session_id_hash: string;
+  first_name_th: string | null;
+  last_name_th: string | null;
 }
 
 interface RateLimitRow {
@@ -199,14 +202,14 @@ export class PostgresAuthRepository implements AuthRepository {
 
   async findInstructorSession(
     sessionIdHash: string,
-  ): Promise<AdminAuthenticationSessionRecord | null> {
+  ): Promise<InstructorAuthenticationSessionRecord | null> {
     return this.findStaffSession(sessionIdHash, 'instructor');
   }
 
   private async findStaffSession(
     sessionIdHash: string,
     audience: 'admin' | 'instructor',
-  ): Promise<AdminAuthenticationSessionRecord | null> {
+  ): Promise<InstructorAuthenticationSessionRecord | null> {
     const rows = await this.database.sql<AdminSessionRow[]>`
       select
         session.session_id_hash,
@@ -223,10 +226,13 @@ export class PostgresAuthRepository implements AuthRepository {
         (instructor_role.account_id is not null) as has_instructor_role,
         account.provider_user_id,
         identity.admin_login_hash,
-        identity.synthetic_identity
+        identity.synthetic_identity,
+        person_name.first_name_th,
+        person_name.last_name_th
       from private.authentication_sessions as session
       join public.accounts as account on account.id = session.account_id
       join private.admin_auth_identities as identity on identity.account_id = account.id
+      left join private.person_names as person_name on person_name.person_id = account.person_id
       left join public.account_roles as admin_role
         on admin_role.account_id = account.id and admin_role.role = 'admin'
       left join public.account_roles as instructor_role
@@ -242,6 +248,10 @@ export class PostgresAuthRepository implements AuthRepository {
     return {
       ...this.mapAdminAccount(row),
       absoluteExpiresAt: row.absolute_expires_at,
+      displayName:
+        row.first_name_th === null || row.last_name_th === null
+          ? null
+          : `${row.first_name_th} ${row.last_name_th}`,
       lastActivityAt: row.last_activity_at,
       providerAccessToken: row.provider_access_token,
       providerRefreshToken: row.provider_refresh_token,

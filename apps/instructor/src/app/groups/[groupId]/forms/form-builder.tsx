@@ -1,6 +1,14 @@
 'use client';
 
-import { EyeIcon, LockIcon, PencilIcon, PlusIcon, SaveIcon, UnlockIcon } from 'lucide-react';
+import {
+  FileTextIcon,
+  ListChecksIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  SaveIcon,
+  UnlockIcon,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useActionState, useId, useMemo, useState } from 'react';
@@ -86,13 +94,16 @@ export function FormBuilder({
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(toDeadlineInput(form.deadlineAt));
   const [fields, setFields] = useState<DraftField[]>(() => form.fields.map(toDraftField));
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(
+    isLocked ? null : (form.fields[0]?.id ?? null),
+  );
   const [clientError, setClientError] = useState<{
     fieldId: string;
     message: CollectionFormsErrorMessage;
   } | null>(null);
   /* Tracks unsaved structure so the Instructor is never unsure what is stored. */
   const [isDirty, setIsDirty] = useState(false);
+  const [isMetadataDirty, setIsMetadataDirty] = useState(false);
 
   const serializedFields = useMemo(() => JSON.stringify(fields.map(toFieldPayload)), [fields]);
 
@@ -102,7 +113,17 @@ export function FormBuilder({
       if (invalid !== null) {
         /* Stop before the round trip and point at the field that needs attention. */
         setClientError(invalid);
-        document.getElementById(`field-${invalid.fieldId}`)?.scrollIntoView({ block: 'center' });
+        setActiveFieldId(invalid.fieldId);
+        /*
+         * Focus moves to the offending field, it is not only scrolled to. A
+         * toast plus a scroll leaves a keyboard user where they were and the
+         * announcement unanchored; moving focus puts them at the problem and
+         * lets the next Tab continue from it. The card becomes focusable in the
+         * same commit that sets the error, so this is queued until after paint.
+         */
+        requestAnimationFrame(() => {
+          document.getElementById(`field-${invalid.fieldId}`)?.focus();
+        });
         toast.error(errorT(invalid.message));
         return { ...previousState, error: invalid.message, fieldId: invalid.fieldId };
       }
@@ -113,6 +134,8 @@ export function FormBuilder({
         return nextState;
       }
       setIsDirty(false);
+      setIsMetadataDirty(false);
+      setActiveFieldId(null);
       toast.success(t('builder.saved'));
       router.refresh();
       return nextState;
@@ -127,6 +150,7 @@ export function FormBuilder({
         toast.error(errorT(nextState.error));
         return nextState;
       }
+      setIsMetadataDirty(false);
       toast.success(t('builder.metadataSaved'));
       router.refresh();
       return nextState;
@@ -143,14 +167,17 @@ export function FormBuilder({
   }
 
   function addField() {
+    const field = createDraftField(crypto.randomUUID());
     setIsDirty(true);
-    setFields((current) => [...current, createDraftField(crypto.randomUUID())]);
+    setFields((current) => [...current, field]);
+    setActiveFieldId(field.id);
   }
 
   function removeField(id: string) {
     setIsDirty(true);
     setClientError((current) => (current?.fieldId === id ? null : current));
     setFields((current) => current.filter((field) => field.id !== id));
+    setActiveFieldId((current) => (current === id ? null : current));
   }
 
   function moveField(id: string, direction: -1 | 1) {
@@ -168,6 +195,7 @@ export function FormBuilder({
   }
 
   const structureError = clientError?.message ?? structureState.error;
+  const hasUnsavedChanges = isDirty || isMetadataDirty;
 
   return (
     <div className="flex flex-col gap-6">
@@ -178,22 +206,22 @@ export function FormBuilder({
         >
           {t(`status.${form.status}`)}
         </StatusBadge>
-        <div className="flex items-center gap-2">
-          <Button
-            aria-pressed={isPreviewing}
-            onClick={() => setIsPreviewing((current) => !current)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <EyeIcon aria-hidden="true" data-icon="inline-start" />
-            {isPreviewing ? t('builder.backToEdit') : t('builder.preview')}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveAsTemplateDialog action={saveTemplateAction} defaultName={form.title} />
+          {form.status === 'draft' ? (
+            <OpenFormDialog
+              action={openAction}
+              description={description}
+              fields={fields}
+              fieldCount={fields.length}
+              hasUnsavedChanges={hasUnsavedChanges}
+              title={title}
+            />
+          ) : null}
           {form.status === 'open' ? <CloseFormDialog action={closeAction} /> : null}
           {form.status === 'closed' ? (
             <ReopenFormDialog action={reopenAction} newlyAssignedCount={reopenNewlyAssignedCount} />
           ) : null}
-          <SaveAsTemplateDialog action={saveTemplateAction} defaultName={form.title} />
         </div>
       </div>
 
@@ -205,89 +233,130 @@ export function FormBuilder({
         </Alert>
       ) : null}
 
-      {/*
-        Metadata stays editable after opening, so it is its own form and its own
-        save. Structure below is Draft-only.
-      */}
-      <form action={metadataFormAction} className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold">{t('builder.detailsHeading')}</h2>
-        <Field>
-          <FieldLabel htmlFor={`${baseId}-title`}>{t('builder.title')}</FieldLabel>
-          <Input
-            id={`${baseId}-title`}
-            name="title"
-            onChange={(event) => setTitle(event.target.value)}
-            required
-            value={title}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor={`${baseId}-description`}>{t('builder.description')}</FieldLabel>
-          <Textarea
-            id={`${baseId}-description`}
-            name="description"
-            onChange={(event) => setDescription(event.target.value)}
-            value={description}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor={`${baseId}-deadline`}>{t('builder.deadline')}</FieldLabel>
-          <Input
-            aria-describedby={`${baseId}-deadline-hint`}
-            id={`${baseId}-deadline`}
-            name="deadlineAt"
-            onChange={(event) => setDeadline(event.target.value)}
-            type="datetime-local"
-            value={deadline}
-          />
-          <FieldDescription id={`${baseId}-deadline-hint`}>
-            {t('builder.deadlineHint')}
-          </FieldDescription>
-        </Field>
-        {metadataState.error !== null ? (
-          <Alert variant="destructive">
-            <AlertDescription>{errorT(metadataState.error)}</AlertDescription>
-          </Alert>
-        ) : null}
-        <div>
-          <SubmitButton label={t('builder.saveDetails')} />
+      {/* Metadata stays editable after opening, so it remains its own save boundary. */}
+      <form
+        action={metadataFormAction}
+        className="overflow-hidden rounded-surface border border-border/80 bg-card"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
+          <span className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+              <FileTextIcon aria-hidden="true" className="size-5" />
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="font-semibold text-foreground">{t('builder.detailsHeading')}</h2>
+              <span className="text-sm text-muted-foreground">
+                {t('builder.detailsDescription')}
+              </span>
+            </span>
+          </span>
+          {isMetadataDirty ? (
+            <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge>
+          ) : null}
+        </div>
+        <div className="grid gap-5 p-4 sm:p-5">
+          <Field>
+            <FieldLabel htmlFor={`${baseId}-title`}>{t('builder.title')}</FieldLabel>
+            <Input
+              id={`${baseId}-title`}
+              name="title"
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setIsMetadataDirty(true);
+              }}
+              required
+              value={title}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${baseId}-description`}>{t('builder.description')}</FieldLabel>
+            <Textarea
+              className="min-h-24 resize-y"
+              id={`${baseId}-description`}
+              name="description"
+              onChange={(event) => {
+                setDescription(event.target.value);
+                setIsMetadataDirty(true);
+              }}
+              value={description}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${baseId}-deadline`}>{t('builder.deadline')}</FieldLabel>
+            <Input
+              aria-describedby={`${baseId}-deadline-hint`}
+              id={`${baseId}-deadline`}
+              name="deadlineAt"
+              onChange={(event) => {
+                setDeadline(event.target.value);
+                setIsMetadataDirty(true);
+              }}
+              type="datetime-local"
+              value={deadline}
+            />
+            <FieldDescription id={`${baseId}-deadline-hint`}>
+              {t('builder.deadlineHint')}
+            </FieldDescription>
+          </Field>
+          {metadataState.error !== null ? (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(metadataState.error)}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex justify-end border-t border-border/70 pt-4">
+            <SubmitButton label={t('builder.saveDetails')} />
+          </div>
         </div>
       </form>
 
-      <section aria-labelledby={`${baseId}-structure`} className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold" id={`${baseId}-structure`}>
-            {t('builder.fieldsHeading')}
-          </h2>
+      <section
+        aria-labelledby={`${baseId}-structure`}
+        className="overflow-hidden rounded-surface border border-border/80 bg-card"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+              <ListChecksIcon aria-hidden="true" className="size-5" />
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="font-semibold text-foreground" id={`${baseId}-structure`}>
+                {t('builder.fieldsHeading')}
+              </h2>
+              <span className="text-sm text-muted-foreground">
+                {t('builder.fieldsDescription')}
+              </span>
+            </span>
+          </div>
           {isDirty && !isLocked ? (
             <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge>
           ) : null}
         </div>
 
-        {isPreviewing ? (
-          <FormPreview description={description} fields={fields} title={title} />
-        ) : isLocked ? (
-          <FormPreview description={description} fields={fields} title={title} />
+        {isLocked ? (
+          <div className="p-4 sm:p-5">
+            <FormPreview description={description} fields={fields} title={title} />
+          </div>
         ) : (
-          <form action={structureFormAction} className="flex flex-col gap-4">
+          <form action={structureFormAction} className="flex flex-col gap-4 p-4 sm:p-5">
             <input name="title" type="hidden" value={title} />
             <input name="description" type="hidden" value={description} />
             <input name="deadlineAt" type="hidden" value={deadline} />
             <input name="fields" type="hidden" value={serializedFields} />
 
-            <ul className="flex list-none flex-col gap-4 p-0">
+            <ul className="flex list-none flex-col gap-3 p-0">
               {fields.map((field, index) => (
                 <FieldEditor
                   errorMessage={clientError?.fieldId === field.id ? clientError.message : null}
                   field={field}
                   index={index}
+                  isExpanded={activeFieldId === field.id}
                   isFirst={index === 0}
                   isLast={index === fields.length - 1}
                   key={field.id}
                   onChange={updateField}
                   onMove={moveField}
                   onRemove={removeField}
-                  totalCount={fields.length}
+                  onToggle={(id) => setActiveFieldId((current) => (current === id ? null : id))}
                 />
               ))}
             </ul>
@@ -298,12 +367,15 @@ export function FormBuilder({
               </p>
             ) : null}
 
-            <div>
-              <Button onClick={addField} type="button" variant="outline">
-                <PlusIcon aria-hidden="true" data-icon="inline-start" />
-                {t('builder.addField')}
-              </Button>
-            </div>
+            <Button
+              className="w-full border-dashed"
+              onClick={addField}
+              type="button"
+              variant="outline"
+            >
+              <PlusIcon aria-hidden="true" data-icon="inline-start" />
+              {t('builder.addField')}
+            </Button>
 
             {structureError !== null ? (
               <Alert variant="destructive">
@@ -311,9 +383,8 @@ export function FormBuilder({
               </Alert>
             ) : null}
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex justify-end border-t border-border/70 pt-4">
               <SubmitButton icon label={t('builder.saveStructure')} />
-              <OpenFormDialog action={openAction} fieldCount={fields.length} isDirty={isDirty} />
             </div>
           </form>
         )}
@@ -325,12 +396,18 @@ export function FormBuilder({
 /** Confirms opening, spelling out that the structure can never change afterwards. */
 function OpenFormDialog({
   action,
+  description,
+  fields,
   fieldCount,
-  isDirty,
+  hasUnsavedChanges,
+  title,
 }: {
   action: OpenAction;
+  description: string;
+  fields: DraftField[];
   fieldCount: number;
-  isDirty: boolean;
+  hasUnsavedChanges: boolean;
+  title: string;
 }) {
   const t = useTranslations('Forms');
   const errorT = useTranslations('Forms.errors');
@@ -352,18 +429,27 @@ function OpenFormDialog({
     <AlertDialog onOpenChange={setIsOpen} open={isOpen}>
       <AlertDialogTrigger
         render={
-          <Button disabled={fieldCount === 0} type="button" variant="secondary">
+          <Button disabled={fieldCount === 0} type="button">
             <LockIcon aria-hidden="true" data-icon="inline-start" />
             {t('builder.open')}
           </Button>
         }
       />
-      <AlertDialogContent>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
         <AlertDialogTitle>{t('builder.openConfirmTitle')}</AlertDialogTitle>
         <AlertDialogDescription>
           {t('builder.openConfirmDescription', { count: fieldCount })}
         </AlertDialogDescription>
-        {isDirty ? (
+        <div className="flex flex-col gap-3 border-y border-border/70 py-4">
+          <div>
+            <h3 className="font-semibold text-foreground">{t('builder.finalPreviewHeading')}</h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {t('builder.finalPreviewDescription')}
+            </p>
+          </div>
+          <FormPreview description={description} fields={fields} title={title} />
+        </div>
+        {hasUnsavedChanges ? (
           <Alert variant="warning">
             <AlertDescription>{t('builder.openConfirmUnsaved')}</AlertDescription>
           </Alert>
@@ -376,7 +462,7 @@ function OpenFormDialog({
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline">{t('builder.cancel')}</Button>} />
           <form action={formAction}>
-            <SubmitButton label={t('builder.openConfirm')} />
+            <SubmitButton disabled={hasUnsavedChanges} label={t('builder.openConfirm')} />
           </form>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -581,11 +667,19 @@ function SaveAsTemplateDialog({
   );
 }
 
-function SubmitButton({ icon = false, label }: { icon?: boolean; label: string }) {
+function SubmitButton({
+  disabled = false,
+  icon = false,
+  label,
+}: {
+  disabled?: boolean;
+  icon?: boolean;
+  label: string;
+}) {
   const t = useTranslations('Forms');
   const { pending } = useFormStatus();
   return (
-    <Button disabled={pending} type="submit">
+    <Button disabled={disabled || pending} type="submit">
       {pending ? <Spinner aria-hidden="true" /> : null}
       {icon && !pending ? <SaveIcon aria-hidden="true" data-icon="inline-start" /> : null}
       {pending ? t('builder.saving') : label}

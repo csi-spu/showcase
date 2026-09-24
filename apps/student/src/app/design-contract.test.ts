@@ -12,21 +12,18 @@ describe('Student visual contract', () => {
     expect(layout).not.toContain('Noto_Sans_Thai');
   });
 
-  it('uses a restrained auth surface instead of Primary as the large background', async () => {
+  it('uses the shared auth surface instead of a bespoke Primary background', async () => {
     const page = await readFile(resolve(process.cwd(), 'src/app/page.tsx'), 'utf8');
 
+    expect(page).toContain('<StudentAuthLayout');
     expect(page).not.toMatch(/<aside className="[^"]*\bbg-primary\b/);
-    expect(page).toMatch(/<aside className="[^"]*\bbg-\[var\(--auth-visual-background\)\]/);
   });
 
-  it('uses a colored Magic UI backdrop with compact non-overlapping auth content', async () => {
+  it('uses the shared auth backdrop with compact non-overlapping auth content', async () => {
     const page = await readFile(resolve(process.cwd(), 'src/app/page.tsx'), 'utf8');
     const globals = await readFile(resolve(process.cwd(), 'src/app/globals.css'), 'utf8');
 
-    expect(page).toContain("import { GridPattern } from '@/components/ui/grid-pattern';");
-    expect(page).toContain('<GridPattern');
-    expect(page).toContain('bg-[var(--auth-visual-background)]');
-    expect(globals).toContain('--auth-visual-background:');
+    expect(globals).toContain("@import '@showcase/ui/auth-page.css';");
     expect(page).not.toMatch(/<aside className="[^"]*\bjustify-between\b/);
     expect(page).not.toMatch(/<Card className="[^"]*\bmin-h-\[32rem\]\b/);
     expect(page).not.toMatch(/<Card className="[^"]*\bcontent-between\b/);

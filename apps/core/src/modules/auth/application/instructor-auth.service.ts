@@ -10,12 +10,12 @@ import {
   AuthProviderError,
 } from './auth.ports';
 import type {
-  AdminAuthenticationSessionRecord,
   AdminLoginAccount,
   AuthProvider,
   AuthRepository,
   Clock,
   IdentityProtector,
+  InstructorAuthenticationSessionRecord,
   NewAuthenticationSession,
   TokenGenerator,
 } from './auth.ports';
@@ -46,7 +46,10 @@ export interface InstructorSessionResult {
   sessionToken: string;
 }
 
-export type InstructorSessionStatusResult = Omit<InstructorSessionResult, 'sessionToken'>;
+export interface InstructorSessionStatusResult {
+  displayName: string | null;
+  sessionState: InstructorSessionResult['sessionState'];
+}
 
 /**
  * Instructor login reuses the same staff-identity mechanism as Admin
@@ -186,6 +189,7 @@ export class InstructorAuthService {
     const session = await this.resolveCurrentSession(sessionToken, now);
     await this.refreshProviderSessionIfRequired(session, now);
     return {
+      displayName: session.displayName,
       sessionState: session.credentialState === 'set' ? 'active' : 'password_change_required',
     };
   }
@@ -216,7 +220,7 @@ export class InstructorAuthService {
   private async resolveCurrentSession(
     sessionToken: string,
     now: Date,
-  ): Promise<AdminAuthenticationSessionRecord> {
+  ): Promise<InstructorAuthenticationSessionRecord> {
     const sessionIdHash = this.identityProtector.hashSessionToken(sessionToken);
     const session = await this.repository.findInstructorSession(sessionIdHash);
     const hasExpired =
@@ -243,7 +247,7 @@ export class InstructorAuthService {
   }
 
   private async refreshProviderSessionIfRequired(
-    session: AdminAuthenticationSessionRecord,
+    session: InstructorAuthenticationSessionRecord,
     now: Date,
   ): Promise<void> {
     if (session.providerTokenExpiresAt.getTime() > now.getTime() + 60_000) {

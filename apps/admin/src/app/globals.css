@@ -1,4 +1,5 @@
 @import '@showcase/ui/styles.css';
+@import '@showcase/ui/auth-page.css';
 
 @source '../components/**/*.tsx';
 

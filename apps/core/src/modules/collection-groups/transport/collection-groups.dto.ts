@@ -25,6 +25,18 @@ export class CreateGroupDto {
   name!: string;
 }
 
+export class CreateRoundWithGroupDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  roundName!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  groupName!: string;
+}
+
 export class AddMembersByStudentIdsDto {
   @IsArray()
   @ArrayMinSize(1)

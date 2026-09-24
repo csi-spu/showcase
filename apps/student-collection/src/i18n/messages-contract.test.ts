@@ -14,5 +14,6 @@ describe('Thai Student-collection messages', () => {
     expect(userFacingCopy).not.toMatch(
       /Harness|Phase 1|JavaScript|เซสชัน|บริการยืนยันตัวตน|ช่องทางปฏิบัติการ/,
     );
+    expect(userFacingCopy).not.toContain('รอบ');
   });
 });

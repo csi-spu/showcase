@@ -1,12 +1,12 @@
 import { AuthError } from './auth.error';
 import {
-  AdminAuthenticationSessionRecord,
   AdminLoginAccount,
   AuthProvider,
   AuthProviderError,
   AuthRepository,
   Clock,
   IdentityProtector,
+  InstructorAuthenticationSessionRecord,
   NewAuthenticationSession,
   ProviderSession,
   TokenGenerator,
@@ -63,7 +63,7 @@ class FakeRepository implements AuthRepository {
     providerUserId: PROVIDER_USER_ID,
     syntheticIdentity: 'instructor-hash@admin.auth.invalid',
   };
-  instructorSession: AdminAuthenticationSessionRecord | null = null;
+  instructorSession: InstructorAuthenticationSessionRecord | null = null;
   createdSession: NewAuthenticationSession | null = null;
   rateLimitResult = { isAllowed: true, retryAfterSeconds: 0 };
   replacedSession: NewAuthenticationSession | null = null;
@@ -86,7 +86,9 @@ class FakeRepository implements AuthRepository {
     return Promise.resolve(null);
   }
 
-  findInstructorSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null> {
+  findInstructorSession(
+    sessionIdHash: string,
+  ): Promise<InstructorAuthenticationSessionRecord | null> {
     return Promise.resolve(
       sessionIdHash === this.instructorSession?.sessionIdHash ? this.instructorSession : null,
     );
@@ -134,10 +136,11 @@ const identityProtector: IdentityProtector = {
 
 function storedSession(
   account: AdminLoginAccount = new FakeRepository().instructorAccount as AdminLoginAccount,
-): AdminAuthenticationSessionRecord {
+): InstructorAuthenticationSessionRecord {
   return {
     ...account,
     absoluteExpiresAt: new Date('2026-08-25T11:00:00.000Z'),
+    displayName: 'ผู้สอน ทดสอบ',
     lastActivityAt: new Date('2026-08-25T02:31:00.000Z'),
     providerAccessToken: 'instructor-provider-access',
     providerRefreshToken: 'instructor-provider-refresh',
@@ -214,6 +217,28 @@ describe('InstructorAuthService login', () => {
 });
 
 describe('InstructorAuthService authorization and lifecycle', () => {
+  it('returns the signed-in Instructor Thai display name only from the session read', async () => {
+    const repository = new FakeRepository();
+    repository.instructorSession = Object.assign(storedSession(), {
+      displayName: 'ผู้สอน ทดสอบ',
+    });
+
+    await expect(setup(repository).service.getSession('current-token')).resolves.toEqual({
+      displayName: 'ผู้สอน ทดสอบ',
+      sessionState: 'active',
+    });
+  });
+
+  it('returns a null display name when the Instructor has no private name row', async () => {
+    const repository = new FakeRepository();
+    repository.instructorSession = Object.assign(storedSession(), { displayName: null });
+
+    await expect(setup(repository).service.getSession('current-token')).resolves.toEqual({
+      displayName: null,
+      sessionState: 'active',
+    });
+  });
+
   it('authorizes a valid Instructor session and rejects once the role is revoked', async () => {
     const repository = new FakeRepository();
     repository.instructorSession = storedSession();

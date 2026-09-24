@@ -63,8 +63,8 @@ async function main() {
         student('alumnus', 2550),
       ],
       rounds: [
-        { id: randomUUID(), key: 'active', name: `QA113 รอบทดสอบ ${suffix}`, status: 'active' },
-        { id: randomUUID(), key: 'closed', name: `QA113 รอบปิด ${suffix}`, status: 'closed' },
+        { id: randomUUID(), key: 'active', name: `QA113 ชุดงานทดสอบ ${suffix}`, status: 'active' },
+        { id: randomUUID(), key: 'closed', name: `QA113 ชุดงานปิด ${suffix}`, status: 'closed' },
       ],
       groups: ['mixed', 'individual', 'list', 'entry-year', 'closed'].map((key) => ({
         id: randomUUID(),

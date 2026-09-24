@@ -6,7 +6,7 @@ describe('resolveInstructorAuthPageState', () => {
   it('forces expired regardless of an existing session token', async () => {
     await expect(
       resolveInstructorAuthPageState({
-        getSession: () => Promise.resolve({ sessionState: 'active' }),
+        getSession: () => Promise.resolve({ displayName: 'อาจารย์ ทดสอบ', sessionState: 'active' }),
         isForcedExpired: true,
         sessionToken: 'token',
       }),
@@ -26,13 +26,14 @@ describe('resolveInstructorAuthPageState', () => {
   it('reflects the session state Core returns for a valid token', async () => {
     await expect(
       resolveInstructorAuthPageState({
-        getSession: () => Promise.resolve({ sessionState: 'password_change_required' }),
+        getSession: () =>
+          Promise.resolve({ displayName: null, sessionState: 'password_change_required' }),
         isForcedExpired: false,
         sessionToken: 'token',
       }),
     ).resolves.toEqual({
       kind: 'password_change_required',
-      session: { sessionState: 'password_change_required' },
+      session: { displayName: null, sessionState: 'password_change_required' },
     });
   });
 

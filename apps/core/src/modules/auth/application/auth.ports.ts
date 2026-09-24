@@ -96,6 +96,10 @@ export interface AdminAuthenticationSessionRecord extends AdminLoginAccount {
   sessionIdHash: string;
 }
 
+export interface InstructorAuthenticationSessionRecord extends AdminAuthenticationSessionRecord {
+  displayName: string | null;
+}
+
 export interface NewAuthenticationSession {
   absoluteExpiresAt: Date;
   accountId: string;
@@ -131,7 +135,9 @@ export interface AuthRepository {
   createSession(input: NewAuthenticationSession): Promise<void>;
   findAdminLoginAccount(adminLoginHash: string): Promise<AdminLoginAccount | null>;
   findAdminSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null>;
-  findInstructorSession(sessionIdHash: string): Promise<AdminAuthenticationSessionRecord | null>;
+  findInstructorSession(
+    sessionIdHash: string,
+  ): Promise<InstructorAuthenticationSessionRecord | null>;
   findLoginAccount(studentIdHash: string): Promise<LoginAccount | null>;
   findSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null>;
   findStudentCollectionSession(sessionIdHash: string): Promise<AuthenticationSessionRecord | null>;

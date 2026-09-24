@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "sideEffects": [
+    "./src/auth-page.css",
     "./src/styles.css"
   ],
   "exports": {
+    "./auth-page": "./src/auth-page.tsx",
+    "./auth-page.css": "./src/auth-page.css",
     "./badge": "./src/badge.tsx",
     "./button": "./src/button.tsx",
     "./card": "./src/card.tsx",

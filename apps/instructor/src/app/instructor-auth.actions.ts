@@ -28,7 +28,7 @@ export async function loginAction(
     return { error: mapCoreError(error) };
   }
   await setInstructorSessionToken(result.sessionToken);
-  redirect('/');
+  redirect(result.sessionState === 'active' ? '/dashboard' : '/');
 }
 
 export async function changePasswordAction(

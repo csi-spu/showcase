@@ -1,11 +1,27 @@
 import * as React from 'react';
 import { cn } from '@showcase/ui/cn';
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+/** A table always names its scroll region, so the keyboard stop it adds is announced. */
+interface TableProps extends React.ComponentProps<'table'> {
+  label: string;
+}
+
+function Table({ className, label, ...props }: TableProps) {
   return (
+    /*
+     * The scroll container is focusable and labelled. A table wider than the
+     * viewport -- the matrix is, once a group has a few forms -- can otherwise
+     * only be scrolled by dragging it, which leaves its right-hand columns
+     * unreachable by keyboard (WCAG 2.1.1). `tabIndex` makes it scrollable with
+     * the arrow keys, and a focusable region needs an accessible name and role
+     * for that stop to mean something when it is announced.
+     */
     <div
-      className="relative w-full overflow-x-auto rounded-surface border border-border/80 bg-card"
+      aria-label={label}
+      className="relative w-full overflow-x-auto rounded-surface border border-border/80 bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
       data-slot="table-container"
+      role="region"
+      tabIndex={0}
     >
       <table
         className={cn('w-full caption-bottom text-sm', className)}

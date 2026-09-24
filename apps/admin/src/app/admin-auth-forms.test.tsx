@@ -37,6 +37,19 @@ describe('Admin authentication forms', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('keeps the login password while toggling its visibility', async () => {
+    const user = userEvent.setup();
+    renderWithMessages(<LoginForm action={vi.fn<AuthAction>()} />);
+    const password = screen.getByLabelText('รหัสผ่าน') as HTMLInputElement;
+
+    await user.type(password, 'temporary-password-value');
+    await user.click(screen.getByRole('button', { name: 'แสดงรหัสผ่าน' }));
+
+    expect(password.type).toBe('text');
+    expect(password.value).toBe('temporary-password-value');
+    expect(screen.getByRole('button', { name: 'ซ่อนรหัสผ่าน' })).toBeDefined();
+  });
+
   it('renders actionable password-change validation errors', async () => {
     const action = vi.fn<AuthAction>().mockResolvedValue({ error: 'passwordMismatch' });
     const user = userEvent.setup();

@@ -1,3 +1,4 @@
+import { cn } from '@showcase/ui/cn';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -7,17 +8,24 @@ import type { ReactNode } from 'react';
  */
 export function EmptyState({
   action,
+  className,
   description,
   icon: Icon,
   title,
 }: {
   action?: ReactNode;
+  className?: string;
   description: string;
   icon: LucideIcon;
   title: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-surface border border-dashed border-border bg-card/40 px-6 py-12 text-center">
+    <div
+      className={cn(
+        'flex flex-col items-center gap-2 rounded-surface border border-dashed border-border bg-card/40 px-6 py-12 text-center',
+        className,
+      )}
+    >
       <span className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Icon aria-hidden="true" className="size-5" />
       </span>

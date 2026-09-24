@@ -70,6 +70,28 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     return this.mapRound(rows[0]!);
   }
 
+  async createRoundWithGroup(input: {
+    createdByAccountId: string;
+    groupName: string;
+    now: Date;
+    roundName: string;
+  }): Promise<{ group: CollectionGroup; round: CollectionRound }> {
+    return this.database.sql.begin(async (transaction) => {
+      const roundRows = await transaction<RoundRow[]>`
+        insert into public.collection_rounds (name, created_by_account_id, created_at)
+        values (${input.roundName}, ${input.createdByAccountId}, ${input.now})
+        returning id, name, status, created_at
+      `;
+      const round = this.mapRound(roundRows[0]!);
+      const groupRows = await transaction<GroupRow[]>`
+        insert into public.collection_groups (round_id, name, created_by_account_id, created_at)
+        values (${round.id}, ${input.groupName}, ${input.createdByAccountId}, ${input.now})
+        returning id, round_id, name, created_at
+      `;
+      return { group: this.mapGroup(groupRows[0]!), round };
+    });
+  }
+
   async listRounds(): Promise<CollectionRound[]> {
     const rows = await this.database.sql<RoundRow[]>`
       select id, name, status, created_at

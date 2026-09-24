@@ -51,6 +51,7 @@ export default async function SubmissionsPage({ params }: SubmissionsPageProps) 
         { href: `/groups/${groupId}/forms/${formId}`, label: queue.form.title },
         { label: t('review.pageTitle') },
       ]}
+      roundId={detail.group.roundId}
     >
       <PageHeader description={t('review.pageDescription')} title={queue.form.title} />
       <ReviewQueue

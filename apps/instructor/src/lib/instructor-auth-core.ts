@@ -3,9 +3,24 @@ import { CoreClient, CoreClientError } from '@showcase/core-client';
 import { z } from 'zod';
 
 const sessionStatusSchema = z
-  .object({ sessionState: z.enum(['active', 'password_change_required']) })
+  .object({
+    /*
+     * The signed-in instructor's Thai name, for the account block in the
+     * sidebar. Nullable: the name lives in a separate table and is joined in,
+     * so an account without one must still resolve its session rather than be
+     * signed out over a missing display string.
+     */
+    displayName: z.string().min(1).nullable(),
+    sessionState: z.enum(['active', 'password_change_required']),
+  })
   .strict();
+/*
+ * Login and change-password return the session token and no name, so this
+ * omits `displayName` rather than inheriting it -- `.strict()` would
+ * otherwise reject their responses for the field they do not send.
+ */
 const sessionResultSchema = sessionStatusSchema
+  .omit({ displayName: true })
   .extend({ sessionToken: z.string().min(1) })
   .strict();
 

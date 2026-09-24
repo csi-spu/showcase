@@ -1,4 +1,5 @@
 @import '@showcase/ui/styles.css';
+@import '@showcase/ui/auth-page.css';
 
 @source '../components/**/*.tsx';
 
@@ -49,6 +50,18 @@
 .app-topbar {
   background: color-mix(in srgb, var(--background) 86%, transparent);
   backdrop-filter: blur(8px);
+}
+
+/*
+ * Anything scrolled to by an in-page link or a validation jump stops below the
+ * sticky top bar instead of under it. The bar is `position: sticky`, so the
+ * browser's own scroll anchoring has no way to know it covers the viewport top;
+ * without this the focused field lands behind it (WCAG 2.2 "Focus Not
+ * Obscured"). The extra 1rem keeps the field's label visible too, not just its
+ * top edge.
+ */
+html {
+  scroll-padding-top: calc(var(--app-topbar-height) + 1rem);
 }
 
 @media (prefers-reduced-motion: reduce) {

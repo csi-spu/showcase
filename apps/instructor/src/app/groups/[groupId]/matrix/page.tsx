@@ -63,6 +63,8 @@ export default async function GroupMatrixPage({ params, searchParams }: MatrixPa
         { href: groupHref, label: t('matrix.backToGroup') },
         { label: t('matrix.pageTitle') },
       ]}
+      roundId={detail.group.roundId}
+      width="wide"
     >
       <PageHeader description={t('matrix.pageDescription')} title={t('matrix.pageTitle')} />
 

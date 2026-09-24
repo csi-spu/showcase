@@ -81,7 +81,7 @@ export function ReviewQueue({
   }
 
   return (
-    <Table>
+    <Table label={t('review.pageTitle')}>
       <TableHeader>
         <TableRow>
           <TableHead>{t('review.columnName')}</TableHead>

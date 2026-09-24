@@ -2,6 +2,18 @@ import { z } from 'zod';
 
 const createRoundSchema = z.object({ name: z.string().trim().min(1).max(200) });
 const createGroupSchema = z.object({ name: z.string().trim().min(1).max(200) });
+const createFormGroupSchema = z.discriminatedUnion('mode', [
+  z.object({
+    groupName: z.string().trim().min(1).max(200),
+    mode: z.literal('existing-round'),
+    roundId: z.uuid(),
+  }),
+  z.object({
+    groupName: z.string().trim().min(1).max(200),
+    mode: z.literal('new-round'),
+    roundName: z.string().trim().min(1).max(200),
+  }),
+]);
 const addByStudentIdsSchema = z.object({
   studentIds: z
     .string()
@@ -31,6 +43,24 @@ export function validateCreateRound(formData: FormData) {
 
 export function validateCreateGroup(formData: FormData) {
   const result = createGroupSchema.safeParse({ name: formData.get('name') });
+  return result.success ? result.data : null;
+}
+
+export function validateCreateFormGroup(formData: FormData) {
+  const mode = formData.get('mode');
+  const result = createFormGroupSchema.safeParse(
+    mode === 'existing-round'
+      ? {
+          groupName: formData.get('groupName'),
+          mode,
+          roundId: formData.get('roundId'),
+        }
+      : {
+          groupName: formData.get('groupName'),
+          mode,
+          roundName: formData.get('roundName'),
+        },
+  );
   return result.success ? result.data : null;
 }
 

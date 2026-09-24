@@ -6,6 +6,7 @@ import { parseEnvironment } from './config/environment.schema';
 import { AuthModule } from './modules/auth/auth.module';
 import { CollectionGroupsModule } from './modules/collection-groups/collection-groups.module';
 import { CollectionFormsModule } from './modules/collection-forms/collection-forms.module';
+import { CollectionOverviewModule } from './modules/collection-overview/collection-overview.module';
 import { HealthModule } from './modules/health/health.module';
 import { RosterModule } from './modules/roster/roster.module';
 import { AccountControlsModule } from './modules/account-controls/account-controls.module';
@@ -27,6 +28,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
     CatalogModule,
     CollectionGroupsModule,
     CollectionFormsModule,
+    CollectionOverviewModule,
     HealthModule,
     ProfilesModule,
     RosterModule,

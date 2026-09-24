@@ -30,6 +30,21 @@ export class CollectionGroupsService {
     });
   }
 
+  async createRoundWithGroup(input: {
+    actorAccountId: string;
+    groupName: string;
+    roundName: string;
+  }): Promise<{ group: CollectionGroup; round: CollectionRound }> {
+    const roundName = this.requireName(input.roundName, 'ROUND_NAME_INVALID');
+    const groupName = this.requireName(input.groupName, 'GROUP_NAME_INVALID');
+    return this.repository.createRoundWithGroup({
+      createdByAccountId: input.actorAccountId,
+      groupName,
+      now: this.clock.now(),
+      roundName,
+    });
+  }
+
   listRounds(): Promise<CollectionRound[]> {
     return this.repository.listRounds();
   }
