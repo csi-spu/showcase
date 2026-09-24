@@ -11,6 +11,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Button } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
 import {
@@ -236,9 +237,22 @@ export function FormFileField({
         stored, and the Student is told so rather than shown a document.
       */}
       {transfer === null ? null : (
-        <div className="flex flex-col gap-2 rounded-control border border-input bg-card px-3 py-2">
+        <div
+          className={cn(
+            'flex flex-col gap-2 rounded-control border px-3 py-2.5',
+            transfer.state === 'failed'
+              ? 'border-destructive/30 bg-destructive-background'
+              : 'border-input bg-card',
+          )}
+        >
           <div className="flex flex-wrap items-center gap-2">
-            <FileIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <FileIcon
+              aria-hidden="true"
+              className={cn(
+                'size-4 shrink-0',
+                transfer.state === 'failed' ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            />
             <span className="min-w-0 flex-1 truncate text-sm">{transfer.file.name}</span>
             {transfer.state === 'sending' ? (
               <span className="text-xs tabular-nums text-muted-foreground">
@@ -268,7 +282,10 @@ export function FormFileField({
               value={transfer.progress}
             />
           ) : (
-            <p className="text-sm font-medium text-destructive">{t('file.uploadFailed')}</p>
+            <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+              <AlertTriangleIcon aria-hidden="true" className="size-4 shrink-0" />
+              {t('file.uploadFailed')}
+            </p>
           )}
         </div>
       )}

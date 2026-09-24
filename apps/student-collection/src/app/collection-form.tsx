@@ -1,16 +1,33 @@
 'use client';
 
-import { AlertCircleIcon, CheckIcon, RefreshCwIcon, SendIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  CalendarIcon,
+  CheckIcon,
+  CircleDotIcon,
+  HashIcon,
+  ListIcon,
+  ListTodoIcon,
+  PaperclipIcon,
+  RefreshCwIcon,
+  SendIcon,
+  SquareCheckIcon,
+  UserRoundIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@showcase/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { BlurFade } from '@/components/ui/blur-fade';
+import { BorderBeam } from '@/components/ui/border-beam';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusBadge } from '@/components/ui/status-badge';
+import type { CollectionFieldType } from '@/lib/student-collection-forms-contract';
 import {
   buildInitialAnswers,
   findSubmitBlockers,
@@ -28,6 +45,17 @@ import type {
 } from '@/lib/student-collection-forms-contract';
 
 const AUTOSAVE_DELAY_MS = 1_500;
+
+/* One icon per field type, so the kind of answer expected reads before the label does. */
+const FIELD_TYPE_ICONS: Record<CollectionFieldType, LucideIcon> = {
+  date: CalendarIcon,
+  file_upload: PaperclipIcon,
+  long_text: ListIcon,
+  multiple_choice: SquareCheckIcon,
+  number: HashIcon,
+  short_text: ListTodoIcon,
+  single_choice: CircleDotIcon,
+};
 
 type SaveState =
   | { kind: 'conflict' }
@@ -47,16 +75,9 @@ type SaveState =
  * and a retry is offered, so a dropped connection cannot lose their work.
  */
 export function CollectionForm({
-  isLate,
   obligation,
   prefills,
 }: {
-  /*
-   * Decided on the server. Comparing the deadline to the browser's clock during
-   * render would be both impure and a claim based on a clock the platform does
-   * not control.
-   */
-  isLate: boolean;
   obligation: StudentCollectionObligation;
   prefills: StudentCollectionPrefill[];
 }) {
@@ -209,41 +230,8 @@ export function CollectionForm({
     router.refresh();
   }
 
-  const deadline = form.deadlineAt === null ? null : new Date(form.deadlineAt);
-
   return (
-    <section
-      aria-labelledby={`${baseId}-title`}
-      className="flex flex-col gap-5 rounded-surface border border-input bg-card p-5"
-    >
-      <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold" id={`${baseId}-title`}>
-            {form.title}
-          </h2>
-          <StatusBadge tone={statusTone(status)}>{t(`status.${status}`)}</StatusBadge>
-        </div>
-        {form.description ? (
-          <p className="text-sm whitespace-pre-line text-muted-foreground">{form.description}</p>
-        ) : null}
-        {deadline !== null ? (
-          <p className="text-sm text-muted-foreground">
-            {t('deadline', {
-              date: new Intl.DateTimeFormat('th-TH', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-                timeZone: 'Asia/Bangkok',
-              }).format(deadline),
-            })}
-            {/*
-             * Shown while the deadline is past and nothing has been sent, and
-             * kept afterwards when the first submission was itself late.
-             */}
-            {obligation.hasDeadlinePassed || isLate ? ` · ${t('deadlineLate')}` : ''}
-          </p>
-        ) : null}
-      </header>
-
+    <section aria-label={form.title} className="flex flex-col gap-4">
       {status === 'changes_required' && obligation.latestCheckingReason !== null ? (
         <Alert variant="warning">
           <AlertCircleIcon aria-hidden="true" />
@@ -254,7 +242,7 @@ export function CollectionForm({
 
       {/* History only exists once something was submitted, so the link appears with it. */}
       {obligation.latestSubmission !== null ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-surface border border-border/80 bg-card px-4 py-3">
           <p className="text-sm text-muted-foreground">
             {t('lastSubmitted', {
               date: new Intl.DateTimeFormat('th-TH', {
@@ -273,68 +261,99 @@ export function CollectionForm({
         </div>
       ) : null}
 
-      <Field>
-        <FieldLabel htmlFor={`${baseId}-roster`}>{t('rosterName')}</FieldLabel>
-        <Input
-          id={`${baseId}-roster`}
-          readOnly
-          value={`${obligation.rosterName.firstNameTh} ${obligation.rosterName.lastNameTh}`}
-        />
-        <FieldDescription>{t('rosterNameHint')}</FieldDescription>
-      </Field>
+      <BlurFade offset={8}>
+        <div className="group relative flex items-start gap-3 overflow-hidden rounded-surface border border-border/80 bg-card p-4 sm:p-5">
+          <BorderBeam
+            className="opacity-0 transition-opacity group-focus-within:opacity-100"
+            size={80}
+          />
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-accent-foreground">
+            <UserRoundIcon aria-hidden="true" className="size-4.5" />
+          </span>
+          <Field className="min-w-0 flex-1">
+            <FieldLabel htmlFor={`${baseId}-roster`}>{t('rosterName')}</FieldLabel>
+            <Input
+              id={`${baseId}-roster`}
+              readOnly
+              value={`${obligation.rosterName.firstNameTh} ${obligation.rosterName.lastNameTh}`}
+            />
+            <FieldDescription>{t('rosterNameHint')}</FieldDescription>
+          </Field>
+        </div>
+      </BlurFade>
 
-      {form.fields.map((field) => {
+      {form.fields.map((field, index) => {
         const controlId = `${baseId}-${field.id}`;
         const blocker = blockers.find((entry) => entry.fieldId === field.id);
         const hintId = field.description ? `${controlId}-hint` : undefined;
+        const FieldIcon = FIELD_TYPE_ICONS[field.type];
         return (
-          <Field id={`field-${field.id}`} key={field.id}>
-            <FieldLabel htmlFor={controlId}>
-              {field.label}
-              {field.required ? (
-                <>
-                  <span aria-hidden="true" className="text-destructive">
-                    *
-                  </span>
-                  <span className="sr-only">{t('requiredLabel')}</span>
-                </>
-              ) : null}
-            </FieldLabel>
-            {field.description ? (
-              <FieldDescription className="whitespace-pre-line" id={hintId}>
-                {field.description}
-              </FieldDescription>
-            ) : null}
-
-            {isValueField(field.type) ? (
-              <FormFieldControl
-                controlId={controlId}
-                describedBy={hintId}
-                field={field}
-                isInvalid={blocker !== undefined}
-                isReadOnly={isReadOnly}
-                onChange={(value) => updateAnswer(field.id, value)}
-                value={answers[field.id] ?? ''}
+          <BlurFade delay={0.03 * (index + 1)} key={field.id} offset={8}>
+            <div
+              className="group relative flex items-start gap-3 overflow-hidden rounded-surface border border-border/80 bg-card p-4 sm:p-5"
+              id={`field-${field.id}`}
+            >
+              <BorderBeam
+                className="opacity-0 transition-opacity group-focus-within:opacity-100"
+                size={80}
               />
-            ) : (
-              <FormFileField
-                field={field}
-                files={obligation.draft?.files[field.id] ?? []}
-                formId={form.id}
-                isReadOnly={isReadOnly}
-                onChanged={() => router.refresh()}
-              />
-            )}
+              <span className="flex flex-col items-center gap-1.5">
+                <StatusBadge className="rounded-md px-2" tone="primary">
+                  {t('fieldNumber', { number: index + 1 })}
+                </StatusBadge>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <FieldIcon aria-hidden="true" className="size-4.5" />
+                </span>
+              </span>
+              <Field className="min-w-0 flex-1">
+                <FieldLabel htmlFor={controlId}>
+                  {field.label}
+                  {field.required ? (
+                    <>
+                      <span aria-hidden="true" className="text-destructive">
+                        *
+                      </span>
+                      <span className="sr-only">{t('requiredLabel')}</span>
+                    </>
+                  ) : null}
+                </FieldLabel>
+                {field.description ? (
+                  <FieldDescription className="whitespace-pre-line" id={hintId}>
+                    {field.description}
+                  </FieldDescription>
+                ) : null}
 
-            {prefilledFieldIds.includes(field.id) ? (
-              <StatusBadge tone="information">{t('prefilled')}</StatusBadge>
-            ) : null}
-            {blocker !== undefined ? (
-              <p className="text-sm font-medium text-destructive">
-                {t(`blocker.${blocker.reason}`)}
-              </p>
-            ) : null}
-          </Field>
+                {isValueField(field.type) ? (
+                  <FormFieldControl
+                    controlId={controlId}
+                    describedBy={hintId}
+                    field={field}
+                    isInvalid={blocker !== undefined}
+                    isReadOnly={isReadOnly}
+                    onChange={(value) => updateAnswer(field.id, value)}
+                    value={answers[field.id] ?? ''}
+                  />
+                ) : (
+                  <FormFileField
+                    field={field}
+                    files={obligation.draft?.files[field.id] ?? []}
+                    formId={form.id}
+                    isReadOnly={isReadOnly}
+                    onChanged={() => router.refresh()}
+                  />
+                )}
+
+                {prefilledFieldIds.includes(field.id) ? (
+                  <StatusBadge tone="information">{t('prefilled')}</StatusBadge>
+                ) : null}
+                {blocker !== undefined ? (
+                  <p className="text-sm font-medium text-destructive">
+                    {t(`blocker.${blocker.reason}`)}
+                  </p>
+                ) : null}
+              </Field>
+            </div>
+          </BlurFade>
         );
       })}
 
@@ -481,19 +500,4 @@ function SaveStatus({
       {t(`save.${state.kind}`)}
     </p>
   );
-}
-
-function statusTone(status: StudentCollectionObligation['status']) {
-  switch (status) {
-    case 'awaiting_checking':
-      return 'information' as const;
-    case 'changes_required':
-      return 'warning' as const;
-    case 'passed':
-      return 'success' as const;
-    case 'withdrawn':
-      return 'muted' as const;
-    default:
-      return 'muted' as const;
-  }
 }

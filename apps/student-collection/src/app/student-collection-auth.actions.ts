@@ -12,8 +12,10 @@ import {
   setStudentCollectionSessionToken,
 } from '@/lib/student-collection-auth-session';
 import { validateLogin, validatePasswordChange } from '@/lib/student-collection-auth-validation';
+import { parseStudentCollectionReturnTo } from '@/lib/student-collection-return-to';
 
 export async function loginAction(
+  returnTo: string | null,
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
@@ -28,7 +30,12 @@ export async function loginAction(
     return { error: mapCoreError(error) };
   }
   await setStudentCollectionSessionToken(result.sessionToken);
-  redirect('/');
+  /*
+   * A deeplink brought the Student here to sign in, so login sends them
+   * straight back to it rather than to the dashboard. Re-validated here too:
+   * this value crosses the same trust boundary a second time.
+   */
+  redirect(parseStudentCollectionReturnTo(returnTo ?? undefined) ?? '/');
 }
 
 export async function changePasswordAction(
