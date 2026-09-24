@@ -73,7 +73,7 @@ test.describe('Collection Milestone 4', () => {
        */
       await test.step('an export is requested against the current state', async () => {
         await instructorPage.goto(`/groups/${collectionScenario.groupId}`);
-        await instructorPage.getByRole('link', { name: 'ส่งออกข้อมูล' }).click();
+        await instructorPage.getByRole('main').getByRole('link', { name: 'ส่งออกข้อมูล' }).click();
         await expect(instructorPage.getByRole('heading', { name: 'ส่งออกข้อมูล' })).toBeVisible();
 
         // Nothing is preselected, so an export always names the forms it froze.
