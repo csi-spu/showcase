@@ -36,10 +36,14 @@ test.describe('Collection Milestone 4', () => {
       /*
        * The feed starts empty. The fixture inserts the obligation as a row
        * rather than through the assignment use case, so nothing has announced
-       * itself yet -- the panel renders only once a decision produces an entry.
+       * itself yet, so the always-present panel shows its empty state.
        */
-      await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeHidden();
+      await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
+      await expect(studentPage.getByText('ยังไม่มีการแจ้งเตือน', { exact: true })).toBeVisible();
 
+      await studentPage.goto(
+        `${collectionScenario.studentCollectionUrl}/forms/${collectionScenario.formId}`,
+      );
       await submitAnswer(studentPage, collectionScenario, answer);
       await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
@@ -94,8 +98,9 @@ test.describe('Collection Milestone 4', () => {
          * first time and names the result, which is the AC16 behaviour this
          * journey can actually observe end to end.
          */
-        await studentPage.reload();
+        await studentPage.goto(collectionScenario.studentCollectionUrl);
         await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
+        await expect(studentPage.getByText('ยังไม่มีการแจ้งเตือน', { exact: true })).toBeHidden();
         await expect(studentPage.getByText('ผ่านการตรวจแล้ว').first()).toBeVisible();
       });
 

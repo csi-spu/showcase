@@ -24,6 +24,9 @@ test.describe('Collection lifecycle', () => {
 
     try {
       await loginStudentCollection(studentPage, collectionScenario);
+      await studentPage
+        .getByRole('link', { name: new RegExp(collectionScenario.formTitle, 'u') })
+        .click();
       await expect(
         studentPage.getByRole('heading', { name: collectionScenario.formTitle }),
       ).toBeVisible();
