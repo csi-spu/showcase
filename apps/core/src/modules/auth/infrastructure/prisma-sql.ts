@@ -99,11 +99,9 @@ function buildBulkQuery(
   let parameter = 1;
   const valuesText =
     rows.length === 1 && columns.length === 0
-      ? `(${rows[0]!.map((value) => parameterPlaceholder(value, parameter++)).join(', ')})`
+      ? `(${rows[0]!.map(() => parameterPlaceholder(parameter++)).join(', ')})`
       : rows
-          .map(
-            (row) => `(${row.map((value) => parameterPlaceholder(value, parameter++)).join(', ')})`,
-          )
+          .map((row) => `(${row.map(() => parameterPlaceholder(parameter++)).join(', ')})`)
           .join(', ');
   const text =
     columns.length === 0
@@ -156,7 +154,7 @@ function buildQuery(strings: TemplateStringsArray, values: readonly unknown[]) {
     } else {
       const isJson = value instanceof PrismaValueFragment && value.isJson;
       const parameterValue = value instanceof PrismaValueFragment ? value.value : value;
-      text += parameterPlaceholder(parameterValue, parameters.length + 1, isJson);
+      text += parameterPlaceholder(parameters.length + 1, isJson);
       parameters.push(parameterValue);
     }
     text += strings[index + 1] ?? '';
@@ -164,10 +162,15 @@ function buildQuery(strings: TemplateStringsArray, values: readonly unknown[]) {
   return { text, values: parameters };
 }
 
-function parameterPlaceholder(value: unknown, index: number, isJson = false): string {
-  if (isJson) return `$${index}::jsonb`;
-  return typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-    ? `$${index}::uuid`
-    : `$${index}`;
+/*
+ * Postgres infers an untyped parameter's type from how it is used (compared
+ * against a column, inserted into a typed column list, and so on), so the
+ * placeholder is left uncast here rather than guessed from the value's shape.
+ * A shape-based guess previously cast every UUID-looking string to `::uuid`,
+ * which broke `text` columns that legitimately hold one, such as
+ * `collection_files.field_id` (an Instructor-chosen field id generated with
+ * `crypto.randomUUID()`) compared against a `text = uuid` mismatch.
+ */
+function parameterPlaceholder(index: number, isJson = false): string {
+  return isJson ? `$${index}::jsonb` : `$${index}`;
 }
