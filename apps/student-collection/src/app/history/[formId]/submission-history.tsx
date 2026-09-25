@@ -72,7 +72,7 @@ export async function SubmissionHistory({
             <section className="flex flex-col gap-2">
               <h3 className="text-sm font-semibold">{t('answersHeading')}</h3>
               <dl className="flex flex-col gap-2">
-                {history.form.fields.map((field) => (
+                {entry.fields.map((field) => (
                   <div className="flex flex-col gap-0.5" key={field.id}>
                     <dt className="text-sm font-medium">{field.label}</dt>
                     <dd className="text-sm text-muted-foreground">

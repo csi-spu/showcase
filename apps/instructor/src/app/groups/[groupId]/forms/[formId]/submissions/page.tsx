@@ -57,7 +57,6 @@ export default async function SubmissionsPage({ params }: SubmissionsPageProps) 
       <ReviewQueue
         checkAction={checkCollectionSubmissionAction.bind(null, groupId, formId)}
         entries={queue.entries}
-        fields={queue.form.fields}
         formId={formId}
         groupId={groupId}
       />

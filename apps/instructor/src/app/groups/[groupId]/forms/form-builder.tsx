@@ -71,8 +71,8 @@ interface FormBuilderProps {
  * The Draft builder.
  *
  * Structure lives in client state and is posted once per save, so adding,
- * reordering, or previewing a field costs nothing. Once the form is open the
- * structure is locked for good and only the metadata form stays editable.
+ * reordering, or previewing a field costs nothing. Open forms remain editable;
+ * submitted versions retain the field snapshot they were answered against.
  */
 export function FormBuilder({
   closeAction,
@@ -88,15 +88,11 @@ export function FormBuilder({
   const errorT = useTranslations('Forms.errors');
   const router = useRouter();
   const baseId = useId();
-  const isLocked = form.status !== 'draft';
-
   const [title, setTitle] = useState(form.title);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(toDeadlineInput(form.deadlineAt));
   const [fields, setFields] = useState<DraftField[]>(() => form.fields.map(toDraftField));
-  const [activeFieldId, setActiveFieldId] = useState<string | null>(
-    isLocked ? null : (form.fields[0]?.id ?? null),
-  );
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(form.fields[0]?.id ?? null);
   const [clientError, setClientError] = useState<{
     fieldId: string;
     message: CollectionFormsErrorMessage;
@@ -134,7 +130,6 @@ export function FormBuilder({
         return nextState;
       }
       setIsDirty(false);
-      setIsMetadataDirty(false);
       setActiveFieldId(null);
       toast.success(t('builder.saved'));
       router.refresh();
@@ -159,11 +154,21 @@ export function FormBuilder({
   );
 
   function updateField(id: string, patch: Partial<DraftField>) {
+    const currentField = fields.find((field) => field.id === id);
+    const nextId =
+      patch.type !== undefined && currentField !== undefined && patch.type !== currentField.type
+        ? crypto.randomUUID()
+        : id;
+
     setIsDirty(true);
     setClientError((current) => (current?.fieldId === id ? null : current));
     setFields((current) =>
-      current.map((field) => (field.id === id ? { ...field, ...patch } : field)),
+      current.map((field) => {
+        if (field.id !== id) return field;
+        return { ...field, ...patch, id: nextId };
+      }),
     );
+    if (nextId !== id) setActiveFieldId(nextId);
   }
 
   function addField() {
@@ -200,10 +205,7 @@ export function FormBuilder({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <StatusBadge
-          icon={isLocked ? LockIcon : PencilIcon}
-          tone={isLocked ? 'information' : 'muted'}
-        >
+        <StatusBadge icon={PencilIcon} tone={form.status === 'draft' ? 'muted' : 'information'}>
           {t(`status.${form.status}`)}
         </StatusBadge>
         <div className="flex flex-wrap items-center gap-2">
@@ -225,11 +227,11 @@ export function FormBuilder({
         </div>
       </div>
 
-      {isLocked ? (
+      {form.status !== 'draft' ? (
         <Alert variant="information">
-          <LockIcon aria-hidden="true" />
-          <AlertTitle>{t('builder.lockedTitle')}</AlertTitle>
-          <AlertDescription>{t('builder.lockedDescription')}</AlertDescription>
+          <PencilIcon aria-hidden="true" />
+          <AlertTitle>{t('builder.liveEditingTitle')}</AlertTitle>
+          <AlertDescription>{t('builder.liveEditingDescription')}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -327,73 +329,63 @@ export function FormBuilder({
               </span>
             </span>
           </div>
-          {isDirty && !isLocked ? (
-            <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge>
-          ) : null}
+          {isDirty ? <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge> : null}
         </div>
 
-        {isLocked ? (
-          <div className="p-4 sm:p-5">
-            <FormPreview description={description} fields={fields} title={title} />
+        <form action={structureFormAction} className="flex flex-col gap-4 p-4 sm:p-5">
+          <input name="expectedVersion" type="hidden" value={form.version} />
+          <input name="fields" type="hidden" value={serializedFields} />
+
+          <ul className="flex list-none flex-col gap-3 p-0">
+            {fields.map((field, index) => (
+              <FieldEditor
+                errorMessage={clientError?.fieldId === field.id ? clientError.message : null}
+                field={field}
+                index={index}
+                isExpanded={activeFieldId === field.id}
+                isFirst={index === 0}
+                isLast={index === fields.length - 1}
+                key={field.id}
+                onChange={updateField}
+                onMove={moveField}
+                onRemove={removeField}
+                onToggle={(id) => setActiveFieldId((current) => (current === id ? null : id))}
+              />
+            ))}
+          </ul>
+
+          {fields.length === 0 ? (
+            <p className="rounded-surface border border-dashed border-input p-6 text-center text-sm text-muted-foreground">
+              {t('builder.noFields')}
+            </p>
+          ) : null}
+
+          <Button
+            className="w-full border-dashed"
+            onClick={addField}
+            type="button"
+            variant="outline"
+          >
+            <PlusIcon aria-hidden="true" data-icon="inline-start" />
+            {t('builder.addField')}
+          </Button>
+
+          {structureError !== null ? (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(structureError)}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="flex justify-end border-t border-border/70 pt-4">
+            <SubmitButton icon label={t('builder.saveStructure')} />
           </div>
-        ) : (
-          <form action={structureFormAction} className="flex flex-col gap-4 p-4 sm:p-5">
-            <input name="title" type="hidden" value={title} />
-            <input name="description" type="hidden" value={description} />
-            <input name="deadlineAt" type="hidden" value={deadline} />
-            <input name="fields" type="hidden" value={serializedFields} />
-
-            <ul className="flex list-none flex-col gap-3 p-0">
-              {fields.map((field, index) => (
-                <FieldEditor
-                  errorMessage={clientError?.fieldId === field.id ? clientError.message : null}
-                  field={field}
-                  index={index}
-                  isExpanded={activeFieldId === field.id}
-                  isFirst={index === 0}
-                  isLast={index === fields.length - 1}
-                  key={field.id}
-                  onChange={updateField}
-                  onMove={moveField}
-                  onRemove={removeField}
-                  onToggle={(id) => setActiveFieldId((current) => (current === id ? null : id))}
-                />
-              ))}
-            </ul>
-
-            {fields.length === 0 ? (
-              <p className="rounded-surface border border-dashed border-input p-6 text-center text-sm text-muted-foreground">
-                {t('builder.noFields')}
-              </p>
-            ) : null}
-
-            <Button
-              className="w-full border-dashed"
-              onClick={addField}
-              type="button"
-              variant="outline"
-            >
-              <PlusIcon aria-hidden="true" data-icon="inline-start" />
-              {t('builder.addField')}
-            </Button>
-
-            {structureError !== null ? (
-              <Alert variant="destructive">
-                <AlertDescription>{errorT(structureError)}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <div className="flex justify-end border-t border-border/70 pt-4">
-              <SubmitButton icon label={t('builder.saveStructure')} />
-            </div>
-          </form>
-        )}
+        </form>
       </section>
     </div>
   );
 }
 
-/** Confirms opening, spelling out that the structure can never change afterwards. */
+/** Confirms opening and explains how later edits preserve submitted responses. */
 function OpenFormDialog({
   action,
   description,

@@ -6,6 +6,7 @@ import {
   validateFormMetadata,
   validateLifecycleReason,
   validateSaveAsTemplate,
+  validateUpdateForm,
 } from './collection-forms-validation';
 
 function formData(entries: Record<string, string>): FormData {
@@ -111,6 +112,23 @@ describe('validateCreateForm', () => {
 
   it('rejects a deadline that is not a wall-clock value', () => {
     expect(validateCreateForm(formData(createBody({ deadlineAt: 'tomorrow' })))).toBeNull();
+  });
+});
+
+describe('validateUpdateForm', () => {
+  it('accepts only fields and a positive expected version', () => {
+    const input = validateUpdateForm(
+      formData({ expectedVersion: '4', fields: JSON.stringify([VALID_FIELD]) }),
+    );
+
+    expect(input).toEqual({ expectedVersion: 4, fields: [VALID_FIELD] });
+  });
+
+  it('rejects a missing or invalid expected version', () => {
+    expect(validateUpdateForm(formData({ fields: JSON.stringify([VALID_FIELD]) }))).toBeNull();
+    expect(
+      validateUpdateForm(formData({ expectedVersion: '0', fields: JSON.stringify([VALID_FIELD]) })),
+    ).toBeNull();
   });
 });
 

@@ -140,24 +140,92 @@ describe('PostgresCollectionFormsRepository integration', () => {
     expect(obligations[0]?.latestCheckingReason).toBe('กรุณาระบุชื่อบริษัทเต็ม');
   });
 
-  describe('structure lock', () => {
-    it('replaces a draft definition but refuses edits once the form is open', async () => {
+  describe('structure editing', () => {
+    it('replaces an open form definition with optimistic concurrency and audits it', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [TEXT_FIELD]);
       const edit = {
         actorAccountId: INSTRUCTOR,
-        deadlineAt: null,
-        description: '',
+        expectedVersion: form.version,
         fields: [TEXT_FIELD, { ...TEXT_FIELD, id: 'advisor', label: 'อาจารย์ที่ปรึกษา' }],
         formId: form.id,
         now: NOW,
-        title: 'แบบฟอร์ม',
       };
-      await expect(repository.updateDraftForm(edit)).resolves.toMatchObject({
+      await expect(repository.updateFormStructure(edit)).resolves.toMatchObject({
         fields: edit.fields,
       });
-      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
-      await expect(repository.updateDraftForm(edit)).resolves.toBe('not_draft');
+      const audit = await database.sql<
+        { actor_account_id: string; next_version: number; previous_version: number }[]
+      >`
+        select actor_account_id, previous_version, next_version
+        from private.collection_form_structure_events
+        where form_id = ${form.id}
+        order by occurred_at
+      `;
+      expect(audit[0]).toEqual({
+        actor_account_id: INSTRUCTOR,
+        next_version: form.version + 1,
+        previous_version: form.version,
+      });
+      const opened = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+      });
+      if (typeof opened === 'string') throw new Error('expected opened form');
+      await expect(
+        repository.updateFormStructure({
+          ...edit,
+          expectedVersion: opened.version,
+          fields: [{ ...TEXT_FIELD, label: 'สถานประกอบการ' }],
+        }),
+      ).resolves.toMatchObject({ fields: [{ label: 'สถานประกอบการ' }], status: 'open' });
+      await expect(repository.updateFormStructure(edit)).resolves.toBe('stale');
+    });
+
+    it('keeps the submitted field snapshot after the live form changes', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      const opened = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+      });
+      if (typeof opened === 'string') throw new Error('expected opened form');
+      await repository.saveDraft({
+        answers: { company: 'CSI' },
+        expectedVersion: 0,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      const submitted = await repository.submit({
+        formId: form.id,
+        idempotencyKey: '58000000-0000-4000-8000-000000000099',
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      if (typeof submitted === 'string' || 'outcome' in submitted) {
+        throw new Error('expected submission');
+      }
+
+      await repository.updateFormStructure({
+        actorAccountId: INSTRUCTOR,
+        expectedVersion: opened.version,
+        fields: [{ ...TEXT_FIELD, label: 'สถานประกอบการ' }],
+        formId: form.id,
+        now: new Date(NOW.getTime() + 1_000),
+      });
+
+      const history = await repository.getSubmissionHistory({
+        actorAccountId: STUDENT,
+        formId: form.id,
+        isInstructor: false,
+        studentAccountId: STUDENT,
+      });
+      expect(history?.form.fields[0]?.label).toBe('สถานประกอบการ');
+      expect(history?.entries[0]?.fields[0]?.label).toBe('บริษัท');
+      expect(history?.entries[0]?.formVersion).toBe(opened.version);
     });
 
     it('extends a deadline and audits it, but refuses to pull it earlier', async () => {
@@ -1584,8 +1652,20 @@ describe('PostgresCollectionFormsRepository integration', () => {
     it('freezes the submission each Student had when the export was requested', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [TEXT_FIELD]);
-      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const opened = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+      });
+      if (typeof opened === 'string') throw new Error('expected opened form');
       const first = await submitAndReturn(form.id, '58000000-0000-4000-8000-000000000060');
+      await repository.updateFormStructure({
+        actorAccountId: INSTRUCTOR,
+        expectedVersion: opened.version,
+        fields: [{ ...TEXT_FIELD, label: 'สถานประกอบการ' }],
+        formId: form.id,
+        now: new Date(NOW.getTime() + 1_000),
+      });
 
       const job = await repository.createExport({
         formIds: [form.id],
@@ -1619,6 +1699,8 @@ describe('PostgresCollectionFormsRepository integration', () => {
       const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
       expect(entry?.submissionId).toBe(first.submissionId);
       expect(entry?.submissionId).not.toBe(later.submissionId);
+      expect(claimed?.forms[0]?.fields[0]?.label).toBe('สถานประกอบการ');
+      expect(entry?.fields?.[0]?.label).toBe('บริษัท');
       await expect(repository.readSubmissionAnswers(first.submissionId)).resolves.toEqual({
         company: 'CSI',
       });
@@ -1987,6 +2069,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       await transaction`delete from private.collection_submissions where student_account_id = ${STUDENT}`;
       await transaction`delete from public.collection_obligations where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from private.collection_notifications where student_account_id in (${STUDENT}, ${PEER})`;
+      await transaction`delete from private.collection_form_structure_events where actor_account_id = ${INSTRUCTOR}`;
       await transaction`delete from private.collection_form_metadata_events where actor_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_forms where created_by_account_id = ${INSTRUCTOR}`;
       await transaction`delete from public.collection_form_templates where created_by_account_id = ${INSTRUCTOR}`;

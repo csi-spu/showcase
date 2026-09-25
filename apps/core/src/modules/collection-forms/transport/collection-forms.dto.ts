@@ -114,7 +114,18 @@ class CollectionFormBodyDto {
 
 export class CreateCollectionFormDto extends CollectionFormBodyDto {}
 
-export class UpdateCollectionFormDto extends CollectionFormBodyDto {}
+export class UpdateCollectionFormDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_FIELDS_PER_FORM)
+  @ValidateNested({ each: true })
+  @Type(() => CollectionFieldDto)
+  fields!: CollectionFieldDto[];
+
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
 
 /** The subset of metadata that stays editable after a form is opened. */
 export class UpdateCollectionFormMetadataDto {

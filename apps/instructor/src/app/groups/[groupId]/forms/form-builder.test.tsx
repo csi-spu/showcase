@@ -38,6 +38,8 @@ vi.mock('next-intl', () => ({
       'Forms.builder.mappingKey': 'รหัสค่าใช้ซ้ำ',
       'Forms.builder.mappingKeyHint': 'ใช้เติมคำตอบเดิม',
       'Forms.builder.mappingKeyPlaceholder': 'เช่น company-name',
+      'Forms.builder.liveEditingDescription': 'มีผลกับคำตอบครั้งถัดไป',
+      'Forms.builder.liveEditingTitle': 'แก้ไขฟอร์มที่เปิดอยู่',
       'Forms.builder.moveDown': 'เลื่อนลง',
       'Forms.builder.moveUp': 'เลื่อนขึ้น',
       'Forms.builder.open': 'เปิดรับคำตอบ',
@@ -55,6 +57,7 @@ vi.mock('next-intl', () => ({
       'Forms.fieldType.short_text': 'ข้อความสั้น',
       'Forms.preview.requiredLabel': 'ต้องตอบ',
       'Forms.status.draft': 'แบบร่าง',
+      'Forms.status.open': 'เปิดรับคำตอบ',
       'Forms.template.saveAction': 'บันทึกเป็นเทมเพลต',
     };
     return messages[`${namespace}.${key}`] ?? key;
@@ -198,5 +201,29 @@ describe('FormBuilder draft editing', () => {
     expect(
       within(dialog).getByRole('button', { name: 'ยืนยันเปิดรับคำตอบ' }).hasAttribute('disabled'),
     ).toBe(true);
+  });
+
+  it('keeps the question editor available after opening', () => {
+    renderBuilder({ status: 'open', version: 4 });
+
+    expect(screen.getByRole('button', { name: 'เพิ่มคำถาม' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'บันทึกคำถาม' })).toBeDefined();
+    expect(screen.getByText('แก้ไขฟอร์มที่เปิดอยู่')).toBeDefined();
+  });
+
+  it('assigns a new field id when the answer type changes', async () => {
+    const user = userEvent.setup();
+    const { saveStructureAction } = renderBuilder();
+
+    await user.selectOptions(screen.getAllByLabelText('ชนิดคำตอบ')[0]!, 'long_text');
+    await user.click(screen.getByRole('button', { name: 'บันทึกคำถาม' }));
+    await waitFor(() => expect(saveStructureAction).toHaveBeenCalledOnce());
+
+    const submitted = saveStructureAction.mock.calls[0]?.[1];
+    expect(submitted).toBeInstanceOf(FormData);
+    expect(submitted?.get('expectedVersion')).toBe('1');
+    const fields = JSON.parse(String(submitted?.get('fields'))) as { id: string; type: string }[];
+    expect(fields[0]?.type).toBe('long_text');
+    expect(fields[0]?.id).not.toBe('name');
   });
 });

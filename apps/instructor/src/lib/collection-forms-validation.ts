@@ -102,7 +102,10 @@ const metadataShape = {
 };
 
 const createFormSchema = z.object({ ...metadataShape, fields: fieldsJsonSchema });
-const updateFormSchema = createFormSchema;
+const updateFormSchema = z.object({
+  expectedVersion: z.coerce.number().int().min(1),
+  fields: fieldsJsonSchema,
+});
 const metadataSchema = z.object(metadataShape);
 const saveAsTemplateSchema = z.object({ name: z.string().trim().min(1).max(200) });
 const createFromTemplateSchema = z.object({
@@ -127,6 +130,7 @@ const checkSubmissionSchema = z
   .refine((input) => input.decision === 'passed' || input.reason !== null, { path: ['reason'] });
 
 type CreateFormInput = z.infer<typeof createFormSchema>;
+type UpdateFormInput = z.infer<typeof updateFormSchema>;
 type MetadataInput = z.infer<typeof metadataSchema>;
 type SaveAsTemplateInput = z.infer<typeof saveAsTemplateSchema>;
 type CreateFromTemplateInput = z.infer<typeof createFromTemplateSchema>;
@@ -137,8 +141,11 @@ export function validateCreateForm(formData: FormData): CreateFormInput | null {
   return result.success ? result.data : null;
 }
 
-export function validateUpdateForm(formData: FormData): CreateFormInput | null {
-  const result = updateFormSchema.safeParse(readFormBody(formData));
+export function validateUpdateForm(formData: FormData): UpdateFormInput | null {
+  const result = updateFormSchema.safeParse({
+    expectedVersion: formData.get('expectedVersion'),
+    fields: formData.get('fields'),
+  });
   return result.success ? result.data : null;
 }
 

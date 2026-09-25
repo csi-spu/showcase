@@ -140,7 +140,9 @@ export interface StudentObligation {
   latestCheckingReason: string | null;
   latestSubmission: {
     answers: CollectionAnswers;
+    fields: CollectionField[];
     files: DraftFileSelection;
+    formVersion: number;
     id: string;
     submittedAt: Date;
     version: number;
@@ -164,7 +166,9 @@ export interface CollectionReviewEntry {
   /** Null until the Student submits, which is what `not_submitted` means. */
   latestSubmission: {
     answers: CollectionAnswers;
+    fields: CollectionField[];
     files: DraftFileSelection;
+    formVersion: number;
     id: string;
     submittedAt: Date;
     version: number;
@@ -192,6 +196,8 @@ export interface CollectionSubmissionHistoryEntry {
     reason: string | null;
   }[];
   files: DraftFileSelection;
+  fields: CollectionField[];
+  formVersion: number;
   id: string;
   submittedAt: Date;
   version: number;
@@ -290,6 +296,7 @@ export interface CollectionExportForm {
  * It is null when nothing was submitted; a draft never appears.
  */
 export interface CollectionExportEntry {
+  fields: CollectionField[] | null;
   formId: string;
   isLate: boolean;
   obligationStatus: string;
@@ -640,15 +647,19 @@ export interface CollectionFormsRepository {
     | 'forbidden'
     | 'missing_draft'
   >;
-  updateDraftForm(input: {
+  updateFormStructure(input: {
     actorAccountId: string;
-    deadlineAt: Date | null;
-    description: string;
+    expectedVersion: number;
     fields: CollectionField[];
     formId: string;
     now: Date;
-    title: string;
-  }): Promise<CollectionForm | 'not_draft' | 'not_found' | 'round_closed'>;
+  }): Promise<
+    | CollectionForm
+    | { outcome: 'invalid_transition'; code: string; fieldId: string }
+    | 'not_found'
+    | 'round_closed'
+    | 'stale'
+  >;
   /** Metadata edits permitted after opening; structural changes are rejected earlier. */
   updateFormMetadata(input: {
     actorAccountId: string;

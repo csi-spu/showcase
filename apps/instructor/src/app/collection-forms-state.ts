@@ -28,7 +28,7 @@ export type CollectionFormsErrorMessage =
   | 'formNotFound'
   | 'formNotOpen'
   | 'formNotClosed'
-  | 'formStructureLocked'
+  | 'formStale'
   | 'groupNotFound'
   | 'checkReasonRequired'
   | 'submissionNotFound'
@@ -89,9 +89,10 @@ export function toFormsErrorMessage(code: string): CollectionFormsErrorMessage {
       return 'formInvalid';
     case 'FORM_NOT_FOUND':
       return 'formNotFound';
+    case 'FORM_STALE':
+      return 'formStale';
     case 'FORM_ALREADY_OPENED':
-    case 'FORM_STRUCTURE_LOCKED':
-      return 'formStructureLocked';
+      return 'formStale';
     case 'CHECK_REASON_REQUIRED':
       return 'checkReasonRequired';
     case 'SUBMISSION_NOT_FOUND':

@@ -141,6 +141,14 @@ describe('buildInitialAnswers', () => {
     expect(result.answers.a).toBe('');
   });
 
+  it('clears a draft choice that the Instructor removed', () => {
+    const fields = [field({ id: 'choice', options: ['ใหม่'], type: 'single_choice' })];
+
+    const result = buildInitialAnswers(fields, { choice: 'เดิม' }, []);
+
+    expect(result.answers.choice).toBe('');
+  });
+
   it('gives a file field no answer slot at all', () => {
     const result = buildInitialAnswers([field({ id: 'f', type: 'file_upload' })], {}, []);
 

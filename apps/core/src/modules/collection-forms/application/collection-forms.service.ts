@@ -90,33 +90,29 @@ export class CollectionFormsService {
    * Replaces a Draft form's definition wholesale. The builder keeps its working
    * copy in the browser and saves once, so there is no partial-update path here.
    */
-  async updateDraftForm(input: {
+  async updateFormStructure(input: {
     actorAccountId: string;
-    deadlineAt: string | null;
-    description: string;
+    expectedVersion: number;
     fields: CollectionField[];
     formId: string;
-    title: string;
   }) {
-    const { description, title } = this.validateMetadata(input.title, input.description);
     this.validateFields(input.fields);
-    const result = await this.repository.updateDraftForm({
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new CollectionFormsError('FORM_VERSION_INVALID', 422);
+    }
+    const result = await this.repository.updateFormStructure({
       actorAccountId: input.actorAccountId,
-      deadlineAt: this.parseDeadline(input.deadlineAt),
-      description,
+      expectedVersion: input.expectedVersion,
       fields: input.fields,
       formId: input.formId,
       now: this.clock.now(),
-      title,
     });
     if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'round_closed') throw new CollectionFormsError('ROUND_CLOSED', 409);
-    /*
-     * Structure locks when the form opens. Editing it afterwards is not a
-     * validation problem but a lifecycle one, so it gets its own code and the UI
-     * explains that a copied form is the way to change questions.
-     */
-    if (result === 'not_draft') throw new CollectionFormsError('FORM_STRUCTURE_LOCKED', 409);
+    if (result === 'stale') throw new CollectionFormsError('FORM_STALE', 409);
+    if ('outcome' in result) {
+      throw new CollectionFormsError(result.code, 422, result.fieldId);
+    }
     return result;
   }
 
@@ -654,7 +650,10 @@ export class CollectionFormsService {
     const error = findAnswerError(form.fields, input.answers, { isComplete: false });
     if (error !== null) throw new CollectionFormsError(error.code, 422, error.fieldId);
 
-    const result = await this.repository.saveDraft({ ...input, now: this.clock.now() });
+    const result = await this.repository.saveDraft({
+      ...input,
+      now: this.clock.now(),
+    });
     if (result === 'forbidden') throw new CollectionFormsError('FORM_NOT_EDITABLE', 409);
     if (result === 'stale') throw new CollectionFormsError('DRAFT_STALE', 409);
     return result;

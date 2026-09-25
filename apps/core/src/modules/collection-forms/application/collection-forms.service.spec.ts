@@ -77,7 +77,7 @@ class FakeRepository implements CollectionFormsRepository {
     version: 1,
   };
   template: CollectionFormTemplate | null = TEMPLATE;
-  updateDraftResult: Result<'updateDraftForm'> = FORM;
+  updateStructureResult: Result<'updateFormStructure'> = FORM;
 
   createdForms: Parameters<CollectionFormsRepository['createForm']>[0][] = [];
   createdTemplates: Parameters<CollectionFormsRepository['createTemplate']>[0][] = [];
@@ -309,8 +309,8 @@ class FakeRepository implements CollectionFormsRepository {
   submit(): Promise<Result<'submit'>> {
     return Promise.resolve(this.submitResult);
   }
-  updateDraftForm(): Promise<Result<'updateDraftForm'>> {
-    return Promise.resolve(this.updateDraftResult);
+  updateFormStructure(): Promise<Result<'updateFormStructure'>> {
+    return Promise.resolve(this.updateStructureResult);
   }
   updateFormMetadata(): Promise<Result<'updateFormMetadata'>> {
     return Promise.resolve(this.metadataResult);
@@ -436,20 +436,50 @@ describe('CollectionFormsService', () => {
     expect(repository.createdForms[0]?.fields[0]?.type).toBe('file_upload');
   });
 
-  describe('structure lock', () => {
-    it('refuses structural edits once the form has been opened', async () => {
+  describe('structure editing', () => {
+    it('allows structural edits after the form has been opened', async () => {
       const repository = new FakeRepository();
-      repository.updateDraftResult = 'not_draft';
+      repository.updateStructureResult = { ...FORM, status: 'open', version: 3 };
       await expect(
-        setup(repository).service.updateDraftForm({
+        setup(repository).service.updateFormStructure({
           actorAccountId: ACTOR,
-          deadlineAt: null,
-          description: '',
+          expectedVersion: 2,
           fields: FORM.fields,
           formId: FORM.id,
-          title: 'แบบฟอร์ม',
         }),
-      ).rejects.toEqual(new CollectionFormsError('FORM_STRUCTURE_LOCKED', 409));
+      ).resolves.toEqual({ ...FORM, status: 'open', version: 3 });
+    });
+
+    it('rejects a concurrent structural edit against an old form version', async () => {
+      const repository = new FakeRepository();
+      repository.updateStructureResult = 'stale';
+      await expect(
+        setup(repository).service.updateFormStructure({
+          actorAccountId: ACTOR,
+          expectedVersion: 1,
+          fields: FORM.fields,
+          formId: FORM.id,
+        }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_STALE', 409));
+    });
+
+    it('requires a new field id when an existing field changes answer type', async () => {
+      const repository = new FakeRepository();
+      repository.updateStructureResult = {
+        code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID',
+        fieldId: TEXT_FIELD.id,
+        outcome: 'invalid_transition',
+      };
+      await expect(
+        setup(repository).service.updateFormStructure({
+          actorAccountId: ACTOR,
+          expectedVersion: 1,
+          fields: [{ ...TEXT_FIELD, type: 'number' }],
+          formId: FORM.id,
+        }),
+      ).rejects.toEqual(
+        new CollectionFormsError('FIELD_TYPE_CHANGE_REQUIRES_NEW_ID', 422, TEXT_FIELD.id),
+      );
     });
 
     it('still allows the permitted metadata edits', async () => {
@@ -881,7 +911,9 @@ describe('CollectionFormsService', () => {
             latestCheckingReason: null,
             latestSubmission: {
               answers: { company: 'บริษัท ก' },
+              fields: FORM.fields,
               files: {},
+              formVersion: 1,
               id: '50000000-0000-4000-8000-000000000009',
               submittedAt: NOW,
               version: 1,
@@ -1151,6 +1183,8 @@ describe('CollectionFormsService', () => {
               },
             ],
             files: {},
+            fields: FORM.fields,
+            formVersion: 1,
             id: '50000000-0000-4000-8000-000000000001',
             submittedAt: NOW,
             version: 1,
@@ -1452,6 +1486,9 @@ describe('CollectionFormsService', () => {
           attemptCount: 1,
           entries: [
             {
+              fields: [
+                { description: '', id: 'name', label: 'ชื่อ', required: true, type: 'short_text' },
+              ] as CollectionField[],
               formId: FORM.id,
               isLate: false,
               obligationStatus: 'passed',
