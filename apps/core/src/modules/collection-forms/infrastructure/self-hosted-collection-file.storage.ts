@@ -4,8 +4,9 @@
  *
  * Collection files are private documents, so this deliberately offers no
  * unsigned public URL. Every read is a short-lived signed GET that Core issues
- * only after it has authorized the caller for that one file, and the signed URL
- * is served from the internal origin rather than the public media origin.
+ * only after it has authorized the caller for that one file. Browser-facing
+ * signed URLs use the public media origin; server-side storage operations keep
+ * using the private service origin.
  */
 
 import { createHmac } from 'node:crypto';
@@ -23,12 +24,15 @@ const EXPORT_UPLOAD_TIMEOUT_SECONDS = EXPORT_UPLOAD_TIMEOUT_MS / 1_000;
 
 export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
   private readonly baseUrl: string;
+  private readonly publicBaseUrl: string;
 
   constructor(
     baseUrl: string,
+    publicBaseUrl: string,
     private readonly signingSecret: string,
   ) {
     this.baseUrl = new URL(baseUrl).origin.replace(/\/$/u, '');
+    this.publicBaseUrl = new URL(publicBaseUrl).origin.replace(/\/$/u, '');
   }
 
   createPresignedPut(input: {
@@ -36,15 +40,19 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
     expiresInSeconds: number;
     key: string;
   }): Promise<string> {
-    return Promise.resolve(this.signedUrl('PUT', input.key, input.expiresInSeconds));
+    return Promise.resolve(
+      this.signedUrl(this.publicBaseUrl, 'PUT', input.key, input.expiresInSeconds),
+    );
   }
 
   createPresignedGet(input: { expiresInSeconds: number; key: string }): Promise<string> {
-    return Promise.resolve(this.signedUrl('GET', input.key, input.expiresInSeconds));
+    return Promise.resolve(
+      this.signedUrl(this.publicBaseUrl, 'GET', input.key, input.expiresInSeconds),
+    );
   }
 
   async deleteObject(key: string): Promise<void> {
-    const response = await fetch(this.signedUrl('DELETE', key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'DELETE', key, 60), {
       method: 'DELETE',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -53,7 +61,7 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
   }
 
   async getObject(key: string, maximumBytes: number): Promise<Buffer> {
-    const response = await fetch(this.signedUrl('GET', key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'GET', key, 60), {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error('COLLECTION_FILE_GET_FAILED');
@@ -91,14 +99,17 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
         yield new Uint8Array(chunk);
       }
     };
-    const response = await fetch(this.signedUrl('PUT', input.key, EXPORT_UPLOAD_TIMEOUT_SECONDS), {
-      body: Readable.from(counted()) as unknown as BodyInit,
-      /* Node requires this to send a body it has not fully buffered. */
-      duplex: 'half',
-      headers: { 'content-type': input.contentType },
-      method: 'PUT',
-      signal: AbortSignal.timeout(EXPORT_UPLOAD_TIMEOUT_MS),
-    } as RequestInit & { duplex: 'half' });
+    const response = await fetch(
+      this.signedUrl(this.baseUrl, 'PUT', input.key, EXPORT_UPLOAD_TIMEOUT_SECONDS),
+      {
+        body: Readable.from(counted()) as unknown as BodyInit,
+        /* Node requires this to send a body it has not fully buffered. */
+        duplex: 'half',
+        headers: { 'content-type': input.contentType },
+        method: 'PUT',
+        signal: AbortSignal.timeout(EXPORT_UPLOAD_TIMEOUT_MS),
+      } as RequestInit & { duplex: 'half' },
+    );
     if (!response.ok) throw new Error('COLLECTION_EXPORT_PUT_FAILED');
     return byteSize;
   }
@@ -110,7 +121,7 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
    * bytes pass through in chunks rather than being assembled first.
    */
   async *getObjectStream(key: string): AsyncIterable<Buffer> {
-    const response = await fetch(this.signedUrl('GET', key, 60), {
+    const response = await fetch(this.signedUrl(this.baseUrl, 'GET', key, 60), {
       signal: AbortSignal.timeout(EXPORT_UPLOAD_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error('COLLECTION_FILE_GET_FAILED');
@@ -120,7 +131,12 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
     }
   }
 
-  private signedUrl(method: string, key: string, expiresInSeconds: number): string {
+  private signedUrl(
+    baseUrl: string,
+    method: string,
+    key: string,
+    expiresInSeconds: number,
+  ): string {
     if (key.length === 0 || key.length > MAX_KEY_LENGTH) {
       throw new Error('COLLECTION_FILE_KEY_INVALID');
     }
@@ -129,6 +145,6 @@ export class SelfHostedCollectionFileStorage implements CollectionFileStorage {
     const signature = createHmac('sha256', this.signingSecret)
       .update(`${method}\n${key}\n${expires}`)
       .digest('base64url');
-    return `${this.baseUrl}/objects/${encodedKey}?expires=${expires}&signature=${signature}`;
+    return `${baseUrl}/objects/${encodedKey}?expires=${expires}&signature=${signature}`;
   }
 }
