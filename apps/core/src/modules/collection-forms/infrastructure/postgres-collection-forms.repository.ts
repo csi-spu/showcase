@@ -1606,8 +1606,8 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
-   * Registers an upload slot. The row is created quarantined and stays that way
-   * until an inspection records a result, so nothing here can make a file usable.
+   * Registers a pending upload slot. Only an authorized finalize call moves it
+   * into quarantine after the browser has completed the signed PUT.
    */
   async createUpload(input: {
     byteSize: number;
@@ -1622,9 +1622,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     const rows = await this.database.sql<FileRow[]>`
       insert into private.collection_files
         (form_id, field_id, student_account_id, storage_key, original_filename,
-          declared_content_type, byte_size, created_at)
+          declared_content_type, byte_size, status, created_at)
       values (${input.formId}, ${this.database.sql.text(input.fieldId)}, ${input.studentAccountId}, ${input.storageKey},
-        ${input.filename}, ${input.declaredContentType}, ${input.byteSize}, ${input.now})
+        ${input.filename}, ${input.declaredContentType}, ${input.byteSize}, 'pending_upload', ${input.now})
       returning id, form_id, field_id, student_account_id, original_filename, declared_content_type,
         detected_content_type, byte_size, status, inspection_error_code, created_at
     `;
@@ -1634,17 +1634,42 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   async listFieldFiles(input: {
     fieldId: string;
     formId: string;
+    now: Date;
     studentAccountId: string;
   }): Promise<CollectionFile[]> {
     const rows = await this.database.sql<FileRow[]>`
-      select id, form_id, field_id, student_account_id, original_filename, declared_content_type,
-        detected_content_type, byte_size, status, inspection_error_code, created_at
-      from private.collection_files
-      where student_account_id = ${input.studentAccountId} and form_id = ${input.formId}
-        and field_id = ${this.database.sql.text(input.fieldId)}
-      order by created_at desc limit ${MAX_FILES_PER_FIELD * 4}
+      select file.id, file.form_id, file.field_id, file.student_account_id, file.original_filename,
+        file.declared_content_type, file.detected_content_type, file.byte_size, file.status,
+        file.inspection_error_code, file.created_at
+      from private.collection_files as file
+      left join private.collection_draft_files as draft_file on draft_file.file_id = file.id
+      where file.student_account_id = ${input.studentAccountId} and file.form_id = ${input.formId}
+        and file.field_id = ${this.database.sql.text(input.fieldId)}
+        and (
+          draft_file.file_id is not null
+          or (file.status <> 'failed' and file.created_at > ${input.now} - interval '15 minutes')
+        )
+      order by file.created_at desc limit ${MAX_FILES_PER_FIELD * 4}
     `;
     return rows.map((row) => this.mapFile(row));
+  }
+
+  async finalizeUpload(input: { fileId: string; formId: string; studentAccountId: string }) {
+    const rows = await this.database.sql<{ id: string }[]>`
+      update private.collection_files
+      set status = 'quarantined'
+      where id = ${input.fileId} and form_id = ${input.formId}
+        and student_account_id = ${input.studentAccountId} and status = 'pending_upload'
+      returning id
+    `;
+    if (rows[0] !== undefined) return 'finalized' as const;
+    const existing = await this.database.sql<{ id: string }[]>`
+      select id from private.collection_files
+      where id = ${input.fileId} and form_id = ${input.formId}
+        and student_account_id = ${input.studentAccountId}
+        and status in ('quarantined', 'inspecting', 'ready')
+    `;
+    return existing[0] === undefined ? ('not_found' as const) : ('finalized' as const);
   }
 
   async attachDraftFile(input: {

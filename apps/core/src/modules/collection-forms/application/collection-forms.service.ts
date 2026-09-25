@@ -660,9 +660,9 @@ export class CollectionFormsService {
   }
 
   /**
-   * Registers an upload slot after checking the request against the field's
-   * configuration. The returned file stays quarantined: nothing here makes it
-   * usable, and submission will refuse it until an inspection records a result.
+   * Registers a pending upload slot after checking the request against the
+   * field's configuration. It does not enter quarantine until the browser
+   * confirms that its signed PUT completed.
    */
   async createUpload(input: {
     byteSize: number;
@@ -677,9 +677,11 @@ export class CollectionFormsService {
     const field = form.fields.find((candidate) => candidate.id === input.fieldId);
     if (field === undefined) throw new CollectionFormsError('FIELD_NOT_FOUND', 404);
 
+    const now = this.clock.now();
     const existing = await this.repository.listFieldFiles({
       fieldId: input.fieldId,
       formId: input.formId,
+      now,
       studentAccountId: input.studentAccountId,
     });
     const error = findUploadRequestError(
@@ -695,13 +697,22 @@ export class CollectionFormsService {
 
     // Opaque and random: never derived from a Student ID or a filename.
     const storageKey = `collection-files/${randomUUID()}`;
+    /*
+     * Sign before persisting the slot. If storage is unavailable, no row is
+     * left behind to consume the field's upload limit without usable bytes.
+     */
+    const uploadUrl = await this.storage.createPresignedPut({
+      contentType: input.declaredContentType,
+      expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+      key: storageKey,
+    });
     const file = await this.repository.createUpload({
       byteSize: input.byteSize,
       declaredContentType: input.declaredContentType,
       fieldId: input.fieldId,
       filename: input.filename.trim(),
       formId: input.formId,
-      now: this.clock.now(),
+      now,
       storageKey,
       studentAccountId: input.studentAccountId,
     });
@@ -709,15 +720,15 @@ export class CollectionFormsService {
     /*
      * The browser sends bytes straight to storage with this URL, so Core never
      * proxies the upload. It is short-lived and scoped to this one key; the row
-     * it belongs to is already quarantined, so a successful PUT still produces
-     * nothing the Student can submit until inspection has run.
+     * it belongs to remains pending until finalizeUpload moves it into the
+     * inspection queue. A successful PUT alone is never an accepted document.
      */
-    const uploadUrl = await this.storage.createPresignedPut({
-      contentType: input.declaredContentType,
-      expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
-      key: storageKey,
-    });
     return { file, uploadUrl };
+  }
+
+  async finalizeUpload(input: { fileId: string; formId: string; studentAccountId: string }) {
+    const result = await this.repository.finalizeUpload(input);
+    if (result === 'not_found') throw new CollectionFormsError('FILE_NOT_FOUND', 404);
   }
 
   /**

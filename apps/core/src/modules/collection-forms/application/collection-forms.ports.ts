@@ -386,6 +386,11 @@ export interface CollectionFormsRepository {
     storageKey: string;
     studentAccountId: string;
   }): Promise<CollectionFile>;
+  finalizeUpload(input: {
+    fileId: string;
+    formId: string;
+    studentAccountId: string;
+  }): Promise<'finalized' | 'not_found'>;
   detachDraftFile(input: {
     fileId: string;
     formId: string;
@@ -431,6 +436,7 @@ export interface CollectionFormsRepository {
   listFieldFiles(input: {
     fieldId: string;
     formId: string;
+    now: Date;
     studentAccountId: string;
   }): Promise<CollectionFile[]>;
   listGroupForms(groupId: string): Promise<CollectionForm[]>;

@@ -86,8 +86,8 @@ export class StudentCollectionFormsController {
   }
 
   /**
-   * Registers an upload slot. The file starts quarantined and cannot be submitted
-   * until an inspection records a result, so this grants no acceptance of content.
+   * Registers a pending upload slot. The browser must complete its signed PUT
+   * and finalize the slot before inspection can claim it.
    */
   @Post(':formId/uploads')
   @Header('Cache-Control', 'no-store')
@@ -103,6 +103,18 @@ export class StudentCollectionFormsController {
       ...body,
     });
     return { file: toFileView(file), uploadUrl };
+  }
+
+  @Post(':formId/uploads/:fileId/finalize')
+  @Header('Cache-Control', 'no-store')
+  async finalizeUpload(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Param('fileId', new ParseUUIDPipe({ version: '4' })) fileId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeMutation(token(authorization));
+    await this.forms.finalizeUpload({ fileId, formId, studentAccountId: actor.accountId });
+    return { status: 'quarantined' };
   }
 
   /**

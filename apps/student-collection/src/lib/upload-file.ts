@@ -7,8 +7,8 @@
  * body has been sent.
  *
  * Nothing here decides whether a file is acceptable. A completed send only
- * means the bytes arrived; the file stays quarantined until Core has inspected
- * it, so this must never be presented as the file being received or safe.
+ * means the bytes arrived; Core must finalize and inspect it before the UI can
+ * present the file as received or safe.
  */
 
 export type UploadOutcome = 'aborted' | 'failed' | 'sent';
