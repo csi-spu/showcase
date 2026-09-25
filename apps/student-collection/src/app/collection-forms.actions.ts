@@ -159,6 +159,20 @@ export async function finalizeCollectionUploadAction(
   }
 }
 
+export async function retryCollectionUploadAction(
+  formId: string,
+  fileId: string,
+): Promise<{ error: StudentFormsErrorMessage | null; uploadUrl: string | null }> {
+  const token = await requireSessionToken();
+  try {
+    const result = await coreClient().retryUpload(token, formId, fileId);
+    return { error: null, uploadUrl: result.uploadUrl };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { error: toFailure(error).error, uploadUrl: null };
+  }
+}
+
 export async function detachCollectionFileAction(
   formId: string,
   fileId: string,

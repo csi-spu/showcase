@@ -731,6 +731,18 @@ export class CollectionFormsService {
     if (result === 'not_found') throw new CollectionFormsError('FILE_NOT_FOUND', 404);
   }
 
+  /** Reissues the short-lived PUT URL for an owned slot whose initial transfer failed. */
+  async retryUpload(input: { fileId: string; formId: string; studentAccountId: string }) {
+    const pending = await this.repository.findPendingUploadForRetry(input);
+    if (pending === null) throw new CollectionFormsError('FILE_NOT_FOUND', 404);
+    const uploadUrl = await this.storage.createPresignedPut({
+      contentType: pending.declaredContentType,
+      expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+      key: pending.storageKey,
+    });
+    return { uploadUrl };
+  }
+
   /**
    * Inspects one waiting file and records the verdict.
    *

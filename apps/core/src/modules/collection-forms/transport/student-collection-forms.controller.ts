@@ -105,6 +105,17 @@ export class StudentCollectionFormsController {
     return { file: toFileView(file), uploadUrl };
   }
 
+  @Post(':formId/uploads/:fileId/retry')
+  @Header('Cache-Control', 'no-store')
+  async retryUpload(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Param('fileId', new ParseUUIDPipe({ version: '4' })) fileId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeMutation(token(authorization));
+    return this.forms.retryUpload({ fileId, formId, studentAccountId: actor.accountId });
+  }
+
   @Post(':formId/uploads/:fileId/finalize')
   @Header('Cache-Control', 'no-store')
   async finalizeUpload(

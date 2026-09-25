@@ -1672,6 +1672,22 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     return existing[0] === undefined ? ('not_found' as const) : ('finalized' as const);
   }
 
+  async findPendingUploadForRetry(input: {
+    fileId: string;
+    formId: string;
+    studentAccountId: string;
+  }) {
+    const rows = await this.database.sql<{ declared_content_type: string; storage_key: string }[]>`
+      select declared_content_type, storage_key from private.collection_files
+      where id = ${input.fileId} and form_id = ${input.formId}
+        and student_account_id = ${input.studentAccountId} and status = 'pending_upload'
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : { declaredContentType: row.declared_content_type, storageKey: row.storage_key };
+  }
+
   async attachDraftFile(input: {
     fieldId: string;
     fileId: string;

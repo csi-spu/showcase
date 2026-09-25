@@ -391,6 +391,11 @@ export interface CollectionFormsRepository {
     formId: string;
     studentAccountId: string;
   }): Promise<'finalized' | 'not_found'>;
+  findPendingUploadForRetry(input: {
+    fileId: string;
+    formId: string;
+    studentAccountId: string;
+  }): Promise<{ declaredContentType: string; storageKey: string } | null>;
   detachDraftFile(input: {
     fileId: string;
     formId: string;

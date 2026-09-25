@@ -87,6 +87,10 @@ class FakeRepository implements CollectionFormsRepository {
   claimable: Result<'claimFileForInspection'> = null;
   completedInspections: Parameters<CollectionFormsRepository['completeInspection']>[0][] = [];
   readableFile: Result<'findReadableFile'> = null;
+  retryUpload: Result<'findPendingUploadForRetry'> = {
+    declaredContentType: 'application/pdf',
+    storageKey: 'collection-files/existing',
+  };
 
   closeResult: Result<'closeForm'> = { ...FORM, status: 'closed' };
   closedForms: Parameters<CollectionFormsRepository['closeForm']>[0][] = [];
@@ -176,6 +180,9 @@ class FakeRepository implements CollectionFormsRepository {
   }
   findReadableFile(): Promise<Result<'findReadableFile'>> {
     return Promise.resolve(this.readableFile);
+  }
+  findPendingUploadForRetry(): Promise<Result<'findPendingUploadForRetry'>> {
+    return Promise.resolve(this.retryUpload);
   }
   finalizeUpload(): Promise<Result<'finalizeUpload'>> {
     return Promise.resolve(this.finalizeResult);
@@ -744,6 +751,30 @@ describe('CollectionFormsService', () => {
           studentAccountId: STUDENT,
         }),
       ).rejects.toEqual(new CollectionFormsError('FILE_NOT_FOUND', 404));
+    });
+
+    it('reissues a URL for the same pending upload slot', async () => {
+      const repository = new FakeRepository();
+      const { service, storage } = setup(repository);
+      await expect(
+        service.retryUpload({ fileId: 'file-id', formId: FORM.id, studentAccountId: STUDENT }),
+      ).resolves.toEqual({ uploadUrl: 'https://storage.example/put/collection-files/existing' });
+      expect(storage.presignedPuts).toHaveLength(1);
+      expect(storage.presignedPuts[0]).toMatchObject({
+        contentType: 'application/pdf',
+        key: 'collection-files/existing',
+      });
+      expect(storage.presignedPuts[0]?.expiresInSeconds).toBeGreaterThan(0);
+    });
+
+    it('does not reissue a URL outside the Student form scope', async () => {
+      const repository = new FakeRepository();
+      repository.retryUpload = null;
+      const { service, storage } = setup(repository);
+      await expect(
+        service.retryUpload({ fileId: 'file-id', formId: FORM.id, studentAccountId: STUDENT }),
+      ).rejects.toEqual(new CollectionFormsError('FILE_NOT_FOUND', 404));
+      expect(storage.presignedPuts).toEqual([]);
     });
 
     it('rejects a request for a field the form does not have', async () => {
