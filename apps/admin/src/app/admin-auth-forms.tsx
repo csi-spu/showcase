@@ -51,7 +51,7 @@ export function LoginForm({ action }: { action: AuthAction }) {
                 maxLength={64}
                 minLength={3}
                 name="adminLogin"
-                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"
+                pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,63}"
                 placeholder={t('login.adminLoginPlaceholder')}
                 required
                 spellCheck={false}
