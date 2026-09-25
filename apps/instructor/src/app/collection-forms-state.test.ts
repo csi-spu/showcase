@@ -20,6 +20,9 @@ describe('toFormsErrorMessage', () => {
     expect(toFormsErrorMessage('DEADLINE_NOT_EXTENDABLE')).toBe('deadlineNotExtendable');
     expect(toFormsErrorMessage('TEMPLATE_NOT_FOUND')).toBe('templateNotFound');
     expect(toFormsErrorMessage('FIELD_MAPPING_KEY_DUPLICATE')).toBe('fieldMappingKeyDuplicate');
+    expect(toFormsErrorMessage('FIELD_TYPE_CHANGE_REQUIRES_NEW_ID')).toBe(
+      'fieldTypeChangeRequiresNewId',
+    );
   });
 
   it('distinguishes a form that cannot be closed from one that cannot be reopened', () => {
