@@ -347,10 +347,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
   });
 
   describe('private files', () => {
+    const fileFieldId = '58000000-0000-4000-8000-000000000019';
     const fileField: CollectionField = {
       description: '',
       file: { allowedFileTypes: ['pdf'], maxFiles: 2 },
-      id: 'doc',
+      id: fileFieldId,
       label: 'เอกสาร',
       required: true,
       type: 'file_upload',
@@ -371,7 +372,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       const file = await repository.createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
-        fieldId: 'doc',
+        fieldId: fileFieldId,
         filename: 'report.pdf',
         formId: form.id,
         now: NOW,
@@ -381,7 +382,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       expect(file.status).toBe('quarantined');
       await expect(
         repository.attachDraftFile({
-          fieldId: 'doc',
+          fieldId: fileFieldId,
           fileId: file.id,
           formId: form.id,
           studentAccountId: STUDENT,
@@ -399,7 +400,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
           now: NOW,
           studentAccountId: STUDENT,
         }),
-      ).resolves.toEqual({ code: 'FILE_NOT_READY', fieldId: 'doc', outcome: 'invalid' });
+      ).resolves.toEqual({ code: 'FILE_NOT_READY', fieldId: fileFieldId, outcome: 'invalid' });
     });
 
     it('submits once the file has a recorded inspection result', async () => {
@@ -416,7 +417,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       const file = await repository.createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
-        fieldId: 'doc',
+        fieldId: fileFieldId,
         filename: 'report.pdf',
         formId: form.id,
         now: NOW,
@@ -424,7 +425,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         studentAccountId: STUDENT,
       });
       await repository.attachDraftFile({
-        fieldId: 'doc',
+        fieldId: fileFieldId,
         fileId: file.id,
         formId: form.id,
         studentAccountId: STUDENT,
@@ -449,7 +450,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       expect(submitted).toMatchObject({ version: 1 });
 
       const obligations = await repository.listStudentObligations(STUDENT, NOW);
-      expect(obligations[0]?.latestSubmission?.files.doc?.[0]?.id).toBe(file.id);
+      expect(obligations[0]?.latestSubmission?.files[fileFieldId]?.[0]?.id).toBe(file.id);
     });
 
     it('refuses to attach a file that belongs to another form', async () => {
@@ -469,7 +470,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       const file = await repository.createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
-        fieldId: 'doc',
+        fieldId: fileFieldId,
         filename: 'report.pdf',
         formId: form.id,
         now: NOW,
@@ -478,7 +479,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       });
       await expect(
         repository.attachDraftFile({
-          fieldId: 'doc',
+          fieldId: fileFieldId,
           fileId: file.id,
           formId: otherForm.id,
           studentAccountId: STUDENT,

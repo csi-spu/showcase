@@ -3,7 +3,7 @@ import type { Prisma, PrismaClient } from '../../../../generated/prisma-client';
 export class PrismaValueFragment {
   constructor(
     readonly value: unknown,
-    readonly isJson = false,
+    readonly cast: 'jsonb' | 'text',
   ) {}
 }
 
@@ -41,6 +41,7 @@ export interface PrismaSql {
   (values: readonly unknown[], ...columns: string[]): PrismaQuery<unknown[]>;
   begin<T>(callback: (transaction: PrismaSql) => Promise<T>): Promise<T>;
   json(value: unknown): PrismaValueFragment;
+  text(value: string): PrismaValueFragment;
   unsafe<T extends unknown[]>(text: string, ...values: unknown[]): PrismaQuery<T>;
   end(options?: { timeout?: number }): Promise<void>;
 }
@@ -73,7 +74,8 @@ export function createPrismaSqlClient(
       return callback(createPrismaSqlClient(transaction));
     });
   };
-  sql.json = (value: unknown) => new PrismaValueFragment(JSON.stringify(value), true);
+  sql.json = (value: unknown) => new PrismaValueFragment(JSON.stringify(value), 'jsonb');
+  sql.text = (value: string) => new PrismaValueFragment(value, 'text');
   sql.unsafe = <T extends unknown[]>(text: string, ...values: unknown[]) =>
     new PrismaQuery(async () => execute<T>(client, text, values), text, values);
   sql.end = () => Promise.resolve();
@@ -154,9 +156,9 @@ function buildQuery(strings: TemplateStringsArray, values: readonly unknown[]) {
       text += value.text.replace(/\$(\d+)/g, (_, number: string) => `$${Number(number) + offset}`);
       parameters.push(...value.values);
     } else {
-      const isJson = value instanceof PrismaValueFragment && value.isJson;
       const parameterValue = value instanceof PrismaValueFragment ? value.value : value;
-      text += parameterPlaceholder(parameterValue, parameters.length + 1, isJson);
+      const cast = value instanceof PrismaValueFragment ? value.cast : undefined;
+      text += parameterPlaceholder(parameterValue, parameters.length + 1, cast);
       parameters.push(parameterValue);
     }
     text += strings[index + 1] ?? '';
@@ -164,8 +166,13 @@ function buildQuery(strings: TemplateStringsArray, values: readonly unknown[]) {
   return { text, values: parameters };
 }
 
-function parameterPlaceholder(value: unknown, index: number, isJson = false): string {
-  if (isJson) return `$${index}::jsonb`;
+/*
+ * Prisma binds JavaScript strings as Postgres `text`, so UUID values need an
+ * explicit cast when used against UUID columns. Callers with a UUID-shaped
+ * value for a text column must mark that database type with `sql.text(value)`.
+ */
+function parameterPlaceholder(value: unknown, index: number, cast?: 'jsonb' | 'text'): string {
+  if (cast !== undefined) return `$${index}::${cast}`;
   return typeof value === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
     ? `$${index}::uuid`
