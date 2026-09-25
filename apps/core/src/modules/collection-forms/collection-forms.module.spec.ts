@@ -35,19 +35,33 @@ function getStorageFactory(): StorageFactory {
 }
 
 function fakeConfig(environment: Record<string, string | undefined>): ConfigService {
-  return { get: (key: string) => environment[key] } as unknown as ConfigService;
+  return {
+    get: (key: string) => environment[key],
+    getOrThrow: (key: string) => {
+      const value = environment[key];
+      if (value === undefined) throw new Error(`${key}_REQUIRED`);
+      return value;
+    },
+  } as unknown as ConfigService;
 }
 
 describe('CollectionFormsModule storage wiring', () => {
-  it('uses the self-hosted store when the media service is configured', () => {
+  it('uses the self-hosted store and public origin when media is configured', async () => {
     const storage = getStorageFactory()(
       fakeConfig({
         MEDIA_SERVICE_HMAC_SECRET: 'a'.repeat(32),
         MEDIA_SERVICE_URL: 'https://media.internal.example',
+        PUBLIC_MEDIA_ORIGIN: 'https://media.example',
       }),
     );
 
     expect(storage).toBeInstanceOf(SelfHostedCollectionFileStorage);
+    const uploadUrl = await storage.createPresignedPut({
+      contentType: 'application/pdf',
+      expiresInSeconds: 60,
+      key: 'collection-files/x',
+    });
+    expect(new URL(uploadUrl).origin).toBe('https://media.example');
   });
 
   it.each([

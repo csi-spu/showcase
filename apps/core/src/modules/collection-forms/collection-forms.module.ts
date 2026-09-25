@@ -43,7 +43,8 @@ import { StudentCollectionNotificationsController } from './transport/student-co
         if (serviceUrl === undefined || signingSecret === undefined) {
           return new UnavailableCollectionFileStorage();
         }
-        return new SelfHostedCollectionFileStorage(serviceUrl, signingSecret);
+        const publicMediaOrigin = config.getOrThrow<string>('PUBLIC_MEDIA_ORIGIN');
+        return new SelfHostedCollectionFileStorage(serviceUrl, publicMediaOrigin, signingSecret);
       },
     },
   ],
