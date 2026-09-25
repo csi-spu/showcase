@@ -129,6 +129,15 @@ export class StudentCollectionFormsCoreClient {
     });
   }
 
+  retryUpload(token: string, formId: string, fileId: string): Promise<{ uploadUrl: string }> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/${formId}/uploads/${fileId}/retry`,
+      responseSchema: z.object({ uploadUrl: z.string().url() }).strict(),
+      sessionToken: token,
+    });
+  }
+
   attachFile(
     token: string,
     formId: string,

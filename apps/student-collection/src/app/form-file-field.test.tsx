@@ -11,6 +11,7 @@ const actions = vi.hoisted(() => ({
   create: vi.fn(),
   detach: vi.fn(),
   finalize: vi.fn(),
+  retry: vi.fn(),
   upload: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ vi.mock('./collection-forms.actions', () => ({
   createCollectionUploadAction: actions.create,
   detachCollectionFileAction: actions.detach,
   finalizeCollectionUploadAction: actions.finalize,
+  retryCollectionUploadAction: actions.retry,
 }));
 
 vi.mock('@/lib/upload-file', () => ({ uploadFileBytes: actions.upload }));
@@ -57,6 +59,10 @@ describe('FormFileField', () => {
       uploadUrl: 'https://media.example.test/upload',
     });
     actions.upload.mockResolvedValueOnce('failed').mockResolvedValueOnce('sent');
+    actions.retry.mockResolvedValue({
+      error: null,
+      uploadUrl: 'https://media.example.test/refreshed-upload',
+    });
     actions.finalize.mockResolvedValue({ error: null });
     actions.attach.mockResolvedValue({ error: null });
 
@@ -79,7 +85,11 @@ describe('FormFileField', () => {
 
     await waitFor(() => expect(actions.attach).toHaveBeenCalledTimes(1));
     expect(actions.create).toHaveBeenCalledTimes(1);
+    expect(actions.retry).toHaveBeenCalledWith('form-id', 'file-id');
     expect(actions.upload).toHaveBeenCalledTimes(2);
+    expect(actions.upload.mock.calls[1]?.[0]).toMatchObject({
+      url: 'https://media.example.test/refreshed-upload',
+    });
     expect(actions.finalize).toHaveBeenCalledTimes(1);
     expect(actions.attach).toHaveBeenCalledWith('form-id', FIELD.id, 'file-id');
   });

@@ -19,6 +19,7 @@ import {
   createCollectionUploadAction,
   detachCollectionFileAction,
   finalizeCollectionUploadAction,
+  retryCollectionUploadAction,
 } from './collection-forms.actions';
 import type { StudentFormsErrorMessage } from './collection-forms-errors';
 import {
@@ -142,6 +143,15 @@ export function FormFileField({
     );
 
     let ticket = retryTicket;
+    if (retryTicket !== undefined) {
+      const refreshed = await retryCollectionUploadAction(formId, retryTicket.file.id);
+      if (refreshed.error !== null || refreshed.uploadUrl === null) {
+        setTransfer({ file: selected, progress: 0, state: 'failed', ticket: retryTicket });
+        setError(refreshed.error ?? 'unavailable');
+        return;
+      }
+      ticket = { ...retryTicket, uploadUrl: refreshed.uploadUrl };
+    }
     if (ticket === undefined) {
       const created = await createCollectionUploadAction(formId, {
         byteSize: selected.size,
