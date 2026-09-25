@@ -2,7 +2,7 @@
  * Private collection file contract.
  *
  * Uploaded bytes are untrusted until an inspector has examined those exact bytes.
- * The lifecycle is quarantined -> inspecting -> ready | failed, and only `ready`
+ * The lifecycle is pending_upload -> quarantined -> inspecting -> ready | failed, and only `ready`
  * may be attached to a submission.
  *
  * There is deliberately no path that marks a file ready without a recorded
@@ -21,7 +21,8 @@ import {
   type CollectionFileType,
 } from './collection-field';
 
-export type CollectionFileStatus = 'quarantined' | 'inspecting' | 'ready' | 'failed';
+export type CollectionFileStatus =
+  'pending_upload' | 'quarantined' | 'inspecting' | 'ready' | 'failed';
 
 export interface CollectionFile {
   byteSize: number;

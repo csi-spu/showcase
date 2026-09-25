@@ -51,12 +51,13 @@ Current required keys:
 - `MEDIA_SERVICE_URL`, the private storage-service origin used only by Core
 - `MEDIA_SERVICE_HMAC_SECRET`, an environment-specific signing secret shared by Core and media
 - `STUDENT_URL`, the exact public Student origin
+- `STUDENT_COLLECTION_URL`, the exact public Student Collection origin used by Media's upload allowlist
 - `VISITOR_CACHE_SECRET`, an environment-specific high-entropy secret shared only with the Visitor cache-revalidation endpoint
 - `VISITOR_BFF_SECRET`, an environment-specific high-entropy secret used by Visitor to authenticate opaque source keys for public mutation rate limits
 - `VISITOR_URL`, the exact public Visitor origin used by the cache invalidation worker
 - `SENTRY_DSN`, the public Core project DSN; use the same value for Core-image workers
 
-Media receives `STUDENT_URL` as the exact allowed browser upload origin. It rejects other origins and validates each preflight against the signed `PUT` URL. The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
+Media receives `STUDENT_URL` and `STUDENT_COLLECTION_URL` as the exact allowed browser upload origins. It rejects other origins and validates each preflight against the signed `PUT` URL. The media-service secret allows only signed object read, write, and delete operations. Signed URLs are operation- and key-scoped, short-lived, and never logged. Postgres and media backups receive the same access control and retention as production data.
 
 Admin receives `CORE_URL` and its own `API_KEY` at container runtime, set to the same value as Core's `API_KEY`; Admin sends it as the `x-admin-bff-secret` header. Admin authentication reaches Core only through Next.js Server Actions. The secret must never use a `NEXT_PUBLIC_` prefix or enter browser bundles.
 

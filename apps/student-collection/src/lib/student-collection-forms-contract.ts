@@ -52,7 +52,8 @@ export const fieldSchema = z
 
 /*
  * A file is only ever an accepted document once an inspection has recorded a
- * result. `quarantined` and `inspecting` mean exactly that: not yet accepted.
+ * result. `pending_upload`, `quarantined`, and `inspecting` mean exactly that:
+ * not yet accepted.
  */
 export const fileSchema = z
   .object({
@@ -62,7 +63,7 @@ export const fileSchema = z
     id: z.uuid(),
     inspectionErrorCode: z.string().nullable(),
     originalFilename: z.string(),
-    status: z.enum(['quarantined', 'inspecting', 'ready', 'failed']),
+    status: z.enum(['pending_upload', 'quarantined', 'inspecting', 'ready', 'failed']),
   })
   .strict();
 
@@ -72,7 +73,7 @@ export const fileSelectionSchema = z.record(z.string(), z.array(fileSchema));
  * An upload slot plus the URL the browser sends the bytes to.
  *
  * The URL is short-lived and covers this one file. A successful send still
- * leaves the file quarantined: only a recorded inspection makes it submittable.
+ * leaves the file pending until a finalize call queues it for inspection.
  */
 export const uploadTicketSchema = z.object({ file: fileSchema, uploadUrl: z.url() }).strict();
 

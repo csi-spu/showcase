@@ -9,6 +9,8 @@ import { pipeline } from 'node:stream/promises';
 import { flushMediaSentry, reportMediaError } from './sentry.js';
 
 const MAX_OBJECT_BYTES = 5 * 1_024 * 1_024;
+const MAX_COLLECTION_FILE_BYTES = 10_000_000;
+const COLLECTION_FILE_KEY = /^collection-files\/[0-9a-f-]{36}$/u;
 // Generated collection exports are the one object class that legitimately
 // exceeds a single document: a group ZIP is many documents at once. They are
 // streamed to disk rather than buffered, so the ceiling bounds storage, not
@@ -31,7 +33,7 @@ function isPublicVariantKey(key: string): boolean {
 }
 
 interface MediaServerOptions {
-  allowedUploadOrigin: string;
+  allowedUploadOrigins: readonly string[];
   reportError?: (error: unknown) => void;
   root: string;
   signingSecret: string;
@@ -81,7 +83,8 @@ async function handleRequest(
 
   const origin = singleHeader(request.headers.origin);
   if (method === 'PUT' && origin !== undefined) {
-    if (origin !== options.allowedUploadOrigin) return send(response, 403, 'ORIGIN_FORBIDDEN');
+    if (!options.allowedUploadOrigins.includes(origin))
+      return send(response, 403, 'ORIGIN_FORBIDDEN');
     allowUploadOrigin(response, origin);
   }
   // Only an unsigned GET is exempt, and only for a published variant. Every
@@ -108,8 +111,15 @@ async function handleRequest(
       await writeObjectStream(request, objectPath, MAX_EXPORT_BYTES);
       return send(response, 200, 'ok');
     }
-    const body = await readBody(request, MAX_OBJECT_BYTES);
-    await writeFile(objectPath, body, { flag: 'w' });
+    const body = await readBody(
+      request,
+      COLLECTION_FILE_KEY.test(key) ? MAX_COLLECTION_FILE_BYTES : MAX_OBJECT_BYTES,
+    );
+    if (COLLECTION_FILE_KEY.test(key)) {
+      await writeCollectionObjectOnce(objectPath, body);
+    } else {
+      await writeFile(objectPath, body, { flag: 'w' });
+    }
     return send(response, 200, 'ok');
   }
   if (method === 'GET') {
@@ -158,7 +168,8 @@ function handleUploadPreflight(
       ?.split(',')
       .map((header) => header.trim().toLowerCase()) ?? [];
   if (
-    origin !== options.allowedUploadOrigin ||
+    origin === undefined ||
+    !options.allowedUploadOrigins.includes(origin) ||
     requestedMethod !== 'PUT' ||
     requestedHeaders.some((header) => header !== 'content-type')
   ) {
@@ -216,6 +227,18 @@ function safeObjectPath(root: string, key: string): string | null {
 
 class BodyTooLargeError extends Error {}
 
+async function writeCollectionObjectOnce(objectPath: string, body: Buffer): Promise<void> {
+  try {
+    await writeFile(objectPath, body, { flag: 'wx' });
+  } catch (error: unknown) {
+    // A retry after a lost success response is idempotent. Never replace bytes
+    // that may already be queued for inspection or recorded as ready.
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST')
+      return;
+    throw error;
+  }
+}
+
 /*
  * Counts as it writes so an oversized upload is cut off partway rather than
  * after the fact, and removes the partial file so a failed export never looks
@@ -264,13 +287,11 @@ if (process.argv[1]?.endsWith('server.js') === true) {
   const secret = process.env.MEDIA_SERVICE_HMAC_SECRET;
   if (secret === undefined || secret.length < 32)
     throw new Error('MEDIA_SERVICE_HMAC_SECRET_REQUIRED');
-  const studentUrl = process.env.STUDENT_URL;
-  if (studentUrl === undefined) throw new Error('STUDENT_URL_REQUIRED');
-  const allowedUploadOrigin = new URL(studentUrl).origin;
-  if (allowedUploadOrigin !== studentUrl) throw new Error('STUDENT_URL_MUST_BE_AN_ORIGIN');
+  const studentUrl = requiredOrigin('STUDENT_URL');
+  const studentCollectionUrl = requiredOrigin('STUDENT_COLLECTION_URL');
   const port = Number(process.env.PORT ?? '4191');
   const server = createMediaServer({
-    allowedUploadOrigin,
+    allowedUploadOrigins: [studentUrl, studentCollectionUrl],
     root: process.env.STORAGE_ROOT ?? '/data',
     signingSecret: secret,
   });
@@ -283,4 +304,12 @@ if (process.argv[1]?.endsWith('server.js') === true) {
       });
     });
   }
+}
+
+function requiredOrigin(name: 'STUDENT_COLLECTION_URL' | 'STUDENT_URL'): string {
+  const value = process.env[name];
+  if (value === undefined) throw new Error(`${name}_REQUIRED`);
+  const origin = new URL(value).origin;
+  if (origin !== value) throw new Error(`${name}_MUST_BE_AN_ORIGIN`);
+  return origin;
 }
