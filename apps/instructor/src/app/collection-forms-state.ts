@@ -23,6 +23,7 @@ export type CollectionFormsErrorMessage =
   | 'fieldMappingKeyInvalid'
   | 'fieldFileConfigInvalid'
   | 'fieldOptionsInvalid'
+  | 'fieldTypeChangeRequiresNewId'
   | 'formFieldCountInvalid'
   | 'formInvalid'
   | 'formNotFound'
@@ -83,6 +84,8 @@ export function toFormsErrorMessage(code: string): CollectionFormsErrorMessage {
       return 'fieldMappingKeyInvalid';
     case 'FIELD_OPTIONS_INVALID':
       return 'fieldOptionsInvalid';
+    case 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID':
+      return 'fieldTypeChangeRequiresNewId';
     case 'FORM_FIELD_COUNT_INVALID':
       return 'formFieldCountInvalid';
     case 'FORM_INVALID':
