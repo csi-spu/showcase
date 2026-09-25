@@ -142,9 +142,14 @@ export function buildInitialAnswers(
  * reshaped, which keeps the no-coercion rule true on this side too.
  */
 function toAnswerValue(value: unknown, field: StudentCollectionField): CollectionAnswerValue {
+  let narrowed: CollectionAnswerValue;
   if (field.type === 'multiple_choice') {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : [];
+    narrowed =
+      Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : [];
+  } else if (field.type === 'number') {
+    narrowed = typeof value === 'number' ? value : '';
+  } else {
+    narrowed = typeof value === 'string' ? value : '';
   }
-  if (field.type === 'number') return typeof value === 'number' ? value : '';
-  return typeof value === 'string' ? value : '';
+  return isAnswerValid(field, narrowed, { isComplete: false }) ? narrowed : emptyAnswer(field);
 }

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
-import { findAnswerError } from '../application/collection-field';
+import {
+  findAnswerError,
+  findFieldTransitionError,
+  reconcileDraftAnswers,
+} from '../application/collection-field';
 import { findSubmissionFileError } from '../application/collection-files';
 import { hasDeadlinePassed, isFirstSubmissionLate } from '../application/collection-lifecycle';
 import {
@@ -58,6 +62,7 @@ interface ExportEntryRow {
   student_account_id: string;
   student_display_name: string;
   submission_id: string | null;
+  submission_fields: unknown;
   submitted_at: Date | null;
 }
 
@@ -122,6 +127,8 @@ interface ReviewRow {
   obligation_status: CollectionReviewEntry['status'];
   student_account_id: string;
   submission_id: string | null;
+  submission_fields: unknown;
+  submission_form_version: number | null;
   submission_version: number | null;
   submitted_at: Date | null;
 }
@@ -139,6 +146,8 @@ interface ObligationRow extends FormRow {
   obligation_status: StudentObligation['status'];
   round_status: string;
   submission_id: string | null;
+  submission_fields: unknown;
+  submission_form_version: number | null;
   submission_version: number | null;
   submitted_at: Date | null;
 }
@@ -219,24 +228,19 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     return rows.map((row) => this.mapForm(row));
   }
 
-  /**
-   * Replaces a Draft form's whole definition.
-   *
-   * The status is rechecked under a row lock so a form cannot be edited by one
-   * request while another opens it and freezes the structure.
-   */
-  async updateDraftForm(input: {
+  /** Replaces the live definition while retaining submitted schema snapshots. */
+  async updateFormStructure(input: {
     actorAccountId: string;
-    deadlineAt: Date | null;
-    description: string;
+    expectedVersion: number;
     fields: CollectionField[];
     formId: string;
     now: Date;
-    title: string;
   }) {
     return this.database.sql.begin(async (transaction) => {
-      const rows = await transaction<{ round_status: string; status: string }[]>`
-        select form.status, round.status as round_status
+      const rows = await transaction<
+        { fields: unknown; round_status: string; status: string; version: number }[]
+      >`
+        select form.status, form.fields, form.version, round.status as round_status
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
@@ -246,16 +250,33 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       const row = rows[0];
       if (row === undefined) return 'not_found' as const;
       if (row.round_status === 'closed') return 'round_closed' as const;
-      if (row.status !== 'draft') return 'not_draft' as const;
+      if (row.version !== input.expectedVersion) return 'stale' as const;
+      const transitionError = findFieldTransitionError(this.fields(row.fields), input.fields);
+      if (transitionError !== null) {
+        return { ...transitionError, outcome: 'invalid_transition' as const };
+      }
 
       const updated = await transaction<FormRow[]>`
         update public.collection_forms
-        set title = ${input.title}, description = ${input.description},
-          fields = ${transaction.json(input.fields)}, deadline_at = ${input.deadlineAt},
-          version = version + 1
+        set fields = ${transaction.json(input.fields)}, version = version + 1
         where id = ${input.formId}
         returning id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
+      `;
+      await transaction`
+        insert into private.collection_form_structure_events
+          (form_id, actor_account_id, previous_version, next_version, previous_fields,
+            next_fields, occurred_at)
+        values (${input.formId}, ${input.actorAccountId}, ${row.version}, ${row.version + 1},
+          ${transaction.json(row.fields)}, ${transaction.json(input.fields)}, ${input.now})
+      `;
+      const activeFileFieldIds = input.fields
+        .filter((field) => field.type === 'file_upload')
+        .map((field) => field.id);
+      await transaction`
+        delete from private.collection_draft_files
+        where form_id = ${input.formId}
+          and not (field_id = any(${activeFileFieldIds}::text[]))
       `;
       return this.mapForm(updated[0]!);
     });
@@ -894,7 +915,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms
         where group_id = ${input.groupId}
           and id = any(${input.formIds}::uuid[])
-          /* A draft form has no submissions to export and no locked schema. */
+          /* A draft form has no submissions to export. */
           and status <> 'draft'
         order by created_at, id
         limit ${input.maxForms}
@@ -934,14 +955,14 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       await transaction`
         insert into private.collection_export_entries
           (export_id, form_id, student_account_id, student_display_name, position,
-           obligation_status, submission_id, submitted_at, is_late)
+           obligation_status, submission_id, submission_fields, submitted_at, is_late)
         select ${job.id}, obligation.form_id, obligation.student_account_id,
           btrim(person_name.first_name_th || ' ' || person_name.last_name_th),
           dense_rank() over (
             order by person_name.first_name_th, person_name.last_name_th,
               obligation.student_account_id
           )::int - 1,
-          obligation.status, submission.id, submission.submitted_at,
+          obligation.status, submission.id, submission.form_fields, submission.submitted_at,
           coalesce(
             form.deadline_at is not null
               and obligation.first_submitted_at is not null
@@ -1065,7 +1086,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     `;
     const entries = await this.database.sql<ExportEntryRow[]>`
       select form_id, student_account_id, student_display_name, position,
-        obligation_status, submission_id, submitted_at, is_late
+        obligation_status, submission_id, submission_fields, submitted_at, is_late
       from private.collection_export_entries
       where export_id = ${job.id}
       order by position, form_id
@@ -1074,6 +1095,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     return {
       attemptCount: job.attempt_count,
       entries: entries.map((entry) => ({
+        fields: entry.submission_fields === null ? null : this.fields(entry.submission_fields),
         formId: entry.form_id,
         isLate: entry.is_late,
         obligationStatus: entry.obligation_status,
@@ -1281,9 +1303,16 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     if (obligation === undefined) return null;
 
     const rows = await this.database.sql<
-      { answers: unknown; id: string; submitted_at: Date; version: number }[]
+      {
+        answers: unknown;
+        form_fields: unknown;
+        form_version: number;
+        id: string;
+        submitted_at: Date;
+        version: number;
+      }[]
     >`
-      select id, answers, submitted_at, version
+      select id, answers, form_fields, form_version, submitted_at, version
       from private.collection_submissions
       where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
       order by version desc
@@ -1297,7 +1326,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       entries: rows.map((row) => ({
         answers: this.answers(row.answers),
         checkingEvents: events.get(row.id) ?? [],
+        fields: this.fields(row.form_fields),
         files: files.get(row.id) ?? {},
+        formVersion: row.form_version,
         id: row.id,
         submittedAt: row.submitted_at,
         version: row.version,
@@ -1334,6 +1365,8 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       select obligation.student_account_id, obligation.status as obligation_status,
         obligation.first_submitted_at,
         submission.id as submission_id, submission.answers,
+        submission.form_fields as submission_fields,
+        submission.form_version as submission_form_version,
         submission.version as submission_version, submission.submitted_at,
         checking.reason as checking_reason,
         person_name.first_name_th, person_name.last_name_th
@@ -1377,7 +1410,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
             ? null
             : {
                 answers: this.answers(row.answers),
+                fields: this.fields(row.submission_fields),
                 files: files.get(row.submission_id) ?? {},
+                formVersion: row.submission_form_version!,
                 id: row.submission_id,
                 submittedAt: row.submitted_at,
                 version: row.submission_version,
@@ -1396,7 +1431,10 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         form.deadline_at, form.version, form.created_from_template_id,
         obligation.status as obligation_status, obligation.first_submitted_at,
         draft.answers as draft_answers, draft.version as draft_version, draft.updated_at as draft_updated_at,
-        submission.id as submission_id, submission.answers, submission.version as submission_version,
+        submission.id as submission_id, submission.answers,
+        submission.form_fields as submission_fields,
+        submission.form_version as submission_form_version,
+        submission.version as submission_version,
         submission.submitted_at, checking.reason as checking_reason,
         person_name.first_name_th, person_name.last_name_th,
         round.status as round_status, membership.status as membership_status
@@ -1465,7 +1503,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           ? null
           : {
               answers: this.answers(row.answers),
+              fields: this.fields(row.submission_fields),
               files: files.submitted.get(row.submission_id) ?? {},
+              formVersion: row.submission_form_version!,
               id: row.submission_id,
               submittedAt: row.submitted_at,
               version: row.submission_version,
@@ -1488,7 +1528,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     const rows = await this.database.sql<
       { answers: unknown; fields: unknown; submitted_at: Date }[]
     >`
-      select submission.answers, form.fields, submission.submitted_at
+      select submission.answers, submission.form_fields as fields, submission.submitted_at
       from public.collection_obligations as obligation
       join public.collection_forms as form on form.id = obligation.form_id
       join private.collection_submissions as submission
@@ -1805,9 +1845,10 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         return { submissionId: prior[0].id, version: prior[0].version };
       }
       const states = await transaction<
-        (ResponseWriteState & { draft_answers: unknown; fields: unknown })[]
+        (ResponseWriteState & { draft_answers: unknown; fields: unknown; form_version: number })[]
       >`
-        select draft.answers as draft_answers, form.fields, obligation.status, form.status as form_status,
+        select draft.answers as draft_answers, form.fields, form.version as form_version,
+          obligation.status, form.status as form_status,
           membership.status as membership_status, round.status as round_status
         from public.collection_obligations as obligation
         join public.collection_forms as form on form.id = obligation.form_id
@@ -1825,7 +1866,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       if (state.draft_answers === null) return 'missing_draft' as const;
 
       const fields = this.fields(state.fields);
-      const answers = this.answers(state.draft_answers);
+      const answers = reconcileDraftAnswers(fields, this.answers(state.draft_answers));
       const answerError = findAnswerError(fields, answers, { isComplete: true });
       if (answerError !== null) {
         return {
@@ -1840,10 +1881,16 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
        * browser selected: a file that has not passed inspection is refused, so an
        * unscanned upload can never become an accepted document.
        */
-      const selected = await this.loadDraftFieldFiles(transaction, {
+      const allSelected = await this.loadDraftFieldFiles(transaction, {
         formId: input.formId,
         studentAccountId: input.studentAccountId,
       });
+      const activeFileFieldIds = new Set(
+        fields.filter((field) => field.type === 'file_upload').map((field) => field.id),
+      );
+      const selected = new Map(
+        [...allSelected].filter(([fieldId]) => activeFileFieldIds.has(fieldId)),
+      );
       const fileError = findSubmissionFileError(
         fields
           .filter((field) => field.type === 'file_upload')
@@ -1861,8 +1908,10 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       const version = versions[0]!.next_version;
       const submissions = await transaction<{ id: string }[]>`
         insert into private.collection_submissions
-          (form_id, student_account_id, idempotency_key, version, answers, submitted_at)
-        values (${input.formId}, ${input.studentAccountId}, ${input.idempotencyKey}, ${version}, ${transaction.json(state.draft_answers)}, ${input.now})
+          (form_id, student_account_id, idempotency_key, version, answers,
+            form_version, form_fields, submitted_at)
+        values (${input.formId}, ${input.studentAccountId}, ${input.idempotencyKey}, ${version},
+          ${transaction.json(answers)}, ${state.form_version}, ${transaction.json(fields)}, ${input.now})
         returning id
       `;
       const submissionId = submissions[0]!.id;

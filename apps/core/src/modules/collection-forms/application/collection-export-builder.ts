@@ -83,7 +83,8 @@ export function buildExportWorkbook(
   ];
 
   for (const form of snapshot.forms) {
-    const fields = valueFields(form.fields);
+    const formEntries = snapshot.entries.filter((entry) => entry.formId === form.formId);
+    const fields = valueFields(mergeExportFields(form.fields, formEntries));
     sheets.push({
       headers: ['ลำดับ', 'นักศึกษา', ...fields.map((field) => field.label)],
       name: form.title,
@@ -104,6 +105,28 @@ export function buildExportWorkbook(
   }
 
   return writeXlsxWorkbook(sheets);
+}
+
+/**
+ * Current questions lead the workbook. Questions removed after a Student's
+ * latest submission are appended from that immutable submission snapshot, so
+ * their answers do not disappear from an export. Stable ids use the current
+ * label/configuration and occupy one column even when wording changed.
+ */
+export function mergeExportFields(
+  currentFields: CollectionField[],
+  entries: CollectionExportEntry[],
+): CollectionField[] {
+  const merged = [...currentFields];
+  const seen = new Set(currentFields.map((field) => field.id));
+  for (const entry of entries) {
+    for (const field of entry.fields ?? []) {
+      if (seen.has(field.id)) continue;
+      seen.add(field.id);
+      merged.push(field);
+    }
+  }
+  return merged;
 }
 
 /**

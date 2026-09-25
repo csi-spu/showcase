@@ -84,7 +84,7 @@ export class InstructorCollectionFormsCoreClient {
     });
   }
 
-  /** Replaces a Draft form's structure. Core rejects this once the form is open. */
+  /** Replaces the live form structure using the caller's expected version. */
   update(sessionToken: string, formId: string, body: unknown): Promise<InstructorCollectionForm> {
     return this.client.request({
       method: 'PUT',

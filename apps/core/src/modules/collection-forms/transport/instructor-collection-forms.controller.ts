@@ -77,7 +77,7 @@ export class InstructorCollectionFormsController {
     return this.forms.listGroupForms(groupId);
   }
 
-  /** Replaces a Draft form's structure. Rejected once the form has been opened. */
+  /** Replaces the live structure using optimistic form-version concurrency. */
   @Put('forms/:formId')
   @Header('Cache-Control', 'no-store')
   async update(
@@ -86,7 +86,7 @@ export class InstructorCollectionFormsController {
     @Headers('authorization') authorization: string | undefined,
   ) {
     const actor = await this.auth.authorizeInstructor(token(authorization));
-    return this.forms.updateDraftForm({ actorAccountId: actor.accountId, formId, ...body });
+    return this.forms.updateFormStructure({ actorAccountId: actor.accountId, formId, ...body });
   }
 
   @Put('forms/:formId/metadata')

@@ -15,8 +15,8 @@ function draft(overrides: Partial<DraftField> = {}): DraftField {
 
 describe('toFormsErrorMessage', () => {
   it('maps the lifecycle codes the builder can provoke', () => {
-    expect(toFormsErrorMessage('FORM_STRUCTURE_LOCKED')).toBe('formStructureLocked');
-    expect(toFormsErrorMessage('FORM_ALREADY_OPENED')).toBe('formStructureLocked');
+    expect(toFormsErrorMessage('FORM_STALE')).toBe('formStale');
+    expect(toFormsErrorMessage('FORM_ALREADY_OPENED')).toBe('formStale');
     expect(toFormsErrorMessage('DEADLINE_NOT_EXTENDABLE')).toBe('deadlineNotExtendable');
     expect(toFormsErrorMessage('TEMPLATE_NOT_FOUND')).toBe('templateNotFound');
     expect(toFormsErrorMessage('FIELD_MAPPING_KEY_DUPLICATE')).toBe('fieldMappingKeyDuplicate');

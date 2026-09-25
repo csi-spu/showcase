@@ -78,7 +78,9 @@ export function toObligationView(obligation: StudentObligation) {
         ? null
         : {
             answers: obligation.latestSubmission.answers,
+            fields: obligation.latestSubmission.fields,
             files: toFileSelectionView(obligation.latestSubmission.files),
+            formVersion: obligation.latestSubmission.formVersion,
             id: obligation.latestSubmission.id,
             submittedAt: obligation.latestSubmission.submittedAt.toISOString(),
             version: obligation.latestSubmission.version,
@@ -105,7 +107,9 @@ export function toSubmissionHistoryView(history: CollectionSubmissionHistory) {
         occurredAt: event.occurredAt.toISOString(),
         reason: event.reason,
       })),
+      fields: entry.fields,
       files: toFileSelectionView(entry.files),
+      formVersion: entry.formVersion,
       id: entry.id,
       submittedAt: entry.submittedAt.toISOString(),
       version: entry.version,

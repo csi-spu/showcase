@@ -1,7 +1,9 @@
 import {
   findAnswerError,
   findFieldDefinitionError,
+  findFieldTransitionError,
   isAnswerValid,
+  reconcileDraftAnswers,
   type CollectionField,
 } from './collection-field';
 
@@ -165,5 +167,53 @@ describe('collection answer validation', () => {
       code: 'ANSWER_INVALID',
       fieldId: 'b',
     });
+  });
+});
+
+describe('collection form schema changes', () => {
+  it('requires a new field identifier when the answer type changes', () => {
+    const previous = [field({ id: 'company', type: 'short_text' })];
+    const next = [field({ id: 'company', type: 'number' })];
+
+    expect(findFieldTransitionError(previous, next)).toEqual({
+      code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID',
+      fieldId: 'company',
+    });
+  });
+
+  it('allows labels, choices, requirements, order, additions, and removals to change', () => {
+    const previous = [
+      field({ id: 'choice', options: ['เดิม'], type: 'single_choice' }),
+      field({ id: 'removed', type: 'short_text' }),
+    ];
+    const next = [
+      field({ id: 'added', type: 'date' }),
+      field({
+        id: 'choice',
+        label: 'คำถามใหม่',
+        options: ['ใหม่'],
+        required: true,
+        type: 'single_choice',
+      }),
+    ];
+
+    expect(findFieldTransitionError(previous, next)).toBeNull();
+  });
+
+  it('drops removed and incompatible draft answers without changing compatible values', () => {
+    const fields = [
+      field({ id: 'company', type: 'short_text' }),
+      field({ id: 'choice', options: ['ใหม่'], type: 'single_choice' }),
+      field({ id: 'multiple', options: ['a', 'b'], type: 'multiple_choice' }),
+    ];
+
+    expect(
+      reconcileDraftAnswers(fields, {
+        choice: 'เดิม',
+        company: 'บริษัท ก',
+        multiple: ['a', 'เลิกใช้'],
+        removed: 'ไม่ควรอยู่',
+      }),
+    ).toEqual({ company: 'บริษัท ก' });
   });
 });

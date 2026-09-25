@@ -46,7 +46,7 @@ export async function createCollectionFormAction(
   redirect(`/groups/${groupId}/forms/${form.id}`);
 }
 
-/** Replaces a Draft form's structure. Core refuses once the form is open. */
+/** Replaces the live form structure while Core preserves submitted snapshots. */
 export async function updateCollectionFormAction(
   groupId: string,
   formId: string,
@@ -84,7 +84,7 @@ export async function updateCollectionFormMetadataAction(
   return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
 }
 
-/** Opens the form for answers. This permanently locks its structure. */
+/** Opens the form for answers; later edits preserve submitted field snapshots. */
 export async function openCollectionFormAction(
   groupId: string,
   formId: string,
@@ -204,7 +204,7 @@ export async function updateCollectionTemplateAction(
   _previousState: CollectionFormActionState,
   formData: FormData,
 ): Promise<CollectionFormActionState> {
-  const input = validateUpdateForm(formData);
+  const input = validateCreateForm(formData);
   const name = formData.get('name');
   if (input === null || typeof name !== 'string' || name.trim().length === 0) {
     return { ...INITIAL_FORM_ACTION_STATE, error: 'invalid', submitted: true };

@@ -36,7 +36,6 @@ import {
   type CollectionFormActionState,
 } from '@/app/collection-forms-state';
 import type {
-  InstructorCollectionField,
   InstructorCollectionFile,
   InstructorReviewEntry,
 } from '@/lib/instructor-collection-forms-contract';
@@ -58,13 +57,11 @@ const STATUS_TONES: Record<InstructorReviewEntry['status'], StatusTone> = {
 export function ReviewQueue({
   checkAction,
   entries,
-  fields,
   formId,
   groupId,
 }: {
   checkAction: CheckAction;
   entries: InstructorReviewEntry[];
-  fields: InstructorCollectionField[];
   formId: string;
   groupId: string;
 }) {
@@ -95,7 +92,6 @@ export function ReviewQueue({
           <ReviewRow
             checkAction={checkAction}
             entry={entry}
-            fields={fields}
             formId={formId}
             groupId={groupId}
             key={entry.studentAccountId}
@@ -109,13 +105,11 @@ export function ReviewQueue({
 function ReviewRow({
   checkAction,
   entry,
-  fields,
   formId,
   groupId,
 }: {
   checkAction: CheckAction;
   entry: InstructorReviewEntry;
-  fields: InstructorCollectionField[];
   formId: string;
   groupId: string;
 }) {
@@ -156,7 +150,6 @@ function ReviewRow({
               <SubmissionDialog
                 checkAction={checkAction}
                 entry={entry}
-                fields={fields}
                 name={name}
                 submission={submission}
               />
@@ -177,13 +170,11 @@ function ReviewRow({
 function SubmissionDialog({
   checkAction,
   entry,
-  fields,
   name,
   submission,
 }: {
   checkAction: CheckAction;
   entry: InstructorReviewEntry;
-  fields: InstructorCollectionField[];
   name: string;
   submission: NonNullable<InstructorReviewEntry['latestSubmission']>;
 }) {
@@ -236,7 +227,7 @@ function SubmissionDialog({
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold">{t('review.answersHeading')}</h3>
           <dl className="flex flex-col gap-3">
-            {fields.map((field) => (
+            {submission.fields.map((field) => (
               <div className="flex flex-col gap-1" key={field.id}>
                 <dt className="text-sm font-medium">{field.label}</dt>
                 <dd className="text-sm text-muted-foreground">

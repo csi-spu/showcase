@@ -115,7 +115,9 @@ export const reviewEntrySchema = z
     latestSubmission: z
       .object({
         answers: z.record(z.string(), z.unknown()),
+        fields: z.array(fieldSchema),
         files: fileSelectionSchema,
+        formVersion: z.number().int().positive(),
         id: z.uuid(),
         submittedAt: z.iso.datetime(),
         version: z.number().int(),
@@ -193,7 +195,9 @@ export const submissionHistorySchema = z
         .object({
           answers: z.record(z.string(), z.unknown()),
           checkingEvents: z.array(checkingEventSchema),
+          fields: z.array(fieldSchema),
           files: fileSelectionSchema,
+          formVersion: z.number().int().positive(),
           id: z.uuid(),
           submittedAt: z.iso.datetime(),
           version: z.number().int(),

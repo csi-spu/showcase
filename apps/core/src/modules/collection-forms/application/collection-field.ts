@@ -248,3 +248,44 @@ export function findAnswerError(
   }
   return null;
 }
+
+/**
+ * A field identifier is the durable link between a question and every answer
+ * ever submitted for it. Reusing one for another answer type would make old
+ * values look as though they belonged to the new question shape.
+ */
+export function findFieldTransitionError(
+  previousFields: CollectionField[],
+  nextFields: CollectionField[],
+): { code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID'; fieldId: string } | null {
+  const previousById = new Map(previousFields.map((field) => [field.id, field]));
+  for (const field of nextFields) {
+    const previous = previousById.get(field.id);
+    if (previous !== undefined && previous.type !== field.type) {
+      return { code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID', fieldId: field.id };
+    }
+  }
+  return null;
+}
+
+/**
+ * Applies the current schema to an in-progress response without coercion.
+ * Removed fields and values invalidated by a choice edit disappear; compatible
+ * values keep their original representation. Submitted versions never use
+ * this function because their schema and answers are immutable snapshots.
+ */
+export function reconcileDraftAnswers(
+  fields: CollectionField[],
+  answers: CollectionAnswers,
+): CollectionAnswers {
+  const reconciled: CollectionAnswers = {};
+  for (const field of fields) {
+    if (!isValueField(field.type)) continue;
+    const value = answers[field.id];
+    if (value === undefined) continue;
+    if (isAnswerValid(field, value, { isComplete: false })) {
+      reconciled[field.id] = value;
+    }
+  }
+  return reconciled;
+}
