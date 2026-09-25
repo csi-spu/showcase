@@ -106,16 +106,10 @@ export async function submitCollectionFormAction(
 }
 
 /**
- * Registers an upload slot before any bytes are sent.
- *
- * The file comes back `quarantined`. It is not an accepted document, and the UI
- * must not present it as one until an inspection has recorded a result.
- */
-/**
  * Registers the file with Core and returns where the browser sends the bytes.
  *
  * The upload URL is short-lived and covers this one file. Core never proxies
- * the bytes, and the registered file stays quarantined until it is inspected.
+ * the bytes, and the registered file stays pending until it is finalized.
  */
 export async function createCollectionUploadAction(
   formId: string,
@@ -144,6 +138,20 @@ export async function attachCollectionFileAction(
   try {
     await coreClient().attachFile(token, formId, { fieldId, fileId });
     revalidatePath('/');
+    return { error: null };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { error: toFailure(error).error };
+  }
+}
+
+export async function finalizeCollectionUploadAction(
+  formId: string,
+  fileId: string,
+): Promise<{ error: StudentFormsErrorMessage | null }> {
+  const token = await requireSessionToken();
+  try {
+    await coreClient().finalizeUpload(token, formId, fileId);
     return { error: null };
   } catch (error: unknown) {
     await expireSessionIfRequired(error);

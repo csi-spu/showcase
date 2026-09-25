@@ -63,6 +63,7 @@ class FakeRepository implements CollectionFormsRepository {
   attachResult: Result<'attachDraftFile'> = 'attached';
   checkResult: Result<'checkSubmission'> = 'checked';
   detachResult: Result<'detachDraftFile'> = 'detached';
+  finalizeResult: Result<'finalizeUpload'> = 'finalized';
   form: CollectionForm | null = FORM;
   formSubmissions: { form: CollectionForm; entries: CollectionReviewEntry[] } | null = {
     entries: [],
@@ -157,7 +158,7 @@ class FakeRepository implements CollectionFormsRepository {
       id: '70000000-0000-4000-8000-000000000001',
       inspectionErrorCode: null,
       originalFilename: input.filename,
-      status: 'quarantined',
+      status: 'pending_upload',
       studentAccountId: input.studentAccountId,
     });
   }
@@ -176,14 +177,24 @@ class FakeRepository implements CollectionFormsRepository {
   findReadableFile(): Promise<Result<'findReadableFile'>> {
     return Promise.resolve(this.readableFile);
   }
+  finalizeUpload(): Promise<Result<'finalizeUpload'>> {
+    return Promise.resolve(this.finalizeResult);
+  }
   getForm(): Promise<CollectionForm | null> {
     return Promise.resolve(this.form);
   }
   getTemplate(): Promise<CollectionFormTemplate | null> {
     return Promise.resolve(this.template);
   }
-  listFieldFiles(): Promise<CollectionFile[]> {
-    return Promise.resolve(this.fieldFiles);
+  listFieldFiles(input: Parameters<CollectionFormsRepository['listFieldFiles']>[0]) {
+    return Promise.resolve(
+      this.fieldFiles.filter(
+        (file) =>
+          file.status !== 'failed' &&
+          (file.status !== 'pending_upload' ||
+            file.createdAt.getTime() > input.now.getTime() - 15 * 60 * 1_000),
+      ),
+    );
   }
   listGroupForms(): Promise<CollectionForm[]> {
     return Promise.resolve(this.form === null ? [] : [this.form]);
@@ -330,9 +341,11 @@ class FakeStorage implements CollectionFileStorage {
   storedObjects = new Map<string, Buffer>();
   presignedGets: { expiresInSeconds: number; key: string }[] = [];
   presignedPuts: { contentType: string; expiresInSeconds: number; key: string }[] = [];
+  presignedPutError: Error | null = null;
 
   createPresignedPut(input: { contentType: string; expiresInSeconds: number; key: string }) {
     this.presignedPuts.push(input);
+    if (this.presignedPutError !== null) return Promise.reject(this.presignedPutError);
     return Promise.resolve(`https://storage.example/put/${input.key}`);
   }
   createPresignedGet(input: { expiresInSeconds: number; key: string }) {
@@ -633,11 +646,11 @@ describe('CollectionFormsService', () => {
       studentAccountId: STUDENT,
     };
 
-    it('registers the upload as quarantined, never as accepted', async () => {
+    it('registers the upload as pending until the browser finalizes its PUT', async () => {
       const repository = new FakeRepository();
       repository.form = fileForm;
       const { file } = await setup(repository).service.createUpload(request);
-      expect(file.status).toBe('quarantined');
+      expect(file.status).toBe('pending_upload');
       expect(file.detectedContentType).toBeNull();
     });
 
@@ -664,6 +677,73 @@ describe('CollectionFormsService', () => {
       expect(uploadUrl).toContain(issued.key);
       // The Student's identity must never travel in a storage URL.
       expect(uploadUrl).not.toContain(STUDENT);
+    });
+
+    it('does not register a slot when storage cannot issue an upload URL', async () => {
+      const repository = new FakeRepository();
+      repository.form = fileForm;
+      const { service, storage } = setup(repository);
+      storage.presignedPutError = new Error('STORAGE_UNAVAILABLE');
+
+      await expect(service.createUpload(request)).rejects.toThrow('STORAGE_UNAVAILABLE');
+      expect(repository.createdUploads).toEqual([]);
+    });
+
+    it('does not count a failed inspection against the field upload limit', async () => {
+      const repository = new FakeRepository();
+      repository.form = fileForm;
+      repository.fieldFiles = [
+        {
+          byteSize: 1_000,
+          createdAt: NOW,
+          declaredContentType: 'application/pdf',
+          detectedContentType: null,
+          fieldId: 'doc',
+          formId: FORM.id,
+          id: '70000000-0000-4000-8000-000000000002',
+          inspectionErrorCode: 'FILE_INSPECTION_FAILED',
+          originalFilename: 'failed.pdf',
+          status: 'failed',
+          studentAccountId: STUDENT,
+        },
+      ];
+
+      await expect(setup(repository).service.createUpload(request)).resolves.toBeDefined();
+    });
+
+    it('does not count an expired pending ticket against the field upload limit', async () => {
+      const repository = new FakeRepository();
+      repository.form = fileForm;
+      repository.fieldFiles = [
+        {
+          byteSize: 1_000,
+          createdAt: new Date(NOW.getTime() - 16 * 60 * 1_000),
+          declaredContentType: 'application/pdf',
+          detectedContentType: null,
+          fieldId: 'doc',
+          formId: FORM.id,
+          id: '70000000-0000-4000-8000-000000000003',
+          inspectionErrorCode: null,
+          originalFilename: 'abandoned.pdf',
+          status: 'pending_upload',
+          studentAccountId: STUDENT,
+        },
+      ];
+
+      await expect(setup(repository).service.createUpload(request)).resolves.toBeDefined();
+    });
+
+    it('rejects finalizing an upload outside the Student form scope', async () => {
+      const repository = new FakeRepository();
+      repository.finalizeResult = 'not_found';
+
+      await expect(
+        setup(repository).service.finalizeUpload({
+          fileId: '70000000-0000-4000-8000-000000000001',
+          formId: FORM.id,
+          studentAccountId: STUDENT,
+        }),
+      ).rejects.toEqual(new CollectionFormsError('FILE_NOT_FOUND', 404));
     });
 
     it('rejects a request for a field the form does not have', async () => {

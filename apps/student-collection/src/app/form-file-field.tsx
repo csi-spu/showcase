@@ -18,6 +18,7 @@ import {
   attachCollectionFileAction,
   createCollectionUploadAction,
   detachCollectionFileAction,
+  finalizeCollectionUploadAction,
 } from './collection-forms.actions';
 import type { StudentFormsErrorMessage } from './collection-forms-errors';
 import {
@@ -40,7 +41,7 @@ const CONTENT_TYPES: Record<(typeof COLLECTION_FILE_TYPES)[number], string> = {
 /*
  * How each stage of a file's life is described.
  *
- * `quarantined` and `inspecting` are never shown as success. A file counts as an
+ * Pending and inspection states are never shown as success. A file counts as an
  * accepted document only once an inspection has recorded `ready`, so the wording
  * and the tone both say "not yet", not "done".
  *
@@ -52,6 +53,7 @@ const CONTENT_TYPES: Record<(typeof COLLECTION_FILE_TYPES)[number], string> = {
 const STATUS_TONES: Record<StudentCollectionFileStatus, StatusTone> = {
   failed: 'destructive',
   inspecting: 'warning',
+  pending_upload: 'warning',
   quarantined: 'warning',
   ready: 'success',
 };
@@ -59,11 +61,14 @@ const STATUS_TONES: Record<StudentCollectionFileStatus, StatusTone> = {
 type LocalError = 'emptyFile' | 'tooLarge' | 'tooMany' | 'wrongType';
 
 /** A file on its way to storage. It is not in `files` until the bytes arrive. */
-interface Transfer {
-  file: File;
-  progress: number;
-  state: 'failed' | 'sending';
+interface UploadTicket {
+  file: StudentCollectionFile;
+  uploadUrl: string;
 }
+
+type Transfer =
+  | { file: File; progress: number; state: 'sending'; ticket?: UploadTicket }
+  | { file: File; progress: 0; state: 'failed'; ticket: UploadTicket };
 
 export function FormFileField({
   field,
@@ -126,41 +131,58 @@ export function FormFileField({
    * transfer leaves nothing attached, so the Student never sees a document
    * listed that storage never received.
    */
-  async function send(selected: File) {
+  async function send(selected: File, retryTicket?: UploadTicket) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setTransfer({ file: selected, progress: 0, state: 'sending' });
+    setTransfer(
+      retryTicket === undefined
+        ? { file: selected, progress: 0, state: 'sending' }
+        : { file: selected, progress: 0, state: 'sending', ticket: retryTicket },
+    );
 
-    const created = await createCollectionUploadAction(formId, {
-      byteSize: selected.size,
-      declaredContentType: selected.type,
-      fieldId: field.id,
-      filename: selected.name,
-    });
-    const { file: registered, uploadUrl } = created;
-    if (created.error !== null || registered === null || uploadUrl === null) {
-      setTransfer(null);
-      setError(created.error ?? 'unavailable');
-      return;
+    let ticket = retryTicket;
+    if (ticket === undefined) {
+      const created = await createCollectionUploadAction(formId, {
+        byteSize: selected.size,
+        declaredContentType: selected.type,
+        fieldId: field.id,
+        filename: selected.name,
+      });
+      const { file: registered, uploadUrl } = created;
+      if (created.error !== null || registered === null || uploadUrl === null) {
+        setTransfer(null);
+        setError(created.error ?? 'unavailable');
+        return;
+      }
+      ticket = { file: registered, uploadUrl };
     }
 
     const outcome = await uploadFileBytes({
       file: selected,
       onProgress: (fraction) =>
-        setTransfer((current) => (current === null ? current : { ...current, progress: fraction })),
+        setTransfer((current) =>
+          current?.state === 'sending' ? { ...current, progress: fraction } : current,
+        ),
       signal: controller.signal,
-      url: uploadUrl,
+      url: ticket.uploadUrl,
     });
     if (outcome === 'aborted') return;
     if (outcome === 'failed') {
       /* The bytes did not arrive. Say so and keep the file for a retry. */
-      setTransfer({ file: selected, progress: 0, state: 'failed' });
+      setTransfer({ file: selected, progress: 0, state: 'failed', ticket });
+      return;
+    }
+
+    const finalized = await finalizeCollectionUploadAction(formId, ticket.file.id);
+    if (finalized.error !== null) {
+      setTransfer({ file: selected, progress: 0, state: 'failed', ticket });
+      setError(finalized.error);
       return;
     }
 
     startTransition(async () => {
-      const attached = await attachCollectionFileAction(formId, field.id, registered.id);
+      const attached = await attachCollectionFileAction(formId, field.id, ticket.file.id);
       setTransfer(null);
       if (attached.error !== null) {
         setError(attached.error);
@@ -260,7 +282,7 @@ export function FormFileField({
               </span>
             ) : (
               <Button
-                onClick={() => void send(transfer.file)}
+                onClick={() => void send(transfer.file, transfer.ticket)}
                 size="sm"
                 type="button"
                 variant="outline"

@@ -357,7 +357,32 @@ describe('PostgresCollectionFormsRepository integration', () => {
       type: 'file_upload',
     };
 
-    it('registers an upload as quarantined and refuses to submit it', async () => {
+    it('stops counting an abandoned ticket after its upload URL expires', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [fileField]);
+      const file = await repository.createUpload({
+        byteSize: 1_000,
+        declaredContentType: 'application/pdf',
+        fieldId: fileFieldId,
+        filename: 'abandoned.pdf',
+        formId: form.id,
+        now: NOW,
+        storageKey: 'collection-files/58000000-0000-4000-8000-000000000018',
+        studentAccountId: STUDENT,
+      });
+
+      await expect(
+        repository.listFieldFiles({
+          fieldId: fileFieldId,
+          formId: form.id,
+          now: new Date(NOW.getTime() + 16 * 60 * 1_000),
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual([]);
+      expect(file.status).toBe('pending_upload');
+    });
+
+    it('keeps a registered upload pending until finalized, then refuses it before inspection', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [fileField]);
       await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
@@ -379,7 +404,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
         storageKey: 'collection-files/58000000-0000-4000-8000-000000000020',
         studentAccountId: STUDENT,
       });
-      expect(file.status).toBe('quarantined');
+      expect(file.status).toBe('pending_upload');
+      await expect(
+        repository.finalizeUpload({
+          fileId: file.id,
+          formId: form.id,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe('finalized');
       await expect(
         repository.attachDraftFile({
           fieldId: fileFieldId,
@@ -422,6 +454,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         now: NOW,
         storageKey: 'collection-files/58000000-0000-4000-8000-000000000022',
+        studentAccountId: STUDENT,
+      });
+      await repository.finalizeUpload({
+        fileId: file.id,
+        formId: form.id,
         studentAccountId: STUDENT,
       });
       await repository.attachDraftFile({
@@ -475,6 +512,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         now: NOW,
         storageKey: 'collection-files/58000000-0000-4000-8000-000000000024',
+        studentAccountId: STUDENT,
+      });
+      await repository.finalizeUpload({
+        fileId: file.id,
+        formId: form.id,
         studentAccountId: STUDENT,
       });
       await expect(
@@ -599,6 +641,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
         formId: form.id,
         now: NOW,
         storageKey,
+        studentAccountId: STUDENT,
+      });
+      await repository.finalizeUpload({
+        fileId: file.id,
+        formId: form.id,
         studentAccountId: STUDENT,
       });
       return { file, form };

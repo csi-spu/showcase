@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -8,11 +8,104 @@ import { createMediaServer } from './server.js';
 
 const SECRET = 'test-signing-secret-that-is-at-least-32-bytes';
 const STUDENT_ORIGIN = 'https://student.example.test';
+const STUDENT_COLLECTION_ORIGIN = 'https://forms.example.test';
+
+test('allows signed browser uploads from both Student surfaces', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
+  const server = createMediaServer({
+    allowedUploadOrigins: [STUDENT_ORIGIN, STUDENT_COLLECTION_ORIGIN],
+    root,
+    signingSecret: SECRET,
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string')
+    throw new Error('MEDIA_TEST_ADDRESS_MISSING');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const put = signedUrl(
+    origin,
+    'PUT',
+    'collection-files/file-id',
+    Math.floor(Date.now() / 1_000) + 60,
+  );
+  try {
+    for (const allowedOrigin of [STUDENT_ORIGIN, STUDENT_COLLECTION_ORIGIN]) {
+      const response = await fetch(put, {
+        headers: {
+          'access-control-request-headers': 'content-type',
+          'access-control-request-method': 'PUT',
+          origin: allowedOrigin,
+        },
+        method: 'OPTIONS',
+      });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get('access-control-allow-origin'), allowedOrigin);
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test('accepts the collection contract limit above the Work media limit', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
+  const server = createMediaServer({
+    allowedUploadOrigins: [STUDENT_COLLECTION_ORIGIN],
+    root,
+    signingSecret: SECRET,
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string')
+    throw new Error('MEDIA_TEST_ADDRESS_MISSING');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const key = 'collection-files/88000000-0000-4000-8000-000000000001';
+  try {
+    const response = await fetch(
+      signedUrl(origin, 'PUT', key, Math.floor(Date.now() / 1_000) + 60),
+      { body: new Uint8Array(6_000_000), method: 'PUT' },
+    );
+    assert.equal(response.status, 200);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test('keeps the first collection upload immutable when its signed PUT is retried', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
+  const server = createMediaServer({
+    allowedUploadOrigins: [STUDENT_COLLECTION_ORIGIN],
+    root,
+    signingSecret: SECRET,
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string')
+    throw new Error('MEDIA_TEST_ADDRESS_MISSING');
+  const origin = `http://127.0.0.1:${address.port}`;
+  const key = 'collection-files/88000000-0000-4000-8000-000000000002';
+  const put = signedUrl(origin, 'PUT', key, Math.floor(Date.now() / 1_000) + 60);
+  try {
+    assert.equal((await fetch(put, { body: 'first', method: 'PUT' })).status, 200);
+    assert.equal((await fetch(put, { body: 'replacement', method: 'PUT' })).status, 200);
+    assert.equal(await readFile(path.join(root, key), 'utf8'), 'first');
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 test('rejects expired and tampered URLs and keeps the master original private', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
   const server = createMediaServer({
-    allowedUploadOrigin: STUDENT_ORIGIN,
+    allowedUploadOrigins: [STUDENT_ORIGIN],
     root,
     signingSecret: SECRET,
   });
@@ -51,7 +144,7 @@ test('rejects expired and tampered URLs and keeps the master original private', 
 test('allows a valid signed browser upload from the configured Student origin', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
   const server = createMediaServer({
-    allowedUploadOrigin: STUDENT_ORIGIN,
+    allowedUploadOrigins: [STUDENT_ORIGIN],
     root,
     signingSecret: SECRET,
   });
@@ -106,7 +199,7 @@ test('allows a valid signed browser upload from the configured Student origin', 
 test('rejects browser upload preflight from an unconfigured origin', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
   const server = createMediaServer({
-    allowedUploadOrigin: STUDENT_ORIGIN,
+    allowedUploadOrigins: [STUDENT_ORIGIN],
     root,
     signingSecret: SECRET,
   });
@@ -151,7 +244,7 @@ test('rejects browser upload preflight from an unconfigured origin', async () =>
 test('reports unexpected storage failures but not expected authorization responses', async () => {
   const reportedErrors: unknown[] = [];
   const server = createMediaServer({
-    allowedUploadOrigin: STUDENT_ORIGIN,
+    allowedUploadOrigins: [STUDENT_ORIGIN],
     reportError: (error) => reportedErrors.push(error),
     root: '/dev/null',
     signingSecret: SECRET,
@@ -185,7 +278,7 @@ test('reports unexpected storage failures but not expected authorization respons
 test('serves a published variant unsigned but still guards writes and other keys', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'showcase-media-'));
   const server = createMediaServer({
-    allowedUploadOrigin: STUDENT_ORIGIN,
+    allowedUploadOrigins: [STUDENT_ORIGIN],
     root,
     signingSecret: SECRET,
   });

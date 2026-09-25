@@ -47,7 +47,7 @@ Force HTTPS. Route Core internal authentication endpoints only where the fronten
 
 Core needs `APP_ENV`, `NODE_ENV=production`, `PORT=4100`, exact `ADMIN_URL`, `STUDENT_URL`, `VISITOR_URL`, `CORE_URL`, `DATABASE_URL`, `BETTER_AUTH_BASE_URL`, `BETTER_AUTH_SECRET`, `API_KEY`, `CATALOG_CURSOR_SECRET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `PUBLIC_MEDIA_ORIGIN`, `MEDIA_SERVICE_URL`, `MEDIA_SERVICE_HMAC_SECRET`, `VISITOR_BFF_SECRET`, `VISITOR_CACHE_SECRET`, and its public `SENTRY_DSN`. Core derives the Admin, Instructor, Student, and Student Collection BFF secrets plus `AUTH_IDENTITY_SECRET` from `API_KEY`, and derives `CORS_ALLOWED_ORIGINS` from `ADMIN_URL`, `STUDENT_URL`, and `VISITOR_URL`. Admin, Instructor, and Student Collection each need runtime `CORE_URL` and their own `API_KEY` set to the same value as Core's `API_KEY`. Student additionally needs `VISITOR_URL`. Visitor needs runtime `CORE_URL` and the same environment's `VISITOR_BFF_SECRET` and `VISITOR_CACHE_SECRET`. Keep secrets server-only; ADR 0016 explicitly allows only the public Sentry DSNs to use a `NEXT_PUBLIC_` prefix.
 
-Media needs `APP_ENV=production`, `NODE_ENV=production`, `HOST`, `PORT=4191`, `STORAGE_ROOT=/data`, `MEDIA_SERVICE_HMAC_SECRET`, exact `STUDENT_URL`, and its public `SENTRY_DSN`. `STUDENT_URL` is the only browser origin allowed to use signed upload URLs; Media rejects other origins and validates preflight requests against the signed `PUT` method.
+Media needs `APP_ENV=production`, `NODE_ENV=production`, `HOST`, `PORT=4191`, `STORAGE_ROOT=/data`, `MEDIA_SERVICE_HMAC_SECRET`, exact `STUDENT_URL`, exact `STUDENT_COLLECTION_URL`, and its public `SENTRY_DSN`. These two Student-facing origins are the only browser origins allowed to use signed upload URLs; Media rejects other origins and validates preflight requests against the signed `PUT` method.
 
 Set the same Core project DSN on the Core API, cache worker, collection file inspector, collection export builder, roster worker process, and media processor because they share the Core project; runtime tags distinguish them. Do not set `SENTRY_AUTH_TOKEN` in Coolify. The five frontend DSNs are build-time GitHub variables and are not Coolify values.
 
@@ -82,7 +82,7 @@ Copy each Coolify application UUID into the repository variable documented in `s
 First deployment validation:
 
 1. Finish production applications, UUID variables, Environment secrets, domains, and runtime configuration.
-2. Set Media's exact `STUDENT_URL` before deploying the CORS-enabled image.
+2. Set Media's exact `STUDENT_URL` and `STUDENT_COLLECTION_URL` before deploying the CORS-enabled image.
 3. Push the initial harness commit to `main` and confirm CI builds all five GHCR images with the same full SHA tag.
 4. Approve the protected production Environment.
 5. Confirm Media becomes healthy before Core, all three Core-image workers, and frontends deploy.

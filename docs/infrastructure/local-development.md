@@ -49,4 +49,4 @@ pnpm db:stop
 
 ## Integration credentials
 
-For profile-photo or Work-media upload testing, run Media with a disposable storage root, a development-only `MEDIA_SERVICE_HMAC_SECRET`, and `STUDENT_URL=http://localhost:3002`. Configure Core with the same signing secret plus the local private and public Media origins. Do not reuse production credentials or expose the signing secret through a `NEXT_PUBLIC_*` variable.
+For profile-photo, Work-media, or collection-file upload testing, run Media with a disposable storage root, a development-only `MEDIA_SERVICE_HMAC_SECRET`, `STUDENT_URL=http://localhost:3002`, and `STUDENT_COLLECTION_URL=http://localhost:3004`. Configure Core with the same signing secret plus the local private and public Media origins. Do not reuse production credentials or expose the signing secret through a `NEXT_PUBLIC_*` variable.

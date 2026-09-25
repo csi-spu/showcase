@@ -98,8 +98,8 @@ export class StudentCollectionFormsCoreClient {
   /**
    * Registers an upload slot and returns where to send the bytes.
    *
-   * The returned file starts `quarantined`. It is not an accepted document and
-   * cannot be submitted until an inspection records a result.
+   * The returned file starts `pending_upload`. Finalization queues it for
+   * inspection; only a later `ready` result makes it submittable.
    */
   createUpload(
     token: string,
@@ -116,6 +116,15 @@ export class StudentCollectionFormsCoreClient {
       path: `${BASE}/${formId}/uploads`,
       body,
       responseSchema: uploadTicketSchema,
+      sessionToken: token,
+    });
+  }
+
+  finalizeUpload(token: string, formId: string, fileId: string): Promise<{ status: string }> {
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/${formId}/uploads/${fileId}/finalize`,
+      responseSchema: z.object({ status: z.literal('quarantined') }).strict(),
       sessionToken: token,
     });
   }
