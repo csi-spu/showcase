@@ -20,26 +20,22 @@ function fakeClient() {
 
 describe('createPrismaSqlClient', () => {
   /*
-   * A UUID-shaped value used to be auto-cast to `$n::uuid` based on its shape
-   * alone. `collection_files.field_id` is a `text` column that legitimately
-   * holds Instructor-chosen ids generated with `crypto.randomUUID()`, so that
-   * heuristic produced `field_id = $n::uuid` and failed with Postgres error
-   * 42883 (`operator does not exist: text = uuid`). Placeholders must stay
-   * uncast and let Postgres infer the type from the comparison.
+   * Prisma sends JavaScript strings as Postgres text. The helper's existing
+   * UUID cast must remain the default for UUID columns; text columns that can
+   * contain UUID-shaped identifiers opt out explicitly below.
    */
-  it('leaves a UUID-shaped string parameter uncast', async () => {
+  it('casts a UUID-shaped string parameter for UUID database columns', async () => {
     const { calls, client } = fakeClient();
     const sql = createPrismaSqlClient(client);
-    const fieldId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+    const accountId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
 
-    await sql`select 1 from private.collection_files where field_id = ${fieldId}`;
+    await sql`select 1 from public.accounts where id = ${accountId}`;
 
-    expect(calls[0]?.text).toContain('field_id = $1');
-    expect(calls[0]?.text).not.toContain('::uuid');
-    expect(calls[0]?.values).toEqual([fieldId]);
+    expect(calls[0]?.text).toContain('id = $1::uuid');
+    expect(calls[0]?.values).toEqual([accountId]);
   });
 
-  it('leaves every scalar parameter uncast regardless of shape', async () => {
+  it('leaves non-UUID scalar parameters uncast', async () => {
     const { calls, client } = fakeClient();
     const sql = createPrismaSqlClient(client);
 
@@ -59,7 +55,18 @@ describe('createPrismaSqlClient', () => {
     expect(calls[0]?.values).toEqual([JSON.stringify({ a: 1 })]);
   });
 
-  it('numbers bulk-insert placeholders sequentially without a cast', () => {
+  it('casts an explicitly typed text fragment as text even when it looks like a UUID', async () => {
+    const { calls, client } = fakeClient();
+    const sql = createPrismaSqlClient(client);
+    const fieldId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+
+    await sql`select 1 from private.collection_files where field_id = ${sql.text(fieldId)}`;
+
+    expect(calls[0]?.text).toContain('field_id = $1::text');
+    expect(calls[0]?.values).toEqual([fieldId]);
+  });
+
+  it('numbers bulk-insert placeholders sequentially with UUID casts', () => {
     const { client } = fakeClient();
     const sql = createPrismaSqlClient(client);
 
@@ -75,7 +82,6 @@ describe('createPrismaSqlClient', () => {
       'label',
     );
 
-    expect(fragment.text).toBe('("id", "label") values ($1, $2), ($3, $4)');
-    expect(fragment.text).not.toContain('::uuid');
+    expect(fragment.text).toBe('("id", "label") values ($1::uuid, $2), ($3::uuid, $4)');
   });
 });

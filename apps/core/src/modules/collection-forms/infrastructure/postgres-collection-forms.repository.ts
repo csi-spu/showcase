@@ -1623,7 +1623,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       insert into private.collection_files
         (form_id, field_id, student_account_id, storage_key, original_filename,
           declared_content_type, byte_size, created_at)
-      values (${input.formId}, ${input.fieldId}, ${input.studentAccountId}, ${input.storageKey},
+      values (${input.formId}, ${this.database.sql.text(input.fieldId)}, ${input.studentAccountId}, ${input.storageKey},
         ${input.filename}, ${input.declaredContentType}, ${input.byteSize}, ${input.now})
       returning id, form_id, field_id, student_account_id, original_filename, declared_content_type,
         detected_content_type, byte_size, status, inspection_error_code, created_at
@@ -1641,7 +1641,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         detected_content_type, byte_size, status, inspection_error_code, created_at
       from private.collection_files
       where student_account_id = ${input.studentAccountId} and form_id = ${input.formId}
-        and field_id = ${input.fieldId}
+        and field_id = ${this.database.sql.text(input.fieldId)}
       order by created_at desc limit ${MAX_FILES_PER_FIELD * 4}
     `;
     return rows.map((row) => this.mapFile(row));
@@ -1661,7 +1661,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       const owned = await transaction<{ id: string }[]>`
         select id from private.collection_files
         where id = ${input.fileId} and student_account_id = ${input.studentAccountId}
-          and form_id = ${input.formId} and field_id = ${input.fieldId}
+          and form_id = ${input.formId} and field_id = ${transaction.text(input.fieldId)}
       `;
       if (owned[0] === undefined) return 'not_found' as const;
 
@@ -1676,7 +1676,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       const existing = await transaction<{ file_id: string; position: number }[]>`
         select file_id, position from private.collection_draft_files
         where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
-          and field_id = ${input.fieldId}
+          and field_id = ${transaction.text(input.fieldId)}
         order by position
       `;
       if (existing.some((row) => row.file_id === input.fileId)) return 'attached' as const;
@@ -1685,7 +1685,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       await transaction`
         insert into private.collection_draft_files
           (form_id, student_account_id, field_id, file_id, position)
-        values (${input.formId}, ${input.studentAccountId}, ${input.fieldId}, ${input.fileId},
+        values (${input.formId}, ${input.studentAccountId}, ${transaction.text(input.fieldId)}, ${input.fileId},
           ${existing.length})
       `;
       return 'attached' as const;
@@ -1920,7 +1920,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         for (const [position, file] of files.entries()) {
           await transaction`
             insert into private.collection_submission_files (submission_id, field_id, file_id, position)
-            values (${submissionId}, ${fieldId}, ${file.id}, ${position})
+            values (${submissionId}, ${transaction.text(fieldId)}, ${file.id}, ${position})
           `;
         }
       }
@@ -2023,14 +2023,14 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         select file_id, row_number() over (order by position) - 1 as next_position
         from private.collection_draft_files
         where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
-          and field_id = ${input.fieldId}
+          and field_id = ${transaction.text(input.fieldId)}
       )
       update private.collection_draft_files as draft_file
       set position = ordered.next_position
       from ordered
       where draft_file.form_id = ${input.formId}
         and draft_file.student_account_id = ${input.studentAccountId}
-        and draft_file.field_id = ${input.fieldId}
+        and draft_file.field_id = ${transaction.text(input.fieldId)}
         and draft_file.file_id = ordered.file_id
         and draft_file.position <> ordered.next_position
     `;
