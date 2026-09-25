@@ -314,6 +314,7 @@ async function cleanupCollectionResources(
       await transaction`delete from private.collection_files where form_id = ${resources.formId}`;
       await transaction`delete from public.collection_obligations where form_id = ${resources.formId}`;
       await transaction`delete from private.collection_form_metadata_events where form_id = ${resources.formId}`;
+      await transaction`delete from private.collection_form_structure_events where form_id = ${resources.formId}`;
       await transaction`delete from public.collection_forms where id = ${resources.formId}`;
       /*
        * Round lifecycle events reference both the round and the acting account,
