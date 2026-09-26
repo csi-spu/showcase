@@ -62,8 +62,10 @@ test.describe('Instructor group member selection', () => {
           timeout: 30_000,
         });
         const members = page.getByRole('region', { name: 'สมาชิกปัจจุบัน' });
-        await expect(members.getByText(collectionScenario.studentName)).toBeVisible();
-        await expect(members.getByText(collectionScenario.peerName)).toBeVisible();
+        await expect(
+          members.getByText(collectionScenario.studentName, { exact: true }),
+        ).toBeVisible();
+        await expect(members.getByText(collectionScenario.peerName, { exact: true })).toBeVisible();
       });
     } finally {
       await context.close();
