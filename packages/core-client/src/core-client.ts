@@ -2,19 +2,28 @@ import { z } from 'zod';
 
 const errorResponseSchema = z
   .object({
-    error: z.object({ code: z.string().min(1) }).strict(),
+    error: z
+      .object({
+        code: z.string().min(1),
+        details: z.record(z.string(), z.unknown()).optional(),
+      })
+      .strict(),
   })
   .strict();
 
 export class CoreClientError extends Error {
+  /** Structured context for a stable error code; callers narrow it with their own schema. */
+  readonly details?: Readonly<Record<string, unknown>>;
+
   constructor(
     readonly code: string,
     readonly status: number,
     readonly retryAfterSeconds?: number,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { details?: Readonly<Record<string, unknown>> },
   ) {
     super(code, options);
     this.name = 'CoreClientError';
+    if (options?.details !== undefined) this.details = options.details;
   }
 }
 
@@ -133,6 +142,7 @@ export class CoreClient {
           error.error.code,
           response.status,
           this.parseRetryAfter(response.headers.get('retry-after')),
+          error.error.details === undefined ? undefined : { details: error.error.details },
         );
       } catch (cause: unknown) {
         if (cause instanceof CoreClientError) {

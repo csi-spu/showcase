@@ -22,6 +22,7 @@ import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../app-shell';
 import { createCollectionFormAction } from '../collection-forms.actions';
 import { createFormGroupAction, createRoundAction } from '../collection-groups.actions';
+import { MEMBER_SELECTION_READS } from '../member-selection/member-selection-reads';
 import { CreateFormFlow } from './create-form-flow';
 import { CreateRoundPanel } from './create-round-form';
 
@@ -86,6 +87,7 @@ export default async function RoundsPage({
           groups={activeGroups}
           key={shouldOpenCreateForm ? 'create-form-open' : 'create-form-closed'}
           rounds={activeRounds}
+          reads={MEMBER_SELECTION_READS}
           setupAction={createFormGroupAction}
         />
       </div>

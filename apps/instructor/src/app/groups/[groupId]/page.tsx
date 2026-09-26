@@ -25,11 +25,11 @@ import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../../app-shell';
 import type { WithdrawMemberAction } from '../../collection-groups-state';
 import {
-  addMembersByEntryYearAction,
-  addMembersByStudentIdsAction,
+  addMembersAction,
   withdrawMemberAction,
   reinstateMemberAction,
 } from '../../collection-groups.actions';
+import { MEMBER_SELECTION_READS } from '../../member-selection/member-selection-reads';
 import { AddMembersPanel } from './add-members-forms';
 import { MemberRowActions } from './member-row-actions';
 import {
@@ -72,8 +72,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
     formsClient.listTemplates(sessionToken),
   ]);
 
-  const boundAddByStudentIds = addMembersByStudentIdsAction.bind(null, groupId);
-  const boundAddByEntryYear = addMembersByEntryYearAction.bind(null, groupId);
+  const boundAddMembers = addMembersAction.bind(null, groupId);
   const boundWithdraw = withdrawMemberAction.bind(null, groupId);
   const boundReinstate = reinstateMemberAction.bind(null, groupId);
   const currentMembers = detail.members.filter((member) => member.status === 'current');
@@ -143,8 +142,10 @@ export default async function GroupPage({ params }: GroupPageProps) {
             {t('members.rosterHeading')}
           </h2>
           <AddMembersPanel
-            addByEntryYearAction={boundAddByEntryYear}
-            addByStudentIdsAction={boundAddByStudentIds}
+            action={boundAddMembers}
+            groupId={groupId}
+            openFormsCount={forms.filter((form) => form.status === 'open').length}
+            reads={MEMBER_SELECTION_READS}
           />
         </div>
 

@@ -1,6 +1,18 @@
 import 'server-only';
 import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
+import {
+  selectableStudentSchema,
+  STUDENT_PAGE_SIZE,
+  studentIdResolutionSchema,
+  studentPageSchema,
+  type SelectableStudent,
+  type StudentIdResolution,
+  type StudentPage,
+} from './member-selection-contract';
+
+/* Member mutations write up to 2,000 rows and their obligations in one transaction. */
+const MEMBER_MUTATION_TIMEOUT_MILLISECONDS = 30_000;
 
 const roundSchema = z
   .object({
@@ -26,7 +38,12 @@ const memberSchema = z
     entryYear: z.number().int(),
     firstNameTh: z.string().min(1),
     lastNameTh: z.string().min(1),
-    membershipSource: z.enum(['entry_year', 'individual', 'student_id_list']),
+    membershipSource: z.enum([
+      'entry_year',
+      'individual',
+      'instructor_selection',
+      'student_id_list',
+    ]),
     status: z.enum(['current', 'withdrawn']),
     studentAccountId: z.uuid(),
     withdrawalReason: z.string().nullable(),
@@ -35,18 +52,7 @@ const memberSchema = z
   .strict();
 
 const addMembersResultSchema = z
-  .object({
-    accepted: z.array(memberSchema),
-    alreadyWithdrawnStudentIds: z.array(z.string()),
-    unknownStudentIds: z.array(z.string()),
-  })
-  .strict();
-
-const addMembersByEntryYearResultSchema = z
-  .object({
-    accepted: z.array(memberSchema),
-    alreadyWithdrawnCount: z.number().int(),
-  })
+  .object({ added: z.number().int().min(0), alreadyMember: z.number().int().min(0) })
   .strict();
 
 const groupDetailSchema = z.object({ group: groupSchema, members: z.array(memberSchema) }).strict();
@@ -56,9 +62,6 @@ export type InstructorCollectionRound = z.infer<typeof roundSchema>;
 export type InstructorCollectionGroup = z.infer<typeof groupSchema>;
 export type InstructorGroupMember = z.infer<typeof memberSchema>;
 export type InstructorAddMembersResult = z.infer<typeof addMembersResultSchema>;
-export type InstructorAddMembersByEntryYearResult = z.infer<
-  typeof addMembersByEntryYearResultSchema
->;
 export type InstructorGroupDetail = z.infer<typeof groupDetailSchema>;
 
 interface InstructorCollectionGroupsCoreConfig {
@@ -87,9 +90,14 @@ export class InstructorCollectionGroupsCoreClient {
     });
   }
 
-  createRoundWithGroup(
+  createRoundWithGroupAndMembers(
     sessionToken: string,
-    input: { groupName: string; roundName: string },
+    input: {
+      groupName: string;
+      idempotencyKey: string;
+      memberAccountIds: string[];
+      roundName: string;
+    },
   ): Promise<{ group: InstructorCollectionGroup; round: InstructorCollectionRound }> {
     return this.client.request({
       body: input,
@@ -97,6 +105,7 @@ export class InstructorCollectionGroupsCoreClient {
       path: '/v1/internal/instructor/rounds/with-group',
       responseSchema: roundWithGroupSchema,
       sessionToken,
+      timeoutMilliseconds: MEMBER_MUTATION_TIMEOUT_MILLISECONDS,
     });
   }
 
@@ -109,10 +118,10 @@ export class InstructorCollectionGroupsCoreClient {
     });
   }
 
-  createGroup(
+  createGroupWithMembers(
     sessionToken: string,
     roundId: string,
-    input: { name: string },
+    input: { idempotencyKey: string; memberAccountIds: string[]; name: string },
   ): Promise<InstructorCollectionGroup> {
     return this.client.request({
       body: input,
@@ -120,6 +129,7 @@ export class InstructorCollectionGroupsCoreClient {
       path: `/v1/internal/instructor/rounds/${roundId}/groups`,
       responseSchema: groupSchema,
       sessionToken,
+      timeoutMilliseconds: MEMBER_MUTATION_TIMEOUT_MILLISECONDS,
     });
   }
 
@@ -141,32 +151,87 @@ export class InstructorCollectionGroupsCoreClient {
     });
   }
 
-  addMembersByStudentIds(
+  addMembers(
     sessionToken: string,
     groupId: string,
-    input: { studentIds: string[] },
+    input: { memberAccountIds: string[] },
   ): Promise<InstructorAddMembersResult> {
     return this.client.request({
       body: input,
       method: 'POST',
-      path: `/v1/internal/instructor/groups/${groupId}/members/by-student-ids`,
+      path: `/v1/internal/instructor/groups/${groupId}/members`,
       responseSchema: addMembersResultSchema,
+      sessionToken,
+      timeoutMilliseconds: MEMBER_MUTATION_TIMEOUT_MILLISECONDS,
+    });
+  }
+
+  listStudents(
+    sessionToken: string,
+    query: {
+      cursor: string | null;
+      entryYear: number | null;
+      groupId: string | null;
+      q: string | null;
+    },
+  ): Promise<StudentPage> {
+    const search = studentFilterSearch(query);
+    if (query.cursor !== null) search.set('cursor', query.cursor);
+    search.set('limit', String(STUDENT_PAGE_SIZE));
+    return this.client.request({
+      method: 'GET',
+      path: `/v1/internal/instructor/students?${search.toString()}`,
+      responseSchema: studentPageSchema,
       sessionToken,
     });
   }
 
-  addMembersByEntryYear(
-    sessionToken: string,
-    groupId: string,
-    input: { entryYear: number },
-  ): Promise<InstructorAddMembersByEntryYearResult> {
-    return this.client.request({
-      body: input,
-      method: 'POST',
-      path: `/v1/internal/instructor/groups/${groupId}/members/by-entry-year`,
-      responseSchema: addMembersByEntryYearResultSchema,
+  async listEntryYears(sessionToken: string): Promise<number[]> {
+    const result = await this.client.request({
+      method: 'GET',
+      path: '/v1/internal/instructor/students/entry-years',
+      responseSchema: z.object({ entryYears: z.array(z.number().int()) }).strict(),
       sessionToken,
     });
+    return result.entryYears;
+  }
+
+  async selectAllStudents(
+    sessionToken: string,
+    query: {
+      entryYear: number | null;
+      groupId: string | null;
+      q: string | null;
+      selectedCount: number;
+    },
+  ): Promise<SelectableStudent[]> {
+    const search = studentFilterSearch(query);
+    search.set('selectedCount', String(query.selectedCount));
+    const result = await this.client.request({
+      method: 'GET',
+      path: `/v1/internal/instructor/students/select-all?${search.toString()}`,
+      responseSchema: z.object({ students: z.array(selectableStudentSchema) }).strict(),
+      sessionToken,
+    });
+    return result.students;
+  }
+
+  /* Student IDs travel only in this request body, never in a URL. */
+  async resolveStudentIds(
+    sessionToken: string,
+    input: { groupId: string | null; studentIds: string[] },
+  ): Promise<StudentIdResolution[]> {
+    const result = await this.client.request({
+      body:
+        input.groupId === null
+          ? { studentIds: input.studentIds }
+          : { groupId: input.groupId, studentIds: input.studentIds },
+      method: 'POST',
+      path: '/v1/internal/instructor/students/resolve',
+      responseSchema: z.object({ results: z.array(studentIdResolutionSchema) }).strict(),
+      sessionToken,
+    });
+    return result.results;
   }
 
   withdrawMember(
@@ -198,4 +263,16 @@ export class InstructorCollectionGroupsCoreClient {
       sessionToken,
     });
   }
+}
+
+function studentFilterSearch(filter: {
+  entryYear: number | null;
+  groupId: string | null;
+  q: string | null;
+}): URLSearchParams {
+  const search = new URLSearchParams();
+  if (filter.q !== null) search.set('q', filter.q);
+  if (filter.entryYear !== null) search.set('entryYear', String(filter.entryYear));
+  if (filter.groupId !== null) search.set('groupId', filter.groupId);
+  return search;
 }

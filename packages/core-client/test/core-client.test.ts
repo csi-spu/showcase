@@ -74,6 +74,31 @@ describe('CoreClient', () => {
     ).rejects.toEqual(expect.objectContaining({ code: 'RATE_LIMITED', retryAfterSeconds: 37 }));
   });
 
+  it('carries structured error details for the caller to narrow', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json(
+          { error: { code: 'SELECTION_LIMIT_EXCEEDED', details: { matchingCount: 2_400 } } },
+          { status: 422 },
+        ),
+      );
+
+    await expect(
+      client(fetchMock).request({
+        method: 'GET',
+        path: '/v1/internal/example',
+        responseSchema: resultSchema,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: 'SELECTION_LIMIT_EXCEEDED',
+        details: { matchingCount: 2_400 },
+        status: 422,
+      }),
+    );
+  });
+
   it('forwards a raw body without JSON serialization for private file transport', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ state: 'active' }));
     const csv = new Uint8Array([115, 116, 117, 100, 101, 110, 116]);

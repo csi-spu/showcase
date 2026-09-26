@@ -23,6 +23,7 @@ import {
   reopenCollectionRoundAction,
 } from '../../collection-forms.actions';
 import { createGroupAction } from '../../collection-groups.actions';
+import { MEMBER_SELECTION_READS } from '../../member-selection/member-selection-reads';
 import { CreateGroupPanel } from './create-group-form';
 import { RoundLifecyclePanel } from './round-lifecycle-panel';
 
@@ -97,7 +98,7 @@ export default async function RoundPage({ params }: RoundPageProps) {
         />
       </div>
 
-      <CreateGroupPanel action={boundCreateGroupAction} />
+      <CreateGroupPanel action={boundCreateGroupAction} reads={MEMBER_SELECTION_READS} />
 
       {groups.length === 0 ? (
         <EmptyState
