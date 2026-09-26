@@ -1647,10 +1647,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         and file.field_id = ${this.database.sql.text(input.fieldId)}
         and (
           draft_file.file_id is not null
-          or (
-            file.status in ('pending_upload', 'quarantined', 'inspecting')
-            and file.created_at > ${input.now} - interval '15 minutes'
-          )
+          or (file.status = 'pending_upload' and file.created_at > ${input.now} - interval '15 minutes')
         )
       order by file.created_at desc limit ${MAX_FILES_PER_FIELD * 4}
     `;
