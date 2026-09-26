@@ -1,7 +1,9 @@
 import type {
   CollectionExportJob,
   CollectionFile,
+  CollectionForm,
   CollectionNotification,
+  CollectionReviewEntry,
   CollectionSubmissionHistory,
   DraftFileSelection,
   StudentObligation,
@@ -44,6 +46,52 @@ function toFileSelectionView(selection: DraftFileSelection): Record<string, Coll
   return Object.fromEntries(
     Object.entries(selection).map(([fieldId, files]) => [fieldId, files.map(toFileView)]),
   );
+}
+
+/**
+ * The Instructor review queue as an HTTP response.
+ *
+ * A submitted file still carries ownership and inspection metadata inside Core.
+ * Project every file explicitly so those persistence fields cannot cross the
+ * transport boundary when the domain object gains a new property.
+ */
+export function toReviewQueueView(input: {
+  entries: CollectionReviewEntry[];
+  form: CollectionForm;
+}) {
+  return {
+    entries: input.entries.map((entry) => ({
+      firstSubmittedAt: entry.firstSubmittedAt?.toISOString() ?? null,
+      isLate: entry.isLate,
+      latestCheckingReason: entry.latestCheckingReason,
+      latestSubmission:
+        entry.latestSubmission === null
+          ? null
+          : {
+              answers: entry.latestSubmission.answers,
+              fields: entry.latestSubmission.fields,
+              files: toFileSelectionView(entry.latestSubmission.files),
+              formVersion: entry.latestSubmission.formVersion,
+              id: entry.latestSubmission.id,
+              submittedAt: entry.latestSubmission.submittedAt.toISOString(),
+              version: entry.latestSubmission.version,
+            },
+      rosterName: entry.rosterName,
+      status: entry.status,
+      studentAccountId: entry.studentAccountId,
+    })),
+    form: {
+      createdFromTemplateId: input.form.createdFromTemplateId,
+      deadlineAt: input.form.deadlineAt?.toISOString() ?? null,
+      description: input.form.description,
+      fields: input.form.fields,
+      groupId: input.form.groupId,
+      id: input.form.id,
+      status: input.form.status,
+      title: input.form.title,
+      version: input.form.version,
+    },
+  };
 }
 
 export function toObligationView(obligation: StudentObligation) {

@@ -30,7 +30,7 @@ import {
   UpdateCollectionTemplateDto,
 } from './collection-forms.dto';
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
-import { toExportView, toSubmissionHistoryView } from './collection-forms.view';
+import { toExportView, toReviewQueueView, toSubmissionHistoryView } from './collection-forms.view';
 
 @Controller('internal/instructor/collection')
 @UseFilters(CollectionFormsExceptionFilter)
@@ -295,7 +295,8 @@ export class InstructorCollectionFormsController {
     @Headers('authorization') authorization: string | undefined,
   ) {
     await this.auth.authorizeInstructor(token(authorization));
-    return this.forms.listFormSubmissions(formId);
+    const queue = await this.forms.listFormSubmissions(formId);
+    return toReviewQueueView(queue);
   }
 
   /**
