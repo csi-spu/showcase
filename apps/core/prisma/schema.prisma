@@ -1194,6 +1194,7 @@ model collection_groups {
   name                               String
   created_by_account_id              String                               @db.Uuid
   created_at                         DateTime                             @default(now()) @db.Timestamptz(6)
+  creation_idempotency_key           String?                              @db.Uuid
   collection_exports                 collection_exports[]
   collection_membership_audit_events collection_membership_audit_events[]
   collection_forms                   collection_forms[]
@@ -1201,6 +1202,7 @@ model collection_groups {
   accounts                           accounts                             @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   collection_rounds                  collection_rounds                    @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([created_by_account_id, creation_idempotency_key], map: "collection_groups_creation_idempotency_idx")
   @@index([round_id, created_at(sort: Desc)], map: "collection_groups_round_id_idx")
   @@schema("public")
 }

@@ -2,20 +2,26 @@ import type { Clock, IdentityProtector } from '../../auth/application/auth.ports
 import { CollectionGroupsService } from './collection-groups.service';
 import { CollectionGroupsError } from './collection-groups.ports';
 import type {
-  AddMembersByEntryYearResult,
   AddMembersResult,
   CollectionGroup,
   CollectionGroupsRepository,
   CollectionRound,
+  CreateGroupWithMembersResult,
+  CreateRoundWithGroupAndMembersResult,
   GroupMember,
-  WithdrawMemberResult,
   ReinstateMemberResult,
+  SelectableStudent,
+  StudentSelectionFilter,
+  WithdrawMemberResult,
 } from './collection-groups.ports';
 
 const NOW = new Date('2026-09-20T06:00:00.000Z');
 const ACTOR_ACCOUNT_ID = '10000000-0000-4000-8000-000000000001';
 const ROUND_ID = '20000000-0000-4000-8000-000000000001';
 const GROUP_ID = '30000000-0000-4000-8000-000000000001';
+const IDEMPOTENCY_KEY = '50000000-0000-4000-8000-000000000001';
+const STUDENT_ACCOUNT_ID = '40000000-0000-4000-8000-000000000001';
+const OTHER_STUDENT_ACCOUNT_ID = '40000000-0000-4000-8000-000000000002';
 
 const ROUND: CollectionRound = { createdAt: NOW, id: ROUND_ID, name: 'รอบทดสอบ', status: 'active' };
 const GROUP: CollectionGroup = {
@@ -29,53 +35,76 @@ const MEMBER: GroupMember = {
   entryYear: 2569,
   firstNameTh: 'สมชาย',
   lastNameTh: 'ใจดี',
-  membershipSource: 'individual',
+  membershipSource: 'instructor_selection',
   status: 'current',
-  studentAccountId: '40000000-0000-4000-8000-000000000001',
+  studentAccountId: STUDENT_ACCOUNT_ID,
   withdrawalReason: null,
   withdrawnAt: null,
 };
+const STUDENT: SelectableStudent = {
+  accountId: STUDENT_ACCOUNT_ID,
+  entryYear: 2569,
+  firstNameTh: 'สมชาย',
+  lastNameTh: 'ใจดี',
+  status: 'selectable',
+};
+
+function student(index: number, status: SelectableStudent['status'] = 'selectable') {
+  return {
+    ...STUDENT,
+    accountId: `40000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    status,
+  };
+}
 
 class FakeRepository implements CollectionGroupsRepository {
-  addMembersByEntryYearResult: AddMembersByEntryYearResult = {
-    accepted: [MEMBER],
-    alreadyWithdrawnCount: 0,
+  addMembersResult: AddMembersResult = { added: 1, alreadyMember: 0, outcome: 'added' };
+  createGroupResult: CreateGroupWithMembersResult = { group: GROUP, outcome: 'created' };
+  createRoundWithGroupResult: CreateRoundWithGroupAndMembersResult = {
+    group: GROUP,
+    outcome: 'created',
+    round: ROUND,
   };
-  addMembersByStudentIdHashesResult: AddMembersResult = {
-    accepted: [MEMBER],
-    alreadyWithdrawnStudentIds: [],
-    unknownStudentIds: [],
-  };
+  currentAcademicYear: number | null = 2569;
+  entryYears = [2568, 2569];
   group: CollectionGroup | null = GROUP;
+  matchingCount = 0;
   members: GroupMember[] = [MEMBER];
   round: CollectionRound | null = ROUND;
   reinstateMemberResult: ReinstateMemberResult = {
     member: MEMBER,
     outcome: 'reinstated',
   };
+  snapshot: SelectableStudent[] = [STUDENT];
+  students: SelectableStudent[] = [STUDENT];
+  studentsByHash = new Map<string, SelectableStudent>();
   withdrawMemberResult: WithdrawMemberResult = {
     member: { ...MEMBER, status: 'withdrawn' },
     outcome: 'withdrawn',
   };
 
-  addMembersByEntryYear(): Promise<AddMembersByEntryYearResult> {
-    return Promise.resolve(this.addMembersByEntryYearResult);
+  addMembers(): Promise<AddMembersResult> {
+    return Promise.resolve(this.addMembersResult);
   }
 
-  addMembersByStudentIdHashes(): Promise<AddMembersResult> {
-    return Promise.resolve(this.addMembersByStudentIdHashesResult);
+  countSelectableStudents(): Promise<number> {
+    return Promise.resolve(this.matchingCount);
   }
 
-  createGroup(): Promise<CollectionGroup> {
-    return Promise.resolve(GROUP);
+  createGroupWithMembers(): Promise<CreateGroupWithMembersResult> {
+    return Promise.resolve(this.createGroupResult);
   }
 
   createRound(): Promise<CollectionRound> {
     return Promise.resolve(ROUND);
   }
 
-  createRoundWithGroup(): Promise<{ group: CollectionGroup; round: CollectionRound }> {
-    return Promise.resolve({ group: GROUP, round: ROUND });
+  createRoundWithGroupAndMembers(): Promise<CreateRoundWithGroupAndMembersResult> {
+    return Promise.resolve(this.createRoundWithGroupResult);
+  }
+
+  findCurrentAcademicYear(): Promise<number | null> {
+    return Promise.resolve(this.currentAcademicYear);
   }
 
   findGroup(): Promise<CollectionGroup | null> {
@@ -84,6 +113,14 @@ class FakeRepository implements CollectionGroupsRepository {
 
   findRound(): Promise<CollectionRound | null> {
     return Promise.resolve(this.round);
+  }
+
+  findStudentsByIdHashes(): Promise<Map<string, SelectableStudent>> {
+    return Promise.resolve(this.studentsByHash);
+  }
+
+  listEntryYears(): Promise<number[]> {
+    return Promise.resolve(this.entryYears);
   }
 
   listGroupMembers(): Promise<GroupMember[]> {
@@ -96,6 +133,18 @@ class FakeRepository implements CollectionGroupsRepository {
 
   listRounds(): Promise<CollectionRound[]> {
     return Promise.resolve([ROUND]);
+  }
+
+  listSelectableStudentSnapshot(
+    input: StudentSelectionFilter & { limit: number },
+  ): Promise<SelectableStudent[]> {
+    return Promise.resolve(this.snapshot.slice(0, input.limit));
+  }
+
+  listStudents(
+    input: StudentSelectionFilter & { afterAccountId: string | null; limit: number },
+  ): Promise<SelectableStudent[]> {
+    return Promise.resolve(this.students.slice(0, input.limit + 1));
   }
 
   reinstateMember(): Promise<ReinstateMemberResult> {
@@ -121,49 +170,9 @@ function setup(repository = new FakeRepository()) {
   return { repository, service: new CollectionGroupsService(repository, clock, identityProtector) };
 }
 
+const NO_FILTER = { entryYear: null, groupId: null, query: null };
+
 describe('CollectionGroupsService rounds and groups', () => {
-  it('trims both names and creates a Round with its first Group in one repository operation', async () => {
-    const repository = new FakeRepository();
-    const createRoundWithGroup = jest.spyOn(repository, 'createRoundWithGroup');
-
-    await expect(
-      setup(repository).service.createRoundWithGroup({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        groupName: '  กลุ่ม 1  ',
-        roundName: '  ภาคเรียน 1/2569  ',
-      }),
-    ).resolves.toEqual({ group: GROUP, round: ROUND });
-
-    expect(createRoundWithGroup).toHaveBeenCalledWith({
-      createdByAccountId: ACTOR_ACCOUNT_ID,
-      groupName: 'กลุ่ม 1',
-      now: NOW,
-      roundName: 'ภาคเรียน 1/2569',
-    });
-  });
-
-  it('rejects either invalid setup name before touching the repository', async () => {
-    const repository = new FakeRepository();
-    const createRoundWithGroup = jest.spyOn(repository, 'createRoundWithGroup');
-
-    await expect(
-      setup(repository).service.createRoundWithGroup({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        groupName: 'กลุ่ม 1',
-        roundName: '   ',
-      }),
-    ).rejects.toEqual(new CollectionGroupsError('ROUND_NAME_INVALID', 422));
-    await expect(
-      setup(repository).service.createRoundWithGroup({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        groupName: 'x'.repeat(201),
-        roundName: 'ภาคเรียน 1/2569',
-      }),
-    ).rejects.toEqual(new CollectionGroupsError('GROUP_NAME_INVALID', 422));
-
-    expect(createRoundWithGroup).not.toHaveBeenCalled();
-  });
-
   it('trims a Round name and rejects an empty or overlong one', async () => {
     const { service } = setup();
     await expect(
@@ -174,18 +183,6 @@ describe('CollectionGroupsService rounds and groups', () => {
         new CollectionGroupsError('ROUND_NAME_INVALID', 422),
       );
     }
-  });
-
-  it('rejects creating a Group under a missing Round', async () => {
-    const repository = new FakeRepository();
-    repository.round = null;
-    await expect(
-      setup(repository).service.createGroup({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        name: 'กลุ่ม',
-        roundId: ROUND_ID,
-      }),
-    ).rejects.toEqual(new CollectionGroupsError('ROUND_NOT_FOUND', 404));
   });
 
   it('rejects listing Groups or Group detail for an unknown identifier', async () => {
@@ -208,81 +205,302 @@ describe('CollectionGroupsService rounds and groups', () => {
   });
 });
 
-describe('CollectionGroupsService membership by Student ID', () => {
-  it('hashes every Student ID and forwards the accepted/unknown/already-withdrawn split from the repository', async () => {
+describe('CollectionGroupsService student selection list', () => {
+  it('returns one page with an opaque cursor that resumes after its last Account', async () => {
     const repository = new FakeRepository();
-    repository.addMembersByStudentIdHashesResult = {
-      accepted: [MEMBER],
-      alreadyWithdrawnStudentIds: ['88888888'],
-      unknownStudentIds: ['99999999'],
-    };
-    await expect(
-      setup(repository).service.addMembersByStudentIds({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        groupId: GROUP_ID,
-        studentIds: ['10000001', '88888888', '99999999'],
-      }),
-    ).resolves.toEqual({
-      accepted: [MEMBER],
-      alreadyWithdrawnStudentIds: ['88888888'],
-      unknownStudentIds: ['99999999'],
+    repository.students = [student(1), student(2), student(3)];
+    const listStudents = jest.spyOn(repository, 'listStudents');
+    const { service } = setup(repository);
+
+    const firstPage = await service.listStudents({ ...NO_FILTER, cursor: null, limit: 2 });
+
+    expect(firstPage).toMatchObject({
+      hasCurrentAcademicYear: true,
+      students: [student(1), student(2)],
+    });
+    expect(typeof firstPage.nextCursor).toBe('string');
+    expect(firstPage.nextCursor).not.toContain(student(2).accountId);
+
+    await service.listStudents({ ...NO_FILTER, cursor: firstPage.nextCursor, limit: 2 });
+    expect(listStudents).toHaveBeenLastCalledWith({
+      ...NO_FILTER,
+      afterAccountId: student(2).accountId,
+      limit: 2,
     });
   });
 
-  it('rejects an empty or over-limit Student ID list before touching the repository', async () => {
-    const repository = new FakeRepository();
-    for (const studentIds of [
-      [],
-      Array.from({ length: 501 }, (_, index) => String(10000000 + index)),
-    ]) {
+  it('ends pagination on the last page', async () => {
+    await expect(
+      setup().service.listStudents({ ...NO_FILTER, cursor: null, limit: 50 }),
+    ).resolves.toMatchObject({ nextCursor: null, students: [STUDENT] });
+  });
+
+  it('rejects a cursor that does not decode to an Account', async () => {
+    for (const cursor of ['not-a-cursor', Buffer.from('12345678').toString('base64url')]) {
       await expect(
-        setup(repository).service.addMembersByStudentIds({
-          actorAccountId: ACTOR_ACCOUNT_ID,
-          groupId: GROUP_ID,
-          studentIds,
-        }),
-      ).rejects.toEqual(new CollectionGroupsError('STUDENT_ID_LIST_INVALID', 422));
+        setup().service.listStudents({ ...NO_FILTER, cursor, limit: 50 }),
+      ).rejects.toEqual(new CollectionGroupsError('STUDENT_CURSOR_INVALID', 422));
     }
   });
 
-  it('rejects membership mutations against an unknown Group', async () => {
+  it('normalizes the name query and treats blank as no filter', async () => {
+    const repository = new FakeRepository();
+    const listStudents = jest.spyOn(repository, 'listStudents');
+    const { service } = setup(repository);
+
+    await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query: '  สม   ใจ ' });
+    expect(listStudents).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'สม ใจ' }));
+    await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query: '   ' });
+    expect(listStudents).toHaveBeenLastCalledWith(expect.objectContaining({ query: null }));
+  });
+
+  it('reports a missing Current Academic Year so the interface can explain why nobody is selectable', async () => {
+    const repository = new FakeRepository();
+    repository.currentAcademicYear = null;
+    repository.students = [student(1, 'no_access')];
+    await expect(
+      setup(repository).service.listStudents({ ...NO_FILTER, cursor: null, limit: 50 }),
+    ).resolves.toMatchObject({ hasCurrentAcademicYear: false });
+  });
+
+  it('rejects add-flow statuses for an unknown Group', async () => {
     const repository = new FakeRepository();
     repository.group = null;
     await expect(
-      setup(repository).service.addMembersByStudentIds({
-        actorAccountId: ACTOR_ACCOUNT_ID,
+      setup(repository).service.listStudents({
+        ...NO_FILTER,
+        cursor: null,
         groupId: GROUP_ID,
-        studentIds: ['10000001'],
+        limit: 50,
       }),
     ).rejects.toEqual(new CollectionGroupsError('GROUP_NOT_FOUND', 404));
   });
+});
 
-  it('adds a single Student individually via the same hashing path', async () => {
+describe('CollectionGroupsService select all matching', () => {
+  it('returns every selectable match within the remaining capacity', async () => {
+    const repository = new FakeRepository();
+    repository.snapshot = [student(1), student(2)];
+    const snapshot = jest.spyOn(repository, 'listSelectableStudentSnapshot');
+
     await expect(
-      setup().service.addMemberIndividually({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        groupId: GROUP_ID,
-        studentId: '10000001',
+      setup(repository).service.selectAllMatching({
+        ...NO_FILTER,
+        entryYear: 2569,
+        selectedCount: 1_998,
       }),
-    ).resolves.toEqual({
-      accepted: [MEMBER],
-      alreadyWithdrawnStudentIds: [],
-      unknownStudentIds: [],
+    ).resolves.toEqual([student(1), student(2)]);
+    expect(snapshot).toHaveBeenCalledWith({ ...NO_FILTER, entryYear: 2569, limit: 3 });
+  });
+
+  it('rejects a match beyond the remaining capacity with the matching count, not a partial list', async () => {
+    const repository = new FakeRepository();
+    repository.snapshot = [student(1), student(2), student(3)];
+    repository.matchingCount = 2_400;
+
+    await expect(
+      setup(repository).service.selectAllMatching({ ...NO_FILTER, selectedCount: 1_998 }),
+    ).rejects.toMatchObject({
+      code: 'SELECTION_LIMIT_EXCEEDED',
+      details: { matchingCount: 2_400 },
+      status: 422,
     });
   });
 });
 
-describe('CollectionGroupsService Entry Year and withdrawal', () => {
-  it('adds members by Entry Year for a known Group', async () => {
-    await expect(
-      setup().service.addMembersByEntryYear({
-        actorAccountId: ACTOR_ACCOUNT_ID,
-        entryYear: 2569,
-        groupId: GROUP_ID,
-      }),
-    ).resolves.toEqual({ accepted: [MEMBER], alreadyWithdrawnCount: 0 });
+describe('CollectionGroupsService Student ID resolution', () => {
+  it('maps each input position to a row or not_found without echoing Student IDs', async () => {
+    const repository = new FakeRepository();
+    repository.studentsByHash = new Map([
+      ['student-65000001', student(1)],
+      ['student-65000002', student(2, 'no_access')],
+      ['student-65000003', student(3, 'current_member')],
+    ]);
+
+    const results = await setup(repository).service.resolveStudentIds({
+      groupId: null,
+      studentIds: ['65000001', '65000002', '65000009', '65000003'],
+    });
+
+    expect(results).toEqual([
+      { outcome: 'matched', position: 0, student: student(1) },
+      { outcome: 'no_access', position: 1, student: student(2, 'no_access') },
+      { outcome: 'not_found', position: 2 },
+      { outcome: 'matched', position: 3, student: student(3, 'current_member') },
+    ]);
+    expect(JSON.stringify(results)).not.toMatch(/6500000\d/);
   });
 
+  it('rejects an empty or oversized chunk before hashing', async () => {
+    const repository = new FakeRepository();
+    const find = jest.spyOn(repository, 'findStudentsByIdHashes');
+    for (const studentIds of [[], Array.from({ length: 501 }, () => '65000001')]) {
+      await expect(
+        setup(repository).service.resolveStudentIds({ groupId: null, studentIds }),
+      ).rejects.toEqual(new CollectionGroupsError('STUDENT_ID_LIST_INVALID', 422));
+    }
+    expect(find).not.toHaveBeenCalled();
+  });
+});
+
+describe('CollectionGroupsService create with members', () => {
+  const createInput = {
+    actorAccountId: ACTOR_ACCOUNT_ID,
+    idempotencyKey: IDEMPOTENCY_KEY,
+    memberAccountIds: [STUDENT_ACCOUNT_ID],
+    name: '  กลุ่ม 1  ',
+    roundId: ROUND_ID,
+  };
+
+  it('creates a Group with its members in one repository operation', async () => {
+    const repository = new FakeRepository();
+    const create = jest.spyOn(repository, 'createGroupWithMembers');
+
+    await expect(setup(repository).service.createGroupWithMembers(createInput)).resolves.toEqual(
+      GROUP,
+    );
+    expect(create).toHaveBeenCalledWith({
+      createdByAccountId: ACTOR_ACCOUNT_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      memberAccountIds: [STUDENT_ACCOUNT_ID],
+      name: 'กลุ่ม 1',
+      now: NOW,
+      roundId: ROUND_ID,
+    });
+  });
+
+  it('returns the original Group when the same submission is replayed', async () => {
+    const repository = new FakeRepository();
+    repository.createGroupResult = { group: GROUP, outcome: 'replayed' };
+    await expect(setup(repository).service.createGroupWithMembers(createInput)).resolves.toEqual(
+      GROUP,
+    );
+  });
+
+  it('rejects an empty, oversized, or duplicated member list before the repository', async () => {
+    const repository = new FakeRepository();
+    const create = jest.spyOn(repository, 'createGroupWithMembers');
+    const oversized = Array.from({ length: 2_001 }, (_value, index) => student(index).accountId);
+    for (const memberAccountIds of [[], oversized, [STUDENT_ACCOUNT_ID, STUDENT_ACCOUNT_ID]]) {
+      await expect(
+        setup(repository).service.createGroupWithMembers({ ...createInput, memberAccountIds }),
+      ).rejects.toEqual(new CollectionGroupsError('MEMBER_LIST_INVALID', 422));
+    }
+    await expect(
+      setup(repository).service.createGroupWithMembers({ ...createInput, name: '   ' }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_NAME_INVALID', 422));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ outcome: 'round_not_found' }, new CollectionGroupsError('ROUND_NOT_FOUND', 404)],
+    [{ outcome: 'round_closed' }, new CollectionGroupsError('ROUND_CLOSED', 409)],
+    [
+      { outcome: 'idempotency_conflict' },
+      new CollectionGroupsError('IDEMPOTENCY_KEY_CONFLICT', 409),
+    ],
+    [
+      { accountIds: [OTHER_STUDENT_ACCOUNT_ID], outcome: 'members_not_selectable' },
+      new CollectionGroupsError('MEMBER_NOT_SELECTABLE', 409, {
+        accountIds: [OTHER_STUDENT_ACCOUNT_ID],
+      }),
+    ],
+  ] as const)('maps %j to a stable error', async (result, error) => {
+    const repository = new FakeRepository();
+    repository.createGroupResult = result as CreateGroupWithMembersResult;
+    await expect(setup(repository).service.createGroupWithMembers(createInput)).rejects.toEqual(
+      error,
+    );
+  });
+
+  it('creates a Round with its first Group and members, validating both names', async () => {
+    const repository = new FakeRepository();
+    const create = jest.spyOn(repository, 'createRoundWithGroupAndMembers');
+    const { service } = setup(repository);
+    const input = {
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      groupName: '  กลุ่ม 1  ',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      memberAccountIds: [STUDENT_ACCOUNT_ID],
+      roundName: '  ภาคเรียน 1/2569  ',
+    };
+
+    await expect(service.createRoundWithGroupAndMembers(input)).resolves.toEqual({
+      group: GROUP,
+      round: ROUND,
+    });
+    expect(create).toHaveBeenCalledWith({
+      createdByAccountId: ACTOR_ACCOUNT_ID,
+      groupName: 'กลุ่ม 1',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      memberAccountIds: [STUDENT_ACCOUNT_ID],
+      now: NOW,
+      roundName: 'ภาคเรียน 1/2569',
+    });
+
+    await expect(
+      service.createRoundWithGroupAndMembers({ ...input, roundName: ' ' }),
+    ).rejects.toEqual(new CollectionGroupsError('ROUND_NAME_INVALID', 422));
+    repository.createRoundWithGroupResult = {
+      accountIds: [STUDENT_ACCOUNT_ID],
+      outcome: 'members_not_selectable',
+    };
+    await expect(service.createRoundWithGroupAndMembers(input)).rejects.toMatchObject({
+      code: 'MEMBER_NOT_SELECTABLE',
+      details: { accountIds: [STUDENT_ACCOUNT_ID] },
+      status: 409,
+    });
+  });
+});
+
+describe('CollectionGroupsService add members', () => {
+  const addInput = {
+    actorAccountId: ACTOR_ACCOUNT_ID,
+    groupId: GROUP_ID,
+    memberAccountIds: [STUDENT_ACCOUNT_ID, OTHER_STUDENT_ACCOUNT_ID],
+  };
+
+  it('reports added members and those who became members concurrently', async () => {
+    const repository = new FakeRepository();
+    repository.addMembersResult = { added: 1, alreadyMember: 1, outcome: 'added' };
+    await expect(setup(repository).service.addMembers(addInput)).resolves.toEqual({
+      added: 1,
+      alreadyMember: 1,
+    });
+  });
+
+  it('rejects the whole request for an unknown Group, a closed Round, or an ineligible Student', async () => {
+    const repository = new FakeRepository();
+    repository.addMembersResult = { outcome: 'round_closed' };
+    await expect(setup(repository).service.addMembers(addInput)).rejects.toEqual(
+      new CollectionGroupsError('ROUND_CLOSED', 409),
+    );
+    repository.addMembersResult = {
+      accountIds: [OTHER_STUDENT_ACCOUNT_ID],
+      outcome: 'members_not_selectable',
+    };
+    await expect(setup(repository).service.addMembers(addInput)).rejects.toEqual(
+      new CollectionGroupsError('MEMBER_NOT_SELECTABLE', 409, {
+        accountIds: [OTHER_STUDENT_ACCOUNT_ID],
+      }),
+    );
+    repository.group = null;
+    await expect(setup(repository).service.addMembers(addInput)).rejects.toEqual(
+      new CollectionGroupsError('GROUP_NOT_FOUND', 404),
+    );
+  });
+
+  it('rejects a duplicated member list', async () => {
+    await expect(
+      setup().service.addMembers({
+        ...addInput,
+        memberAccountIds: [STUDENT_ACCOUNT_ID, STUDENT_ACCOUNT_ID],
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('MEMBER_LIST_INVALID', 422));
+  });
+});
+
+describe('CollectionGroupsService withdrawal', () => {
   it('rejects an invalid withdrawal reason before calling the repository', async () => {
     const repository = new FakeRepository();
     for (const reason of ['', '   ', 'x'.repeat(2_001)]) {
