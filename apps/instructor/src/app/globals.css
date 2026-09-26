@@ -137,3 +137,31 @@ html {
   :is([data-slot='input'], select):not(:disabled, :focus-visible, [aria-invalid='true']):hover {
   border-color: color-mix(in srgb, var(--primary) 50%, var(--input));
 }
+
+/*
+ * Charts draw themselves in rather than appearing finished: a bar fills from
+ * empty to its inline width, and a ring segment grows from its start to its
+ * dash length. The end state is the element's own value, so no script is
+ * needed and reduced motion simply skips to it.
+ */
+@keyframes progress-fill {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes ring-draw {
+  from {
+    stroke-dasharray: 0 264;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-animate='progress-fill'] {
+    animation: progress-fill 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  [data-animate='ring-draw'] {
+    animation: ring-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}

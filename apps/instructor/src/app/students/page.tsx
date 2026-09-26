@@ -1,37 +1,24 @@
 import { buttonVariants } from '@showcase/ui/button';
-import { CheckCircle2Icon, ChevronRightIcon } from 'lucide-react';
+import { cn } from '@showcase/ui/cn';
+import { CheckCircle2Icon, ChevronRightIcon, ChevronsLeftIcon } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { EmptyState } from '@/components/ui/empty-state';
+import { NumberTicker } from '@/components/ui/number-ticker';
 import { PageHeader } from '@/components/ui/page-header';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { getInstructorAuthPageState } from '@/lib/instructor-auth-page-state';
 import { readInstructorSessionToken } from '@/lib/instructor-auth-session';
-import type {
-  InstructorCollectionScope,
-  InstructorStudentAttentionRow,
-} from '@/lib/instructor-collection-overview-core';
+import type { InstructorCollectionScope } from '@/lib/instructor-collection-overview-core';
 import { InstructorCollectionOverviewCoreClient } from '@/lib/instructor-collection-overview-core';
+import { ENTRANCE_CLASS, staggerDelay } from '@/lib/motion';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import { AppShell } from '../app-shell';
+import { AttentionRow } from '../dashboard/attention-row';
 import { ScopeFilters, type ScopeFilter } from '../dashboard/scope-filters';
 
 /** Core's own page size for this read; see MAX_STUDENT_ATTENTION_LIMIT. */
 const PAGE_LIMIT = 20;
-
-const STATUS_TONES = {
-  awaiting_checking: 'information',
-  changes_required: 'warning',
-  not_submitted: 'muted',
-} as const;
-
-function formatBangkokDate(value: string): string {
-  return new Intl.DateTimeFormat('th-TH', {
-    dateStyle: 'medium',
-    timeZone: 'Asia/Bangkok',
-  }).format(new Date(value));
-}
 
 interface StudentsSearchParams {
   cursor?: string;
@@ -78,11 +65,14 @@ export default async function StudentsPage({
       : {}),
   };
 
-  const page = await client.getStudentAttention(sessionToken, {
-    ...scope,
-    ...(params.cursor === undefined ? {} : { cursor: params.cursor }),
-    limit: PAGE_LIMIT,
-  });
+  const [page, overview] = await Promise.all([
+    client.getStudentAttention(sessionToken, {
+      ...scope,
+      ...(params.cursor === undefined ? {} : { cursor: params.cursor }),
+      limit: PAGE_LIMIT,
+    }),
+    client.getOverview(sessionToken, scope),
+  ]);
 
   const groupOptions =
     scope.roundId === undefined
@@ -118,25 +108,54 @@ export default async function StudentsPage({
   ];
 
   /*
-   * The cursor is forward-only, so there is a "next" link and no "previous":
-   * offering a back link the cursor cannot honour would be worse than not
-   * offering one. The filters stay in the link so paging keeps the scope.
+   * The cursor is forward-only, so there is a "next" link and a way back to
+   * the start, but no "previous": offering a back link the cursor cannot
+   * honour would be worse than not offering one. The filters stay in both
+   * links so paging keeps the scope.
    */
+  const scopeParams = new URLSearchParams();
+  if (scope.roundId !== undefined) scopeParams.set('roundId', scope.roundId);
+  if (scope.groupId !== undefined) scopeParams.set('groupId', scope.groupId);
+  if (scope.entryYear !== undefined) scopeParams.set('entryYear', String(scope.entryYear));
+  const firstHref = scopeParams.size === 0 ? '/students' : `/students?${scopeParams.toString()}`;
   const nextHref = (() => {
     if (page.nextCursor === null) return null;
-    const next = new URLSearchParams();
-    if (scope.roundId !== undefined) next.set('roundId', scope.roundId);
-    if (scope.groupId !== undefined) next.set('groupId', scope.groupId);
-    if (scope.entryYear !== undefined) next.set('entryYear', String(scope.entryYear));
+    const next = new URLSearchParams(scopeParams);
     next.set('cursor', page.nextCursor);
     return `/students?${next.toString()}`;
   })();
+  const isFirstPage = params.cursor === undefined;
+  const totals = overview.activeRoundTotals;
 
   return (
-    <AppShell width="wide">
+    <AppShell pendingReview={totals.submissionsPendingReview} width="wide">
       <PageHeader description={t('pageDescription')} title={t('pageTitle')} />
 
       <ScopeFilters filters={filters} label={tDashboard('filterLabel')} />
+
+      <section aria-label={t('summaryLabel')} className="grid gap-3 sm:grid-cols-3">
+        <SummaryTile
+          delayIndex={0}
+          dotClass="bg-information"
+          label={t('summaryPendingReview')}
+          unit={t('unitSubmissions')}
+          value={totals.submissionsPendingReview}
+        />
+        <SummaryTile
+          delayIndex={1}
+          dotClass="bg-warning"
+          label={t('summaryPartial')}
+          unit={t('unitStudents')}
+          value={totals.studentsPartiallyComplete}
+        />
+        <SummaryTile
+          delayIndex={2}
+          dotClass="bg-muted-foreground/50"
+          label={t('summaryNone')}
+          unit={t('unitStudents')}
+          value={totals.studentsWithNoSubmission}
+        />
+      </section>
 
       {page.rows.length === 0 ? (
         <EmptyState
@@ -145,63 +164,105 @@ export default async function StudentsPage({
           title={t('empty')}
         />
       ) : (
-        <>
-          <ul className="flex flex-col gap-2">
-            {page.rows.map((row) => (
-              <li key={`${row.studentAccountId}-${row.formId}`}>
-                <StudentRow row={row} tDashboard={tDashboard} />
+        <div className="flex flex-col gap-3">
+          {/* The row accents are colour; this says what each one means. */}
+          <ul
+            aria-label={t('legendLabel')}
+            className={cn(
+              'flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground',
+              ENTRANCE_CLASS,
+            )}
+            style={staggerDelay(3)}
+          >
+            {LEGEND.map((item) => (
+              <li className="flex items-center gap-1.5" key={item.key}>
+                <span aria-hidden="true" className={cn('h-3 w-1 rounded-full', item.className)} />
+                {item.key === 'late' ? tDashboard('overdue') : tDashboard(`status.${item.key}`)}
               </li>
             ))}
           </ul>
-          {nextHref === null ? null : (
-            <div className="flex justify-center">
-              <Link className={buttonVariants({ variant: 'outline' })} href={nextHref}>
-                {t('loadMore')}
-              </Link>
-            </div>
+
+          <ul className="flex flex-col gap-2">
+            {page.rows.map((row, index) => (
+              <li
+                className={ENTRANCE_CLASS}
+                key={`${row.studentAccountId}-${row.formId}`}
+                style={staggerDelay(index, 240)}
+              >
+                <AttentionRow row={row} t={tDashboard} />
+              </li>
+            ))}
+          </ul>
+
+          {isFirstPage && nextHref === null ? null : (
+            <nav
+              aria-label={t('paginationLabel')}
+              className="flex flex-wrap items-center justify-between gap-2 pt-1"
+            >
+              {isFirstPage ? (
+                <span />
+              ) : (
+                <Link className={buttonVariants({ variant: 'ghost' })} href={firstHref}>
+                  <ChevronsLeftIcon aria-hidden="true" data-icon="inline-start" />
+                  {t('firstPage')}
+                </Link>
+              )}
+              {nextHref === null ? null : (
+                <Link
+                  className={cn(buttonVariants({ variant: 'outline' }), 'group')}
+                  href={nextHref}
+                >
+                  {t('loadMore')}
+                  <ChevronRightIcon
+                    aria-hidden="true"
+                    className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+                    data-icon="inline-end"
+                  />
+                </Link>
+              )}
+            </nav>
           )}
-        </>
+        </div>
       )}
     </AppShell>
   );
 }
 
-function StudentRow({
-  row,
-  tDashboard,
+const LEGEND = [
+  { className: 'bg-information', key: 'awaiting_checking' },
+  { className: 'bg-warning', key: 'changes_required' },
+  { className: 'bg-muted-foreground/40', key: 'not_submitted' },
+  { className: 'bg-destructive', key: 'late' },
+] as const;
+
+/* One count across the whole scope, not just this page of rows. */
+function SummaryTile({
+  delayIndex,
+  dotClass,
+  label,
+  unit,
+  value,
 }: {
-  row: InstructorStudentAttentionRow;
-  tDashboard: Awaited<ReturnType<typeof getTranslations<'Dashboard'>>>;
+  delayIndex: number;
+  dotClass: string;
+  label: string;
+  unit: string;
+  value: number;
 }) {
   return (
-    <Link
-      className="group flex flex-wrap items-center gap-x-4 gap-y-2 rounded-surface border border-border/80 bg-card px-4 py-3 transition-colors hover:border-primary/40 hover:bg-primary-soft/40 motion-reduce:transition-none"
-      href={`/groups/${row.groupId}/forms/${row.formId}/submissions`}
+    <div
+      className={cn(
+        'flex items-center gap-3 rounded-surface border border-border/80 bg-card px-4 py-3 transition-[border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-sm motion-reduce:transition-none',
+        ENTRANCE_CLASS,
+      )}
+      style={staggerDelay(delayIndex, 80)}
     >
-      <span className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
-        <span className="truncate font-medium text-foreground">
-          {row.firstNameTh} {row.lastNameTh}
-        </span>
-        <span className="truncate text-sm text-muted-foreground">
-          {row.formTitle} · {row.groupName}
-        </span>
+      <span aria-hidden="true" className={cn('size-2.5 shrink-0 rounded-full', dotClass)} />
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{label}</span>
+      <span className="flex items-baseline gap-1">
+        <NumberTicker className="text-2xl font-semibold text-foreground" value={value} />
+        <span className="text-xs text-muted-foreground">{unit}</span>
       </span>
-      <StatusBadge tone={STATUS_TONES[row.status]}>
-        {tDashboard(`status.${row.status}`)}
-      </StatusBadge>
-      <span className="w-28 shrink-0 text-sm">
-        {row.deadlineAt === null ? (
-          <span className="text-muted-foreground">{tDashboard('noDeadline')}</span>
-        ) : (
-          <span className={row.isLate ? 'font-medium text-destructive' : 'text-muted-foreground'}>
-            {formatBangkokDate(row.deadlineAt)}
-          </span>
-        )}
-      </span>
-      <ChevronRightIcon
-        aria-hidden="true"
-        className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none"
-      />
-    </Link>
+    </div>
   );
 }

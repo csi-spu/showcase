@@ -3,11 +3,21 @@
 import { Button, buttonVariants } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
 import { Textarea } from '@showcase/ui/textarea';
-import { CheckIcon, DownloadIcon, HistoryIcon, InboxIcon, UndoIcon } from 'lucide-react';
+import { cn } from '@showcase/ui/cn';
+import {
+  CheckIcon,
+  ClipboardCheckIcon,
+  DownloadIcon,
+  HistoryIcon,
+  InboxIcon,
+  SearchXIcon,
+  UndoIcon,
+  XIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useActionState, useId, useState } from 'react';
+import { useActionState, useId, useMemo, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -39,6 +49,21 @@ import type {
   InstructorCollectionFile,
   InstructorReviewEntry,
 } from '@/lib/instructor-collection-forms-contract';
+import { ENTRANCE_CLASS, staggerDelay } from '@/lib/motion';
+import {
+  DEFAULT_REVIEW_DISPLAY,
+  ReviewPagination,
+  ReviewToolbar,
+  StatusTabs,
+  type ReviewDisplay,
+} from './review-queue-controls';
+import {
+  REVIEW_PAGE_SIZES,
+  viewReviewQueue,
+  type ReviewPageSize,
+  type ReviewSort,
+  type ReviewStatusFilter,
+} from './review-queue-view';
 
 type CheckAction = (
   state: CollectionFormActionState,
@@ -54,6 +79,17 @@ const STATUS_TONES: Record<InstructorReviewEntry['status'], StatusTone> = {
   withdrawn: 'muted',
 };
 
+const STATUS_ACCENT_CLASSES: Record<InstructorReviewEntry['status'], string> = {
+  awaiting_checking: 'before:bg-information',
+  changes_required: 'before:bg-warning',
+  not_submitted: 'before:bg-muted-foreground/40',
+  passed: 'before:bg-success',
+  withdrawn: 'before:bg-muted-foreground/20',
+};
+
+const ROW_ENTRANCE_CLASS =
+  'animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-1 motion-reduce:animate-none';
+
 export function ReviewQueue({
   checkAction,
   entries,
@@ -66,6 +102,16 @@ export function ReviewQueue({
   groupId: string;
 }) {
   const t = useTranslations('Forms');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<ReviewStatusFilter>('all');
+  const [sort, setSort] = useState<ReviewSort>('status');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<ReviewPageSize>(REVIEW_PAGE_SIZES[0]);
+  const [display, setDisplay] = useState<ReviewDisplay>(DEFAULT_REVIEW_DISPLAY);
+  const view = useMemo(
+    () => viewReviewQueue(entries, { page, pageSize, search, sort, status }),
+    [entries, page, pageSize, search, sort, status],
+  );
 
   if (entries.length === 0) {
     return (
@@ -77,76 +123,185 @@ export function ReviewQueue({
     );
   }
 
+  /* Any change to what is listed starts again from its first page. */
+  const resetPage =
+    <Value,>(set: (value: Value) => void) =>
+    (value: Value) => {
+      set(value);
+      setPage(1);
+    };
+
   return (
-    <Table label={t('review.pageTitle')}>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('review.columnName')}</TableHead>
-          <TableHead>{t('review.columnStatus')}</TableHead>
-          <TableHead className="hidden sm:table-cell">{t('review.columnSubmittedAt')}</TableHead>
-          <TableHead className="text-right">{t('review.columnActions')}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {entries.map((entry) => (
-          <ReviewRow
-            checkAction={checkAction}
-            entry={entry}
-            formId={formId}
-            groupId={groupId}
-            key={entry.studentAccountId}
+    <div className="flex flex-col gap-4">
+      <div className={cn('flex flex-col gap-4', ENTRANCE_CLASS)}>
+        <StatusTabs counts={view.statusCounts} onChange={resetPage(setStatus)} value={status} />
+        <ReviewToolbar
+          display={display}
+          onDisplayChange={setDisplay}
+          onSearchChange={resetPage(setSearch)}
+          onSortChange={resetPage(setSort)}
+          search={search}
+          sort={sort}
+        />
+      </div>
+
+      {view.total === 0 ? (
+        <EmptyState
+          action={
+            <Button
+              onClick={() => {
+                setSearch('');
+                setStatus('all');
+                setPage(1);
+              }}
+              variant="outline"
+            >
+              <XIcon aria-hidden="true" data-icon="inline-start" />
+              {t('review.clearFilters')}
+            </Button>
+          }
+          description={t('review.noMatchDescription')}
+          icon={SearchXIcon}
+          title={t('review.noMatch')}
+        />
+      ) : (
+        <>
+          <Table containerClassName={ENTRANCE_CLASS} label={t('review.pageTitle')}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('review.columnName')}</TableHead>
+                <TableHead>{t('review.columnStatus')}</TableHead>
+                {display.submittedAt ? (
+                  <TableHead className="hidden sm:table-cell">
+                    {t('review.columnSubmittedAt')}
+                  </TableHead>
+                ) : null}
+                {display.firstSubmittedAt ? (
+                  <TableHead className="hidden md:table-cell">
+                    {t('review.columnFirstSubmittedAt')}
+                  </TableHead>
+                ) : null}
+                {display.version ? (
+                  <TableHead className="hidden md:table-cell">
+                    {t('review.columnVersion')}
+                  </TableHead>
+                ) : null}
+                <TableHead className="text-right">{t('review.columnActions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            {/* Re-keyed on what is listed, so a new page or filter replays the rows' entrance. */}
+            <TableBody key={`${status}|${search}|${sort}|${view.page}|${pageSize}`}>
+              {view.rows.map((entry, index) => (
+                <ReviewRow
+                  checkAction={checkAction}
+                  display={display}
+                  entry={entry}
+                  formId={formId}
+                  groupId={groupId}
+                  index={index}
+                  key={entry.studentAccountId}
+                />
+              ))}
+            </TableBody>
+          </Table>
+          <ReviewPagination
+            onPageChange={setPage}
+            onPageSizeChange={resetPage(setPageSize)}
+            page={view.page}
+            pageCount={view.pageCount}
+            pageSize={pageSize}
+            total={view.total}
           />
-        ))}
-      </TableBody>
-    </Table>
+        </>
+      )}
+    </div>
   );
 }
 
 function ReviewRow({
   checkAction,
+  display,
   entry,
   formId,
   groupId,
+  index,
 }: {
   checkAction: CheckAction;
+  display: ReviewDisplay;
   entry: InstructorReviewEntry;
   formId: string;
   groupId: string;
+  index: number;
 }) {
   const t = useTranslations('Forms');
   const format = useFormatter();
   const name = `${entry.rosterName.firstNameTh} ${entry.rosterName.lastNameTh}`;
   const submission = entry.latestSubmission;
+  const formatDateTime = (value: string) =>
+    format.dateTime(new Date(value), { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
-    <TableRow>
-      <TableCell className="font-medium">{name}</TableCell>
+    <TableRow className={cn('group/row', ROW_ENTRANCE_CLASS)} style={staggerDelay(index)}>
+      {/* The accent repeats the status in colour down the left edge, so the
+          queue can be scanned by colour; the badge still states it in words. */}
+      <TableCell
+        className={cn(
+          "relative font-medium before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:content-['']",
+          STATUS_ACCENT_CLASSES[entry.status],
+        )}
+      >
+        <span className="transition-colors group-hover/row:text-primary motion-reduce:transition-none">
+          {name}
+        </span>
+      </TableCell>
       <TableCell>
-        <StatusBadge tone={STATUS_TONES[entry.status]}>
-          {t(`obligationStatus.${entry.status}`)}
-        </StatusBadge>
+        <span className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge tone={STATUS_TONES[entry.status]}>
+            {t(`obligationStatus.${entry.status}`)}
+          </StatusBadge>
+          {entry.isLate ? (
+            <StatusBadge tone="destructive">
+              {submission === null ? t('review.overdue') : t('review.late')}
+            </StatusBadge>
+          ) : null}
+        </span>
       </TableCell>
-      <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
-        {submission === null
-          ? t('review.notSubmittedYet')
-          : format.dateTime(new Date(submission.submittedAt), {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            })}
-      </TableCell>
+      {display.submittedAt ? (
+        <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
+          {submission === null
+            ? t('review.notSubmittedYet')
+            : formatDateTime(submission.submittedAt)}
+        </TableCell>
+      ) : null}
+      {display.firstSubmittedAt ? (
+        <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
+          {entry.firstSubmittedAt === null
+            ? t('review.notSubmittedYet')
+            : formatDateTime(entry.firstSubmittedAt)}
+        </TableCell>
+      ) : null}
+      {display.version ? (
+        <TableCell className="hidden text-sm text-muted-foreground tabular-nums md:table-cell">
+          {submission === null ? '–' : submission.version}
+        </TableCell>
+      ) : null}
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* History only exists once something was submitted, so it appears with the review action. */}
-          {submission === null ? null : (
+          {submission === null ? (
+            <span className="text-sm text-muted-foreground">{t('review.noSubmissionAction')}</span>
+          ) : (
             <>
-              <Link
-                aria-label={t('history.openActionLabel', { name })}
-                className={buttonVariants({ size: 'sm', variant: 'ghost' })}
-                href={`/groups/${groupId}/forms/${formId}/students/${entry.studentAccountId}`}
-              >
-                <HistoryIcon aria-hidden="true" data-icon="inline-start" />
-                {t('history.openAction')}
-              </Link>
+              {display.historyAction ? (
+                <Link
+                  aria-label={t('history.openActionLabel', { name })}
+                  className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+                  href={`/groups/${groupId}/forms/${formId}/students/${entry.studentAccountId}`}
+                >
+                  <HistoryIcon aria-hidden="true" data-icon="inline-start" />
+                  {t('history.openAction')}
+                </Link>
+              ) : null}
               <SubmissionDialog
                 checkAction={checkAction}
                 entry={entry}
@@ -203,7 +358,14 @@ function SubmissionDialog({
     <AlertDialog onOpenChange={setIsOpen} open={isOpen}>
       <AlertDialogTrigger
         render={
-          <Button size="sm" variant="ghost">
+          <Button
+            className="transition-[background-color,color,scale] active:scale-95 motion-reduce:transition-none"
+            size="sm"
+            variant={entry.status === 'awaiting_checking' ? 'default' : 'ghost'}
+          >
+            {entry.status === 'awaiting_checking' ? (
+              <ClipboardCheckIcon aria-hidden="true" data-icon="inline-start" />
+            ) : null}
             {t('review.openAction')}
             <span className="sr-only">{` ${name}`}</span>
           </Button>
