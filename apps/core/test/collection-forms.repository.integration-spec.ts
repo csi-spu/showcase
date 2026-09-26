@@ -382,6 +382,64 @@ describe('PostgresCollectionFormsRepository integration', () => {
       expect(file.status).toBe('pending_upload');
     });
 
+    it('releases the field slot when a ready draft file is detached', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [fileField]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.saveDraft({
+        answers: {},
+        expectedVersion: 0,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      const file = await repository.createUpload({
+        byteSize: 1_000,
+        declaredContentType: 'application/pdf',
+        fieldId: fileFieldId,
+        filename: 'resume.pdf',
+        formId: form.id,
+        now: NOW,
+        storageKey: 'collection-files/58000000-0000-4000-8000-000000000017',
+        studentAccountId: STUDENT,
+      });
+      await database.sql`
+        update private.collection_files set status = 'ready', detected_content_type = 'application/pdf'
+        where id = ${file.id}
+      `;
+      await repository.attachDraftFile({
+        fieldId: fileFieldId,
+        fileId: file.id,
+        formId: form.id,
+        studentAccountId: STUDENT,
+      });
+
+      await expect(
+        repository.listFieldFiles({
+          fieldId: fileFieldId,
+          formId: form.id,
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toHaveLength(1);
+      await expect(
+        repository.detachDraftFile({
+          fileId: file.id,
+          formId: form.id,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toBe('detached');
+
+      await expect(
+        repository.listFieldFiles({
+          fieldId: fileFieldId,
+          formId: form.id,
+          now: NOW,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual([]);
+    });
+
     it('keeps a registered upload pending until finalized, then refuses it before inspection', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [fileField]);
