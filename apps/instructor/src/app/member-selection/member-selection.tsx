@@ -27,6 +27,13 @@ import {
 } from './member-selection-state';
 import { StudentPicker } from './student-picker';
 
+/*
+ * Everything above a step's actions. When the space the host gives is short,
+ * this scrolls instead of spilling over the actions, which stay in view. The
+ * padding keeps focus rings from being clipped by the scroll edge.
+ */
+const STEP_BODY_CLASS = '-m-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1';
+
 export interface MemberSubmitResult {
   error: CollectionGroupsErrorMessage | null;
   ineligibleAccountIds: string[];
@@ -107,27 +114,35 @@ export function MemberSelection({
 
   if (isConfirming) {
     return (
-      <section aria-labelledby={headingId} className="flex flex-col gap-4">
-        <h3
-          className="text-base font-semibold text-foreground outline-none"
-          id={headingId}
-          ref={headingRef}
-          tabIndex={-1}
+      <section
+        aria-labelledby={headingId}
+        className="flex min-h-0 flex-1 animate-in flex-col gap-4 duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none"
+      >
+        <div className={STEP_BODY_CLASS}>
+          <h3
+            className="text-base font-semibold text-foreground outline-none"
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {t('confirmTitle')}
+          </h3>
+          {submitError !== null && submitError !== 'memberNotSelectable' ? (
+            <Alert variant="destructive">
+              <AlertDescription>{errorT(submitError)}</AlertDescription>
+            </Alert>
+          ) : null}
+          <MemberConfirmation
+            csvProblems={problems}
+            ineligible={state.ineligible}
+            openFormsCount={openFormsCount}
+            students={selected}
+          />
+        </div>
+        <form
+          action={formAction}
+          className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border/80 pt-4"
         >
-          {t('confirmTitle')}
-        </h3>
-        {submitError !== null && submitError !== 'memberNotSelectable' ? (
-          <Alert variant="destructive">
-            <AlertDescription>{errorT(submitError)}</AlertDescription>
-          </Alert>
-        ) : null}
-        <MemberConfirmation
-          csvProblems={problems}
-          ineligible={state.ineligible}
-          openFormsCount={openFormsCount}
-          students={selected}
-        />
-        <form action={formAction} className="flex flex-wrap justify-end gap-2">
           {hiddenFields}
           <input
             name="memberAccountIds"
@@ -146,27 +161,32 @@ export function MemberSelection({
   }
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h3
-          className="text-base font-semibold text-foreground outline-none"
-          id={headingId}
-          ref={headingRef}
-          tabIndex={-1}
-        >
-          {t('pickTitle')}
-        </h3>
-        <p className="text-sm text-muted-foreground">{t('pickDescription')}</p>
+    <section
+      aria-labelledby={headingId}
+      className="flex min-h-0 flex-1 animate-in flex-col gap-4 duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none"
+    >
+      <div className={STEP_BODY_CLASS}>
+        <div className="flex shrink-0 flex-col gap-1">
+          <h3
+            className="text-base font-semibold text-foreground outline-none"
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+          >
+            {t('pickTitle')}
+          </h3>
+          <p className="text-sm text-muted-foreground">{t('pickDescription')}</p>
+        </div>
+        <IneligibleNotice students={state.ineligible} />
+        <CsvImport dispatch={dispatch} groupId={groupId} reads={reads} state={state} />
+        <StudentPicker
+          dispatch={dispatch}
+          groupId={groupId}
+          reads={reads}
+          selection={state.selection}
+        />
       </div>
-      <IneligibleNotice students={state.ineligible} />
-      <CsvImport dispatch={dispatch} groupId={groupId} reads={reads} state={state} />
-      <StudentPicker
-        dispatch={dispatch}
-        groupId={groupId}
-        reads={reads}
-        selection={state.selection}
-      />
-      <div className="flex flex-col gap-2 border-t border-border/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border/80 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p aria-live="polite" className="text-sm text-muted-foreground">
           {isCsvBlocking ? t('csvBlocking') : selected.length === 0 ? t('required') : null}
         </p>

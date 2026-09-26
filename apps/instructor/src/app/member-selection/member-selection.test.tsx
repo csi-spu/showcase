@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -90,6 +90,30 @@ describe('MemberSelection', () => {
     );
   });
 
+  it('imports a CSV dropped on the import area', async () => {
+    const resolveStudentIds = vi
+      .fn<MemberSelectionReads['resolveStudentIds']>()
+      .mockResolvedValue({ ok: true, results: RESOLVED });
+
+    render(
+      <MemberSelection
+        groupId={null}
+        reads={reads({ resolveStudentIds })}
+        submit={async () => ({ error: null, ineligibleAccountIds: [] })}
+        submitLabel="createSubmit"
+      />,
+    );
+    fireEvent.drop(screen.getByRole('region', { name: 'csvTitle' }), {
+      dataTransfer: { files: [csvFile()] },
+    });
+
+    expect(await screen.findByText('problem.not_found 3 65000002')).toBeDefined();
+    expect(resolveStudentIds).toHaveBeenCalledWith({
+      groupId: null,
+      studentIds: ['65000001', '65000002'],
+    });
+  });
+
   it('blocks review until a failed CSV chunk is retried', async () => {
     const user = userEvent.setup();
     const resolveStudentIds = vi
@@ -167,7 +191,8 @@ describe('MemberSelection', () => {
     await user.click(screen.getByRole('button', { name: 'createSubmit' }));
     expect(await screen.findByText('ineligibleTitle')).toBeDefined();
 
-    await user.click(screen.getByRole('checkbox', { name: 'selectStudent ชื่อ2 สกุล2' }));
+    // Back on the table, which reloads its rows.
+    await user.click(await screen.findByRole('checkbox', { name: 'selectStudent ชื่อ2 สกุล2' }));
     expect(screen.queryByText('confirmTitle')).toBeNull();
     expect(screen.getByRole('button', { name: 'review' })).toHaveProperty('disabled', false);
   });

@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
 import { ChevronDownIcon, ListChecksIcon, SearchIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useState, type Dispatch } from 'react';
@@ -26,6 +27,10 @@ import {
 import type { MemberSelectionEvent } from './member-selection-state';
 
 const SEARCH_DEBOUNCE_MILLISECONDS = 300;
+// Rows fade in one after another, but no row waits longer than the cap.
+const ROW_STAGGER_MILLISECONDS = 30;
+const MAX_ROW_STAGGER_STEPS = 8;
+const SKELETON_ROW_COUNT = 6;
 
 const STATUS_TONES: Record<SelectionStatus, StatusTone> = {
   current_member: 'information',
@@ -158,17 +163,17 @@ export function StudentPicker({
   const hasCurrentAcademicYear = page?.hasCurrentAcademicYear ?? true;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div
         aria-label={t('filtersLabel')}
-        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end"
         role="search"
       >
         <Field className="sm:w-48">
           <FieldLabel htmlFor={entryYearId}>{t('entryYearFilter')}</FieldLabel>
           <div className="relative">
             <select
-              className="h-10 w-full appearance-none rounded-surface border border-input bg-background px-3 pr-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="h-10 w-full cursor-pointer appearance-none rounded-surface border border-input bg-background px-3 pr-9 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               id={entryYearId}
               onChange={(event) => {
                 setEntryYear(event.target.value === '' ? null : Number(event.target.value));
@@ -219,9 +224,15 @@ export function StudentPicker({
         </Alert>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <p aria-live="polite" className="text-sm font-medium text-foreground">
-          {t('selectedCount', { count: selection.size, max: MAX_SELECTED_MEMBERS })}
+          {/* Re-keyed so every change pops, drawing the eye to the new count. */}
+          <span
+            className="inline-block animate-in duration-200 zoom-in-90 fade-in motion-reduce:animate-none"
+            key={selection.size}
+          >
+            {t('selectedCount', { count: selection.size, max: MAX_SELECTED_MEMBERS })}
+          </span>
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -268,8 +279,12 @@ export function StudentPicker({
         </Alert>
       ) : null}
 
-      <Table label={t('tableLabel')}>
-        <TableHeader>
+      {/* The only part that scrolls: filters and actions stay in view. */}
+      <Table
+        containerClassName="max-h-[32rem] min-h-40 flex-1 overflow-y-auto"
+        label={t('tableLabel')}
+      >
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           <TableRow>
             <TableHead className="w-12">
               <span className="sr-only">{t('columnSelect')}</span>
@@ -280,16 +295,43 @@ export function StudentPicker({
           </TableRow>
         </TableHeader>
         <TableBody aria-busy={isLoading}>
-          {students.map((student) => {
+          {isLoading
+            ? Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                <TableRow aria-hidden="true" className="hover:bg-transparent" key={index}>
+                  <TableCell>
+                    <span className="block size-4 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+                  </TableCell>
+                  <TableCell>
+                    <span className="block h-4 w-40 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+                  </TableCell>
+                  <TableCell>
+                    <span className="block h-4 w-12 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+                  </TableCell>
+                  <TableCell>
+                    <span className="block h-5 w-20 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+                  </TableCell>
+                </TableRow>
+              ))
+            : null}
+          {students.map((student, index) => {
             const name = `${student.firstNameTh} ${student.lastNameTh}`;
             const isSelected = selection.has(student.accountId);
             return (
-              <TableRow key={student.accountId}>
+              <TableRow
+                className={cn(
+                  'animate-in duration-300 fill-mode-both fade-in slide-in-from-bottom-1 motion-reduce:animate-none',
+                  isSelected && 'bg-primary-soft hover:bg-primary-soft',
+                )}
+                key={student.accountId}
+                style={{
+                  animationDelay: `${Math.min(index, MAX_ROW_STAGGER_STEPS) * ROW_STAGGER_MILLISECONDS}ms`,
+                }}
+              >
                 <TableCell>
                   <input
                     aria-label={t('selectStudent', { name })}
                     checked={isSelected}
-                    className="size-4 rounded-sm accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="size-4 cursor-pointer rounded-sm accent-primary transition-transform duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary enabled:hover:scale-115 enabled:active:scale-95 disabled:cursor-not-allowed motion-reduce:transition-none motion-reduce:enabled:hover:scale-100"
                     disabled={!isSelected && student.status !== 'selectable'}
                     onChange={() => dispatch({ student, type: 'toggled' })}
                     type="checkbox"
@@ -309,8 +351,7 @@ export function StudentPicker({
       </Table>
 
       {isLoading ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Spinner aria-hidden="true" />
+        <p className="sr-only" role="status">
           {t('loading')}
         </p>
       ) : page?.status === 'failed' ? (
@@ -333,7 +374,7 @@ export function StudentPicker({
         </p>
       ) : nextCursor !== null ? (
         <Button
-          className="self-center"
+          className="shrink-0 self-center"
           disabled={isLoadingMore}
           onClick={() => void loadMore(nextCursor)}
           type="button"

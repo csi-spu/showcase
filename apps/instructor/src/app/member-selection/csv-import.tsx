@@ -1,11 +1,11 @@
 'use client';
 
 import { Button, buttonVariants } from '@showcase/ui/button';
-import { DownloadIcon, RotateCcwIcon, XIcon } from 'lucide-react';
+import { cn } from '@showcase/ui/cn';
+import { DownloadIcon, FileSpreadsheetIcon, RotateCcwIcon, UploadIcon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, type ChangeEvent, type Dispatch } from 'react';
+import { useEffect, useId, useState, type ChangeEvent, type Dispatch, type DragEvent } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { MAX_SELECTED_MEMBERS, type MemberSelectionReads } from '@/lib/member-selection-contract';
 import { decodeCsvBytes, MAX_CSV_BYTES, parseStudentIdCsv } from '@/lib/student-id-csv';
@@ -38,6 +38,7 @@ export function CsvImport({
 }) {
   const t = useTranslations('Groups.selection');
   const inputId = useId();
+  const [isDragging, setIsDragging] = useState(false);
   const { csv, csvError } = state;
   const importId = csv?.importId ?? null;
   const pendingIndex = csv?.chunks.findIndex((chunk) => chunk.status === 'pending') ?? -1;
@@ -75,11 +76,21 @@ export function CsvImport({
     };
   }, [dispatch, groupId, importId, pendingEntries, pendingIndex, reads]);
 
-  async function readFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+  function chooseFile(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0];
     // Clearing the input lets the same file be chosen again after it changes.
     event.target.value = '';
-    if (file === undefined) return;
+    if (file !== undefined) void readFile(file);
+  }
+
+  function dropFile(event: DragEvent<HTMLElement>): void {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files[0];
+    if (file !== undefined) void readFile(file);
+  }
+
+  async function readFile(file: File): Promise<void> {
     if (file.size > MAX_CSV_BYTES) {
       dispatch({ error: 'too_large', type: 'csvRejected' });
       return;
@@ -103,35 +114,70 @@ export function CsvImport({
   }
 
   return (
+    // A drop target for pointer users; the labelled button is the path for everyone.
     <section
       aria-labelledby={`${inputId}-title`}
-      className="flex flex-col gap-3 rounded-surface border border-border/80 p-4"
+      className={cn(
+        'group/csv flex flex-col gap-3 rounded-surface border border-dashed p-4 transition-colors duration-200 motion-reduce:transition-none',
+        isDragging
+          ? 'border-primary bg-primary-soft'
+          : 'border-primary/30 bg-primary-soft/40 hover:border-primary/60 hover:bg-primary-soft/70',
+      )}
+      onDragLeave={() => setIsDragging(false)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragging(true);
+      }}
+      onDrop={dropFile}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <h4 className="text-sm font-semibold text-foreground" id={`${inputId}-title`}>
-          {t('csvTitle')}
-        </h4>
-        <a
-          className={buttonVariants({ size: 'sm', variant: 'link' })}
-          download
-          href={SAMPLE_CSV_PATH}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-11 shrink-0 items-center justify-center rounded-full bg-card text-primary shadow-sm transition-transform duration-200 motion-reduce:transition-none',
+            isDragging ? 'scale-110' : 'motion-safe:group-hover/csv:scale-105',
+          )}
         >
-          <DownloadIcon aria-hidden="true" data-icon="inline-start" />
-          {t('csvSample')}
-        </a>
+          <FileSpreadsheetIcon className="size-5" />
+        </span>
+        <div className="flex min-w-48 flex-1 flex-col gap-0.5">
+          <h4 className="text-sm font-semibold text-foreground" id={`${inputId}-title`}>
+            {t('csvTitle')}
+          </h4>
+          <p className="text-xs text-muted-foreground" id={`${inputId}-description`}>
+            {t('csvDescription')}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+            data-slot="button"
+            download
+            href={SAMPLE_CSV_PATH}
+          >
+            <DownloadIcon aria-hidden="true" data-icon="inline-start" />
+            {t('csvSample')}
+          </a>
+          {/* The native input stays focusable inside its label; the label shows its focus. */}
+          <label
+            className={cn(
+              buttonVariants({ size: 'sm' }),
+              'cursor-pointer has-focus-visible:ring-2 has-focus-visible:ring-ring has-focus-visible:ring-offset-2 has-focus-visible:ring-offset-background',
+            )}
+            data-slot="button"
+          >
+            <UploadIcon aria-hidden="true" data-icon="inline-start" />
+            {t('csvLabel')}
+            <input
+              accept=".csv,text/csv"
+              aria-describedby={`${inputId}-description`}
+              className="sr-only"
+              onChange={chooseFile}
+              type="file"
+            />
+          </label>
+        </div>
       </div>
-      <Field>
-        <FieldLabel htmlFor={inputId}>{t('csvLabel')}</FieldLabel>
-        <input
-          accept=".csv,text/csv"
-          aria-describedby={`${inputId}-description`}
-          className="text-sm file:mr-3 file:rounded-control file:border file:border-input file:bg-card file:px-3 file:py-1.5 file:text-sm file:font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          id={inputId}
-          onChange={(event) => void readFile(event)}
-          type="file"
-        />
-        <FieldDescription id={`${inputId}-description`}>{t('csvDescription')}</FieldDescription>
-      </Field>
 
       {csvError !== null ? (
         <Alert variant="destructive">

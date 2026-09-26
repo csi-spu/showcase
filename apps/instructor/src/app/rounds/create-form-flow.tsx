@@ -41,6 +41,10 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import type { MemberSelectionReads } from '@/lib/member-selection-contract';
 
+// Group cards fade in one after another, but no card waits longer than the cap.
+const CARD_STAGGER_MILLISECONDS = 30;
+const MAX_CARD_STAGGER_STEPS = 8;
+
 interface RoundOption {
   id: string;
   name: string;
@@ -197,13 +201,13 @@ export function CreateFormFlow({
           </Button>
         }
       />
-      <DialogContent
-        className={cn(
-          'max-h-[calc(100dvh-2rem)] overflow-y-auto p-0',
-          step === 'members' ? 'max-w-4xl' : 'max-w-2xl',
-        )}
-      >
-        <div className="flex flex-col gap-1 border-b border-border px-5 pt-5 pb-4">
+      {/*
+       * One size for every step, whatever it holds: the dialog never jumps as
+       * the step or its data changes. Only the step body scrolls, and the
+       * member step bounds its own table so that is what scrolls there.
+       */}
+      <DialogContent className="h-[min(46rem,calc(100dvh-2rem))] max-w-4xl overflow-hidden p-0">
+        <div className="flex shrink-0 flex-col gap-1 border-b border-border px-5 pt-5 pb-4">
           <span className="text-xs font-medium tracking-wide text-primary uppercase">
             {t('createFlow.step', { current: currentStep, total: totalSteps })}
           </span>
@@ -219,7 +223,7 @@ export function CreateFormFlow({
 
         {groupDraft !== null ? (
           // Kept mounted behind the group step so renaming does not lose the selection.
-          <div className="px-5 pb-5" hidden={step !== 'members'}>
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-5" hidden={step !== 'members'}>
             <MemberSelection
               back={{ label: t('createFlow.back'), onClick: () => setStep('group') }}
               groupId={null}
@@ -246,10 +250,13 @@ export function CreateFormFlow({
         ) : null}
 
         {step === 'group' ? (
-          <div className="flex flex-col gap-5 px-5 pb-5">
+          <div
+            className="flex min-h-0 flex-1 animate-in duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none flex-col gap-5 overflow-y-auto px-5 pb-5"
+            key={isCreatingGroup ? 'create' : 'choose'}
+          >
             {availableGroups.length > 0 && !isCreatingGroup ? (
               <>
-                <div className="flex flex-col gap-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   <h2 className="font-medium text-foreground">{t('createFlow.chooseGroup')}</h2>
                   <div className="relative">
                     <SearchIcon
@@ -267,8 +274,9 @@ export function CreateFormFlow({
                       {t('createFlow.search')}
                     </label>
                   </div>
-                  <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                    {filteredGroups.map((group) => {
+                  {/* Padded so a lifted card and its focus outline are not clipped. */}
+                  <div className="-m-1 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto p-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredGroups.map((group, index) => {
                       const roundName =
                         availableRounds.find((round) => round.id === group.roundId)?.name ?? '';
                       const isSelected = selectedGroup?.id === group.id;
@@ -276,16 +284,19 @@ export function CreateFormFlow({
                         <button
                           aria-pressed={isSelected}
                           className={cn(
-                            'flex min-h-20 items-start gap-3 rounded-surface border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none',
+                            'group/card flex min-h-20 animate-in items-start gap-3 rounded-surface border p-3 text-left transition duration-200 fill-mode-both fade-in slide-in-from-bottom-1 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 motion-safe:active:scale-[0.98] motion-reduce:animate-none motion-reduce:transition-colors',
                             isSelected
                               ? 'border-primary bg-primary-soft'
                               : 'border-border bg-card hover:border-primary/40 hover:bg-accent',
                           )}
                           key={group.id}
+                          style={{
+                            animationDelay: `${Math.min(index, MAX_CARD_STAGGER_STEPS) * CARD_STAGGER_MILLISECONDS}ms`,
+                          }}
                           onClick={() => selectGroup(group)}
                           type="button"
                         >
-                          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors duration-200 group-hover/card:bg-primary group-hover/card:text-primary-foreground motion-reduce:transition-none">
                             <UsersIcon aria-hidden="true" className="size-4" />
                           </span>
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -295,7 +306,7 @@ export function CreateFormFlow({
                           {isSelected ? (
                             <CheckIcon
                               aria-hidden="true"
-                              className="size-4 shrink-0 text-primary"
+                              className="size-4 shrink-0 animate-in text-primary duration-200 zoom-in-50 fade-in motion-reduce:animate-none"
                             />
                           ) : null}
                         </button>
@@ -303,7 +314,7 @@ export function CreateFormFlow({
                     })}
                   </div>
                 </div>
-                <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-4">
+                <div className="mt-auto flex shrink-0 flex-wrap justify-between gap-2 border-t border-border pt-4">
                   <Button onClick={() => setIsCreatingGroup(true)} type="button" variant="ghost">
                     <FolderPlusIcon aria-hidden="true" data-icon="inline-start" />
                     {t('createFlow.createGroup')}
@@ -318,7 +329,7 @@ export function CreateFormFlow({
                 </div>
               </>
             ) : (
-              <form className="flex flex-col gap-4" onSubmit={saveGroupDraft}>
+              <form className="flex flex-1 flex-col gap-4" onSubmit={saveGroupDraft}>
                 {availableGroups.length === 0 ? (
                   <div className="rounded-surface bg-muted px-4 py-3 text-sm text-muted-foreground">
                     {t('createFlow.noGroups')}
@@ -370,7 +381,7 @@ export function CreateFormFlow({
                     required
                   />
                 </Field>
-                <DialogFooter>
+                <DialogFooter className="mt-auto">
                   {availableGroups.length > 0 ? (
                     <Button
                       onClick={() => setIsCreatingGroup(false)}
@@ -394,7 +405,10 @@ export function CreateFormFlow({
             )}
           </div>
         ) : step === 'form' && selectedGroup !== null ? (
-          <form action={createForm} className="flex flex-col gap-4 px-5 pb-5">
+          <form
+            action={createForm}
+            className="flex min-h-0 flex-1 animate-in duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none flex-col gap-4 overflow-y-auto px-5 pb-5"
+          >
             <div className="flex items-center gap-3 rounded-surface bg-primary-soft px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 <UsersIcon aria-hidden="true" className="size-4" />
@@ -418,7 +432,7 @@ export function CreateFormFlow({
                 {formErrorT(formState.error)}
               </FieldDescription>
             ) : null}
-            <DialogFooter className="justify-between">
+            <DialogFooter className="mt-auto justify-between">
               <Button
                 onClick={() => {
                   setIsCreatingGroup(false);
