@@ -1,33 +1,16 @@
 'use client';
 
-import {
-  AlertCircleIcon,
-  CalendarIcon,
-  CheckIcon,
-  CircleDotIcon,
-  HashIcon,
-  ListIcon,
-  ListTodoIcon,
-  PaperclipIcon,
-  RefreshCwIcon,
-  SendIcon,
-  SquareCheckIcon,
-  UserRoundIcon,
-} from 'lucide-react';
+import { AlertCircleIcon, CheckIcon, RefreshCwIcon, SendIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
-import type { LucideIcon } from 'lucide-react';
 import { Button } from '@showcase/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { BlurFade } from '@/components/ui/blur-fade';
-import { BorderBeam } from '@/components/ui/border-beam';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { StatusBadge } from '@/components/ui/status-badge';
-import type { CollectionFieldType } from '@/lib/student-collection-forms-contract';
 import {
   buildInitialAnswers,
   findSubmitBlockers,
@@ -45,17 +28,6 @@ import type {
 } from '@/lib/student-collection-forms-contract';
 
 const AUTOSAVE_DELAY_MS = 1_500;
-
-/* One icon per field type, so the kind of answer expected reads before the label does. */
-const FIELD_TYPE_ICONS: Record<CollectionFieldType, LucideIcon> = {
-  date: CalendarIcon,
-  file_upload: PaperclipIcon,
-  long_text: ListIcon,
-  multiple_choice: SquareCheckIcon,
-  number: HashIcon,
-  short_text: ListTodoIcon,
-  single_choice: CircleDotIcon,
-};
 
 type SaveState =
   | { kind: 'conflict' }
@@ -261,52 +233,19 @@ export function CollectionForm({
         </div>
       ) : null}
 
-      <BlurFade offset={8}>
-        <div className="group relative flex items-start gap-3 overflow-hidden rounded-surface border border-border/80 bg-card p-4 sm:p-5">
-          <BorderBeam
-            className="opacity-0 transition-opacity group-focus-within:opacity-100"
-            size={80}
-          />
-          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-accent-foreground">
-            <UserRoundIcon aria-hidden="true" className="size-4.5" />
-          </span>
-          <Field className="min-w-0 flex-1">
-            <FieldLabel htmlFor={`${baseId}-roster`}>{t('rosterName')}</FieldLabel>
-            <Input
-              id={`${baseId}-roster`}
-              readOnly
-              value={`${obligation.rosterName.firstNameTh} ${obligation.rosterName.lastNameTh}`}
-            />
-            <FieldDescription>{t('rosterNameHint')}</FieldDescription>
-          </Field>
-        </div>
-      </BlurFade>
-
       {form.fields.map((field, index) => {
         const controlId = `${baseId}-${field.id}`;
         const blocker = blockers.find((entry) => entry.fieldId === field.id);
         const hintId = field.description ? `${controlId}-hint` : undefined;
-        const FieldIcon = FIELD_TYPE_ICONS[field.type];
         return (
           <BlurFade delay={0.03 * (index + 1)} key={field.id} offset={8}>
             <div
-              className="group relative flex items-start gap-3 overflow-hidden rounded-surface border border-border/80 bg-card p-4 sm:p-5"
+              className="form-question rounded-surface border border-border/80 bg-card p-5 shadow-xs transition-[box-shadow,border-color] duration-200 hover:shadow-md data-[invalid=true]:border-destructive/50 sm:p-6"
+              data-invalid={blocker !== undefined}
               id={`field-${field.id}`}
             >
-              <BorderBeam
-                className="opacity-0 transition-opacity group-focus-within:opacity-100"
-                size={80}
-              />
-              <span className="flex flex-col items-center gap-1.5">
-                <StatusBadge className="rounded-md px-2" tone="primary">
-                  {t('fieldNumber', { number: index + 1 })}
-                </StatusBadge>
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <FieldIcon aria-hidden="true" className="size-4.5" />
-                </span>
-              </span>
-              <Field className="min-w-0 flex-1">
-                <FieldLabel htmlFor={controlId}>
+              <Field className="gap-3">
+                <FieldLabel className="gap-1 text-base font-medium" htmlFor={controlId}>
                   {field.label}
                   {field.required ? (
                     <>
@@ -347,7 +286,8 @@ export function CollectionForm({
                   <StatusBadge tone="information">{t('prefilled')}</StatusBadge>
                 ) : null}
                 {blocker !== undefined ? (
-                  <p className="text-sm font-medium text-destructive">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-destructive animate-in duration-200 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
+                    <AlertCircleIcon aria-hidden="true" className="size-4 shrink-0" />
                     {t(`blocker.${blocker.reason}`)}
                   </p>
                 ) : null}
@@ -492,12 +432,21 @@ function SaveStatus({
   }
 
   return (
-    <p aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground">
-      {state.kind === 'saving' ? <Spinner aria-hidden="true" className="size-3.5" /> : null}
-      {state.kind === 'saved' ? (
-        <CheckIcon aria-hidden="true" className="size-3.5 text-success" />
-      ) : null}
-      {t(`save.${state.kind}`)}
+    <p aria-live="polite" className="text-sm text-muted-foreground">
+      {/*
+       * The live region itself stays mounted so every change is announced; only
+       * its content is keyed, so each new state fades in rather than swapping.
+       */}
+      <span
+        className="inline-flex items-center gap-2 animate-in duration-200 fade-in-0 motion-reduce:animate-none"
+        key={state.kind}
+      >
+        {state.kind === 'saving' ? <Spinner aria-hidden="true" className="size-3.5" /> : null}
+        {state.kind === 'saved' ? (
+          <CheckIcon aria-hidden="true" className="size-3.5 text-success" />
+        ) : null}
+        {t(`save.${state.kind}`)}
+      </span>
     </p>
   );
 }

@@ -94,11 +94,10 @@
     "notifications": "การแจ้งเตือน"
   },
   "Forms": {
-    "formEyebrow": "แบบฟอร์ม",
     "rosterName": "ชื่อ-นามสกุลตามรายชื่อ",
     "rosterNameHint": "ข้อมูลนี้มาจากรายชื่อที่ผู้สอนนำเข้า หากไม่ถูกต้องกรุณาแจ้งผู้สอน",
     "requiredLabel": "จำเป็นต้องกรอก",
-    "fieldNumber": "ข้อ {number}",
+    "requiredLegend": "* ระบุว่าเป็นคำถามที่จำเป็น",
     "prefilled": "กรอกให้อัตโนมัติจากคำตอบก่อนหน้า แก้ไขได้",
     "deadline": "กำหนดส่ง {date}",
     "deadlineLate": "เลยกำหนดส่งแล้ว",

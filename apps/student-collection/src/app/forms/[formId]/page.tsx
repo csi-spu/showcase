@@ -1,9 +1,8 @@
-import { ArrowLeftIcon, CalendarClockIcon, FileTextIcon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarClockIcon, UserRoundIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { buttonVariants } from '@showcase/ui/button';
-import { cn } from '@showcase/ui/cn';
+import { BlurFade } from '@/components/ui/blur-fade';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { getStudentCollectionAuthPageState } from '@/lib/student-collection-auth-page-state';
 import { readStudentCollectionSessionToken } from '@/lib/student-collection-auth-session';
@@ -78,58 +77,91 @@ export default async function FormPage({ params }: FormPageProps) {
   const prefills = isAnswerable ? await client.listPrefills(sessionToken, formId) : [];
 
   const deadline = obligation.form.deadlineAt;
+  const hasRequiredField = obligation.form.fields.some((field) => field.required);
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-4">
-        <Link
-          className={cn(buttonVariants({ size: 'sm', variant: 'ghost' }), '-ml-2 w-fit')}
-          href="/"
-        >
-          <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
-          {t('history.backToList')}
-        </Link>
-
-        <div className="flex flex-col gap-3 rounded-surface border border-border/80 bg-card p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary-soft px-2.5 py-1 text-xs font-medium text-accent-foreground">
-                <FileTextIcon aria-hidden="true" className="size-3.5" />
-                {t('formEyebrow')}
-              </span>
-              <h1 className="text-xl leading-tight font-semibold tracking-tight text-balance text-foreground sm:text-2xl">
-                {obligation.form.title}
-              </h1>
+      {/* A single reading column, the width of a paper questionnaire. */}
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <BlurFade offset={8}>
+          <header className="overflow-hidden rounded-surface border border-border/80 bg-card shadow-xs">
+            <div aria-hidden="true" className="h-2.5 bg-primary" />
+            <div className="flex flex-col gap-3 px-5 pt-5 pb-5 sm:px-7 sm:pt-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h1 className="min-w-0 text-2xl leading-tight font-semibold tracking-tight text-balance text-foreground sm:text-3xl">
+                  {obligation.form.title}
+                </h1>
+                <StatusBadge tone={statusTone(obligation.status)}>
+                  {statusT(obligation.status)}
+                </StatusBadge>
+              </div>
               {obligation.form.description === null ? null : (
-                <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
+                <p className="max-w-2xl text-sm whitespace-pre-line text-muted-foreground sm:text-base">
                   {obligation.form.description}
                 </p>
               )}
             </div>
-            <StatusBadge tone={statusTone(obligation.status)}>
-              {statusT(obligation.status)}
-            </StatusBadge>
-          </div>
-          {deadline === null ? null : (
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <CalendarClockIcon aria-hidden="true" className="size-4 shrink-0" />
-              {t('deadline', {
-                date: new Intl.DateTimeFormat('th-TH', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                  timeZone: 'Asia/Bangkok',
-                }).format(new Date(deadline)),
-              })}
+            <div className="flex flex-col gap-2 border-t border-border/70 px-5 py-4 text-sm sm:px-7">
               {/*
-               * Shown while the deadline is past and nothing has been sent, and
-               * kept afterwards when the first submission was itself late.
+               * Who this form is answered as. The name comes from the Roster, so
+               * it is shown as a fact of the page rather than an input.
                */}
-              {obligation.hasDeadlinePassed || obligation.isLate ? ` · ${t('deadlineLate')}` : ''}
-            </p>
-          )}
-        </div>
+              <p className="flex items-center gap-2 text-foreground">
+                <UserRoundIcon
+                  aria-hidden="true"
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+                <span className="sr-only">{`${t('rosterName')}: `}</span>
+                <span className="font-semibold">
+                  {`${obligation.rosterName.firstNameTh} ${obligation.rosterName.lastNameTh}`}
+                </span>
+              </p>
+              <p className="ps-6 text-xs text-muted-foreground">{t('rosterNameHint')}</p>
+              {deadline === null ? null : (
+                <p className="flex items-center gap-2 text-muted-foreground">
+                  <CalendarClockIcon aria-hidden="true" className="size-4 shrink-0" />
+                  {t('deadline', {
+                    date: new Intl.DateTimeFormat('th-TH', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                      timeZone: 'Asia/Bangkok',
+                    }).format(new Date(deadline)),
+                  })}
+                  {/*
+                   * Shown while the deadline is past and nothing has been sent, and
+                   * kept afterwards when the first submission was itself late.
+                   */}
+                  {obligation.hasDeadlinePassed || obligation.isLate
+                    ? ` · ${t('deadlineLate')}`
+                    : ''}
+                </p>
+              )}
+            </div>
+            {hasRequiredField ? (
+              <p className="border-t border-border/70 px-5 py-3 text-sm text-destructive sm:px-7">
+                {t('requiredLegend')}
+              </p>
+            ) : null}
+          </header>
+        </BlurFade>
+
+        <CollectionForm obligation={obligation} prefills={prefills} />
+
+        {/*
+         * The way back sits after the form, where a Student who has finished
+         * looks next; the logo in the top bar remains the way out from anywhere.
+         */}
+        <Link
+          className="group mx-auto mt-2 inline-flex items-center gap-1.5 rounded-control px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+          href="/"
+        >
+          <ArrowLeftIcon
+            aria-hidden="true"
+            className="size-4 transition-transform group-hover:-translate-x-0.5 motion-reduce:transition-none"
+          />
+          {t('history.backToList')}
+        </Link>
       </div>
-      <CollectionForm obligation={obligation} prefills={prefills} />
     </AppShell>
   );
 }
