@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { buttonVariants } from '@showcase/ui/button';
 import { CoreClientError } from '@showcase/core-client';
 import { PageHeader } from '@/components/ui/page-header';
+import { buildStudentFormLink, renderQrCodeSvg } from '@/lib/form-share';
 import { getInstructorAuthPageState } from '@/lib/instructor-auth-page-state';
 import { readInstructorSessionToken } from '@/lib/instructor-auth-session';
 import { InstructorCollectionFormsCoreClient } from '@/lib/instructor-collection-forms-core';
@@ -20,6 +21,7 @@ import {
   updateCollectionFormMetadataAction,
 } from '@/app/collection-forms.actions';
 import { FormBuilder } from '../form-builder';
+import { ShareFormDialog } from './share-form-dialog';
 
 interface FormPageProps {
   params: Promise<{ formId: string; groupId: string }>;
@@ -64,6 +66,12 @@ export default async function FormPage({ params }: FormPageProps) {
           .catch(() => null)
       : null;
 
+  let share: { link: string; qrCodeSvg: string } | null = null;
+  if (form.status !== 'draft') {
+    const link = buildStudentFormLink(environment.studentCollectionUrl, form.id);
+    share = { link, qrCodeSvg: await renderQrCodeSvg(link) };
+  }
+
   return (
     <AppShell
       trail={[
@@ -76,16 +84,24 @@ export default async function FormPage({ params }: FormPageProps) {
     >
       <PageHeader
         action={
-          /* A Draft has no submissions yet, so the queue only appears once the
-           * form has been opened to Students. */
-          form.status === 'draft' ? undefined : (
-            <Link
-              className={buttonVariants({ variant: 'outline' })}
-              href={`/groups/${groupId}/forms/${formId}/submissions`}
-            >
-              <InboxIcon aria-hidden="true" data-icon="inline-start" />
-              {t('review.openAction')}
-            </Link>
+          /* A Draft has no submissions yet, so the queue and the Student link
+           * only appear once the form has been opened to Students. */
+          share === null ? undefined : (
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareFormDialog
+                downloadHref={`/groups/${groupId}/forms/${formId}/qr-code`}
+                formTitle={form.title}
+                link={share.link}
+                qrCodeSvg={share.qrCodeSvg}
+              />
+              <Link
+                className={buttonVariants({ variant: 'outline' })}
+                href={`/groups/${groupId}/forms/${formId}/submissions`}
+              >
+                <InboxIcon aria-hidden="true" data-icon="inline-start" />
+                {t('review.openAction')}
+              </Link>
+            </div>
           )
         }
         description={t('builder.pageDescription')}
