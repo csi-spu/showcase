@@ -4,9 +4,11 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -15,20 +17,22 @@ import { InstructorAuthService } from '../../auth/application/instructor-auth.se
 import { InstructorBffGuard } from '../../auth/transport/instructor-bff.guard';
 import { CollectionGroupsService } from '../application/collection-groups.service';
 import type {
-  AddMembersByEntryYearResult,
-  AddMembersResult,
   CollectionGroup,
   CollectionRound,
   GroupMember,
+  SelectableStudent,
+  StudentIdResolution,
 } from '../application/collection-groups.ports';
 import {
-  AddMemberIndividualDto,
-  AddMembersByEntryYearDto,
-  AddMembersByStudentIdsDto,
-  CreateGroupDto,
+  AddMembersDto,
+  CreateGroupWithMembersDto,
   CreateRoundDto,
-  CreateRoundWithGroupDto,
+  CreateRoundWithGroupAndMembersDto,
+  ListStudentsQueryDto,
+  MAX_STUDENT_PAGE_SIZE,
   ReinstateMemberDto,
+  ResolveStudentIdsDto,
+  SelectAllStudentsQueryDto,
   WithdrawMemberDto,
 } from './collection-groups.dto';
 import { CollectionGroupsExceptionFilter } from './collection-groups-exception.filter';
@@ -55,13 +59,15 @@ export class InstructorCollectionGroupsController {
   @Post('rounds/with-group')
   @Header('Cache-Control', 'no-store')
   async createRoundWithGroup(
-    @Body() body: CreateRoundWithGroupDto,
+    @Body() body: CreateRoundWithGroupAndMembersDto,
     @Headers('authorization') authorization: string | undefined,
   ): Promise<{ group: CollectionGroup; round: CollectionRound }> {
     const actor = await this.authorize(authorization);
-    return this.groups.createRoundWithGroup({
+    return this.groups.createRoundWithGroupAndMembers({
       actorAccountId: actor.accountId,
       groupName: body.groupName,
+      idempotencyKey: body.idempotencyKey,
+      memberAccountIds: body.memberAccountIds,
       roundName: body.roundName,
     });
   }
@@ -79,11 +85,17 @@ export class InstructorCollectionGroupsController {
   @Header('Cache-Control', 'no-store')
   async createGroup(
     @Param('roundId', new ParseUUIDPipe({ version: '4' })) roundId: string,
-    @Body() body: CreateGroupDto,
+    @Body() body: CreateGroupWithMembersDto,
     @Headers('authorization') authorization: string | undefined,
   ): Promise<CollectionGroup> {
     const actor = await this.authorize(authorization);
-    return this.groups.createGroup({ actorAccountId: actor.accountId, name: body.name, roundId });
+    return this.groups.createGroupWithMembers({
+      actorAccountId: actor.accountId,
+      idempotencyKey: body.idempotencyKey,
+      memberAccountIds: body.memberAccountIds,
+      name: body.name,
+      roundId,
+    });
   }
 
   @Get('rounds/:roundId/groups')
@@ -106,49 +118,81 @@ export class InstructorCollectionGroupsController {
     return this.groups.getGroup(groupId);
   }
 
-  @Post('groups/:groupId/members/by-student-ids')
+  @Post('groups/:groupId/members')
   @Header('Cache-Control', 'no-store')
-  async addMembersByStudentIds(
+  async addMembers(
     @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
-    @Body() body: AddMembersByStudentIdsDto,
+    @Body() body: AddMembersDto,
     @Headers('authorization') authorization: string | undefined,
-  ): Promise<AddMembersResult> {
+  ): Promise<{ added: number; alreadyMember: number }> {
     const actor = await this.authorize(authorization);
-    return this.groups.addMembersByStudentIds({
+    return this.groups.addMembers({
       actorAccountId: actor.accountId,
       groupId,
-      studentIds: body.studentIds,
+      memberAccountIds: body.memberAccountIds,
     });
   }
 
-  @Post('groups/:groupId/members/individual')
+  @Get('students')
   @Header('Cache-Control', 'no-store')
-  async addMemberIndividually(
-    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
-    @Body() body: AddMemberIndividualDto,
+  async listStudents(
+    @Query() query: ListStudentsQueryDto,
     @Headers('authorization') authorization: string | undefined,
-  ): Promise<AddMembersResult> {
-    const actor = await this.authorize(authorization);
-    return this.groups.addMemberIndividually({
-      actorAccountId: actor.accountId,
-      groupId,
-      studentId: body.studentId,
+  ): Promise<{
+    hasCurrentAcademicYear: boolean;
+    nextCursor: string | null;
+    students: SelectableStudent[];
+  }> {
+    await this.authorize(authorization);
+    return this.groups.listStudents({
+      cursor: query.cursor ?? null,
+      entryYear: query.entryYear ?? null,
+      groupId: query.groupId ?? null,
+      limit: query.limit ?? MAX_STUDENT_PAGE_SIZE,
+      query: query.q ?? null,
     });
   }
 
-  @Post('groups/:groupId/members/by-entry-year')
+  @Get('students/entry-years')
   @Header('Cache-Control', 'no-store')
-  async addMembersByEntryYear(
-    @Param('groupId', new ParseUUIDPipe({ version: '4' })) groupId: string,
-    @Body() body: AddMembersByEntryYearDto,
+  async listEntryYears(
     @Headers('authorization') authorization: string | undefined,
-  ): Promise<AddMembersByEntryYearResult> {
-    const actor = await this.authorize(authorization);
-    return this.groups.addMembersByEntryYear({
-      actorAccountId: actor.accountId,
-      entryYear: body.entryYear,
-      groupId,
-    });
+  ): Promise<{ entryYears: number[] }> {
+    await this.authorize(authorization);
+    return { entryYears: await this.groups.listEntryYears() };
+  }
+
+  @Get('students/select-all')
+  @Header('Cache-Control', 'no-store')
+  async selectAllStudents(
+    @Query() query: SelectAllStudentsQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ students: SelectableStudent[] }> {
+    await this.authorize(authorization);
+    return {
+      students: await this.groups.selectAllMatching({
+        entryYear: query.entryYear ?? null,
+        groupId: query.groupId ?? null,
+        query: query.q ?? null,
+        selectedCount: query.selectedCount,
+      }),
+    };
+  }
+
+  @Post('students/resolve')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async resolveStudentIds(
+    @Body() body: ResolveStudentIdsDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ results: StudentIdResolution[] }> {
+    await this.authorize(authorization);
+    return {
+      results: await this.groups.resolveStudentIds({
+        groupId: body.groupId ?? null,
+        studentIds: body.studentIds,
+      }),
+    };
   }
 
   @Post('groups/:groupId/members/:studentAccountId/withdraw')

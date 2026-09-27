@@ -4,10 +4,14 @@ export type CollectionGroupsErrorMessage =
   | 'groupNameInvalid'
   | 'groupNotFound'
   | 'groupMemberNotFound'
+  | 'idempotencyKeyConflict'
   | 'invalid'
+  | 'memberListInvalid'
+  | 'memberNotSelectable'
   | 'roundNameInvalid'
   | 'roundNotFound'
   | 'roundClosed'
+  | 'selectionLimitExceeded'
   | 'sessionExpired'
   | 'studentIdListInvalid'
   | 'studentAccountInactive'
@@ -19,23 +23,28 @@ export interface CreateRoundActionState {
   error: CollectionGroupsErrorMessage | null;
 }
 
+/*
+ * `ineligibleAccountIds` lists selected Students who became ineligible before
+ * confirmation (MEMBER_NOT_SELECTABLE); the picker already holds their names.
+ */
 export interface CreateGroupActionState {
   error: CollectionGroupsErrorMessage | null;
+  ineligibleAccountIds: string[];
 }
 
 export interface CreateFormGroupActionState {
   error: CollectionGroupsErrorMessage | null;
   group: { id: string; name: string; roundId: string } | null;
+  ineligibleAccountIds: string[];
   round: { id: string; name: string } | null;
 }
 
 export interface AddMembersActionState {
-  acceptedCount: number;
-  alreadyWithdrawnCount: number;
-  alreadyWithdrawnStudentIds: string[];
+  added: number;
+  alreadyMember: number;
   error: CollectionGroupsErrorMessage | null;
+  ineligibleAccountIds: string[];
   submitted: boolean;
-  unknownStudentIds: string[];
 }
 
 export interface WithdrawMemberActionState {
@@ -45,19 +54,22 @@ export interface WithdrawMemberActionState {
 export type ReinstateMemberActionState = WithdrawMemberActionState;
 
 export const INITIAL_CREATE_ROUND_STATE: CreateRoundActionState = { error: null };
-export const INITIAL_CREATE_GROUP_STATE: CreateGroupActionState = { error: null };
+export const INITIAL_CREATE_GROUP_STATE: CreateGroupActionState = {
+  error: null,
+  ineligibleAccountIds: [],
+};
 export const INITIAL_CREATE_FORM_GROUP_STATE: CreateFormGroupActionState = {
   error: null,
   group: null,
+  ineligibleAccountIds: [],
   round: null,
 };
 export const INITIAL_ADD_MEMBERS_STATE: AddMembersActionState = {
-  acceptedCount: 0,
-  alreadyWithdrawnCount: 0,
-  alreadyWithdrawnStudentIds: [],
+  added: 0,
+  alreadyMember: 0,
   error: null,
+  ineligibleAccountIds: [],
   submitted: false,
-  unknownStudentIds: [],
 };
 export const INITIAL_WITHDRAW_STATE: WithdrawMemberActionState = { error: null };
 export const INITIAL_REINSTATE_STATE: ReinstateMemberActionState = { error: null };

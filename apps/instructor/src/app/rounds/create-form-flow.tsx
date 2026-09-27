@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState, useId, useMemo, useState } from 'react';
+import { useActionState, useId, useMemo, useState, type FormEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import {
   createDraftField,
@@ -25,8 +25,8 @@ import {
 import {
   INITIAL_CREATE_FORM_GROUP_STATE,
   type CreateFormGroupAction,
-  type CreateFormGroupActionState,
 } from '../collection-groups-state';
+import { MemberSelection } from '../member-selection/member-selection';
 import {
   Dialog,
   DialogClose,
@@ -39,6 +39,11 @@ import {
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import type { MemberSelectionReads } from '@/lib/member-selection-contract';
+
+// Group cards fade in one after another, but no card waits longer than the cap.
+const CARD_STAGGER_MILLISECONDS = 30;
+const MAX_CARD_STAGGER_STEPS = 8;
 
 interface RoundOption {
   id: string;
@@ -55,6 +60,12 @@ interface SelectedGroup extends GroupOption {
   roundName: string;
 }
 
+/* The new group's names, kept while its members are chosen. */
+interface GroupDraft {
+  groupName: string;
+  roundName: string;
+}
+
 type CreateFormAction = (
   groupId: string,
   state: CollectionFormActionState,
@@ -65,17 +76,18 @@ export function CreateFormFlow({
   createFormAction,
   defaultOpen,
   groups,
+  reads,
   rounds,
   setupAction,
 }: {
   createFormAction: CreateFormAction;
   defaultOpen: boolean;
   groups: GroupOption[];
+  reads: MemberSelectionReads;
   rounds: RoundOption[];
   setupAction: CreateFormGroupAction;
 }) {
   const t = useTranslations('Forms');
-  const groupErrorT = useTranslations('Groups.errors');
   const formErrorT = useTranslations('Forms.errors');
   const router = useRouter();
   const titleId = useId();
@@ -83,7 +95,8 @@ export function CreateFormFlow({
   const groupNameId = useId();
   const searchId = useId();
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const [step, setStep] = useState<'group' | 'form'>('group');
+  const [step, setStep] = useState<'form' | 'group' | 'members'>('group');
+  const [groupDraft, setGroupDraft] = useState<GroupDraft | null>(null);
   const [availableGroups, setAvailableGroups] = useState(groups);
   const [availableRounds, setAvailableRounds] = useState(rounds);
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null);
@@ -100,33 +113,40 @@ export function CreateFormFlow({
     });
   }, [availableGroups, availableRounds, query]);
 
-  const [setupState, setupFormAction] = useActionState(
-    async (
-      previousState: CreateFormGroupActionState,
-      formData: FormData,
-    ): Promise<CreateFormGroupActionState> => {
-      const nextState = await setupAction(previousState, formData);
-      if (nextState.error !== null || nextState.group === null) {
-        if (nextState.error !== null) toast.error(groupErrorT(nextState.error));
-        return nextState;
-      }
+  // The group and its members are created together once the selection is confirmed.
+  async function createGroup(formData: FormData) {
+    const nextState = await setupAction(INITIAL_CREATE_FORM_GROUP_STATE, formData);
+    if (nextState.error !== null || nextState.group === null) return nextState;
 
-      const createdGroup = nextState.group;
-      const round =
-        nextState.round ?? availableRounds.find((item) => item.id === createdGroup.roundId);
-      if (round === undefined) return { ...nextState, error: 'roundNotFound' };
+    const createdGroup = nextState.group;
+    const round =
+      nextState.round ?? availableRounds.find((item) => item.id === createdGroup.roundId);
+    if (round === undefined) return { ...nextState, error: 'roundNotFound' as const };
 
-      if (nextState.round !== null) {
-        const createdRound = nextState.round;
-        setAvailableRounds((current) => [createdRound, ...current]);
-      }
-      setAvailableGroups((current) => [createdGroup, ...current]);
-      setSelectedGroup({ ...createdGroup, roundName: round.name });
-      setStep('form');
-      return nextState;
-    },
-    INITIAL_CREATE_FORM_GROUP_STATE,
-  );
+    if (nextState.round !== null) {
+      const createdRound = nextState.round;
+      setAvailableRounds((current) => [createdRound, ...current]);
+      setRoundChoice(createdRound.id);
+    }
+    setAvailableGroups((current) => [createdGroup, ...current]);
+    setSelectedGroup({ ...createdGroup, roundName: round.name });
+    setGroupDraft(null);
+    setStep('form');
+    return nextState;
+  }
+
+  const totalSteps = isCreatingGroup ? 3 : 2;
+  const currentStep = step === 'group' ? 1 : step === 'members' ? 2 : totalSteps;
+
+  function saveGroupDraft(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    setGroupDraft({
+      groupName: String(formData.get('groupName') ?? ''),
+      roundName: String(formData.get('roundName') ?? ''),
+    });
+    setStep('members');
+  }
 
   const [formState, createForm] = useActionState(
     async (
@@ -164,6 +184,7 @@ export function CreateFormFlow({
     setIsOpen(nextOpen);
     if (!nextOpen) {
       setStep('group');
+      setGroupDraft(null);
       setSelectedGroup(null);
       setIsCreatingGroup(availableGroups.length === 0);
       if (defaultOpen) router.replace('/rounds', { scroll: false });
@@ -180,22 +201,62 @@ export function CreateFormFlow({
           </Button>
         }
       />
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto p-0">
-        <div className="flex flex-col gap-1 border-b border-border px-5 pt-5 pb-4">
+      {/*
+       * One size for every step, whatever it holds: the dialog never jumps as
+       * the step or its data changes. Only the step body scrolls, and the
+       * member step bounds its own table so that is what scrolls there.
+       */}
+      <DialogContent className="h-[min(46rem,calc(100dvh-2rem))] max-w-4xl overflow-hidden p-0">
+        <div className="flex shrink-0 flex-col gap-1 border-b border-border px-5 pt-5 pb-4">
           <span className="text-xs font-medium tracking-wide text-primary uppercase">
-            {t('createFlow.step', { current: step === 'group' ? 1 : 2 })}
+            {t('createFlow.step', { current: currentStep, total: totalSteps })}
           </span>
           <DialogTitle>{t('createFlow.title')}</DialogTitle>
           <DialogDescription>
-            {step === 'group' ? t('createFlow.description') : t('createFlow.formDescription')}
+            {step === 'group'
+              ? t('createFlow.description')
+              : step === 'members'
+                ? t('createFlow.membersDescription')
+                : t('createFlow.formDescription')}
           </DialogDescription>
         </div>
 
+        {groupDraft !== null ? (
+          // Kept mounted behind the group step so renaming does not lose the selection.
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-5" hidden={step !== 'members'}>
+            <MemberSelection
+              back={{ label: t('createFlow.back'), onClick: () => setStep('group') }}
+              groupId={null}
+              hiddenFields={
+                <>
+                  <input
+                    name="mode"
+                    type="hidden"
+                    value={roundChoice === 'new' ? 'new-round' : 'existing-round'}
+                  />
+                  {roundChoice === 'new' ? (
+                    <input name="roundName" type="hidden" value={groupDraft.roundName} />
+                  ) : (
+                    <input name="roundId" type="hidden" value={roundChoice} />
+                  )}
+                  <input name="groupName" type="hidden" value={groupDraft.groupName} />
+                </>
+              }
+              reads={reads}
+              submit={createGroup}
+              submitLabel={t('createFlow.createGroupSubmit')}
+            />
+          </div>
+        ) : null}
+
         {step === 'group' ? (
-          <div className="flex flex-col gap-5 px-5 pb-5">
+          <div
+            className="flex min-h-0 flex-1 animate-in duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none flex-col gap-5 overflow-y-auto px-5 pb-5"
+            key={isCreatingGroup ? 'create' : 'choose'}
+          >
             {availableGroups.length > 0 && !isCreatingGroup ? (
               <>
-                <div className="flex flex-col gap-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
                   <h2 className="font-medium text-foreground">{t('createFlow.chooseGroup')}</h2>
                   <div className="relative">
                     <SearchIcon
@@ -213,8 +274,9 @@ export function CreateFormFlow({
                       {t('createFlow.search')}
                     </label>
                   </div>
-                  <div className="grid max-h-64 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                    {filteredGroups.map((group) => {
+                  {/* Padded so a lifted card and its focus outline are not clipped. */}
+                  <div className="-m-1 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto p-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredGroups.map((group, index) => {
                       const roundName =
                         availableRounds.find((round) => round.id === group.roundId)?.name ?? '';
                       const isSelected = selectedGroup?.id === group.id;
@@ -222,16 +284,19 @@ export function CreateFormFlow({
                         <button
                           aria-pressed={isSelected}
                           className={cn(
-                            'flex min-h-20 items-start gap-3 rounded-surface border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none',
+                            'group/card flex min-h-20 animate-in items-start gap-3 rounded-surface border p-3 text-left transition duration-200 fill-mode-both fade-in slide-in-from-bottom-1 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 motion-safe:active:scale-[0.98] motion-reduce:animate-none motion-reduce:transition-colors',
                             isSelected
                               ? 'border-primary bg-primary-soft'
                               : 'border-border bg-card hover:border-primary/40 hover:bg-accent',
                           )}
                           key={group.id}
+                          style={{
+                            animationDelay: `${Math.min(index, MAX_CARD_STAGGER_STEPS) * CARD_STAGGER_MILLISECONDS}ms`,
+                          }}
                           onClick={() => selectGroup(group)}
                           type="button"
                         >
-                          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors duration-200 group-hover/card:bg-primary group-hover/card:text-primary-foreground motion-reduce:transition-none">
                             <UsersIcon aria-hidden="true" className="size-4" />
                           </span>
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -241,7 +306,7 @@ export function CreateFormFlow({
                           {isSelected ? (
                             <CheckIcon
                               aria-hidden="true"
-                              className="size-4 shrink-0 text-primary"
+                              className="size-4 shrink-0 animate-in text-primary duration-200 zoom-in-50 fade-in motion-reduce:animate-none"
                             />
                           ) : null}
                         </button>
@@ -249,7 +314,7 @@ export function CreateFormFlow({
                     })}
                   </div>
                 </div>
-                <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-4">
+                <div className="mt-auto flex shrink-0 flex-wrap justify-between gap-2 border-t border-border pt-4">
                   <Button onClick={() => setIsCreatingGroup(true)} type="button" variant="ghost">
                     <FolderPlusIcon aria-hidden="true" data-icon="inline-start" />
                     {t('createFlow.createGroup')}
@@ -264,7 +329,7 @@ export function CreateFormFlow({
                 </div>
               </>
             ) : (
-              <form action={setupFormAction} className="flex flex-col gap-4">
+              <form className="flex flex-1 flex-col gap-4" onSubmit={saveGroupDraft}>
                 {availableGroups.length === 0 ? (
                   <div className="rounded-surface bg-muted px-4 py-3 text-sm text-muted-foreground">
                     {t('createFlow.noGroups')}
@@ -292,29 +357,31 @@ export function CreateFormFlow({
                     />
                   </div>
                 </Field>
-                <input
-                  name="mode"
-                  type="hidden"
-                  value={roundChoice === 'new' ? 'new-round' : 'existing-round'}
-                />
                 {roundChoice === 'new' ? (
                   <Field>
                     <FieldLabel htmlFor={roundNameId}>{t('createFlow.roundName')}</FieldLabel>
-                    <Input id={roundNameId} maxLength={200} name="roundName" required />
+                    <Input
+                      defaultValue={groupDraft?.roundName}
+                      id={roundNameId}
+                      maxLength={200}
+                      name="roundName"
+                      pattern=".*\S.*"
+                      required
+                    />
                   </Field>
-                ) : (
-                  <input name="roundId" type="hidden" value={roundChoice} />
-                )}
+                ) : null}
                 <Field>
                   <FieldLabel htmlFor={groupNameId}>{t('createFlow.groupName')}</FieldLabel>
-                  <Input id={groupNameId} maxLength={200} name="groupName" required />
+                  <Input
+                    defaultValue={groupDraft?.groupName}
+                    id={groupNameId}
+                    maxLength={200}
+                    name="groupName"
+                    pattern=".*\S.*"
+                    required
+                  />
                 </Field>
-                {setupState.error !== null ? (
-                  <FieldDescription className="text-destructive">
-                    {groupErrorT(setupState.error)}
-                  </FieldDescription>
-                ) : null}
-                <DialogFooter>
+                <DialogFooter className="mt-auto">
                   {availableGroups.length > 0 ? (
                     <Button
                       onClick={() => setIsCreatingGroup(false)}
@@ -332,13 +399,16 @@ export function CreateFormFlow({
                       }
                     />
                   )}
-                  <PendingButton label={t('createFlow.createGroupConfirm')} />
+                  <Button type="submit">{t('createFlow.createGroupConfirm')}</Button>
                 </DialogFooter>
               </form>
             )}
           </div>
-        ) : selectedGroup !== null ? (
-          <form action={createForm} className="flex flex-col gap-4 px-5 pb-5">
+        ) : step === 'form' && selectedGroup !== null ? (
+          <form
+            action={createForm}
+            className="flex min-h-0 flex-1 animate-in duration-300 fade-in slide-in-from-right-2 motion-reduce:animate-none flex-col gap-4 overflow-y-auto px-5 pb-5"
+          >
             <div className="flex items-center gap-3 rounded-surface bg-primary-soft px-4 py-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 <UsersIcon aria-hidden="true" className="size-4" />
@@ -362,7 +432,7 @@ export function CreateFormFlow({
                 {formErrorT(formState.error)}
               </FieldDescription>
             ) : null}
-            <DialogFooter className="justify-between">
+            <DialogFooter className="mt-auto justify-between">
               <Button
                 onClick={() => {
                   setIsCreatingGroup(false);

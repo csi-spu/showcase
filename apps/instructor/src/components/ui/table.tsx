@@ -3,10 +3,12 @@ import { cn } from '@showcase/ui/cn';
 
 /** A table always names its scroll region, so the keyboard stop it adds is announced. */
 interface TableProps extends React.ComponentProps<'table'> {
+  /** Sizes the scroll region, e.g. to bound its height inside a fixed-height dialog. */
+  containerClassName?: string;
   label: string;
 }
 
-function Table({ className, label, ...props }: TableProps) {
+function Table({ className, containerClassName, label, ...props }: TableProps) {
   return (
     /*
      * The scroll container is focusable and labelled. A table wider than the
@@ -18,7 +20,10 @@ function Table({ className, label, ...props }: TableProps) {
      */
     <div
       aria-label={label}
-      className="relative w-full overflow-x-auto rounded-surface border border-border/80 bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+      className={cn(
+        'relative w-full overflow-x-auto rounded-surface border border-border/80 bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
+        containerClassName,
+      )}
       data-slot="table-container"
       role="region"
       tabIndex={0}

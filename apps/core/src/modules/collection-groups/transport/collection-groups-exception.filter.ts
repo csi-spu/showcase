@@ -29,7 +29,10 @@ export class CollectionGroupsExceptionFilter implements ExceptionFilter {
           status: error.status,
         });
       }
-      response.status(error.status).json({ error: { code: error.code } });
+      const details = error instanceof CollectionGroupsError ? error.details : undefined;
+      response.status(error.status).json({
+        error: details === undefined ? { code: error.code } : { code: error.code, details },
+      });
       return;
     }
     reportOperationalError(error, {

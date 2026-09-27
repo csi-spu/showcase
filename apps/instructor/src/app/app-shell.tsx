@@ -48,7 +48,7 @@ async function getNavSections(pendingReview: number | undefined): Promise<NavSec
         {
           ...(pendingReview === undefined ? {} : { badge: pendingReview }),
           href: '/students',
-          icon: 'users',
+          icon: 'listChecks',
           label: t('students'),
         },
       ],

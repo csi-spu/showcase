@@ -1,17 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import type { PrismaQuery, PrismaSql } from '../../auth/infrastructure/prisma-sql';
 import type {
-  AddMembersByEntryYearResult,
   AddMembersResult,
   CollectionGroup,
   CollectionGroupsRepository,
   CollectionRound,
+  CreateGroupWithMembersResult,
+  CreateRoundWithGroupAndMembersResult,
   GroupMember,
   MembershipSource,
   MembershipStatus,
   ReinstateMemberResult,
+  SelectableStudent,
+  StudentSelectionFilter,
   WithdrawMemberResult,
 } from '../application/collection-groups.ports';
+import { evaluateSelectionStatus } from '../domain/member-selection-policy';
 
 interface RoundRow {
   created_at: Date;
@@ -39,19 +44,17 @@ interface MemberRow {
   withdrawn_at: Date | null;
 }
 
-interface EligibleStudentRow {
+interface CandidateRow {
+  access_ends_academic_year: number;
   account_id: string;
+  current_academic_year: number | null;
   entry_year: number;
   first_name_th: string;
   last_name_th: string;
-  student_id_hash: string;
+  membership_status: MembershipStatus | null;
 }
 
-interface MembershipStateRow {
-  added_at: Date;
-  status: MembershipStatus;
-  student_account_id: string;
-}
+type RoundStatusRow = { status: 'active' | 'closed' };
 
 @Injectable()
 export class PostgresCollectionGroupsRepository implements CollectionGroupsRepository {
@@ -68,28 +71,6 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
       returning id, name, status, created_at
     `;
     return this.mapRound(rows[0]!);
-  }
-
-  async createRoundWithGroup(input: {
-    createdByAccountId: string;
-    groupName: string;
-    now: Date;
-    roundName: string;
-  }): Promise<{ group: CollectionGroup; round: CollectionRound }> {
-    return this.database.sql.begin(async (transaction) => {
-      const roundRows = await transaction<RoundRow[]>`
-        insert into public.collection_rounds (name, created_by_account_id, created_at)
-        values (${input.roundName}, ${input.createdByAccountId}, ${input.now})
-        returning id, name, status, created_at
-      `;
-      const round = this.mapRound(roundRows[0]!);
-      const groupRows = await transaction<GroupRow[]>`
-        insert into public.collection_groups (round_id, name, created_by_account_id, created_at)
-        values (${round.id}, ${input.groupName}, ${input.createdByAccountId}, ${input.now})
-        returning id, round_id, name, created_at
-      `;
-      return { group: this.mapGroup(groupRows[0]!), round };
-    });
   }
 
   async listRounds(): Promise<CollectionRound[]> {
@@ -111,20 +92,6 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     `;
     const row = rows[0];
     return row === undefined ? null : this.mapRound(row);
-  }
-
-  async createGroup(input: {
-    createdByAccountId: string;
-    name: string;
-    now: Date;
-    roundId: string;
-  }): Promise<CollectionGroup> {
-    const rows = await this.database.sql<GroupRow[]>`
-      insert into public.collection_groups (round_id, name, created_by_account_id, created_at)
-      values (${input.roundId}, ${input.name}, ${input.createdByAccountId}, ${input.now})
-      returning id, round_id, name, created_at
-    `;
-    return this.mapGroup(rows[0]!);
   }
 
   async findGroup(groupId: string): Promise<CollectionGroup | null> {
@@ -172,171 +139,251 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     return rows.map((row) => this.mapMember(row));
   }
 
-  async addMembersByStudentIdHashes(input: {
-    actorAccountId: string;
-    groupId: string;
+  async listStudents(
+    input: StudentSelectionFilter & { afterAccountId: string | null; limit: number },
+  ): Promise<SelectableStudent[]> {
+    const sql = this.database.sql;
+    // Keyset pagination: the cursor Account's own sort key is looked up here,
+    // so the cursor never has to carry a name.
+    const after =
+      input.afterAccountId === null
+        ? sql``
+        : sql`
+            and (student.entry_year, person_name.first_name_th, person_name.last_name_th, account.id) > (
+              select cursor_student.entry_year, cursor_name.first_name_th, cursor_name.last_name_th, cursor_account.id
+              from public.accounts as cursor_account
+              join public.students as cursor_student on cursor_student.person_id = cursor_account.person_id
+              join private.person_names as cursor_name on cursor_name.person_id = cursor_account.person_id
+              where cursor_account.id = ${input.afterAccountId}
+            )
+          `;
+    const rows = await sql<CandidateRow[]>`
+      ${this.candidateSelect(sql, input)}
+      ${after}
+      order by student.entry_year, person_name.first_name_th, person_name.last_name_th, account.id
+      limit ${input.limit + 1}
+    `;
+    return rows.map((row) => this.mapCandidate(row));
+  }
+
+  async listSelectableStudentSnapshot(
+    input: StudentSelectionFilter & { limit: number },
+  ): Promise<SelectableStudent[]> {
+    const sql = this.database.sql;
+    const rows = await sql<CandidateRow[]>`
+      ${this.candidateSelect(sql, input)}
+      ${this.selectablePredicate(sql)}
+      order by student.entry_year, person_name.first_name_th, person_name.last_name_th, account.id
+      limit ${input.limit}
+    `;
+    return rows
+      .map((row) => this.mapCandidate(row))
+      .filter((student) => student.status === 'selectable');
+  }
+
+  async countSelectableStudents(filter: StudentSelectionFilter): Promise<number> {
+    const sql = this.database.sql;
+    const rows = await sql<{ count: string }[]>`
+      select count(*)::text as count from (
+        ${this.candidateSelect(sql, filter)}
+        ${this.selectablePredicate(sql)}
+      ) as matching
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async listEntryYears(): Promise<number[]> {
+    const rows = await this.database.sql<{ entry_year: number }[]>`
+      select distinct student.entry_year
+      from public.students as student
+      join public.accounts as account on account.person_id = student.person_id
+      join public.account_roles as student_role
+        on student_role.account_id = account.id and student_role.role = 'student'
+      where account.status = 'active'
+      order by student.entry_year desc
+      limit 200
+    `;
+    return rows.map((row) => row.entry_year);
+  }
+
+  async findCurrentAcademicYear(): Promise<number | null> {
+    const rows = await this.database.sql<{ current_academic_year: number | null }[]>`
+      select current_academic_year
+      from public.academic_settings
+      where singleton = true
+    `;
+    return rows[0]?.current_academic_year ?? null;
+  }
+
+  async findStudentsByIdHashes(input: {
+    groupId: string | null;
+    studentIdHashes: string[];
+  }): Promise<Map<string, SelectableStudent>> {
+    const sql = this.database.sql;
+    // The hash stays inside Core: it keys the result for the caller and is
+    // never mapped into a SelectableStudent.
+    const rows = await sql<(CandidateRow & { student_id_hash: string })[]>`
+      select
+        identity.student_id_hash,
+        ${this.candidateColumns(sql)}
+      ${this.candidateFrom(sql, input.groupId)}
+      join private.student_auth_identities as identity on identity.account_id = account.id
+      where account.status = 'active'
+        and identity.student_id_hash = any(${input.studentIdHashes}::text[])
+    `;
+    return new Map(rows.map((row) => [row.student_id_hash, this.mapCandidate(row)] as const));
+  }
+
+  async createGroupWithMembers(input: {
+    createdByAccountId: string;
+    idempotencyKey: string;
+    memberAccountIds: string[];
+    name: string;
     now: Date;
-    source: 'individual' | 'student_id_list';
-    studentIdHashToOriginal: Map<string, string>;
-  }): Promise<AddMembersResult> {
-    const hashes = [...input.studentIdHashToOriginal.keys()];
+    roundId: string;
+  }): Promise<CreateGroupWithMembersResult> {
     return this.database.sql.begin(async (transaction) => {
-      const eligible = await transaction<EligibleStudentRow[]>`
-        select
-          account.id as account_id,
-          identity.student_id_hash,
-          student.entry_year,
-          person_name.first_name_th,
-          person_name.last_name_th
-        from private.student_auth_identities as identity
-        join public.accounts as account on account.id = identity.account_id
-        join public.account_roles as student_role
-          on student_role.account_id = account.id and student_role.role = 'student'
-        join public.students as student on student.person_id = account.person_id
-        join private.person_names as person_name on person_name.person_id = account.person_id
-        where identity.student_id_hash = any(${hashes}::text[])
-          and account.status = 'active'
-      `;
-
-      const matchedHashes = new Set(eligible.map((row) => row.student_id_hash));
-      const unknownStudentIds = [...input.studentIdHashToOriginal.entries()]
-        .filter(([hash]) => !matchedHashes.has(hash))
-        .map(([, original]) => original);
-
-      if (eligible.length === 0) {
-        return { accepted: [], alreadyWithdrawnStudentIds: [], unknownStudentIds };
-      }
-
-      const accountIds = eligible.map((row) => row.account_id);
-      // A single set-based insert instead of one round trip per Student ID:
-      // an existing membership row (current or withdrawn) is left untouched.
-      await transaction`
-        insert into public.collection_group_memberships (
-          group_id, student_account_id, membership_source, added_by_account_id, added_at
-        )
-        select ${input.groupId}, unnest(${accountIds}::uuid[]), ${input.source}, ${input.actorAccountId}, ${input.now}
-        on conflict (group_id, student_account_id) do nothing
-      `;
-
-      const memberships = await transaction<MembershipStateRow[]>`
-        select student_account_id, status, added_at
-        from public.collection_group_memberships
-        where group_id = ${input.groupId} and student_account_id = any(${accountIds}::uuid[])
-      `;
-      await transaction`
-        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
-        select form.id, membership.student_account_id, ${input.now}
-        from public.collection_forms as form
-        join public.collection_group_memberships as membership on membership.group_id = form.group_id
-        where form.group_id = ${input.groupId} and form.status = 'open'
-          and membership.student_account_id = any(${accountIds}::uuid[]) and membership.status = 'current'
-        on conflict do nothing
-      `;
-      const membershipByAccountId = new Map(
-        memberships.map((row) => [row.student_account_id, row] as const),
+      const existing = await this.claimCreation(
+        transaction,
+        input.createdByAccountId,
+        input.idempotencyKey,
       );
-
-      const accepted: GroupMember[] = [];
-      const alreadyWithdrawnStudentIds: string[] = [];
-      for (const row of eligible) {
-        const membership = membershipByAccountId.get(row.account_id);
-        if (membership === undefined) continue;
-        // Reinstating a withdrawn Student is a separate, not-yet-defined
-        // product decision -- re-adding them here must not silently claim
-        // success while the membership stays withdrawn in the database.
-        if (membership.status === 'withdrawn') {
-          const originalStudentId = input.studentIdHashToOriginal.get(row.student_id_hash);
-          if (originalStudentId !== undefined) alreadyWithdrawnStudentIds.push(originalStudentId);
-          continue;
-        }
-        accepted.push({
-          addedAt: membership.added_at,
-          entryYear: row.entry_year,
-          firstNameTh: row.first_name_th,
-          lastNameTh: row.last_name_th,
-          membershipSource: input.source,
-          status: 'current',
-          studentAccountId: row.account_id,
-          withdrawalReason: null,
-          withdrawnAt: null,
-        });
+      if (existing !== null) {
+        return existing.roundId === input.roundId && existing.name === input.name
+          ? { group: existing, outcome: 'replayed' }
+          : { outcome: 'idempotency_conflict' };
       }
 
-      return { accepted, alreadyWithdrawnStudentIds, unknownStudentIds };
+      const roundStatus = await this.lockRound(
+        transaction,
+        transaction`where round.id = ${input.roundId}`,
+      );
+      if (roundStatus === null) return { outcome: 'round_not_found' };
+      if (roundStatus === 'closed') return { outcome: 'round_closed' };
+
+      const selection = await this.recheckSelection(transaction, null, input.memberAccountIds);
+      if (selection.ineligibleAccountIds.length > 0) {
+        return { accountIds: selection.ineligibleAccountIds, outcome: 'members_not_selectable' };
+      }
+
+      const groupRows = await transaction<GroupRow[]>`
+        insert into public.collection_groups
+          (round_id, name, created_by_account_id, created_at, creation_idempotency_key)
+        values
+          (${input.roundId}, ${input.name}, ${input.createdByAccountId}, ${input.now}, ${input.idempotencyKey})
+        returning id, round_id, name, created_at
+      `;
+      const group = this.mapGroup(groupRows[0]!);
+      // A new Group has no forms yet, so there are no obligations to assign.
+      await this.insertMemberships(transaction, {
+        actorAccountId: input.createdByAccountId,
+        accountIds: input.memberAccountIds,
+        groupId: group.id,
+        now: input.now,
+      });
+      return { group, outcome: 'created' };
     });
   }
 
-  async addMembersByEntryYear(input: {
-    actorAccountId: string;
-    entryYear: number;
-    groupId: string;
+  async createRoundWithGroupAndMembers(input: {
+    createdByAccountId: string;
+    groupName: string;
+    idempotencyKey: string;
+    memberAccountIds: string[];
     now: Date;
-  }): Promise<AddMembersByEntryYearResult> {
+    roundName: string;
+  }): Promise<CreateRoundWithGroupAndMembersResult> {
     return this.database.sql.begin(async (transaction) => {
-      const eligible = await transaction<Omit<EligibleStudentRow, 'student_id_hash'>[]>`
-        select account.id as account_id, student.entry_year, person_name.first_name_th, person_name.last_name_th
-        from public.students as student
-        join public.accounts as account on account.person_id = student.person_id
-        join public.account_roles as student_role
-          on student_role.account_id = account.id and student_role.role = 'student'
-        join private.person_names as person_name on person_name.person_id = account.person_id
-        where student.entry_year = ${input.entryYear}
-          and account.status = 'active'
-      `;
-
-      if (eligible.length === 0) {
-        return { accepted: [], alreadyWithdrawnCount: 0 };
-      }
-
-      const accountIds = eligible.map((row) => row.account_id);
-      await transaction`
-        insert into public.collection_group_memberships (
-          group_id, student_account_id, membership_source, added_by_account_id, added_at
-        )
-        select ${input.groupId}, unnest(${accountIds}::uuid[]), 'entry_year', ${input.actorAccountId}, ${input.now}
-        on conflict (group_id, student_account_id) do nothing
-      `;
-
-      const memberships = await transaction<MembershipStateRow[]>`
-        select student_account_id, status, added_at
-        from public.collection_group_memberships
-        where group_id = ${input.groupId} and student_account_id = any(${accountIds}::uuid[])
-      `;
-      await transaction`
-        insert into public.collection_obligations (form_id, student_account_id, assigned_at)
-        select form.id, membership.student_account_id, ${input.now}
-        from public.collection_forms as form
-        join public.collection_group_memberships as membership on membership.group_id = form.group_id
-        where form.group_id = ${input.groupId} and form.status = 'open'
-          and membership.student_account_id = any(${accountIds}::uuid[]) and membership.status = 'current'
-        on conflict do nothing
-      `;
-      const membershipByAccountId = new Map(
-        memberships.map((row) => [row.student_account_id, row] as const),
+      const existing = await this.claimCreation(
+        transaction,
+        input.createdByAccountId,
+        input.idempotencyKey,
       );
-
-      const accepted: GroupMember[] = [];
-      let alreadyWithdrawnCount = 0;
-      for (const row of eligible) {
-        const membership = membershipByAccountId.get(row.account_id);
-        if (membership === undefined) continue;
-        if (membership.status === 'withdrawn') {
-          alreadyWithdrawnCount += 1;
-          continue;
-        }
-        accepted.push({
-          addedAt: membership.added_at,
-          entryYear: row.entry_year,
-          firstNameTh: row.first_name_th,
-          lastNameTh: row.last_name_th,
-          membershipSource: 'entry_year',
-          status: 'current',
-          studentAccountId: row.account_id,
-          withdrawalReason: null,
-          withdrawnAt: null,
-        });
+      if (existing !== null) {
+        const roundRows = await transaction<RoundRow[]>`
+          select id, name, status, created_at
+          from public.collection_rounds
+          where id = ${existing.roundId}
+        `;
+        const round = this.mapRound(roundRows[0]!);
+        return round.name === input.roundName && existing.name === input.groupName
+          ? { group: existing, outcome: 'replayed', round }
+          : { outcome: 'idempotency_conflict' };
       }
-      return { accepted, alreadyWithdrawnCount };
+
+      const selection = await this.recheckSelection(transaction, null, input.memberAccountIds);
+      if (selection.ineligibleAccountIds.length > 0) {
+        return { accountIds: selection.ineligibleAccountIds, outcome: 'members_not_selectable' };
+      }
+
+      const roundRows = await transaction<RoundRow[]>`
+        insert into public.collection_rounds (name, created_by_account_id, created_at)
+        values (${input.roundName}, ${input.createdByAccountId}, ${input.now})
+        returning id, name, status, created_at
+      `;
+      const round = this.mapRound(roundRows[0]!);
+      const groupRows = await transaction<GroupRow[]>`
+        insert into public.collection_groups
+          (round_id, name, created_by_account_id, created_at, creation_idempotency_key)
+        values
+          (${round.id}, ${input.groupName}, ${input.createdByAccountId}, ${input.now}, ${input.idempotencyKey})
+        returning id, round_id, name, created_at
+      `;
+      const group = this.mapGroup(groupRows[0]!);
+      await this.insertMemberships(transaction, {
+        actorAccountId: input.createdByAccountId,
+        accountIds: input.memberAccountIds,
+        groupId: group.id,
+        now: input.now,
+      });
+      return { group, outcome: 'created', round };
+    });
+  }
+
+  async addMembers(input: {
+    actorAccountId: string;
+    groupId: string;
+    memberAccountIds: string[];
+    now: Date;
+  }): Promise<AddMembersResult> {
+    return this.database.sql.begin(async (transaction) => {
+      const roundStatus = await this.lockRound(
+        transaction,
+        transaction`where round.id = (select round_id from public.collection_groups where id = ${input.groupId})`,
+      );
+      if (roundStatus === 'closed') return { outcome: 'round_closed' };
+
+      const selection = await this.recheckSelection(
+        transaction,
+        input.groupId,
+        input.memberAccountIds,
+      );
+      if (selection.ineligibleAccountIds.length > 0) {
+        return { accountIds: selection.ineligibleAccountIds, outcome: 'members_not_selectable' };
+      }
+
+      const inserted = await this.insertMemberships(transaction, {
+        actorAccountId: input.actorAccountId,
+        accountIds: selection.selectableAccountIds,
+        groupId: input.groupId,
+        now: input.now,
+      });
+      if (inserted.length > 0) {
+        // New members owe every form that is open when they join.
+        await transaction`
+          insert into public.collection_obligations (form_id, student_account_id, assigned_at)
+          select form.id, inserted.account_id, ${input.now}
+          from public.collection_forms as form
+          cross join unnest(${inserted}::uuid[]) as inserted(account_id)
+          where form.group_id = ${input.groupId} and form.status = 'open'
+          on conflict do nothing
+        `;
+      }
+      return {
+        added: inserted.length,
+        alreadyMember: input.memberAccountIds.length - inserted.length,
+        outcome: 'added',
+      };
     });
   }
 
@@ -501,6 +548,169 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     });
   }
 
+  /*
+   * Serializes retries of one creation and returns the Group it already
+   * produced, if any. The unique index backs this up; the lock turns a
+   * concurrent duplicate into a replay instead of a constraint violation.
+   */
+  private async claimCreation(
+    transaction: PrismaSql,
+    actorAccountId: string,
+    idempotencyKey: string,
+  ): Promise<CollectionGroup | null> {
+    await transaction`
+      select 1 from (
+        select pg_advisory_xact_lock(
+          hashtextextended(${actorAccountId}::text || ':' || ${idempotencyKey}::text, 0)
+        )
+      ) as advisory_lock
+    `;
+    const rows = await transaction<GroupRow[]>`
+      select id, round_id, name, created_at
+      from public.collection_groups
+      where created_by_account_id = ${actorAccountId}
+        and creation_idempotency_key = ${idempotencyKey}
+    `;
+    const row = rows[0];
+    return row === undefined ? null : this.mapGroup(row);
+  }
+
+  /* Holds the Round open for the rest of the transaction; closing it waits. */
+  private async lockRound(
+    transaction: PrismaSql,
+    where: PrismaQuery<unknown[]>,
+  ): Promise<'active' | 'closed' | null> {
+    const rows = await transaction<RoundStatusRow[]>`
+      select round.status from public.collection_rounds as round ${where} for share
+    `;
+    return rows[0]?.status ?? null;
+  }
+
+  /*
+   * Rechecks every requested Account at confirmation. Anyone missing, no
+   * longer eligible, or withdrawn rejects the whole request; a concurrent
+   * current member is skipped rather than failed.
+   */
+  private async recheckSelection(
+    transaction: PrismaSql,
+    groupId: string | null,
+    accountIds: string[],
+  ): Promise<{ ineligibleAccountIds: string[]; selectableAccountIds: string[] }> {
+    const rows = await transaction<CandidateRow[]>`
+      select ${this.candidateColumns(transaction)}
+      ${this.candidateFrom(transaction, groupId)}
+      where account.status = 'active'
+        and account.id = any(${accountIds}::uuid[])
+      for share of account
+    `;
+    const statusByAccountId = new Map(
+      rows.map((row) => [row.account_id, this.mapCandidate(row).status] as const),
+    );
+    const ineligibleAccountIds: string[] = [];
+    const selectableAccountIds: string[] = [];
+    for (const accountId of accountIds) {
+      const status = statusByAccountId.get(accountId);
+      if (status === 'selectable') selectableAccountIds.push(accountId);
+      else if (status !== 'current_member') ineligibleAccountIds.push(accountId);
+    }
+    return { ineligibleAccountIds, selectableAccountIds };
+  }
+
+  /* One set-based insert; returns the Accounts that actually became members. */
+  private async insertMemberships(
+    transaction: PrismaSql,
+    input: { actorAccountId: string; accountIds: string[]; groupId: string; now: Date },
+  ): Promise<string[]> {
+    if (input.accountIds.length === 0) return [];
+    const rows = await transaction<{ student_account_id: string }[]>`
+      insert into public.collection_group_memberships (
+        group_id, student_account_id, membership_source, added_by_account_id, added_at
+      )
+      select ${input.groupId}, requested.account_id, 'instructor_selection', ${input.actorAccountId}, ${input.now}
+      from unnest(${input.accountIds}::uuid[]) as requested(account_id)
+      on conflict (group_id, student_account_id) do nothing
+      returning student_account_id
+    `;
+    return rows.map((row) => row.student_account_id);
+  }
+
+  private candidateColumns(sql: PrismaSql): PrismaQuery<unknown[]> {
+    return sql`
+      account.id as account_id,
+      student.entry_year,
+      student.access_ends_academic_year,
+      settings.current_academic_year,
+      person_name.first_name_th,
+      person_name.last_name_th,
+      membership.status as membership_status
+    `;
+  }
+
+  /* Active Accounts holding the Student role, with add-flow membership when a Group is given. */
+  private candidateFrom(sql: PrismaSql, groupId: string | null): PrismaQuery<unknown[]> {
+    const membershipJoin =
+      groupId === null
+        ? sql`left join public.collection_group_memberships as membership on false`
+        : sql`
+            left join public.collection_group_memberships as membership
+              on membership.group_id = ${groupId} and membership.student_account_id = account.id
+          `;
+    return sql`
+      from public.accounts as account
+      join public.account_roles as student_role
+        on student_role.account_id = account.id and student_role.role = 'student'
+      join public.students as student on student.person_id = account.person_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      left join public.academic_settings as settings on settings.singleton = true
+      ${membershipJoin}
+    `;
+  }
+
+  private candidateSelect(sql: PrismaSql, filter: StudentSelectionFilter): PrismaQuery<unknown[]> {
+    const entryYear =
+      filter.entryYear === null ? sql`` : sql`and student.entry_year = ${filter.entryYear}`;
+    // Matches the trigram index expression and predicate on private.person_names.
+    const name =
+      filter.query === null
+        ? sql``
+        : sql`
+            and person_name.first_name_th is not null and person_name.last_name_th is not null
+            and lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+              like ${`%${escapeLike(filter.query.toLowerCase())}%`} escape '\\'
+          `;
+    return sql`
+      select ${this.candidateColumns(sql)}
+      ${this.candidateFrom(sql, filter.groupId)}
+      where account.status = 'active'
+      ${entryYear}
+      ${name}
+    `;
+  }
+
+  /* SQL form of evaluateSelectionStatus(...) === 'selectable', for bounded snapshots and counts. */
+  private selectablePredicate(sql: PrismaSql): PrismaQuery<unknown[]> {
+    return sql`
+      and settings.current_academic_year is not null
+      and settings.current_academic_year between student.entry_year and student.access_ends_academic_year
+      and membership.student_account_id is null
+    `;
+  }
+
+  private mapCandidate(row: CandidateRow): SelectableStudent {
+    return {
+      accountId: row.account_id,
+      entryYear: row.entry_year,
+      firstNameTh: row.first_name_th,
+      lastNameTh: row.last_name_th,
+      status: evaluateSelectionStatus({
+        accessEndsAcademicYear: row.access_ends_academic_year,
+        currentAcademicYear: row.current_academic_year,
+        entryYear: row.entry_year,
+        membershipStatus: row.membership_status,
+      }),
+    };
+  }
+
   private mapRound(row: RoundRow): CollectionRound {
     return { createdAt: row.created_at, id: row.id, name: row.name, status: row.status };
   }
@@ -522,4 +732,8 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
       withdrawnAt: row.withdrawn_at,
     };
   }
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/gu, (character) => `\\${character}`);
 }

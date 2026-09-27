@@ -21,6 +21,8 @@ export interface CollectionLifecycleScenario {
   instructorPassword: string;
   instructorSourceAddress: string;
   instructorUrl: string;
+  /** A second Student with access who belongs to no group and never signs in. */
+  peerName: string;
   protectBrowserContext(context: BrowserContext): Promise<void>;
   studentId: string;
   studentName: string;
@@ -36,6 +38,8 @@ interface CollectionOwnedResources {
   instructorLoginHash: string;
   instructorPersonId: string;
   instructorProviderUserId: string | null;
+  peerAccountId: string;
+  peerPersonId: string;
   roundId: string;
   studentAccountId: string;
   studentIdHash: string;
@@ -83,12 +87,15 @@ async function createCollectionLifecycleScenario(): Promise<
   const studentAccountId = randomUUID();
   const instructorPersonId = randomUUID();
   const instructorAccountId = randomUUID();
+  const peerPersonId = randomUUID();
+  const peerAccountId = randomUUID();
   const roundId = randomUUID();
   const groupId = randomUUID();
   const formId = randomUUID();
   const answerLabel = `สถานที่ฝึกงาน ${runShort}`;
   const formTitle = `แบบฟอร์ม E2E ${runShort}`;
   const studentName = `อีทูอี นักศึกษาคอลเลกชัน-${runShort}`;
+  const peerName = `อีทูอี เพื่อนร่วมรุ่น-${runShort}`;
   const now = new Date();
   /*
    * Already past, so the first submission is late the moment it is sent. The
@@ -103,6 +110,8 @@ async function createCollectionLifecycleScenario(): Promise<
     instructorLoginHash: hashAdminLogin(instructorLogin),
     instructorPersonId,
     instructorProviderUserId: null,
+    peerAccountId,
+    peerPersonId,
     roundId,
     studentAccountId,
     studentIdHash: hashStudentId(studentId),
@@ -133,28 +142,33 @@ async function createCollectionLifecycleScenario(): Promise<
     await database.begin(async (transaction) => {
       await transaction`
         insert into public.people (id, created_at)
-        values (${studentPersonId}, ${now}), (${instructorPersonId}, ${now})
+        values (${studentPersonId}, ${now}), (${instructorPersonId}, ${now}), (${peerPersonId}, ${now})
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year, created_at)
-        values (${studentPersonId}, 2569, 2576, ${now})
+        values (${studentPersonId}, 2569, 2576, ${now}), (${peerPersonId}, 2569, 2576, ${now})
       `;
       await transaction`
         insert into private.person_names (person_id, first_name_th, last_name_th, created_at, updated_at)
         values
           (${studentPersonId}, 'อีทูอี', ${`นักศึกษาคอลเลกชัน-${runShort}`}, ${now}, ${now}),
-          (${instructorPersonId}, 'อีทูอี', ${`ผู้สอนคอลเลกชัน-${runShort}`}, ${now}, ${now})
+          (${instructorPersonId}, 'อีทูอี', ${`ผู้สอนคอลเลกชัน-${runShort}`}, ${now}, ${now}),
+          (${peerPersonId}, 'อีทูอี', ${`เพื่อนร่วมรุ่น-${runShort}`}, ${now}, ${now})
       `;
       await transaction`
         insert into public.accounts
           (id, person_id, provider_user_id, credential_state, created_at, updated_at)
         values
           (${studentAccountId}, ${studentPersonId}, ${resources.studentProviderUserId}, 'set', ${now}, ${now}),
-          (${instructorAccountId}, ${instructorPersonId}, ${resources.instructorProviderUserId}, 'set', ${now}, ${now})
+          (${instructorAccountId}, ${instructorPersonId}, ${resources.instructorProviderUserId}, 'set', ${now}, ${now}),
+          (${peerAccountId}, ${peerPersonId}, ${randomUUID()}, 'initial', ${now}, ${now})
       `;
       await transaction`
         insert into public.account_roles (account_id, role, created_at)
-        values (${studentAccountId}, 'student', ${now}), (${instructorAccountId}, 'instructor', ${now})
+        values
+          (${studentAccountId}, 'student', ${now}),
+          (${instructorAccountId}, 'instructor', ${now}),
+          (${peerAccountId}, 'student', ${now})
       `;
       await transaction`
         insert into private.student_auth_identities
@@ -223,6 +237,7 @@ async function createCollectionLifecycleScenario(): Promise<
     instructorPassword,
     instructorSourceAddress: createE2ESourceAddress(runShort, 2),
     instructorUrl: environment.instructorUrl,
+    peerName,
     protectBrowserContext: registerBrowserContextSecrets,
     studentCollectionUrl: environment.studentCollectionUrl,
     studentId,
@@ -323,13 +338,20 @@ async function cleanupCollectionResources(
       await transaction`
         delete from private.collection_round_lifecycle_events where round_id = ${resources.roundId}
       `;
+      /* Journeys may create further groups in the fixture's round; they go with it. */
       await transaction`
-        delete from private.collection_membership_audit_events where group_id = ${resources.groupId}
+        delete from private.collection_membership_audit_events
+        where group_id in (
+          select id from public.collection_groups where round_id = ${resources.roundId}
+        )
       `;
       await transaction`
-        delete from public.collection_group_memberships where group_id = ${resources.groupId}
+        delete from public.collection_group_memberships
+        where group_id in (
+          select id from public.collection_groups where round_id = ${resources.roundId}
+        )
       `;
-      await transaction`delete from public.collection_groups where id = ${resources.groupId}`;
+      await transaction`delete from public.collection_groups where round_id = ${resources.roundId}`;
       await transaction`delete from public.collection_rounds where id = ${resources.roundId}`;
       await transaction`
         delete from private.authentication_sessions
@@ -351,20 +373,31 @@ async function cleanupCollectionResources(
       `;
       await transaction`
         delete from public.account_roles
-        where account_id in (${resources.studentAccountId}, ${resources.instructorAccountId})
+        where account_id in (
+          ${resources.studentAccountId}, ${resources.instructorAccountId}, ${resources.peerAccountId}
+        )
       `;
       await transaction`
         delete from public.accounts
-        where id in (${resources.studentAccountId}, ${resources.instructorAccountId})
+        where id in (
+          ${resources.studentAccountId}, ${resources.instructorAccountId}, ${resources.peerAccountId}
+        )
       `;
-      await transaction`delete from public.students where person_id = ${resources.studentPersonId}`;
+      await transaction`
+        delete from public.students
+        where person_id in (${resources.studentPersonId}, ${resources.peerPersonId})
+      `;
       await transaction`
         delete from private.person_names
-        where person_id in (${resources.studentPersonId}, ${resources.instructorPersonId})
+        where person_id in (
+          ${resources.studentPersonId}, ${resources.instructorPersonId}, ${resources.peerPersonId}
+        )
       `;
       await transaction`
         delete from public.people
-        where id in (${resources.studentPersonId}, ${resources.instructorPersonId})
+        where id in (
+          ${resources.studentPersonId}, ${resources.instructorPersonId}, ${resources.peerPersonId}
+        )
       `;
     });
   } catch {

@@ -120,4 +120,67 @@ describe('Instructor dashboard layout', () => {
     expect(progressList.className).not.toContain('xl:grid-cols-3');
     expect(within(progressPanel as HTMLElement).getAllByText('0%')).toHaveLength(6);
   });
+
+  it('leads with the work waiting on the Instructor, linked where it is acted on', async () => {
+    const roundId = '10000000-0000-4000-8000-000000000001';
+    const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+    services.getFilterOptions.mockResolvedValue({
+      entryYears: [],
+      groups: [],
+      rounds: [{ id: roundId, name: 'ชุดงานฝึกงาน', status: 'active' }],
+    });
+    services.getOverview.mockResolvedValue({
+      activeFormProgress: [],
+      activeRoundTotals: {
+        groups: 1,
+        students: 28,
+        studentsFullyComplete: 7,
+        studentsPartiallyComplete: 5,
+        studentsWithNoSubmission: 16,
+        studentsWithObligations: 28,
+        submissionsPendingReview: 3,
+      },
+      needsAttention: [],
+      roundCounts: { active: 1, closed: 0 },
+      upcomingDeadlines: [
+        {
+          deadlineAt: inDays(9),
+          formId: 'form-later',
+          formTitle: 'รายงานฉบับสมบูรณ์',
+          groupId: 'group-1',
+          groupName: 'CS67-1',
+          roundId,
+          roundName: 'ชุดงานฝึกงาน',
+          studentsNotSubmitted: 20,
+        },
+        {
+          deadlineAt: inDays(1),
+          formId: 'form-sooner',
+          formTitle: 'แบบตอบรับฝึกงาน',
+          groupId: 'group-1',
+          groupName: 'CS67-1',
+          roundId,
+          roundName: 'ชุดงานฝึกงาน',
+          studentsNotSubmitted: 4,
+        },
+      ],
+    });
+
+    render(await DashboardPage({ searchParams: Promise.resolve({ roundId }) }));
+
+    const focus = screen.getByRole('region', { name: 'focusEyebrow' });
+    // The count-up copy may or may not have landed yet; the screen-reader copy has.
+    expect(within(focus).getAllByText('25%').length).toBeGreaterThan(0);
+    expect(
+      within(focus)
+        .getByRole('link', { name: /focusPendingReview/u })
+        .getAttribute('href'),
+    ).toBe(`/students?roundId=${roundId}`);
+    expect(within(focus).getByRole('link', { name: /focusIncomplete/u })).toBeDefined();
+    expect(
+      within(focus)
+        .getByRole('link', { name: /focusNextDeadline/u })
+        .getAttribute('href'),
+    ).toBe('/groups/group-1/forms/form-sooner/submissions');
+  });
 });

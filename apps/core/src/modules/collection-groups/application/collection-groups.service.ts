@@ -1,20 +1,33 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AUTH_CLOCK, AUTH_IDENTITY_PROTECTOR } from '../../auth/application/auth.ports';
 import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
+import {
+  MAX_MEMBERS_PER_REQUEST,
+  MAX_STUDENT_IDS_PER_RESOLVE,
+} from '../domain/member-selection-policy';
 import { COLLECTION_GROUPS_REPOSITORY, CollectionGroupsError } from './collection-groups.ports';
 import type {
-  AddMembersByEntryYearResult,
-  AddMembersResult,
   CollectionGroup,
   CollectionGroupsRepository,
   CollectionRound,
   GroupMember,
+  SelectableStudent,
+  StudentIdResolution,
+  StudentSelectionFilter,
 } from './collection-groups.ports';
 
-const MAX_STUDENT_IDS_PER_REQUEST = 500;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+interface StudentSelectionQuery {
+  entryYear: number | null;
+  groupId: string | null;
+  query: string | null;
+}
 
 @Injectable()
 export class CollectionGroupsService {
+  private readonly logger = new Logger(CollectionGroupsService.name);
+
   constructor(
     @Inject(COLLECTION_GROUPS_REPOSITORY) private readonly repository: CollectionGroupsRepository,
     @Inject(AUTH_CLOCK) private readonly clock: Clock,
@@ -30,41 +43,8 @@ export class CollectionGroupsService {
     });
   }
 
-  async createRoundWithGroup(input: {
-    actorAccountId: string;
-    groupName: string;
-    roundName: string;
-  }): Promise<{ group: CollectionGroup; round: CollectionRound }> {
-    const roundName = this.requireName(input.roundName, 'ROUND_NAME_INVALID');
-    const groupName = this.requireName(input.groupName, 'GROUP_NAME_INVALID');
-    return this.repository.createRoundWithGroup({
-      createdByAccountId: input.actorAccountId,
-      groupName,
-      now: this.clock.now(),
-      roundName,
-    });
-  }
-
   listRounds(): Promise<CollectionRound[]> {
     return this.repository.listRounds();
-  }
-
-  async createGroup(input: {
-    actorAccountId: string;
-    name: string;
-    roundId: string;
-  }): Promise<CollectionGroup> {
-    const name = this.requireName(input.name, 'GROUP_NAME_INVALID');
-    const round = await this.repository.findRound(input.roundId);
-    if (round === null) {
-      throw new CollectionGroupsError('ROUND_NOT_FOUND', 404);
-    }
-    return this.repository.createGroup({
-      createdByAccountId: input.actorAccountId,
-      name,
-      now: this.clock.now(),
-      roundId: input.roundId,
-    });
   }
 
   async listGroups(roundId: string): Promise<CollectionGroup[]> {
@@ -76,49 +56,217 @@ export class CollectionGroupsService {
   }
 
   async getGroup(groupId: string): Promise<{ group: CollectionGroup; members: GroupMember[] }> {
-    const group = await this.repository.findGroup(groupId);
-    if (group === null) {
-      throw new CollectionGroupsError('GROUP_NOT_FOUND', 404);
-    }
+    const group = await this.requireGroup(groupId);
     const members = await this.repository.listGroupMembers(groupId);
     return { group, members };
   }
 
-  async addMembersByStudentIds(input: {
-    actorAccountId: string;
-    groupId: string;
+  async listStudents(
+    input: StudentSelectionQuery & { cursor: string | null; limit: number },
+  ): Promise<{
+    hasCurrentAcademicYear: boolean;
+    nextCursor: string | null;
+    students: SelectableStudent[];
+  }> {
+    const afterAccountId = input.cursor === null ? null : this.decodeCursor(input.cursor);
+    const filter = await this.resolveFilter(input);
+    const [rows, currentAcademicYear] = await Promise.all([
+      this.repository.listStudents({ ...filter, afterAccountId, limit: input.limit }),
+      this.repository.findCurrentAcademicYear(),
+    ]);
+    const students = rows.slice(0, input.limit);
+    const last = students.at(-1);
+    return {
+      hasCurrentAcademicYear: currentAcademicYear !== null,
+      nextCursor:
+        rows.length > input.limit && last !== undefined ? this.encodeCursor(last.accountId) : null,
+      students,
+    };
+  }
+
+  listEntryYears(): Promise<number[]> {
+    return this.repository.listEntryYears();
+  }
+
+  /*
+   * A snapshot of every selectable match, so the confirmation list is
+   * complete. Rejecting beyond the remaining capacity keeps the Instructor from
+   * confirming a silently truncated selection.
+   */
+  async selectAllMatching(
+    input: StudentSelectionQuery & { selectedCount: number },
+  ): Promise<SelectableStudent[]> {
+    const filter = await this.resolveFilter(input);
+    const remaining = MAX_MEMBERS_PER_REQUEST - input.selectedCount;
+    const students = await this.repository.listSelectableStudentSnapshot({
+      ...filter,
+      limit: remaining + 1,
+    });
+    if (students.length > remaining) {
+      const matchingCount = await this.repository.countSelectableStudents(filter);
+      this.logger.warn({
+        errorCode: 'SELECTION_LIMIT_EXCEEDED',
+        groupId: filter.groupId,
+        matchingCount,
+        operation: 'collection_group_select_all',
+        selectedCount: input.selectedCount,
+      });
+      throw new CollectionGroupsError('SELECTION_LIMIT_EXCEEDED', 422, { matchingCount });
+    }
+    return students;
+  }
+
+  async resolveStudentIds(input: {
+    groupId: string | null;
     studentIds: string[];
-  }): Promise<AddMembersResult> {
-    return this.addMembersByIdsInternal(input, 'student_id_list');
-  }
-
-  async addMemberIndividually(input: {
-    actorAccountId: string;
-    groupId: string;
-    studentId: string;
-  }): Promise<AddMembersResult> {
-    return this.addMembersByIdsInternal(
-      {
-        actorAccountId: input.actorAccountId,
-        groupId: input.groupId,
-        studentIds: [input.studentId],
-      },
-      'individual',
+  }): Promise<StudentIdResolution[]> {
+    if (input.studentIds.length === 0 || input.studentIds.length > MAX_STUDENT_IDS_PER_RESOLVE) {
+      throw new CollectionGroupsError('STUDENT_ID_LIST_INVALID', 422);
+    }
+    if (input.groupId !== null) {
+      await this.requireGroup(input.groupId);
+    }
+    const hashes = input.studentIds.map((studentId) =>
+      this.identityProtector.hashStudentId(studentId),
     );
+    const studentsByHash = await this.repository.findStudentsByIdHashes({
+      groupId: input.groupId,
+      studentIdHashes: [...new Set(hashes)],
+    });
+    return hashes.map((hash, position): StudentIdResolution => {
+      const student = studentsByHash.get(hash);
+      if (student === undefined) return { outcome: 'not_found', position };
+      return {
+        outcome: student.status === 'no_access' ? 'no_access' : 'matched',
+        position,
+        student,
+      };
+    });
   }
 
-  async addMembersByEntryYear(input: {
+  async createGroupWithMembers(input: {
     actorAccountId: string;
-    entryYear: number;
+    idempotencyKey: string;
+    memberAccountIds: string[];
+    name: string;
+    roundId: string;
+  }): Promise<CollectionGroup> {
+    const name = this.requireName(input.name, 'GROUP_NAME_INVALID');
+    this.requireMemberList(input.memberAccountIds);
+    const result = await this.repository.createGroupWithMembers({
+      createdByAccountId: input.actorAccountId,
+      idempotencyKey: input.idempotencyKey,
+      memberAccountIds: input.memberAccountIds,
+      name,
+      now: this.clock.now(),
+      roundId: input.roundId,
+    });
+    switch (result.outcome) {
+      case 'created':
+      case 'replayed':
+        this.logMembersWritten('collection_group_created_with_members', {
+          actorAccountId: input.actorAccountId,
+          added: input.memberAccountIds.length,
+          groupId: result.group.id,
+          isReplay: result.outcome === 'replayed',
+        });
+        return result.group;
+      case 'round_not_found':
+        throw new CollectionGroupsError('ROUND_NOT_FOUND', 404);
+      case 'round_closed':
+        throw this.rejectMembers('collection_group_created_with_members', input, 'ROUND_CLOSED');
+      case 'idempotency_conflict':
+        throw this.rejectMembers(
+          'collection_group_created_with_members',
+          input,
+          'IDEMPOTENCY_KEY_CONFLICT',
+        );
+      case 'members_not_selectable':
+        throw this.rejectMembers(
+          'collection_group_created_with_members',
+          input,
+          'MEMBER_NOT_SELECTABLE',
+          result.accountIds,
+        );
+    }
+  }
+
+  async createRoundWithGroupAndMembers(input: {
+    actorAccountId: string;
+    groupName: string;
+    idempotencyKey: string;
+    memberAccountIds: string[];
+    roundName: string;
+  }): Promise<{ group: CollectionGroup; round: CollectionRound }> {
+    const roundName = this.requireName(input.roundName, 'ROUND_NAME_INVALID');
+    const groupName = this.requireName(input.groupName, 'GROUP_NAME_INVALID');
+    this.requireMemberList(input.memberAccountIds);
+    const result = await this.repository.createRoundWithGroupAndMembers({
+      createdByAccountId: input.actorAccountId,
+      groupName,
+      idempotencyKey: input.idempotencyKey,
+      memberAccountIds: input.memberAccountIds,
+      now: this.clock.now(),
+      roundName,
+    });
+    switch (result.outcome) {
+      case 'created':
+      case 'replayed':
+        this.logMembersWritten('collection_round_created_with_group_members', {
+          actorAccountId: input.actorAccountId,
+          added: input.memberAccountIds.length,
+          groupId: result.group.id,
+          isReplay: result.outcome === 'replayed',
+        });
+        return { group: result.group, round: result.round };
+      case 'idempotency_conflict':
+        throw this.rejectMembers(
+          'collection_round_created_with_group_members',
+          input,
+          'IDEMPOTENCY_KEY_CONFLICT',
+        );
+      case 'members_not_selectable':
+        throw this.rejectMembers(
+          'collection_round_created_with_group_members',
+          input,
+          'MEMBER_NOT_SELECTABLE',
+          result.accountIds,
+        );
+    }
+  }
+
+  async addMembers(input: {
+    actorAccountId: string;
     groupId: string;
-  }): Promise<AddMembersByEntryYearResult> {
+    memberAccountIds: string[];
+  }): Promise<{ added: number; alreadyMember: number }> {
+    this.requireMemberList(input.memberAccountIds);
     await this.requireGroup(input.groupId);
-    return this.repository.addMembersByEntryYear({
+    const result = await this.repository.addMembers({
       actorAccountId: input.actorAccountId,
-      entryYear: input.entryYear,
       groupId: input.groupId,
+      memberAccountIds: input.memberAccountIds,
       now: this.clock.now(),
     });
+    switch (result.outcome) {
+      case 'added':
+        this.logMembersWritten('collection_group_members_added', {
+          actorAccountId: input.actorAccountId,
+          added: result.added,
+          alreadyMember: result.alreadyMember,
+          groupId: input.groupId,
+        });
+        return { added: result.added, alreadyMember: result.alreadyMember };
+      case 'round_closed':
+        throw this.rejectMembers('collection_group_members_added', input, 'ROUND_CLOSED');
+      case 'members_not_selectable':
+        throw this.rejectMembers(
+          'collection_group_members_added',
+          input,
+          'MEMBER_NOT_SELECTABLE',
+          result.accountIds,
+        );
+    }
   }
 
   async withdrawMember(input: {
@@ -184,27 +332,72 @@ export class CollectionGroupsService {
     return result.member;
   }
 
-  private async addMembersByIdsInternal(
-    input: { actorAccountId: string; groupId: string; studentIds: string[] },
-    source: 'individual' | 'student_id_list',
-  ): Promise<AddMembersResult> {
-    if (input.studentIds.length === 0 || input.studentIds.length > MAX_STUDENT_IDS_PER_REQUEST) {
-      throw new CollectionGroupsError('STUDENT_ID_LIST_INVALID', 422);
+  private async resolveFilter(input: StudentSelectionQuery): Promise<StudentSelectionFilter> {
+    if (input.groupId !== null) {
+      await this.requireGroup(input.groupId);
     }
-    await this.requireGroup(input.groupId);
-
-    const studentIdHashToOriginal = new Map<string, string>();
-    for (const studentId of input.studentIds) {
-      studentIdHashToOriginal.set(this.identityProtector.hashStudentId(studentId), studentId);
-    }
-
-    return this.repository.addMembersByStudentIdHashes({
-      actorAccountId: input.actorAccountId,
+    const query = input.query?.trim().replace(/\s+/gu, ' ') ?? '';
+    return {
+      entryYear: input.entryYear,
       groupId: input.groupId,
-      now: this.clock.now(),
-      source,
-      studentIdHashToOriginal,
+      query: query.length === 0 ? null : query,
+    };
+  }
+
+  /* The cursor carries only the last Account ID, never a name or Student ID. */
+  private encodeCursor(accountId: string): string {
+    return Buffer.from(accountId, 'utf8').toString('base64url');
+  }
+
+  private decodeCursor(cursor: string): string {
+    const accountId = Buffer.from(cursor, 'base64url').toString('utf8');
+    if (!UUID_PATTERN.test(accountId)) {
+      throw new CollectionGroupsError('STUDENT_CURSOR_INVALID', 422);
+    }
+    return accountId;
+  }
+
+  private requireMemberList(memberAccountIds: string[]): void {
+    if (
+      memberAccountIds.length === 0 ||
+      memberAccountIds.length > MAX_MEMBERS_PER_REQUEST ||
+      new Set(memberAccountIds).size !== memberAccountIds.length
+    ) {
+      throw new CollectionGroupsError('MEMBER_LIST_INVALID', 422);
+    }
+  }
+
+  private logMembersWritten(
+    operation: string,
+    fields: {
+      actorAccountId: string;
+      added: number;
+      alreadyMember?: number;
+      groupId: string;
+      isReplay?: boolean;
+    },
+  ): void {
+    this.logger.log({ ...fields, operation });
+  }
+
+  private rejectMembers(
+    operation: string,
+    input: { actorAccountId: string; groupId?: string; memberAccountIds: string[] },
+    errorCode: string,
+    ineligibleAccountIds?: string[],
+  ): CollectionGroupsError {
+    this.logger.warn({
+      actorAccountId: input.actorAccountId,
+      errorCode,
+      groupId: input.groupId ?? null,
+      ineligibleCount: ineligibleAccountIds?.length ?? 0,
+      operation,
+      requestedCount: input.memberAccountIds.length,
     });
+    // Every rejection here is a conflict with current state, never bad input.
+    return ineligibleAccountIds === undefined
+      ? new CollectionGroupsError(errorCode, 409)
+      : new CollectionGroupsError(errorCode, 409, { accountIds: ineligibleAccountIds });
   }
 
   private async requireGroup(groupId: string): Promise<CollectionGroup> {
