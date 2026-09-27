@@ -61,9 +61,14 @@ const environment = assertLocalE2EEnvironment({
   VISITOR_URL: process.env.VISITOR_URL,
 });
 
-export const test = base.extend<{ collectionScenario: CollectionLifecycleScenario }>({
-  collectionScenario: async ({}, use) => {
-    const scenario = await createCollectionLifecycleScenario();
+export const test = base.extend<{
+  /** `draft` leaves opening the form, and the obligations it assigns, to the journey. */
+  collectionFormStatus: 'draft' | 'open';
+  collectionScenario: CollectionLifecycleScenario;
+}>({
+  collectionFormStatus: ['open', { option: true }],
+  collectionScenario: async ({ collectionFormStatus }, use) => {
+    const scenario = await createCollectionLifecycleScenario(collectionFormStatus);
     try {
       await use(scenario);
     } finally {
@@ -72,9 +77,9 @@ export const test = base.extend<{ collectionScenario: CollectionLifecycleScenari
   },
 });
 
-async function createCollectionLifecycleScenario(): Promise<
-  CollectionLifecycleScenario & { cleanup(): Promise<void> }
-> {
+async function createCollectionLifecycleScenario(
+  formStatus: 'draft' | 'open',
+): Promise<CollectionLifecycleScenario & { cleanup(): Promise<void> }> {
   const runId = randomUUID();
   const runShort = createHash('sha256').update(runId).digest('hex').slice(0, 12);
   const studentId = createStudentId(runId);
@@ -200,7 +205,7 @@ async function createCollectionLifecycleScenario(): Promise<
           (id, group_id, title, description, status, fields, created_by_account_id,
            created_at, opened_at, deadline_at, version)
         values (
-          ${formId}, ${groupId}, ${formTitle}, 'ใช้ทดสอบวงจรส่งและขอแก้ไข', 'open',
+          ${formId}, ${groupId}, ${formTitle}, 'ใช้ทดสอบวงจรส่งและขอแก้ไข', ${formStatus},
           ${transaction.json([
             {
               description: 'กรอกชื่อสถานที่สำหรับทดสอบ autosave',
@@ -210,14 +215,16 @@ async function createCollectionLifecycleScenario(): Promise<
               type: 'short_text',
             },
           ])},
-          ${instructorAccountId}, ${now}, ${now}, ${deadlineAt}, 1
+          ${instructorAccountId}, ${now}, ${formStatus === 'open' ? now : null}, ${deadlineAt}, 1
         )
       `;
-      await transaction`
-        insert into public.collection_obligations
-          (form_id, student_account_id, status, assigned_at)
-        values (${formId}, ${studentAccountId}, 'not_submitted', ${now})
-      `;
+      if (formStatus === 'open') {
+        await transaction`
+          insert into public.collection_obligations
+            (form_id, student_account_id, status, assigned_at)
+          values (${formId}, ${studentAccountId}, 'not_submitted', ${now})
+        `;
+      }
     });
   } catch (error: unknown) {
     await cleanupCollectionResources(database, resources);
