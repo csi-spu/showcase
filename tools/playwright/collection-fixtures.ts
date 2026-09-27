@@ -65,10 +65,16 @@ export const test = base.extend<{
   /** `draft` leaves opening the form, and the obligations it assigns, to the journey. */
   collectionFormStatus: 'draft' | 'open';
   collectionScenario: CollectionLifecycleScenario;
+  /** `initial` makes the Student's first sign-in stop at the password-change step. */
+  collectionStudentCredentialState: 'initial' | 'set';
 }>({
   collectionFormStatus: ['open', { option: true }],
-  collectionScenario: async ({ collectionFormStatus }, use) => {
-    const scenario = await createCollectionLifecycleScenario(collectionFormStatus);
+  collectionStudentCredentialState: ['set', { option: true }],
+  collectionScenario: async ({ collectionFormStatus, collectionStudentCredentialState }, use) => {
+    const scenario = await createCollectionLifecycleScenario(
+      collectionFormStatus,
+      collectionStudentCredentialState,
+    );
     try {
       await use(scenario);
     } finally {
@@ -79,6 +85,7 @@ export const test = base.extend<{
 
 async function createCollectionLifecycleScenario(
   formStatus: 'draft' | 'open',
+  studentCredentialState: 'initial' | 'set',
 ): Promise<CollectionLifecycleScenario & { cleanup(): Promise<void> }> {
   const runId = randomUUID();
   const runShort = createHash('sha256').update(runId).digest('hex').slice(0, 12);
@@ -164,7 +171,7 @@ async function createCollectionLifecycleScenario(
         insert into public.accounts
           (id, person_id, provider_user_id, credential_state, created_at, updated_at)
         values
-          (${studentAccountId}, ${studentPersonId}, ${resources.studentProviderUserId}, 'set', ${now}, ${now}),
+          (${studentAccountId}, ${studentPersonId}, ${resources.studentProviderUserId}, ${studentCredentialState}, ${now}, ${now}),
           (${instructorAccountId}, ${instructorPersonId}, ${resources.instructorProviderUserId}, 'set', ${now}, ${now}),
           (${peerAccountId}, ${peerPersonId}, ${randomUUID()}, 'initial', ${now}, ${now})
       `;

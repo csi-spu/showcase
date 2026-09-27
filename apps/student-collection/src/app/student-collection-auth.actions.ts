@@ -39,6 +39,7 @@ export async function loginAction(
 }
 
 export async function changePasswordAction(
+  returnTo: string | null,
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
@@ -46,9 +47,15 @@ export async function changePasswordAction(
   if (typeof input === 'string') {
     return { error: input };
   }
+  /*
+   * A first-login Student may be on their way to a deeplink, so the return
+   * path rides through this step exactly as it does through login -- and
+   * through an expired session too, so signing in again still reaches it.
+   */
+  const destination = parseStudentCollectionReturnTo(returnTo ?? undefined);
   const sessionToken = await readStudentCollectionSessionToken();
   if (sessionToken === null) {
-    redirect('/?expired=1');
+    redirect(entryPath({ isSessionExpired: true, returnTo: destination }));
   }
   let result;
   let failure: unknown;
@@ -59,7 +66,7 @@ export async function changePasswordAction(
   }
   if (isExpired(failure)) {
     await clearStudentCollectionSessionToken();
-    redirect('/?expired=1');
+    redirect(entryPath({ isSessionExpired: true, returnTo: destination }));
   }
   if (failure !== undefined) {
     return { error: mapCoreError(failure) };
@@ -68,7 +75,7 @@ export async function changePasswordAction(
     return { error: 'unavailable' };
   }
   await setStudentCollectionSessionToken(result.sessionToken);
-  redirect('/?passwordSet=1');
+  redirect(withPasswordSetFlag(destination ?? '/'));
 }
 
 export async function logoutAction(): Promise<AuthActionState> {
@@ -88,9 +95,39 @@ export async function logoutAction(): Promise<AuthActionState> {
   redirect('/');
 }
 
-export async function clearExpiredSessionAction(): Promise<void> {
+export async function clearExpiredSessionAction(returnTo: string | null): Promise<void> {
   await clearStudentCollectionSessionToken();
-  redirect('/');
+  redirect(
+    entryPath({
+      isSessionExpired: false,
+      returnTo: parseStudentCollectionReturnTo(returnTo ?? undefined),
+    }),
+  );
+}
+
+/** "/" carrying the sign-in state flags; `returnTo` must already be validated. */
+function entryPath({
+  isSessionExpired,
+  returnTo,
+}: {
+  isSessionExpired: boolean;
+  returnTo: string | null;
+}): string {
+  const query = new URLSearchParams();
+  if (isSessionExpired) query.set('expired', '1');
+  if (returnTo !== null) query.set('returnTo', returnTo);
+  const search = query.toString();
+  return search === '' ? '/' : `/?${search}`;
+}
+
+/*
+ * The destination confirms the new password once (see PasswordSetToast), then
+ * drops this flag from the URL so a reload or a shared link never repeats it.
+ */
+function withPasswordSetFlag(path: string): string {
+  const url = new URL(path, 'https://student-collection.invalid');
+  url.searchParams.set('passwordSet', '1');
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function coreClient(): StudentCollectionAuthCoreClient {
