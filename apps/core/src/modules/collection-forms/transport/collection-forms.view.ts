@@ -79,6 +79,7 @@ export function toReviewQueueView(input: {
       rosterName: entry.rosterName,
       status: entry.status,
       studentAccountId: entry.studentAccountId,
+      studentId: entry.studentId,
     })),
     form: {
       createdFromTemplateId: input.form.createdFromTemplateId,

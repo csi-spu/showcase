@@ -13,10 +13,12 @@ import type {
   GroupMember,
   SelectableStudent,
   StudentIdResolution,
+  StudentSearch,
   StudentSelectionFilter,
 } from './collection-groups.ports';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const STUDENT_ID_PREFIX_PATTERN = /^[0-9]{1,8}$/u;
 
 interface StudentSelectionQuery {
   entryYear: number | null;
@@ -340,7 +342,18 @@ export class CollectionGroupsService {
     return {
       entryYear: input.entryYear,
       groupId: input.groupId,
-      query: query.length === 0 ? null : query,
+      search: this.toSearch(query),
+    };
+  }
+
+  /* One to eight digits search by Student ID prefix; anything else by Roster name. */
+  private toSearch(query: string): StudentSearch | null {
+    if (query.length === 0) return null;
+    if (!STUDENT_ID_PREFIX_PATTERN.test(query)) return { kind: 'name', name: query };
+    return {
+      kind: 'student_id_prefix',
+      prefixHash: this.identityProtector.hashStudentId(query),
+      prefixLength: query.length,
     };
   }
 

@@ -32,13 +32,15 @@ export interface GroupMember {
   membershipSource: MembershipSource;
   status: MembershipStatus;
   studentAccountId: string;
+  /** Null until a Roster import has recorded the raw value (ADR 0020). */
+  studentId: string | null;
   withdrawalReason: string | null;
   withdrawnAt: Date | null;
 }
 
 /*
- * A candidate for group membership. Only Roster name, Entry Year, and Account
- * ID leave Core (ADR 0018, ADR 0019); Student ID never does.
+ * A candidate for group membership, identified to Instructors by Roster name
+ * and Student ID (ADR 0019, ADR 0020).
  */
 export interface SelectableStudent {
   accountId: string;
@@ -46,14 +48,23 @@ export interface SelectableStudent {
   firstNameTh: string;
   lastNameTh: string;
   status: SelectionStatus;
+  /** Null until a Roster import has recorded the raw value (ADR 0020). */
+  studentId: string | null;
 }
+
+/*
+ * A search term: a partial Roster name, or a Student ID prefix matched through
+ * its keyed hash so Accounts without a recorded raw value are still found.
+ */
+export type StudentSearch =
+  | { kind: 'name'; name: string }
+  | { kind: 'student_id_prefix'; prefixHash: string; prefixLength: number };
 
 export interface StudentSelectionFilter {
   entryYear: number | null;
   /** Add flow only: statuses then reflect membership in this group. */
   groupId: string | null;
-  /** Partial Roster name, already trimmed and non-empty. */
-  query: string | null;
+  search: StudentSearch | null;
 }
 
 /*

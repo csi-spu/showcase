@@ -125,13 +125,19 @@ export function toSafePathSegment(value: string, fallback: string): string {
 /**
  * The folder one Student's documents go in.
  *
- * The suffix is the *position* in the frozen snapshot, never the Student ID and
- * never any part of the account id. It is what separates two Students who share
- * a display name, and it is meaningless outside this one archive.
+ * The prefix is the Student ID, which Instructors recognise (ADR 0020), or the
+ * *position* in the frozen snapshot when no Roster import recorded one. Either
+ * separates two Students who share a display name. Never any part of the
+ * account id.
  */
-export function toStudentFolderName(input: { displayName: string; position: number }): string {
+export function toStudentFolderName(input: {
+  displayName: string;
+  position: number;
+  studentId: string | null;
+}): string {
   const name = toSafePathSegment(input.displayName, 'student');
-  return `${String(input.position + 1).padStart(3, '0')}-${name}`;
+  const prefix = input.studentId ?? String(input.position + 1).padStart(3, '0');
+  return `${prefix}-${name}`;
 }
 
 /**
@@ -164,11 +170,13 @@ export function toDocumentPath(input: {
   originalFilename: string;
   filePosition: number;
   formPosition: number;
+  studentId: string | null;
   studentPosition: number;
 }): string {
   const student = toStudentFolderName({
     displayName: input.displayName,
     position: input.studentPosition,
+    studentId: input.studentId,
   });
   const form = `${String(input.formPosition + 1).padStart(2, '0')}-${toSafePathSegment(
     input.formTitle,

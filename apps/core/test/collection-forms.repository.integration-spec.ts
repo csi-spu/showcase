@@ -9,6 +9,8 @@ const INSTRUCTOR_PERSON = '58000000-0000-4000-8000-000000000001';
 const INSTRUCTOR = '58000000-0000-4000-8000-000000000002';
 const STUDENT_PERSON = '58000000-0000-4000-8000-000000000003';
 const STUDENT = '58000000-0000-4000-8000-000000000004';
+const STUDENT_ID = '69000004';
+const STUDENT_ID_HASH = '58'.repeat(32);
 /* A second member exists only so the matrix has an order and a cursor to prove. */
 const PEER_PERSON = '58000000-0000-4000-8000-000000000005';
 const PEER = '58000000-0000-4000-8000-000000000006';
@@ -49,6 +51,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
       insert into private.person_names (person_id, first_name_th, last_name_th)
       values (${INSTRUCTOR_PERSON}, 'ผู้สอน', 'ทดสอบ'), (${STUDENT_PERSON}, 'นักศึกษา', 'ทดสอบ'),
         (${PEER_PERSON}, 'เพื่อนร่วมกลุ่ม', 'ทดสอบ')
+    `;
+    /* The peer has no recorded Student ID, like an Account awaiting re-import. */
+    await database.sql`
+      insert into private.student_auth_identities (account_id, student_id_hash, synthetic_identity, student_id)
+      values (${STUDENT}, ${STUDENT_ID_HASH}, ${`${STUDENT_ID_HASH}@auth.invalid`}, ${STUDENT_ID})
     `;
   });
 
@@ -630,6 +637,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
           rosterName: { firstNameTh: 'นักศึกษา', lastNameTh: 'ทดสอบ' },
           status: 'not_submitted',
           studentAccountId: STUDENT,
+          studentId: STUDENT_ID,
         }),
       ]);
 
@@ -1401,6 +1409,8 @@ describe('PostgresCollectionFormsRepository integration', () => {
       for (const row of page.rows) expect(row.cells).toHaveLength(2);
 
       const peer = page.rows.find((row) => row.studentAccountId === PEER);
+      expect(page.rows.find((row) => row.studentAccountId === STUDENT)?.studentId).toBe(STUDENT_ID);
+      expect(peer?.studentId).toBeNull();
       expect(peer?.cells[0]).toMatchObject({ isLate: false, status: 'not_required' });
       expect(peer?.cells[1]).toMatchObject({ isLate: false, status: 'not_submitted' });
       expect(page.summary).toMatchObject({ notRequired: 1, notSubmitted: 3 });
@@ -1823,6 +1833,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       const claimed = await repository.claimExportForBuilding(LEASE);
       expect(claimed?.id).toBe(job.id);
       const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
+      expect(entry?.studentId).toBe(STUDENT_ID);
       expect(entry?.submissionId).toBe(first.submissionId);
       expect(entry?.submissionId).not.toBe(later.submissionId);
       expect(claimed?.forms[0]?.fields[0]?.label).toBe('สถานประกอบการ');
@@ -2210,6 +2221,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
     await cleanupCollectionData();
     await database.sql.begin(async (transaction) => {
       await transaction`delete from public.account_roles where account_id in (${INSTRUCTOR}, ${STUDENT}, ${PEER})`;
+      await transaction`delete from private.student_auth_identities where account_id = ${STUDENT}`;
       await transaction`delete from private.person_names where person_id in (${INSTRUCTOR_PERSON}, ${STUDENT_PERSON}, ${PEER_PERSON})`;
       await transaction`delete from public.accounts where id in (${INSTRUCTOR}, ${STUDENT}, ${PEER})`;
       await transaction`delete from public.students where person_id in (${STUDENT_PERSON}, ${PEER_PERSON})`;

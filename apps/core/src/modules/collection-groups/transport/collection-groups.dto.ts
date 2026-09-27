@@ -64,7 +64,11 @@ export class CreateRoundWithGroupAndMembersDto extends MemberAccountIdsDto {
   idempotencyKey!: string;
 }
 
-class StudentSelectionQueryDto {
+/*
+ * Sent as a request body: `q` may be a Student ID prefix, which must never
+ * appear in a URL (ADR 0020).
+ */
+class StudentSelectionDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -82,7 +86,7 @@ class StudentSelectionQueryDto {
   groupId?: string;
 }
 
-export class ListStudentsQueryDto extends StudentSelectionQueryDto {
+export class SearchStudentsDto extends StudentSelectionDto {
   @IsOptional()
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{1,64}$/)
@@ -96,7 +100,7 @@ export class ListStudentsQueryDto extends StudentSelectionQueryDto {
   limit?: number;
 }
 
-export class SelectAllStudentsQueryDto extends StudentSelectionQueryDto {
+export class SelectAllStudentsDto extends StudentSelectionDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -104,7 +108,7 @@ export class SelectAllStudentsQueryDto extends StudentSelectionQueryDto {
   selectedCount!: number;
 }
 
-/* Student IDs travel only in this request body, never in a URL or response. */
+/* Student IDs travel only in request bodies, never in a URL. */
 export class ResolveStudentIdsDto {
   @IsArray()
   @ArrayMinSize(1)

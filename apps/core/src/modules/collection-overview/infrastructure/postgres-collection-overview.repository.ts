@@ -71,6 +71,7 @@ interface StudentAttentionRow {
   round_id: string;
   round_name: string;
   student_account_id: string;
+  student_id: string | null;
 }
 
 interface FilterRoundRow {
@@ -253,11 +254,12 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
       select obligation.student_account_id, obligation.status as obligation_status,
         form.id as form_id, form.title as form_title, form.deadline_at,
         form.group_id, form.group_name, form.round_id, form.round_name,
-        person_name.first_name_th, person_name.last_name_th
+        person_name.first_name_th, person_name.last_name_th, identity.student_id
       from scoped_obligations as obligation
       join scoped_forms as form on form.id = obligation.form_id
       join public.accounts as account on account.id = obligation.student_account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
       where obligation.status not in ('passed', 'withdrawn')
         and (
           ${cursor === null}
@@ -312,6 +314,7 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
         roundName: row.round_name,
         status: row.obligation_status,
         studentAccountId: row.student_account_id,
+        studentId: row.student_id,
       })),
     };
   }

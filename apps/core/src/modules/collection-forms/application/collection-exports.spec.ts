@@ -72,15 +72,37 @@ describe('collection export policy', () => {
       expect(toSafePathSegment('.hidden', 'x')).toBe('hidden');
     });
 
-    it('separates two Students who share a display name by snapshot position', () => {
-      const first = toStudentFolderName({ displayName: 'สมชาย ใจดี', position: 0 });
-      const second = toStudentFolderName({ displayName: 'สมชาย ใจดี', position: 1 });
-      expect(first).toBe('001-สมชาย ใจดี');
-      expect(second).toBe('002-สมชาย ใจดี');
-      expect(first).not.toBe(second);
+    it('prefixes a Student folder with the Student ID Instructors recognise', () => {
+      const first = toStudentFolderName({
+        displayName: 'สมชาย ใจดี',
+        position: 0,
+        studentId: '66012345',
+      });
+      const second = toStudentFolderName({
+        displayName: 'สมชาย ใจดี',
+        position: 1,
+        studentId: '66012346',
+      });
+      expect(first).toBe('66012345-สมชาย ใจดี');
+      expect(second).toBe('66012346-สมชาย ใจดี');
     });
 
-    it('builds a document path that carries no Student ID', () => {
+    it('falls back to snapshot position when no Student ID was recorded', () => {
+      const first = toStudentFolderName({
+        displayName: 'สมชาย ใจดี',
+        position: 0,
+        studentId: null,
+      });
+      const second = toStudentFolderName({
+        displayName: 'สมชาย ใจดี',
+        position: 1,
+        studentId: null,
+      });
+      expect(first).toBe('001-สมชาย ใจดี');
+      expect(second).toBe('002-สมชาย ใจดี');
+    });
+
+    it('builds a document path under the Student folder', () => {
       const path = toDocumentPath({
         displayName: 'สมชาย ใจดี',
         fieldId: 'transcript',
@@ -88,10 +110,10 @@ describe('collection export policy', () => {
         formPosition: 2,
         formTitle: 'ใบสมัคร',
         originalFilename: 'เอกสาร.pdf',
+        studentId: '66012345',
         studentPosition: 4,
       });
-      expect(path).toBe('005-สมชาย ใจดี/03-ใบสมัคร/transcript-01-เอกสาร.pdf');
-      expect(path).not.toMatch(/\d{8,}/u);
+      expect(path).toBe('66012345-สมชาย ใจดี/03-ใบสมัคร/transcript-01-เอกสาร.pdf');
     });
 
     it('keeps two files of one field distinct by position', () => {
@@ -101,6 +123,7 @@ describe('collection export policy', () => {
         formPosition: 0,
         formTitle: 'F',
         originalFilename: 'same.pdf',
+        studentId: null,
         studentPosition: 0,
       };
       expect(toDocumentPath({ ...shared, filePosition: 0 })).not.toBe(

@@ -134,10 +134,9 @@ export type CollectionStudentAttentionStatus =
 /**
  * One Student's outstanding obligation.
  *
- * This row carries Roster names so an Instructor can recognise the Student.
- * It deliberately carries no Student ID: Core retains only a keyed hash of it
- * (ADR 0013), so no read path can produce one. See
- * `docs/adr/0018-identify-students-by-roster-name-in-instructor-follow-up.md`.
+ * This row carries Roster names and the Student ID so an Instructor can
+ * recognise the Student (ADR 0020). `studentId` is null until a Roster import
+ * records it.
  */
 export interface CollectionStudentAttentionRow {
   deadlineAt: Date | null;
@@ -152,6 +151,7 @@ export interface CollectionStudentAttentionRow {
   roundName: string;
   status: CollectionStudentAttentionStatus;
   studentAccountId: string;
+  studentId: string | null;
 }
 
 /**

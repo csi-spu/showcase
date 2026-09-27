@@ -67,6 +67,7 @@ describe('PostgresRosterRepository integration', () => {
         syntheticIdentity: SYNTHETIC_IDENTITY,
       }),
     ).resolves.toBe('created');
+    await expect(readStudentId()).resolves.toBe('69000001');
 
     await database.sql`
       delete from private.student_id_search_prefixes
@@ -74,6 +75,7 @@ describe('PostgresRosterRepository integration', () => {
         select id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
       )
     `;
+    await clearStudentId();
 
     const secondBatch = await repository.createBatch({
       ...batchInput(),
@@ -94,6 +96,7 @@ describe('PostgresRosterRepository integration', () => {
         studentIdPrefixHashes: secondClaim[0]!.studentIdPrefixHashes,
       }),
     ).resolves.toBe('unchanged');
+    await expect(readStudentId()).resolves.toBe('69000001');
 
     await expect(repository.getBatch(firstBatch.batchId)).resolves.toMatchObject({
       createdCount: 1,
@@ -258,6 +261,7 @@ describe('PostgresRosterRepository integration', () => {
       syntheticIdentity: SYNTHETIC_IDENTITY,
     });
     const existing = await repository.findExistingStudent(STUDENT_ID_HASH);
+    await clearStudentId();
 
     const conflictBatch = await repository.createBatch({
       ...batchInput(),
@@ -285,6 +289,7 @@ describe('PostgresRosterRepository integration', () => {
         studentIdPrefixHashes: conflictClaim[0]!.studentIdPrefixHashes,
       }),
     ).resolves.toBe('conflict');
+    await expect(readStudentId()).resolves.toBe('69000001');
     const page = await repository.listConflicts({
       afterRowNumber: null,
       batchId: conflictBatch.batchId,
@@ -477,6 +482,27 @@ describe('PostgresRosterRepository integration', () => {
     });
     await expect(repository.getErrorRows(batch.batchId)).resolves.toEqual([]);
   });
+
+  async function readStudentId(): Promise<string | null> {
+    const rows = await database.sql<{ student_id: string | null }[]>`
+      select identity.student_id
+      from private.student_auth_identities as identity
+      join public.accounts as account on account.id = identity.account_id
+      where account.provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+    `;
+    return rows[0]?.student_id ?? null;
+  }
+
+  /** Simulates an Account created before raw Student IDs were retained. */
+  async function clearStudentId(): Promise<void> {
+    await database.sql`
+      update private.student_auth_identities
+      set student_id = null
+      where account_id = (
+        select id from public.accounts where provider_user_id = ${STUDENT_PROVIDER_USER_ID}
+      )
+    `;
+  }
 
   function batchInput(): CreateRosterBatchInput {
     return {

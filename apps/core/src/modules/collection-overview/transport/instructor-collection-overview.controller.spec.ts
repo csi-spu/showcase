@@ -82,6 +82,7 @@ describe('InstructorCollectionOverviewController', () => {
         roundName: 'รอบที่เปิด',
         status: 'not_submitted' as const,
         studentAccountId: STUDENT_ACCOUNT_ID,
+        studentId: '66012345',
       },
     ],
   };
@@ -125,12 +126,8 @@ describe('InstructorCollectionOverviewController', () => {
     expect(result.activeRoundTotals.studentsFullyComplete).toBe(1);
   });
 
-  /*
-   * Core retains only a keyed hash of the Student ID, so no read path can
-   * produce one. The follow-up row identifies a Student by Roster name and
-   * account id instead.
-   */
-  it('returns follow-up rows that carry no Student ID', async () => {
+  /* Instructors recognise Students by Roster name and Student ID (ADR 0020). */
+  it('returns follow-up rows that carry the Student ID', async () => {
     const query = new CollectionStudentAttentionQueryDto();
     query.limit = 20;
 
@@ -150,8 +147,8 @@ describe('InstructorCollectionOverviewController', () => {
       roundName: 'รอบที่เปิด',
       status: 'not_submitted',
       studentAccountId: STUDENT_ACCOUNT_ID,
+      studentId: '66012345',
     });
-    expect(Object.keys(result.rows[0] ?? {})).not.toContain('studentId');
   });
 
   it('rejects an unauthenticated request before reading anything', async () => {
