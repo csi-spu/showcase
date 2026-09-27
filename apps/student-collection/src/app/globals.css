@@ -64,8 +64,72 @@ html {
   scroll-padding-top: calc(var(--app-topbar-height) + 1rem);
 }
 
+/*
+ * One question card on the answer form. The question being answered is marked
+ * by a bar on its leading edge, and a question blocking the submit keeps that
+ * bar in the destructive tone, so the state reads without relying on the
+ * border colour alone. The card clips the bar to its own radius.
+ */
+.form-question {
+  position: relative;
+  overflow: hidden;
+}
+
+.form-question::before {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  background: var(--primary);
+  content: '';
+  transform: scaleY(0);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.form-question:focus-within::before {
+  transform: scaleY(1);
+}
+
+.form-question[data-invalid='true']::before {
+  background: var(--destructive);
+  transform: scaleY(1);
+}
+
+/*
+ * A text answer drawn as a single line. On focus a 2px line grows from the
+ * centre, which is the control's focus indicator; an invalid answer keeps the
+ * full line in the destructive tone.
+ */
+.form-line-control {
+  background-image: linear-gradient(var(--primary), var(--primary));
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-size: 0% 2px;
+  transition:
+    background-size 250ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 150ms ease;
+}
+
+.form-line-control:hover:not(:disabled) {
+  border-bottom-color: var(--foreground);
+}
+
+.form-line-control:focus {
+  background-size: 100% 2px;
+}
+
+.form-line-control[aria-invalid='true'] {
+  background-image: linear-gradient(var(--destructive), var(--destructive));
+  background-size: 100% 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .form-question::before,
+  .form-line-control {
+    transition: none;
   }
 }

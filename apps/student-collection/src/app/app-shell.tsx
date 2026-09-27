@@ -1,13 +1,13 @@
-import { buttonVariants } from '@showcase/ui/button';
-import { cn } from '@showcase/ui/cn';
-import { BellIcon, UserRoundIcon } from 'lucide-react';
+import { UserRoundIcon } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { GridPattern } from '@/components/ui/grid-pattern';
-import { StatusBadge } from '@/components/ui/status-badge';
+import type { StudentCollectionNotificationFeed } from '@/lib/student-collection-forms-contract';
 import { HeaderLogoutButton } from './header-logout-button';
+import { NotificationsMenu } from './notifications-menu';
+import { NotificationsPanel } from './notifications-panel';
 import { logoutAction } from './student-collection-auth.actions';
 
 /*
@@ -17,18 +17,24 @@ import { logoutAction } from './student-collection-auth.actions';
  */
 export async function AppShell({
   children,
+  notifications,
   studentName,
-  unreadNotificationCount,
 }: {
   children: ReactNode;
+  /**
+   * The Student's notification feed, opened from the header bell. Pages that
+   * do not read the feed omit it, and the bell is left out with it.
+   */
+  notifications?: {
+    feed: StudentCollectionNotificationFeed;
+    markReadAction: () => Promise<void>;
+  };
   /**
    * The signed-in Student's Roster name, for the header chip. Never the
    * Student ID: Core keeps only a keyed hash of it, so no read path can
    * return one to show here.
    */
   studentName?: string;
-  /** Badges the notification bell. Omitted pages show the bell without a count. */
-  unreadNotificationCount?: number;
 }) {
   const t = await getTranslations('Nav');
 
@@ -56,22 +62,14 @@ export async function AppShell({
             />
           </Link>
           <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
-            {unreadNotificationCount === undefined ? null : (
-              <Link
-                aria-label={t('notifications')}
-                className={cn(buttonVariants({ size: 'icon-sm', variant: 'ghost' }), 'relative')}
-                href="/#notifications-heading"
-              >
-                <BellIcon aria-hidden="true" />
-                {unreadNotificationCount === 0 ? null : (
-                  <StatusBadge
-                    className="absolute -top-1 -right-1 min-w-4.5 justify-center px-1 py-0"
-                    tone="destructive"
-                  >
-                    {unreadNotificationCount}
-                  </StatusBadge>
-                )}
-              </Link>
+            {notifications === undefined ? null : (
+              <NotificationsMenu unreadCount={notifications.feed.unreadCount}>
+                <NotificationsPanel
+                  markReadAction={notifications.markReadAction}
+                  notifications={notifications.feed.notifications}
+                  unreadCount={notifications.feed.unreadCount}
+                />
+              </NotificationsMenu>
             )}
             {studentName === undefined ? null : (
               <span className="hidden min-w-0 items-center gap-2 border-l border-border/70 pl-2 sm:flex sm:pl-3">
