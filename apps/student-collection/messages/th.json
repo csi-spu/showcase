@@ -72,11 +72,8 @@
     "statTodo": "ต้องทำ",
     "statAwaitingChecking": "รอตรวจ",
     "statPassed": "ผ่านแล้ว",
-    "statUnreadNotifications": "แจ้งเตือนใหม่",
     "todoHeading": "รายการที่ต้องดำเนินการ",
-    "todoDescription": "รายการที่ยังไม่ได้ส่ง หรือผู้สอนขอให้แก้ไข",
-    "todoAlertTitle": "มี {count} รายการที่ต้องดำเนินการ",
-    "todoAlertDescription": "กรอกและส่งให้ครบก่อนถึงกำหนด เพื่อไม่ให้พลาดการตรวจ",
+    "todoDescription": "รายการที่ยังไม่ได้ส่ง หรือผู้สอนขอให้แก้ไข ส่งให้ครบก่อนถึงกำหนด",
     "startFilling": "เริ่มกรอกแบบฟอร์ม",
     "doneHeading": "ส่งแล้ว",
     "doneDescription": "รายการที่ส่งไปแล้ว รอตรวจหรือผ่านเรียบร้อย",
@@ -91,7 +88,8 @@
   },
   "Nav": {
     "brand": "แบบฟอร์มนักศึกษา",
-    "notifications": "การแจ้งเตือน"
+    "notifications": "การแจ้งเตือน",
+    "notificationsUnread": "การแจ้งเตือน ยังไม่ได้อ่าน {count} รายการ"
   },
   "Forms": {
     "rosterName": "ชื่อ-นามสกุลตามรายชื่อ",
@@ -218,7 +216,7 @@
     "empty": "ยังไม่มีการแจ้งเตือน",
     "unread": "ยังไม่ได้อ่าน {count} รายการ",
     "unreadItem": "ยังไม่ได้อ่าน",
-    "markAllRead": "ทำเครื่องหมายว่าอ่านแล้ว",
+    "markAllRead": "อ่านแล้วทั้งหมด",
     "kind": {
       "obligation_assigned": "มีเอกสารที่ต้องส่ง",
       "changes_requested": "ขอให้แก้ไข",

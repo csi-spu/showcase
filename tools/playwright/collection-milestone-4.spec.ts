@@ -36,8 +36,9 @@ test.describe('Collection Milestone 4', () => {
       /*
        * The feed starts empty. The fixture inserts the obligation as a row
        * rather than through the assignment use case, so nothing has announced
-       * itself yet, so the always-present panel shows its empty state.
+       * itself yet, so the header bell's dropdown shows its empty state.
        */
+      await openNotifications(studentPage);
       await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
       await expect(studentPage.getByText('ยังไม่มีการแจ้งเตือน', { exact: true })).toBeVisible();
 
@@ -99,6 +100,7 @@ test.describe('Collection Milestone 4', () => {
          * journey can actually observe end to end.
          */
         await studentPage.goto(collectionScenario.studentCollectionUrl);
+        await openNotifications(studentPage);
         await expect(studentPage.getByRole('heading', { name: 'การแจ้งเตือน' })).toBeVisible();
         await expect(studentPage.getByText('ยังไม่มีการแจ้งเตือน', { exact: true })).toBeHidden();
         await expect(studentPage.getByText('ผ่านการตรวจแล้ว').first()).toBeVisible();
@@ -199,4 +201,10 @@ async function loginInstructor(page: Page, scenario: CollectionLifecycleScenario
   });
   await page.context().setExtraHTTPHeaders({});
   await scenario.protectBrowserContext(page.context());
+}
+
+/* The feed lives in the header bell's dropdown, so it is opened before it is read. */
+async function openNotifications(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /^การแจ้งเตือน/u }).click();
+  await expect(page.getByRole('dialog', { name: /การแจ้งเตือน/u })).toBeVisible();
 }
