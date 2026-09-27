@@ -50,6 +50,13 @@ function normalize(value: string): string {
   return value.normalize('NFC').toLocaleLowerCase('th').replace(/\s+/gu, ' ').trim();
 }
 
+/* A Student ID matches by prefix, as in Core's Student search (ADR 0020). */
+function matchesSearch(entry: InstructorReviewEntry, search: string): boolean {
+  return (
+    normalize(rosterName(entry)).includes(search) || (entry.studentId?.startsWith(search) ?? false)
+  );
+}
+
 function submittedTime(entry: InstructorReviewEntry): number | null {
   return entry.latestSubmission === null ? null : Date.parse(entry.latestSubmission.submittedAt);
 }
@@ -101,9 +108,7 @@ export function viewReviewQueue(
 ): ReviewQueueView {
   const search = normalize(query.search);
   const matching =
-    search === ''
-      ? [...entries]
-      : entries.filter((entry) => normalize(rosterName(entry)).includes(search));
+    search === '' ? [...entries] : entries.filter((entry) => matchesSearch(entry, search));
 
   const statusCounts: Record<ReviewStatusFilter, number> = {
     all: matching.length,
@@ -130,9 +135,4 @@ export function viewReviewQueue(
     statusCounts,
     total: filtered.length,
   };
-}
-
-/* Digits alone cannot be a Roster name; it is a Student ID, which is never searchable here. */
-export function looksLikeStudentId(search: string): boolean {
-  return /^\d{4,}$/u.test(search.trim());
 }

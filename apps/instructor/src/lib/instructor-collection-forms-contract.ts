@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { studentIdSchema } from './member-selection-contract';
 
 /*
  * The shape of the collection-forms contract.
@@ -127,6 +128,7 @@ export const reviewEntrySchema = z
     rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
     status: obligationStatusSchema,
     studentAccountId: z.uuid(),
+    studentId: studentIdSchema,
   })
   .strict();
 
@@ -245,6 +247,7 @@ export const matrixRowSchema = z
     isWithdrawn: z.boolean(),
     rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
     studentAccountId: z.uuid(),
+    studentId: studentIdSchema,
   })
   .strict();
 

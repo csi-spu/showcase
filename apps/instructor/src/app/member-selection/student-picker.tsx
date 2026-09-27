@@ -53,8 +53,9 @@ type SelectAllState =
 
 /*
  * The unfiltered roster of active Student Accounts, narrowed by Entry Year and
- * partial Roster name. Rows that cannot be selected stay visible with their
- * status so the Instructor sees why.
+ * partial Roster name or Student ID prefix. The search text stays in component
+ * state and a request body, never the URL. Rows that cannot be selected stay
+ * visible with their status so the Instructor sees why.
  */
 export function StudentPicker({
   dispatch,
@@ -289,6 +290,7 @@ export function StudentPicker({
             <TableHead className="w-12">
               <span className="sr-only">{t('columnSelect')}</span>
             </TableHead>
+            <TableHead>{t('columnStudentId')}</TableHead>
             <TableHead>{t('columnName')}</TableHead>
             <TableHead>{t('columnEntryYear')}</TableHead>
             <TableHead>{t('columnStatus')}</TableHead>
@@ -300,6 +302,9 @@ export function StudentPicker({
                 <TableRow aria-hidden="true" className="hover:bg-transparent" key={index}>
                   <TableCell>
                     <span className="block size-4 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
+                  </TableCell>
+                  <TableCell>
+                    <span className="block h-4 w-20 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
                   </TableCell>
                   <TableCell>
                     <span className="block h-4 w-40 animate-pulse rounded-sm bg-muted motion-reduce:animate-none" />
@@ -336,6 +341,9 @@ export function StudentPicker({
                     onChange={() => dispatch({ student, type: 'toggled' })}
                     type="checkbox"
                   />
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {student.studentId ?? t('studentIdMissing')}
                 </TableCell>
                 <TableCell className="font-medium">{name}</TableCell>
                 <TableCell>{student.entryYear}</TableCell>

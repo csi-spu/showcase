@@ -32,6 +32,7 @@ function entry(index: number, status: InstructorReviewEntry['status']): Instruct
     rosterName: { firstNameTh: `ชื่อ${String(index).padStart(2, '0')}`, lastNameTh: 'สกุล' },
     status,
     studentAccountId: `40000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    studentId: String(66000000 + index),
   };
 }
 
@@ -90,14 +91,17 @@ describe('ReviewQueue', () => {
     expect(screen.getByText('ชื่อ21 สกุล')).toBeTruthy();
   });
 
-  it('explains that a Student ID cannot be searched', async () => {
+  it('shows each Student ID and finds a Student by it', async () => {
     const user = userEvent.setup();
     renderQueue();
+    expect(screen.getByRole('columnheader', { name: 'review.columnStudentId' })).toBeTruthy();
 
-    await user.type(screen.getByLabelText('review.searchLabel'), '65012345');
+    await user.type(screen.getByLabelText('review.searchLabel'), '66000012');
 
-    expect(screen.getByText('review.studentIdSearchHint')).toBeTruthy();
-    expect(screen.getByText('review.noMatch')).toBeTruthy();
+    const [row] = bodyRows();
+    expect(bodyRows()).toHaveLength(1);
+    expect(within(row!).getByText('66000012')).toBeTruthy();
+    expect(within(row!).getAllByText('ชื่อ12 สกุล')).not.toHaveLength(0);
   });
 
   it('hides the history action when it is switched off in the display menu', async () => {

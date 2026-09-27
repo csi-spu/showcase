@@ -1,6 +1,7 @@
 import 'server-only';
 import { CoreClient } from '@showcase/core-client';
 import { z } from 'zod';
+import { studentIdSchema } from './member-selection-contract';
 
 /*
  * One row of the "needs attention" list: a form that still has work waiting on
@@ -85,11 +86,8 @@ const overviewSchema = z
   .strict();
 
 /**
- * One Student's outstanding obligation.
- *
- * Deliberately no Student ID. Core keeps only a keyed hash of it (ADR 0013),
- * so no read path can produce one; the Roster name identifies the Student
- * instead. See ADR 0018.
+ * One Student's outstanding obligation, identified by Roster name and Student
+ * ID (ADR 0020). The Student ID is null until a Roster import records it.
  */
 const studentAttentionRowSchema = z
   .object({
@@ -107,6 +105,7 @@ const studentAttentionRowSchema = z
     roundName: z.string().min(1),
     status: z.enum(['not_submitted', 'awaiting_checking', 'changes_required']),
     studentAccountId: z.uuid(),
+    studentId: studentIdSchema,
   })
   .strict();
 

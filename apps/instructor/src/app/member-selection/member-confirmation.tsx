@@ -52,6 +52,9 @@ export function MemberConfirmation({
               animationDelay: `${Math.min(index, MAX_ITEM_STAGGER_STEPS) * ITEM_STAGGER_MILLISECONDS}ms`,
             }}
           >
+            <span className="text-muted-foreground tabular-nums">
+              {student.studentId ?? t('studentIdMissing')}
+            </span>{' '}
             {student.firstNameTh} {student.lastNameTh}
             <span className="text-muted-foreground"> · {student.entryYear}</span>
           </li>
@@ -74,6 +77,7 @@ export function IneligibleNotice({ students }: { students: SelectableStudent[] }
         <ul className="list-disc pl-5">
           {students.map((student) => (
             <li key={student.accountId}>
+              <span className="tabular-nums">{student.studentId ?? t('studentIdMissing')}</span>{' '}
               {student.firstNameTh} {student.lastNameTh}
             </li>
           ))}

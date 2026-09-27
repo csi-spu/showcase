@@ -178,6 +178,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
             <Table label={t('members.currentTitle')}>
               <TableHeader>
                 <TableRow>
+                  <TableHead>{t('members.columnStudentId')}</TableHead>
                   <TableHead>{t('members.columnName')}</TableHead>
                   <TableHead className="hidden sm:table-cell">
                     {t('members.columnEntryYear')}
@@ -217,6 +218,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
             <Table label={t('members.withdrawnTitle')}>
               <TableHeader>
                 <TableRow>
+                  <TableHead>{t('members.columnStudentId')}</TableHead>
                   <TableHead>{t('members.columnName')}</TableHead>
                   <TableHead>{t('members.columnReason')}</TableHead>
                   <TableHead className="text-right">{t('members.columnActions')}</TableHead>
@@ -225,6 +227,9 @@ export default async function GroupPage({ params }: GroupPageProps) {
               <TableBody>
                 {withdrawnMembers.map((member) => (
                   <TableRow key={member.studentAccountId}>
+                    <TableCell className="tabular-nums text-muted-foreground">
+                      {member.studentId ?? t('members.studentIdMissing')}
+                    </TableCell>
                     <TableCell>
                       <span className="flex items-center gap-2.5">
                         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -268,6 +273,9 @@ function MemberRow({
 }) {
   return (
     <TableRow>
+      <TableCell className="tabular-nums">
+        {member.studentId ?? t('members.studentIdMissing')}
+      </TableCell>
       <TableCell>
         <span className="flex items-center gap-2.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-semibold text-accent-foreground">

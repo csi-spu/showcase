@@ -169,6 +169,7 @@ export function ReviewQueue({
           <Table containerClassName={ENTRANCE_CLASS} label={t('review.pageTitle')}>
             <TableHeader>
               <TableRow>
+                <TableHead>{t('review.columnStudentId')}</TableHead>
                 <TableHead>{t('review.columnName')}</TableHead>
                 <TableHead>{t('review.columnStatus')}</TableHead>
                 {display.submittedAt ? (
@@ -246,10 +247,13 @@ function ReviewRow({
           queue can be scanned by colour; the badge still states it in words. */}
       <TableCell
         className={cn(
-          "relative font-medium before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:content-['']",
+          "relative text-muted-foreground tabular-nums before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:content-['']",
           STATUS_ACCENT_CLASSES[entry.status],
         )}
       >
+        {entry.studentId ?? t('review.studentIdMissing')}
+      </TableCell>
+      <TableCell className="font-medium">
         <span className="transition-colors group-hover/row:text-primary motion-reduce:transition-none">
           {name}
         </span>
