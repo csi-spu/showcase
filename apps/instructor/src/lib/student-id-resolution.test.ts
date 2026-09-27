@@ -13,6 +13,7 @@ function student(
     firstNameTh: `ชื่อ${index}`,
     lastNameTh: `สกุล${index}`,
     status,
+    studentId: String(69000000 + index),
   };
 }
 

@@ -17,6 +17,7 @@ const row = {
   isWithdrawn: false,
   rosterName: { firstNameTh: 'นักศึกษา', lastNameTh: 'ทดสอบ' },
   studentAccountId: '58000000-0000-4000-8000-000000000002',
+  studentId: '66000001',
 };
 
 const page = {
@@ -45,6 +46,17 @@ const page = {
 describe('matrixPageSchema', () => {
   it('accepts a page as Core sends it', () => {
     expect(matrixPageSchema.parse(page)).toMatchObject({ totalMembers: 1 });
+  });
+
+  it('accepts a member whose Student ID is not yet recorded', () => {
+    const parsed = matrixPageSchema.parse({ ...page, rows: [{ ...row, studentId: null }] });
+    expect(parsed.rows[0]?.studentId).toBeNull();
+  });
+
+  it('rejects a Student ID that is not eight digits', () => {
+    expect(() =>
+      matrixPageSchema.parse({ ...page, rows: [{ ...row, studentId: '6600' }] }),
+    ).toThrow();
   });
 
   it('accepts the matrix-only not_required cell state', () => {

@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 /*
  * The shape of member selection (ADR 0019), free of `server-only` so the
- * picker can draw rows and statuses. Only Roster name, Entry Year, and Account
- * ID arrive from Core; Student ID never does.
+ * picker can draw rows and statuses. Core sends Roster name, Entry Year,
+ * Account ID, and the Student ID (ADR 0020), which is null until a Roster
+ * import records it. A Student ID never enters a URL.
  */
 
 /** One create or add request, and one "select all matching" snapshot, stays within this bound. */
@@ -12,6 +13,11 @@ export const MAX_SELECTED_MEMBERS = 2_000;
 export const RESOLVE_CHUNK_SIZE = 500;
 export const STUDENT_PAGE_SIZE = 50;
 
+export const studentIdSchema = z
+  .string()
+  .regex(/^[0-9]{8}$/)
+  .nullable();
+
 export const selectableStudentSchema = z
   .object({
     accountId: z.uuid(),
@@ -19,6 +25,7 @@ export const selectableStudentSchema = z
     firstNameTh: z.string().min(1),
     lastNameTh: z.string().min(1),
     status: z.enum(['current_member', 'no_access', 'selectable', 'withdrawn_member']),
+    studentId: studentIdSchema,
   })
   .strict();
 

@@ -22,6 +22,10 @@ const STUDENT_ONE_ID_HASH = '54'.repeat(32);
 const STUDENT_TWO_ID_HASH = '55'.repeat(32);
 const EXPIRED_STUDENT_ID_HASH = '57'.repeat(32);
 const UNKNOWN_ID_HASH = '56'.repeat(32);
+// Student One has a recorded raw Student ID; Student Two predates the backfill.
+const STUDENT_ONE_ID = '54000001';
+const SHARED_PREFIX_HASH = '5a'.repeat(32);
+const STUDENT_ONE_ONLY_PREFIX_HASH = '5b'.repeat(32);
 const NOW = new Date('2026-09-20T06:00:00.000Z');
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
@@ -88,11 +92,20 @@ describe('PostgresCollectionGroupsRepository integration', () => {
           (${EARLIER_STUDENT_PERSON_ID}, ${`${NAME_TOKEN}ง`}, 'สี่')
       `;
       await transaction`
-        insert into private.student_auth_identities (account_id, student_id_hash, synthetic_identity)
-        values
-          (${STUDENT_ONE_ACCOUNT_ID}, ${STUDENT_ONE_ID_HASH}, ${`${STUDENT_ONE_ID_HASH}@auth.invalid`}),
-          (${STUDENT_TWO_ACCOUNT_ID}, ${STUDENT_TWO_ID_HASH}, ${`${STUDENT_TWO_ID_HASH}@auth.invalid`}),
-          (${EXPIRED_STUDENT_ACCOUNT_ID}, ${EXPIRED_STUDENT_ID_HASH}, ${`${EXPIRED_STUDENT_ID_HASH}@auth.invalid`})
+        insert into private.student_auth_identities (
+          account_id, student_id_hash, synthetic_identity, student_id
+        ) values
+          (${STUDENT_ONE_ACCOUNT_ID}, ${STUDENT_ONE_ID_HASH}, ${`${STUDENT_ONE_ID_HASH}@auth.invalid`}, ${STUDENT_ONE_ID}),
+          (${STUDENT_TWO_ACCOUNT_ID}, ${STUDENT_TWO_ID_HASH}, ${`${STUDENT_TWO_ID_HASH}@auth.invalid`}, null),
+          (${EXPIRED_STUDENT_ACCOUNT_ID}, ${EXPIRED_STUDENT_ID_HASH}, ${`${EXPIRED_STUDENT_ID_HASH}@auth.invalid`}, null)
+      `;
+      await transaction`
+        insert into private.student_id_search_prefixes (
+          account_id, prefix_length, prefix_hash, created_at
+        ) values
+          (${STUDENT_ONE_ACCOUNT_ID}, 2, ${SHARED_PREFIX_HASH}, ${NOW}),
+          (${STUDENT_TWO_ACCOUNT_ID}, 2, ${SHARED_PREFIX_HASH}, ${NOW}),
+          (${STUDENT_ONE_ACCOUNT_ID}, 7, ${STUDENT_ONE_ONLY_PREFIX_HASH}, ${NOW})
       `;
       await transaction`
         update public.academic_settings set current_academic_year = 2569 where singleton = true
@@ -110,7 +123,11 @@ describe('PostgresCollectionGroupsRepository integration', () => {
     await database.onApplicationShutdown();
   });
 
-  const NO_FILTER = { entryYear: null, groupId: null, query: NAME_TOKEN };
+  const NO_FILTER = {
+    entryYear: null,
+    groupId: null,
+    search: { kind: 'name' as const, name: NAME_TOKEN },
+  };
 
   it('lists active Students by Entry Year, name, and Account with a resumable keyset', async () => {
     const firstPage = await repository.listStudents({
@@ -129,6 +146,7 @@ describe('PostgresCollectionGroupsRepository integration', () => {
       firstNameTh: `${NAME_TOKEN}ค`,
       lastNameTh: 'สาม',
       status: 'no_access',
+      studentId: null,
     });
 
     const secondPage = await repository.listStudents({
@@ -154,7 +172,7 @@ describe('PostgresCollectionGroupsRepository integration', () => {
         ...NO_FILTER,
         afterAccountId: null,
         limit: 50,
-        query: `${NAME_TOKEN}ข ส`,
+        search: { kind: 'name', name: `${NAME_TOKEN}ข ส` },
       }),
     ).resolves.toEqual([expect.objectContaining({ accountId: STUDENT_TWO_ACCOUNT_ID })]);
     await expect(
@@ -162,9 +180,58 @@ describe('PostgresCollectionGroupsRepository integration', () => {
         ...NO_FILTER,
         afterAccountId: null,
         limit: 50,
-        query: `${NAME_TOKEN}%`,
+        search: { kind: 'name', name: `${NAME_TOKEN}%` },
       }),
     ).resolves.toEqual([]);
+  });
+
+  it('searches by Student ID prefix hash, including Accounts without a recorded raw value', async () => {
+    const prefixMatches = await repository.listStudents({
+      ...NO_FILTER,
+      afterAccountId: null,
+      limit: 50,
+      search: { kind: 'student_id_prefix', prefixHash: SHARED_PREFIX_HASH, prefixLength: 2 },
+    });
+    expect(prefixMatches.map((student) => [student.accountId, student.studentId])).toEqual([
+      [STUDENT_ONE_ACCOUNT_ID, STUDENT_ONE_ID],
+      [STUDENT_TWO_ACCOUNT_ID, null],
+    ]);
+    // The same hash at a different length is a different prefix.
+    await expect(
+      repository.listStudents({
+        ...NO_FILTER,
+        afterAccountId: null,
+        limit: 50,
+        search: { kind: 'student_id_prefix', prefixHash: SHARED_PREFIX_HASH, prefixLength: 7 },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.listStudents({
+        ...NO_FILTER,
+        afterAccountId: null,
+        limit: 50,
+        search: {
+          kind: 'student_id_prefix',
+          prefixHash: STUDENT_ONE_ONLY_PREFIX_HASH,
+          prefixLength: 7,
+        },
+      }),
+    ).resolves.toEqual([expect.objectContaining({ accountId: STUDENT_ONE_ACCOUNT_ID })]);
+    // Eight digits are a full Student ID, matched by its own hash.
+    await expect(
+      repository.listStudents({
+        ...NO_FILTER,
+        afterAccountId: null,
+        limit: 50,
+        search: { kind: 'student_id_prefix', prefixHash: STUDENT_TWO_ID_HASH, prefixLength: 8 },
+      }),
+    ).resolves.toEqual([expect.objectContaining({ accountId: STUDENT_TWO_ACCOUNT_ID })]);
+    await expect(
+      repository.countSelectableStudents({
+        ...NO_FILTER,
+        search: { kind: 'student_id_prefix', prefixHash: SHARED_PREFIX_HASH, prefixLength: 2 },
+      }),
+    ).resolves.toBe(2);
   });
 
   it('lists Entry Years that have Students and reads the Current Academic Year', async () => {
@@ -192,7 +259,10 @@ describe('PostgresCollectionGroupsRepository integration', () => {
     expect([...resolved.keys()].sort()).toEqual(
       [EXPIRED_STUDENT_ID_HASH, STUDENT_ONE_ID_HASH].sort(),
     );
-    expect(resolved.get(STUDENT_ONE_ID_HASH)).toMatchObject({ status: 'selectable' });
+    expect(resolved.get(STUDENT_ONE_ID_HASH)).toMatchObject({
+      status: 'selectable',
+      studentId: STUDENT_ONE_ID,
+    });
     expect(resolved.get(EXPIRED_STUDENT_ID_HASH)).toMatchObject({ status: 'no_access' });
   });
 
@@ -221,8 +291,9 @@ describe('PostgresCollectionGroupsRepository integration', () => {
           membershipSource: 'instructor_selection',
           status: 'current',
           studentAccountId: STUDENT_ONE_ACCOUNT_ID,
+          studentId: STUDENT_ONE_ID,
         }),
-        expect.objectContaining({ studentAccountId: STUDENT_TWO_ACCOUNT_ID }),
+        expect.objectContaining({ studentAccountId: STUDENT_TWO_ACCOUNT_ID, studentId: null }),
       ]),
     );
 
@@ -478,7 +549,11 @@ describe('PostgresCollectionGroupsRepository integration', () => {
       studentAccountId: STUDENT_ONE_ACCOUNT_ID,
     });
     expect(withdrawn).toMatchObject({
-      member: { status: 'withdrawn', withdrawalReason: 'ลาออกจากสถานศึกษา' },
+      member: {
+        status: 'withdrawn',
+        studentId: STUDENT_ONE_ID,
+        withdrawalReason: 'ลาออกจากสถานศึกษา',
+      },
       outcome: 'withdrawn',
     });
 

@@ -20,6 +20,7 @@ function student(index: number): SelectableStudent {
     firstNameTh: `ชื่อ${index}`,
     lastNameTh: `สกุล${index}`,
     status: 'selectable',
+    studentId: String(66000000 + index),
   };
 }
 
@@ -81,6 +82,7 @@ describe('MemberSelection', () => {
     await user.click(screen.getByRole('button', { name: 'review' }));
     const list = screen.getByRole('list', { name: 'confirmListLabel' });
     expect(within(list).getByText(/ชื่อ3 สกุล3/)).toBeDefined();
+    expect(within(list).getByText('66000003')).toBeDefined();
     expect(screen.getByText('confirmTotal 1')).toBeDefined();
 
     await user.click(screen.getByRole('button', { name: 'createSubmit' }));
@@ -88,6 +90,30 @@ describe('MemberSelection', () => {
     expect(submit.mock.calls[0]?.[0].get('memberAccountIds')).toBe(
       JSON.stringify([student(3).accountId]),
     );
+  });
+
+  it('lists each Student ID beside the name, marking one not yet recorded', async () => {
+    render(
+      <MemberSelection
+        groupId={null}
+        reads={reads({
+          listStudents: async () => ({
+            hasCurrentAcademicYear: true,
+            nextCursor: null,
+            ok: true,
+            students: [student(1), { ...student(2), studentId: null }],
+          }),
+        })}
+        submit={vi.fn()}
+        submitLabel="createSubmit"
+      />,
+    );
+
+    expect(await screen.findByRole('columnheader', { name: 'columnStudentId' })).toBeDefined();
+    const row = screen.getByText('66000001').closest('tr');
+    expect(within(row!).getByText('ชื่อ1 สกุล1')).toBeDefined();
+    const unrecorded = screen.getByText('ชื่อ2 สกุล2').closest('tr');
+    expect(within(unrecorded!).getByText('studentIdMissing')).toBeDefined();
   });
 
   it('imports a CSV dropped on the import area', async () => {

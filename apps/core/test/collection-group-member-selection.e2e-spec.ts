@@ -24,7 +24,8 @@ const NOW = new Date('2026-09-20T06:00:00.000Z');
  *
  * The real service runs behind a stubbed repository, so these assertions cover
  * what reaches the edge: who is let through, what a malformed request does, and
- * that a Student ID sent for resolution never comes back in any response.
+ * that a Student ID reaches Instructors only in bodies, never in a URL or
+ * cursor (ADR 0020).
  */
 describe('collection group member selection (e2e)', () => {
   let app: INestApplication<App>;
@@ -44,6 +45,7 @@ describe('collection group member selection (e2e)', () => {
     firstNameTh: 'สมชาย',
     lastNameTh: 'ใจดี',
     status: 'selectable' as const,
+    studentId: STUDENT_ID,
   };
 
   const repository = {
@@ -86,8 +88,9 @@ describe('collection group member selection (e2e)', () => {
   describe('access', () => {
     it('refuses a request without the Instructor BFF secret', async () => {
       await request(app.getHttpServer())
-        .get('/v1/internal/instructor/students')
+        .post('/v1/internal/instructor/students/search')
         .set('Authorization', 'Bearer opaque-session')
+        .send({})
         .expect(403);
       expect(repository.listStudents).not.toHaveBeenCalled();
     });
@@ -158,15 +161,24 @@ describe('collection group member selection (e2e)', () => {
       expect(repository.findStudentsByIdHashes).not.toHaveBeenCalled();
     });
 
-    it('rejects an unknown query parameter and a page larger than 50', async () => {
-      await instructorRequest('get', 'students?studentId=65001234').expect(400);
-      await instructorRequest('get', 'students?limit=51').expect(400);
+    it('rejects an unknown body field and a page larger than 50', async () => {
+      await instructorRequest('post', 'students/search')
+        .send({ studentId: STUDENT_ID })
+        .expect(400);
+      await instructorRequest('post', 'students/search').send({ limit: 51 }).expect(400);
       expect(repository.listStudents).not.toHaveBeenCalled();
+    });
+
+    it('offers no URL form of the student search, so a Student ID prefix never enters a URL', async () => {
+      await instructorRequest('get', 'students?q=6500').expect(404);
+      await instructorRequest('get', 'students/select-all?q=6500&selectedCount=0').expect(404);
+      expect(repository.listStudents).not.toHaveBeenCalled();
+      expect(repository.listSelectableStudentSnapshot).not.toHaveBeenCalled();
     });
   });
 
-  describe('Student ID privacy', () => {
-    it('resolves Student IDs by position without echoing any of them', async () => {
+  describe('Student ID handling', () => {
+    it('resolves Student IDs by position, looking them up by keyed hash only', async () => {
       repository.findStudentsByIdHashes.mockImplementation(
         ({ studentIdHashes }: { studentIdHashes: string[] }) =>
           Promise.resolve(new Map([[studentIdHashes[0]!, selectableStudent]])),
@@ -183,7 +195,6 @@ describe('collection group member selection (e2e)', () => {
           { outcome: 'not_found', position: 1 },
         ],
       });
-      expect(response.text).not.toContain(STUDENT_ID);
       expect(response.text).not.toContain(UNKNOWN_STUDENT_ID);
       const [[{ studentIdHashes }]] = repository.findStudentsByIdHashes.mock.calls as [
         [{ studentIdHashes: string[] }],
@@ -197,21 +208,34 @@ describe('collection group member selection (e2e)', () => {
         { ...selectableStudent, accountId: OTHER_STUDENT_ACCOUNT },
       ]);
 
-      const response = await instructorRequest(
-        'get',
-        'students?limit=1&entryYear=2569&q=สม',
-      ).expect(200);
+      const response = await instructorRequest('post', 'students/search')
+        .send({ entryYear: 2569, limit: 1, q: 'สม' })
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
 
       const body = response.body as { nextCursor: string; students: unknown[] };
-      expect(body.students).toHaveLength(1);
+      expect(body.students).toEqual([selectableStudent]);
       expect(Buffer.from(body.nextCursor, 'base64url').toString()).toBe(STUDENT_ACCOUNT);
       expect(repository.listStudents).toHaveBeenCalledWith({
         afterAccountId: null,
         entryYear: 2569,
         groupId: null,
         limit: 1,
-        query: 'สม',
+        search: { kind: 'name', name: 'สม' },
       });
+    });
+
+    it('searches a Student ID prefix by keyed hash and returns the Student ID', async () => {
+      const response = await instructorRequest('post', 'students/search')
+        .send({ q: '6500' })
+        .expect(200);
+
+      expect(response.body).toMatchObject({ students: [{ studentId: STUDENT_ID }] });
+      const [[{ search }]] = repository.listStudents.mock.calls as [
+        [{ search: { kind: string; prefixHash: string; prefixLength: number } }],
+      ];
+      expect(search).toMatchObject({ kind: 'student_id_prefix', prefixLength: 4 });
+      expect(search.prefixHash).toMatch(/^[0-9a-f]{64}$/u);
     });
   });
 
@@ -289,7 +313,8 @@ describe('collection group member selection (e2e)', () => {
         { ...selectableStudent, accountId: OTHER_STUDENT_ACCOUNT },
       ]);
       repository.countSelectableStudents.mockResolvedValueOnce(2_400);
-      await instructorRequest('get', 'students/select-all?selectedCount=1999')
+      await instructorRequest('post', 'students/select-all')
+        .send({ selectedCount: 1999 })
         .expect(422)
         .expect({ error: { code: 'SELECTION_LIMIT_EXCEEDED', details: { matchingCount: 2_400 } } });
     });

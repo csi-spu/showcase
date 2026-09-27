@@ -80,8 +80,8 @@ export class InstructorCollectionOverviewController {
   /**
    * The per-Student follow-up table.
    *
-   * Rows carry Roster names so an Instructor can recognise a Student. They
-   * carry no Student ID, and neither does the cursor.
+   * Rows carry Roster names and the Student ID so an Instructor can recognise
+   * a Student (ADR 0020). The cursor never carries a Student ID.
    */
   @Get('students/attention')
   @Header('Cache-Control', 'no-store')
@@ -113,6 +113,7 @@ export class InstructorCollectionOverviewController {
         roundName: row.roundName,
         status: row.status,
         studentAccountId: row.studentAccountId,
+        studentId: row.studentId,
       })),
     };
   }

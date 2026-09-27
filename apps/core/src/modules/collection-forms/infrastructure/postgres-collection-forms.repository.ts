@@ -61,6 +61,7 @@ interface ExportEntryRow {
   position: number;
   student_account_id: string;
   student_display_name: string;
+  student_id: string | null;
   submission_id: string | null;
   submission_fields: unknown;
   submitted_at: Date | null;
@@ -126,6 +127,7 @@ interface ReviewRow {
   last_name_th: string;
   obligation_status: CollectionReviewEntry['status'];
   student_account_id: string;
+  student_id: string | null;
   submission_id: string | null;
   submission_fields: unknown;
   submission_form_version: number | null;
@@ -630,13 +632,15 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         last_name_th: string;
         status: string;
         student_account_id: string;
+        student_id: string | null;
       }[]
     >`
       select membership.student_account_id, membership.status,
-        person_name.first_name_th, person_name.last_name_th
+        person_name.first_name_th, person_name.last_name_th, identity.student_id
       from public.collection_group_memberships as membership
       join public.accounts as account on account.id = membership.student_account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
       where membership.group_id = ${input.groupId}
         and (
           ${input.afterStudentAccountId}::uuid is null
@@ -689,6 +693,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         isWithdrawn: row.status === 'withdrawn',
         rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
         studentAccountId: row.student_account_id,
+        studentId: row.student_id,
       })),
       obligations: obligationRows.map((row) => ({
         deadlineAt: row.deadline_at,
@@ -955,7 +960,8 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       await transaction`
         insert into private.collection_export_entries
           (export_id, form_id, student_account_id, student_display_name, position,
-           obligation_status, submission_id, submission_fields, submitted_at, is_late)
+           obligation_status, submission_id, submission_fields, submitted_at, is_late,
+           student_id)
         select ${job.id}, obligation.form_id, obligation.student_account_id,
           btrim(person_name.first_name_th || ' ' || person_name.last_name_th),
           dense_rank() over (
@@ -968,7 +974,8 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
               and obligation.first_submitted_at is not null
               and obligation.first_submitted_at > form.deadline_at,
             false
-          )
+          ),
+          identity.student_id
         from private.collection_export_forms as scope
         join public.collection_obligations as obligation on obligation.form_id = scope.form_id
         join public.collection_forms as form on form.id = obligation.form_id
@@ -978,6 +985,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           and membership.status = 'current'
         join public.accounts as account on account.id = obligation.student_account_id
         join private.person_names as person_name on person_name.person_id = account.person_id
+        left join private.student_auth_identities as identity on identity.account_id = account.id
         /*
          * The latest submitted version, which is what the specification means
          * by "latest submitted versions, never drafts". A draft lives in a
@@ -1085,7 +1093,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       order by position
     `;
     const entries = await this.database.sql<ExportEntryRow[]>`
-      select form_id, student_account_id, student_display_name, position,
+      select form_id, student_account_id, student_display_name, student_id, position,
         obligation_status, submission_id, submission_fields, submitted_at, is_late
       from private.collection_export_entries
       where export_id = ${job.id}
@@ -1102,6 +1110,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         position: entry.position,
         studentAccountId: entry.student_account_id,
         studentDisplayName: entry.student_display_name,
+        studentId: entry.student_id,
         submissionId: entry.submission_id,
         submittedAt: entry.submitted_at,
       })),
@@ -1369,10 +1378,11 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         submission.form_version as submission_form_version,
         submission.version as submission_version, submission.submitted_at,
         checking.reason as checking_reason,
-        person_name.first_name_th, person_name.last_name_th
+        person_name.first_name_th, person_name.last_name_th, identity.student_id
       from public.collection_obligations as obligation
       join public.accounts as account on account.id = obligation.student_account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
       left join private.collection_submissions as submission on submission.id = obligation.latest_submission_id
       left join lateral (
         select event.reason
@@ -1420,6 +1430,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
         status: row.obligation_status,
         studentAccountId: row.student_account_id,
+        studentId: row.student_id,
       })),
       form: this.mapForm(form),
     };

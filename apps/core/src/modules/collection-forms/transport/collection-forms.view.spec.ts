@@ -47,6 +47,7 @@ describe('collection forms transport views', () => {
         rosterName: { firstNameTh: 'สมชาย', lastNameTh: 'ตัวอย่าง' },
         status: 'awaiting_checking',
         studentAccountId: '40000000-0000-4000-8000-000000000001',
+        studentId: '69000001',
       },
     ];
 
@@ -80,6 +81,7 @@ describe('collection forms transport views', () => {
           rosterName: { firstNameTh: 'สมชาย', lastNameTh: 'ตัวอย่าง' },
           status: 'awaiting_checking',
           studentAccountId: '40000000-0000-4000-8000-000000000001',
+          studentId: '69000001',
         },
       ],
       form: {

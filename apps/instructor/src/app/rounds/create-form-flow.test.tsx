@@ -67,6 +67,7 @@ const student: SelectableStudent = {
   firstNameTh: 'สมหญิง',
   lastNameTh: 'ใจดี',
   status: 'selectable',
+  studentId: '66000001',
 };
 
 const reads: MemberSelectionReads = {

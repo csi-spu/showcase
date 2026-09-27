@@ -54,9 +54,11 @@ export interface CollectionMatrixRow {
   cells: CollectionMatrixCell[];
   /** Withdrawn members stay on the matrix; their obligations no longer count. */
   isWithdrawn: boolean;
-  /** Read-only identity from the Student Roster. Never a Student ID. */
+  /** Read-only identity from the Student Roster. */
   rosterName: { firstNameTh: string; lastNameTh: string };
   studentAccountId: string;
+  /** Instructor-only (ADR 0020); null until a Roster import records it. */
+  studentId: string | null;
 }
 
 /**
@@ -89,6 +91,7 @@ export interface MatrixMemberInput {
   isWithdrawn: boolean;
   rosterName: { firstNameTh: string; lastNameTh: string };
   studentAccountId: string;
+  studentId: string | null;
 }
 
 /**
@@ -131,6 +134,7 @@ export function buildMatrixRows(input: {
       isWithdrawn: member.isWithdrawn,
       rosterName: member.rosterName,
       studentAccountId: member.studentAccountId,
+      studentId: member.studentId,
     };
   });
 }

@@ -14,6 +14,7 @@ function member(id: string, isWithdrawn = false): MatrixMemberInput {
     isWithdrawn,
     rosterName: { firstNameTh: 'ก', lastNameTh: id },
     studentAccountId: id,
+    studentId: null,
   };
 }
 
@@ -38,6 +39,15 @@ describe('buildMatrixRows', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.cells.map((cell) => cell.formId)).toEqual(['form-1', 'form-2']);
     expect(rows[1]?.cells.map((cell) => cell.formId)).toEqual(['form-1', 'form-2']);
+  });
+
+  it('carries each member Student ID for Instructor display', () => {
+    const rows = buildMatrixRows({
+      formIds: ['form-1'],
+      members: [{ ...member('student-1'), studentId: '69000001' }, member('student-2')],
+      obligations: [],
+    });
+    expect(rows.map((row) => row.studentId)).toEqual(['69000001', null]);
   });
 
   /*

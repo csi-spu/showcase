@@ -6,13 +6,12 @@ import { cn } from '@showcase/ui/cn';
 import { CheckIcon, ChevronDownIcon, SearchIcon, Settings2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useId } from 'react';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PageNav } from '@/components/ui/page-nav';
 import {
   REVIEW_PAGE_SIZES,
   REVIEW_STATUS_ORDER,
-  looksLikeStudentId,
   type ReviewPageSize,
   type ReviewSort,
   type ReviewStatusFilter,
@@ -118,9 +117,7 @@ export function ReviewToolbar({
 }) {
   const t = useTranslations('Forms');
   const searchId = useId();
-  const searchHintId = useId();
   const sortId = useId();
-  const isStudentIdSearch = looksLikeStudentId(search);
 
   return (
     <div
@@ -136,7 +133,6 @@ export function ReviewToolbar({
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
           />
           <Input
-            aria-describedby={isStudentIdSearch ? searchHintId : undefined}
             className="pl-9"
             id={searchId}
             maxLength={100}
@@ -146,16 +142,6 @@ export function ReviewToolbar({
             value={search}
           />
         </div>
-        {/* A Student ID is kept only as a keyed hash (ADR 0013), so digits
-            can never match; say so rather than show an unexplained blank. */}
-        {isStudentIdSearch ? (
-          <FieldDescription
-            className="animate-in duration-200 fade-in slide-in-from-top-1 motion-reduce:animate-none"
-            id={searchHintId}
-          >
-            {t('review.studentIdSearchHint')}
-          </FieldDescription>
-        ) : null}
       </Field>
 
       <Field className="sm:w-56">

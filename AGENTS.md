@@ -32,7 +32,7 @@ Core owns application data and authentication boundaries. Browser applications m
 - The current `Published Revision` remains public while a newer Revision is reviewed.
 - A `Change Request` requires a reason and actionable feedback.
 - Admin edits are audited and still require an explicit approve-and-publish action; the same Admin may perform both.
-- `Student ID` is private authentication data. Never expose it in responses, logs, URLs, analytics, or client bundles. Core retains only keyed hashes of it, so no read path can return one; see `docs/adr/0013-search-contributor-candidates-by-student-id-prefix.md` and `docs/adr/0018-identify-students-by-roster-name-in-instructor-follow-up.md`. Identify a Student by Roster name and Account ID instead.
+- `Student ID` is private authentication data. Only Instructor responses may carry it; see `docs/adr/0020-show-student-ids-to-instructors.md`. Never expose it in URLs, query strings, cursors, logs, metrics, analytics, or any Student, Visitor, or Admin response.
 - `Public Profile` visibility is governed by `Profile Consent`, explicitly granted for a valid Public Profile draft. Roster processing and Account activation never grant consent; withdrawal is never silently reversed. See `CONTEXT.md` and `docs/product/phase-1.md` for the lifecycle.
 - Archive and unpublish are recoverable. No hard delete through normal UI flows.
 

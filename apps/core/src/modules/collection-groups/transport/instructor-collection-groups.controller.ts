@@ -8,7 +8,6 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Query,
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
@@ -28,11 +27,11 @@ import {
   CreateGroupWithMembersDto,
   CreateRoundDto,
   CreateRoundWithGroupAndMembersDto,
-  ListStudentsQueryDto,
   MAX_STUDENT_PAGE_SIZE,
   ReinstateMemberDto,
   ResolveStudentIdsDto,
-  SelectAllStudentsQueryDto,
+  SearchStudentsDto,
+  SelectAllStudentsDto,
   WithdrawMemberDto,
 } from './collection-groups.dto';
 import { CollectionGroupsExceptionFilter } from './collection-groups-exception.filter';
@@ -133,10 +132,11 @@ export class InstructorCollectionGroupsController {
     });
   }
 
-  @Get('students')
+  @Post('students/search')
+  @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   async listStudents(
-    @Query() query: ListStudentsQueryDto,
+    @Body() body: SearchStudentsDto,
     @Headers('authorization') authorization: string | undefined,
   ): Promise<{
     hasCurrentAcademicYear: boolean;
@@ -145,11 +145,11 @@ export class InstructorCollectionGroupsController {
   }> {
     await this.authorize(authorization);
     return this.groups.listStudents({
-      cursor: query.cursor ?? null,
-      entryYear: query.entryYear ?? null,
-      groupId: query.groupId ?? null,
-      limit: query.limit ?? MAX_STUDENT_PAGE_SIZE,
-      query: query.q ?? null,
+      cursor: body.cursor ?? null,
+      entryYear: body.entryYear ?? null,
+      groupId: body.groupId ?? null,
+      limit: body.limit ?? MAX_STUDENT_PAGE_SIZE,
+      query: body.q ?? null,
     });
   }
 
@@ -162,19 +162,20 @@ export class InstructorCollectionGroupsController {
     return { entryYears: await this.groups.listEntryYears() };
   }
 
-  @Get('students/select-all')
+  @Post('students/select-all')
+  @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   async selectAllStudents(
-    @Query() query: SelectAllStudentsQueryDto,
+    @Body() body: SelectAllStudentsDto,
     @Headers('authorization') authorization: string | undefined,
   ): Promise<{ students: SelectableStudent[] }> {
     await this.authorize(authorization);
     return {
       students: await this.groups.selectAllMatching({
-        entryYear: query.entryYear ?? null,
-        groupId: query.groupId ?? null,
-        query: query.q ?? null,
-        selectedCount: query.selectedCount,
+        entryYear: body.entryYear ?? null,
+        groupId: body.groupId ?? null,
+        query: body.q ?? null,
+        selectedCount: body.selectedCount,
       }),
     };
   }

@@ -273,6 +273,7 @@ export class PostgresRosterRepository implements RosterRepository {
           input.studentIdPrefixHashes,
           input.now,
         );
+        await this.recordStudentId(transaction, existing.accountId, input);
         if (
           existing.firstNameTh !== input.firstNameTh ||
           existing.lastNameTh !== input.lastNameTh
@@ -336,6 +337,7 @@ export class PostgresRosterRepository implements RosterRepository {
         input.studentIdPrefixHashes,
         input.now,
       );
+      await this.recordStudentId(transaction, account.id, input);
       await transaction`
         insert into private.authentication_audit_events (
           account_id, event_type, occurred_at
@@ -610,6 +612,7 @@ export class PostgresRosterRepository implements RosterRepository {
         input.studentIdPrefixHashes,
         input.now,
       );
+      await this.recordStudentId(transaction, existing.accountId, input);
       const rows = await transaction<{ first_name_th: string; last_name_th: string }[]>`
         select first_name_th, last_name_th
         from private.roster_rows
@@ -751,6 +754,31 @@ export class PostgresRosterRepository implements RosterRepository {
           lastNameTh: row.last_name_th,
           personId: row.person_id,
         };
+  }
+
+  /**
+   * Keep the raw Student ID beside its hash so Instructors can see it (ADR
+   * 0020). It is copied from the claimed Roster row, whose hash matched this
+   * Account, so a re-import also backfills Accounts created before the column
+   * existed. A conflicting name does not block it: the ID itself matched.
+   */
+  private async recordStudentId(
+    transaction: postgres.TransactionSql,
+    accountId: string,
+    input: { batchId: string; rowId: string; studentIdHash: string },
+  ): Promise<void> {
+    const rows = await transaction<{ account_id: string }[]>`
+      update private.student_auth_identities as identity
+      set student_id = roster_row.student_id
+      from private.roster_rows as roster_row
+      where identity.account_id = ${accountId}
+        and identity.student_id_hash = ${input.studentIdHash}
+        and roster_row.id = ${input.rowId}
+        and roster_row.batch_id = ${input.batchId}
+        and roster_row.student_id_hash = identity.student_id_hash
+      returning identity.account_id
+    `;
+    if (rows.length !== 1) throw new Error('ROSTER_STUDENT_ID_WRITE_FAILED');
   }
 
   private async upsertStudentIdPrefixes(

@@ -5,6 +5,7 @@ import {
   selectableStudentSchema,
   STUDENT_PAGE_SIZE,
   studentIdResolutionSchema,
+  studentIdSchema,
   studentPageSchema,
   type SelectableStudent,
   type StudentIdResolution,
@@ -46,6 +47,7 @@ const memberSchema = z
     ]),
     status: z.enum(['current', 'withdrawn']),
     studentAccountId: z.uuid(),
+    studentId: studentIdSchema,
     withdrawalReason: z.string().nullable(),
     withdrawnAt: z.iso.datetime().nullable(),
   })
@@ -175,12 +177,14 @@ export class InstructorCollectionGroupsCoreClient {
       q: string | null;
     },
   ): Promise<StudentPage> {
-    const search = studentFilterSearch(query);
-    if (query.cursor !== null) search.set('cursor', query.cursor);
-    search.set('limit', String(STUDENT_PAGE_SIZE));
     return this.client.request({
-      method: 'GET',
-      path: `/v1/internal/instructor/students?${search.toString()}`,
+      body: {
+        ...studentFilterBody(query),
+        ...(query.cursor === null ? {} : { cursor: query.cursor }),
+        limit: STUDENT_PAGE_SIZE,
+      },
+      method: 'POST',
+      path: '/v1/internal/instructor/students/search',
       responseSchema: studentPageSchema,
       sessionToken,
     });
@@ -205,11 +209,10 @@ export class InstructorCollectionGroupsCoreClient {
       selectedCount: number;
     },
   ): Promise<SelectableStudent[]> {
-    const search = studentFilterSearch(query);
-    search.set('selectedCount', String(query.selectedCount));
     const result = await this.client.request({
-      method: 'GET',
-      path: `/v1/internal/instructor/students/select-all?${search.toString()}`,
+      body: { ...studentFilterBody(query), selectedCount: query.selectedCount },
+      method: 'POST',
+      path: '/v1/internal/instructor/students/select-all',
       responseSchema: z.object({ students: z.array(selectableStudentSchema) }).strict(),
       sessionToken,
     });
@@ -265,14 +268,15 @@ export class InstructorCollectionGroupsCoreClient {
   }
 }
 
-function studentFilterSearch(filter: {
+/* A body, not a query string: `q` may be a Student ID prefix (ADR 0020). */
+function studentFilterBody(filter: {
   entryYear: number | null;
   groupId: string | null;
   q: string | null;
-}): URLSearchParams {
-  const search = new URLSearchParams();
-  if (filter.q !== null) search.set('q', filter.q);
-  if (filter.entryYear !== null) search.set('entryYear', String(filter.entryYear));
-  if (filter.groupId !== null) search.set('groupId', filter.groupId);
-  return search;
+}): { entryYear?: number; groupId?: string; q?: string } {
+  return {
+    ...(filter.entryYear === null ? {} : { entryYear: filter.entryYear }),
+    ...(filter.groupId === null ? {} : { groupId: filter.groupId }),
+    ...(filter.q === null ? {} : { q: filter.q }),
+  };
 }

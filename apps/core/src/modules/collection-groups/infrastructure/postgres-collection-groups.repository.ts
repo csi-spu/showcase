@@ -13,6 +13,7 @@ import type {
   MembershipStatus,
   ReinstateMemberResult,
   SelectableStudent,
+  StudentSearch,
   StudentSelectionFilter,
   WithdrawMemberResult,
 } from '../application/collection-groups.ports';
@@ -40,6 +41,7 @@ interface MemberRow {
   membership_source: MembershipSource;
   status: MembershipStatus;
   student_account_id: string;
+  student_id: string | null;
   withdrawal_reason: string | null;
   withdrawn_at: Date | null;
 }
@@ -52,6 +54,7 @@ interface CandidateRow {
   first_name_th: string;
   last_name_th: string;
   membership_status: MembershipStatus | null;
+  student_id: string | null;
 }
 
 type RoundStatusRow = { status: 'active' | 'closed' };
@@ -127,11 +130,13 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         membership.withdrawal_reason,
         student.entry_year,
         person_name.first_name_th,
-        person_name.last_name_th
+        person_name.last_name_th,
+        identity.student_id
       from public.collection_group_memberships as membership
       join public.accounts as account on account.id = membership.student_account_id
       join public.students as student on student.person_id = account.person_id
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
       where membership.group_id = ${groupId}
       order by membership.added_at desc
       limit 2000
@@ -227,7 +232,6 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         identity.student_id_hash,
         ${this.candidateColumns(sql)}
       ${this.candidateFrom(sql, input.groupId)}
-      join private.student_auth_identities as identity on identity.account_id = account.id
       where account.status = 'active'
         and identity.student_id_hash = any(${input.studentIdHashes}::text[])
     `;
@@ -444,11 +448,13 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
           membership.withdrawal_reason,
           student.entry_year,
           person_name.first_name_th,
-          person_name.last_name_th
+          person_name.last_name_th,
+          identity.student_id
         from public.collection_group_memberships as membership
         join public.accounts as account on account.id = membership.student_account_id
         join public.students as student on student.person_id = account.person_id
         join private.person_names as person_name on person_name.person_id = account.person_id
+        left join private.student_auth_identities as identity on identity.account_id = account.id
         where membership.group_id = ${input.groupId}
           and membership.student_account_id = ${input.studentAccountId}
         limit 1
@@ -507,11 +513,13 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
           account.status as account_status,
           student.entry_year,
           person_name.first_name_th,
-          person_name.last_name_th
+          person_name.last_name_th,
+          identity.student_id
         from public.collection_group_memberships as membership
         join public.accounts as account on account.id = membership.student_account_id
         join public.students as student on student.person_id = account.person_id
         join private.person_names as person_name on person_name.person_id = account.person_id
+        left join private.student_auth_identities as identity on identity.account_id = account.id
         where membership.group_id = ${input.groupId}
           and membership.student_account_id = ${input.studentAccountId}
         limit 1
@@ -642,7 +650,8 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
       settings.current_academic_year,
       person_name.first_name_th,
       person_name.last_name_th,
-      membership.status as membership_status
+      membership.status as membership_status,
+      identity.student_id
     `;
   }
 
@@ -661,6 +670,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         on student_role.account_id = account.id and student_role.role = 'student'
       join public.students as student on student.person_id = account.person_id
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
       left join public.academic_settings as settings on settings.singleton = true
       ${membershipJoin}
     `;
@@ -669,21 +679,36 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
   private candidateSelect(sql: PrismaSql, filter: StudentSelectionFilter): PrismaQuery<unknown[]> {
     const entryYear =
       filter.entryYear === null ? sql`` : sql`and student.entry_year = ${filter.entryYear}`;
-    // Matches the trigram index expression and predicate on private.person_names.
-    const name =
-      filter.query === null
-        ? sql``
-        : sql`
-            and person_name.first_name_th is not null and person_name.last_name_th is not null
-            and lower(person_name.first_name_th || ' ' || person_name.last_name_th)
-              like ${`%${escapeLike(filter.query.toLowerCase())}%`} escape '\\'
-          `;
     return sql`
       select ${this.candidateColumns(sql)}
       ${this.candidateFrom(sql, filter.groupId)}
       where account.status = 'active'
       ${entryYear}
-      ${name}
+      ${this.searchPredicate(sql, filter.search)}
+    `;
+  }
+
+  private searchPredicate(sql: PrismaSql, search: StudentSearch | null): PrismaQuery<unknown[]> {
+    if (search === null) return sql``;
+    if (search.kind === 'name') {
+      // Matches the trigram index expression and predicate on private.person_names.
+      return sql`
+        and person_name.first_name_th is not null and person_name.last_name_th is not null
+        and lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+          like ${`%${escapeLike(search.name.toLowerCase())}%`} escape '\\'
+      `;
+    }
+    // A full Student ID is its own hash; shorter prefixes use the prefix index.
+    if (search.prefixLength === 8) {
+      return sql`and identity.student_id_hash = ${search.prefixHash}`;
+    }
+    return sql`
+      and exists (
+        select 1 from private.student_id_search_prefixes as prefix
+        where prefix.account_id = account.id
+          and prefix.prefix_hash = ${search.prefixHash}
+          and prefix.prefix_length = ${search.prefixLength}
+      )
     `;
   }
 
@@ -708,6 +733,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         entryYear: row.entry_year,
         membershipStatus: row.membership_status,
       }),
+      studentId: row.student_id,
     };
   }
 
@@ -728,6 +754,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
       membershipSource: row.membership_source,
       status: row.status,
       studentAccountId: row.student_account_id,
+      studentId: row.student_id,
       withdrawalReason: row.withdrawal_reason,
       withdrawnAt: row.withdrawn_at,
     };

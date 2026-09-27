@@ -1,3 +1,5 @@
 # Let Instructors browse eligible Students for group selection
 
 Core lets an authenticated Instructor list every Student with an active Account holding the Student role when selecting group members; Students outside their effective Student Access Period are marked and cannot be selected. The list opens unfiltered, filters by Entry Year and partial Roster name, and returns only Roster first and last names, Entry Year, and Account ID in bounded, indexed, cursor-paginated pages; Student ID never enters the response, URL, cursor, log, or client bundle, as ADR 0018 requires. We rejected requiring an Entry Year before showing any rows, because Instructors need to find individual Students across cohorts in few actions. We accept that any Instructor can enumerate the names and Entry Years of all listed Students, bounded by Instructor authorization, pagination, and the absence of Student ID and other Account data.
+
+Superseded in part by [ADR 0020](0020-show-student-ids-to-instructors.md): responses carry Student ID and search accepts a Student ID prefix.

@@ -101,6 +101,9 @@ export async function MatrixTable({ page }: { page: InstructorMatrixPage }) {
                   >
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-medium text-foreground">{name}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {row.studentId ?? t('matrix.studentIdMissing')}
+                      </span>
                       {row.isWithdrawn ? (
                         <span className="text-xs text-muted-foreground">
                           {t('matrix.withdrawnRow')}
@@ -160,6 +163,9 @@ function MatrixCard({
     <div className="flex flex-col gap-3 rounded-surface border border-border/80 bg-card p-4">
       <div className="flex min-w-0 flex-col">
         <span className="truncate font-medium text-foreground">{name}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {row.studentId ?? t('matrix.studentIdMissing')}
+        </span>
         {row.isWithdrawn ? (
           <span className="text-xs text-muted-foreground">{t('matrix.withdrawnRow')}</span>
         ) : null}

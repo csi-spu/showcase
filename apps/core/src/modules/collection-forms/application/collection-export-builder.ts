@@ -40,7 +40,15 @@ export interface CollectionExportSources {
  * UI; these are data in a generated file rather than interface strings, so they
  * are not translation keys.
  */
-const TRACKING_HEADERS = ['ลำดับ', 'นักศึกษา', 'แบบฟอร์ม', 'สถานะ', 'ส่งเมื่อ', 'ส่งช้า'];
+const TRACKING_HEADERS = [
+  'ลำดับ',
+  'รหัสนักศึกษา',
+  'นักศึกษา',
+  'แบบฟอร์ม',
+  'สถานะ',
+  'ส่งเมื่อ',
+  'ส่งช้า',
+];
 
 const STATUS_LABELS: Record<string, string> = {
   awaiting_checking: 'รอตรวจ',
@@ -71,6 +79,7 @@ export function buildExportWorkbook(
         for (const entry of orderedEntries(snapshot.entries)) {
           yield [
             String(entry.position + 1),
+            entry.studentId ?? '',
             entry.studentDisplayName,
             formsById.get(entry.formId)?.title ?? '',
             STATUS_LABELS[entry.obligationStatus] ?? entry.obligationStatus,
@@ -86,7 +95,7 @@ export function buildExportWorkbook(
     const formEntries = snapshot.entries.filter((entry) => entry.formId === form.formId);
     const fields = valueFields(mergeExportFields(form.fields, formEntries));
     sheets.push({
-      headers: ['ลำดับ', 'นักศึกษา', ...fields.map((field) => field.label)],
+      headers: ['ลำดับ', 'รหัสนักศึกษา', 'นักศึกษา', ...fields.map((field) => field.label)],
       name: form.title,
       rows: async function* () {
         for (const entry of orderedEntries(snapshot.entries)) {
@@ -96,6 +105,7 @@ export function buildExportWorkbook(
             entry.submissionId === null ? null : await sources.readAnswers(entry.submissionId);
           yield [
             String(entry.position + 1),
+            entry.studentId ?? '',
             entry.studentDisplayName,
             ...fields.map((field) => renderAnswer(answers?.[field.id])),
           ];
@@ -149,10 +159,13 @@ async function* archiveEntries(
 ): AsyncGenerator<ZipEntry> {
   const formsById = new Map(snapshot.forms.map((form) => [form.formId, form]));
   const studentsWithDocuments = new Set<number>();
-  const students = new Map<number, string>();
+  const students = new Map<number, { displayName: string; studentId: string | null }>();
 
   for (const entry of orderedEntries(snapshot.entries)) {
-    students.set(entry.position, entry.studentDisplayName);
+    students.set(entry.position, {
+      displayName: entry.studentDisplayName,
+      studentId: entry.studentId,
+    });
     if (entry.submissionId === null) continue;
     const form = formsById.get(entry.formId);
     if (form === undefined) continue;
@@ -169,6 +182,7 @@ async function* archiveEntries(
           formPosition: form.position,
           formTitle: form.title,
           originalFilename: document.originalFilename,
+          studentId: entry.studentId,
           studentPosition: entry.position,
         }),
         /* Streamed through: the document's bytes are never assembled here. */
@@ -177,9 +191,9 @@ async function* archiveEntries(
     }
   }
 
-  for (const [position, displayName] of [...students.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [position, student] of [...students.entries()].sort((a, b) => a[0] - b[0])) {
     if (studentsWithDocuments.has(position)) continue;
-    const folder = toStudentFolderName({ displayName, position });
+    const folder = toStudentFolderName({ ...student, position });
     yield {
       path: `${folder}/ไม่มีเอกสาร.txt`,
       // eslint-disable-next-line @typescript-eslint/require-await -- satisfies the AsyncIterable contract; a sync generator does not

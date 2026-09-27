@@ -58,8 +58,8 @@ export interface CollectionOverviewResponse {
 /**
  * One Student's outstanding obligation.
  *
- * There is deliberately no Student ID field. Core retains only a keyed hash of
- * the Student ID (ADR 0013), so the value cannot be produced by any read path.
+ * Instructor-only, so it may carry the Student ID (ADR 0020); null until a
+ * Roster import records it.
  */
 export interface CollectionStudentAttentionResponseRow {
   deadlineAt: string | null;
@@ -74,6 +74,7 @@ export interface CollectionStudentAttentionResponseRow {
   roundName: string;
   status: CollectionStudentAttentionStatus;
   studentAccountId: string;
+  studentId: string | null;
 }
 
 export interface CollectionStudentAttentionResponse {

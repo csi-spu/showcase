@@ -50,6 +50,9 @@ export function AttentionRow({
     >
       <span className="flex min-w-[10rem] flex-1 flex-col gap-0.5">
         <span className="truncate font-medium text-foreground">
+          <span className="font-normal tabular-nums text-muted-foreground">
+            {row.studentId ?? t('studentIdMissing')}
+          </span>{' '}
           {row.firstNameTh} {row.lastNameTh}
         </span>
         <span className="truncate text-sm text-muted-foreground">

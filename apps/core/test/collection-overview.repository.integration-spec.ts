@@ -25,6 +25,8 @@ const SUBMISSION_A_ONE = '5c000000-0000-4000-8000-000000000401';
 const SUBMISSION_B_ONE = '5c000000-0000-4000-8000-000000000402';
 const SUBMISSION_A_TWO = '5c000000-0000-4000-8000-000000000403';
 const CLOSED_SUBMISSION = '5c000000-0000-4000-8000-000000000404';
+const STUDENT_A_ID = '66000012';
+const STUDENT_A_ID_HASH = '5c'.repeat(32);
 const NOW = new Date('2026-09-24T04:00:00.000Z');
 
 describe('PostgresCollectionOverviewRepository integration', () => {
@@ -53,6 +55,11 @@ describe('PostgresCollectionOverviewRepository integration', () => {
           (${STUDENT_A_PERSON}, 'นักศึกษาเอ', 'นามสกุลเอ', ${NOW}, ${NOW}),
           (${STUDENT_B_PERSON}, 'นักศึกษาบี', 'นามสกุลบี', ${NOW}, ${NOW}),
           (${STUDENT_C_PERSON}, 'นักศึกษาซี', 'นามสกุลซี', ${NOW}, ${NOW})
+      `;
+      /* Students B and C have no recorded Student ID, like Accounts awaiting re-import. */
+      await transaction`
+        insert into private.student_auth_identities (account_id, student_id_hash, synthetic_identity, student_id)
+        values (${STUDENT_A_ACCOUNT}, ${STUDENT_A_ID_HASH}, ${`${STUDENT_A_ID_HASH}@auth.invalid`}, ${STUDENT_A_ID})
       `;
       await transaction`
         insert into public.students (person_id, entry_year, access_ends_academic_year, created_at)
@@ -345,7 +352,7 @@ describe('PostgresCollectionOverviewRepository integration', () => {
     }
   });
 
-  it('pages outstanding Students by an opaque cursor that carries no Student ID', async () => {
+  it('pages outstanding Students with their Student IDs by a cursor that carries none', async () => {
     const first = await repository.getStudentAttention({
       cursor: null,
       limit: 2,
@@ -361,8 +368,12 @@ describe('PostgresCollectionOverviewRepository integration', () => {
     });
     for (const row of first.rows) {
       expect(row.status).not.toBe('passed');
-      expect(Object.keys(row)).not.toContain('studentId');
+      expect(row.studentId).toBe(row.studentAccountId === STUDENT_A_ACCOUNT ? STUDENT_A_ID : null);
     }
+    expect(first.nextCursor).not.toContain(STUDENT_A_ID);
+    expect(JSON.stringify(decodeAttentionCursor(first.nextCursor ?? ''))).not.toContain(
+      STUDENT_A_ID,
+    );
 
     const second = await repository.getStudentAttention({
       cursor: decodeAttentionCursor(first.nextCursor ?? ''),
@@ -417,6 +428,9 @@ describe('PostgresCollectionOverviewRepository integration', () => {
       `;
       await transaction`
         delete from public.collection_rounds where id in (${ACTIVE_ROUND}, ${CLOSED_ROUND})
+      `;
+      await transaction`
+        delete from private.student_auth_identities where account_id = ${STUDENT_A_ACCOUNT}
       `;
       await transaction`
         delete from public.accounts

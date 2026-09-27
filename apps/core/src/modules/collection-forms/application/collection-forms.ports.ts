@@ -173,10 +173,12 @@ export interface CollectionReviewEntry {
     submittedAt: Date;
     version: number;
   } | null;
-  /** Read-only identity from the Student Roster. Never a Student ID. */
+  /** Read-only identity from the Student Roster. */
   rosterName: { firstNameTh: string; lastNameTh: string };
   status: 'awaiting_checking' | 'changes_required' | 'not_submitted' | 'passed' | 'withdrawn';
   studentAccountId: string;
+  /** Instructor-only (ADR 0020); null until a Roster import records it. */
+  studentId: string | null;
 }
 
 /**
@@ -303,6 +305,8 @@ export interface CollectionExportEntry {
   position: number;
   studentAccountId: string;
   studentDisplayName: string;
+  /** Frozen with the snapshot; null when no Roster import recorded it (ADR 0020). */
+  studentId: string | null;
   submissionId: string | null;
   submittedAt: Date | null;
 }

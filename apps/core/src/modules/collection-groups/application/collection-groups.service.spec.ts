@@ -38,6 +38,7 @@ const MEMBER: GroupMember = {
   membershipSource: 'instructor_selection',
   status: 'current',
   studentAccountId: STUDENT_ACCOUNT_ID,
+  studentId: '69000001',
   withdrawalReason: null,
   withdrawnAt: null,
 };
@@ -47,6 +48,7 @@ const STUDENT: SelectableStudent = {
   firstNameTh: 'สมชาย',
   lastNameTh: 'ใจดี',
   status: 'selectable',
+  studentId: '69000001',
 };
 
 function student(index: number, status: SelectableStudent['status'] = 'selectable') {
@@ -171,6 +173,7 @@ function setup(repository = new FakeRepository()) {
 }
 
 const NO_FILTER = { entryYear: null, groupId: null, query: null };
+const NO_REPOSITORY_FILTER = { entryYear: null, groupId: null, search: null };
 
 describe('CollectionGroupsService rounds and groups', () => {
   it('trims a Round name and rejects an empty or overlong one', async () => {
@@ -223,7 +226,7 @@ describe('CollectionGroupsService student selection list', () => {
 
     await service.listStudents({ ...NO_FILTER, cursor: firstPage.nextCursor, limit: 2 });
     expect(listStudents).toHaveBeenLastCalledWith({
-      ...NO_FILTER,
+      ...NO_REPOSITORY_FILTER,
       afterAccountId: student(2).accountId,
       limit: 2,
     });
@@ -249,9 +252,36 @@ describe('CollectionGroupsService student selection list', () => {
     const { service } = setup(repository);
 
     await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query: '  สม   ใจ ' });
-    expect(listStudents).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'สม ใจ' }));
+    expect(listStudents).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: { kind: 'name', name: 'สม ใจ' } }),
+    );
     await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query: '   ' });
-    expect(listStudents).toHaveBeenLastCalledWith(expect.objectContaining({ query: null }));
+    expect(listStudents).toHaveBeenLastCalledWith(expect.objectContaining({ search: null }));
+  });
+
+  it('searches one to eight digits by Student ID prefix hash, never by the raw digits', async () => {
+    const repository = new FakeRepository();
+    const listStudents = jest.spyOn(repository, 'listStudents');
+    const { service } = setup(repository);
+
+    for (const query of ['6', ' 6601 ', '66012345']) {
+      await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query });
+      const prefix = query.trim();
+      expect(listStudents).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          search: {
+            kind: 'student_id_prefix',
+            prefixHash: `student-${prefix}`,
+            prefixLength: prefix.length,
+          },
+        }),
+      );
+    }
+    // Nine digits cannot be a Student ID prefix; it falls back to a name search that matches no one.
+    await service.listStudents({ ...NO_FILTER, cursor: null, limit: 50, query: '660123456' });
+    expect(listStudents).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: { kind: 'name', name: '660123456' } }),
+    );
   });
 
   it('reports a missing Current Academic Year so the interface can explain why nobody is selectable', async () => {
@@ -290,7 +320,7 @@ describe('CollectionGroupsService select all matching', () => {
         selectedCount: 1_998,
       }),
     ).resolves.toEqual([student(1), student(2)]);
-    expect(snapshot).toHaveBeenCalledWith({ ...NO_FILTER, entryYear: 2569, limit: 3 });
+    expect(snapshot).toHaveBeenCalledWith({ ...NO_REPOSITORY_FILTER, entryYear: 2569, limit: 3 });
   });
 
   it('rejects a match beyond the remaining capacity with the matching count, not a partial list', async () => {
