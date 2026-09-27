@@ -60,7 +60,7 @@ const CARD_LINK_FOCUS_CLASS =
   'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none';
 
 interface HomeProps {
-  searchParams: Promise<{ expired?: string; passwordSet?: string; returnTo?: string }>;
+  searchParams: Promise<{ expired?: string; returnTo?: string }>;
 }
 
 type HomeTranslator = Awaited<ReturnType<typeof getTranslations<'Home'>>>;
@@ -607,10 +607,10 @@ function AuthCard({
         </div>
       ) : null}
       {state.kind === 'password_change_required' ? (
-        <ChangePasswordForm action={changePasswordAction} />
+        <ChangePasswordForm action={changePasswordAction.bind(null, returnTo)} />
       ) : null}
       {state.kind === 'expired' ? (
-        <form action={clearExpiredSessionAction}>
+        <form action={clearExpiredSessionAction.bind(null, returnTo)}>
           <Button className="auth-submit-button w-full" size="lg" type="submit">
             {authT('expired.action')}
           </Button>
