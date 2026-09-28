@@ -202,8 +202,8 @@ describe('FormBuilder draft editing', () => {
     await user.type(within(newCard!).getByLabelText('คำถาม'), 'แผนการทำงาน');
     await user.click(screen.getByRole('button', { name: 'บันทึก' }));
 
-    await waitFor(() => expect(save).toHaveBeenCalledOnce());
-    expect(newQuestionToggle.getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(newQuestionToggle.getAttribute('aria-expanded')).toBe('false'));
+    expect(save).toHaveBeenCalledOnce();
   });
 
   it('shows the final preview only inside the open confirmation', async () => {
@@ -292,7 +292,7 @@ describe('FormBuilder draft editing', () => {
 
     await user.type(screen.getByLabelText('ชื่อแบบฟอร์ม'), ' ก');
     await user.click(screen.getByRole('button', { name: 'บันทึก' }));
-    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
     await user.type(screen.getByLabelText('ชื่อแบบฟอร์ม'), 'ข');
     await user.click(screen.getByRole('button', { name: 'บันทึก' }));
 
@@ -331,12 +331,12 @@ describe('FormBuilder draft editing', () => {
     await user.type(screen.getByLabelText('ชื่อแบบฟอร์ม'), ' ฉบับแก้ไข');
     await user.click(screen.getByRole('button', { name: 'บันทึก' }));
 
-    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect((await screen.findByRole('alert')).textContent).toContain('formStale');
+    expect(save).toHaveBeenCalledOnce();
     expect((screen.getByLabelText('ชื่อแบบฟอร์ม') as HTMLInputElement).value).toBe(
       'แบบฟอร์มฝึกงาน ฉบับแก้ไข',
     );
     expect(screen.getByText('ยังไม่ได้บันทึก')).toBeDefined();
-    expect(screen.getByRole('alert').textContent).toContain('formStale');
     expect(refresh).not.toHaveBeenCalled();
   });
 
