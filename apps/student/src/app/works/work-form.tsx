@@ -96,6 +96,7 @@ export function WorkForm({
   const [contributors, setContributors] = useState(initialWork?.contributors ?? []);
   const [serverWork, setServerWork] = useState(initialWork);
   const [isSaving, startSaving] = useTransition();
+  const [isOpeningSavedWork, setIsOpeningSavedWork] = useState(false);
   const [isSubmitting, startSubmission] = useTransition();
   const valuesRef = useRef(values);
   const lastSavedRef = useRef(values);
@@ -148,11 +149,15 @@ export function WorkForm({
         setWorkPublicId(result.publicId);
       }
       const isCurrent = valuesRef.current === attempt.snapshot;
+      setSaveState(isCurrent ? 'saved' : 'unsynced');
       if (isCurrent && !hasCanonicalWorkRouteRef.current) {
         hasCanonicalWorkRouteRef.current = true;
+        // The saved Work's route remounts this form on the target step. Advancing
+        // here would let the Student start an upload that the remount then drops.
+        setIsOpeningSavedWork(true);
         router.replace(`/works/${result.publicId}?step=${targetStep + 1}`, { scroll: false });
+        return false;
       }
-      setSaveState(isCurrent ? 'saved' : 'unsynced');
       return isCurrent;
     }
     setError(result.error);
@@ -263,7 +268,7 @@ export function WorkForm({
   // pass Review yet — including a Poster whose upload has not produced a
   // preview, which leaves the Work without a usable Poster.
   const isStepComplete = !incompleteSteps.includes(step);
-  const canGoNext = !isSaving && isStepComplete;
+  const canGoNext = !isSaving && !isOpeningSavedWork && isStepComplete;
 
   const goNext = () => {
     if (!canGoNext) return;
@@ -318,7 +323,10 @@ export function WorkForm({
           </AlertDescription>
         </Alert>
       )}
-      <section className="grid gap-6 rounded-surface border border-border bg-card p-5 shadow-sm sm:p-8">
+      <section
+        className="grid gap-6 rounded-surface border border-border bg-card p-5 shadow-sm sm:p-8"
+        inert={isOpeningSavedWork}
+      >
         <div className="grid gap-6">
           {step === 0 ? (
             <DetailsStep context={context} t={t} update={update} values={values} />
@@ -385,7 +393,7 @@ export function WorkForm({
             </Button>
             {step === STEP_COUNT - 1 ? null : (
               <Button disabled={!canGoNext} onClick={goNext} type="button">
-                {isSaving ? t('draftSave.saving') : t('wizard.next')}
+                {isSaving || isOpeningSavedWork ? t('draftSave.saving') : t('wizard.next')}
               </Button>
             )}
           </div>
