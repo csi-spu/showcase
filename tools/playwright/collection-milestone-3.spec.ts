@@ -243,6 +243,14 @@ async function extendDeadlineWithNewFirstQuestion(
   const newQuestion = 'ช่วงเวลาที่สะดวกให้ติดต่อ';
   const extendedDeadline = toBangkokDateTimeValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   await page.goto(`/groups/${scenario.groupId}/forms/${scenario.formId}`);
+  /*
+   * The builder's inputs are controlled, so a value typed before hydration is
+   * replaced by React's state on the next render. dnd-kit mounts its live
+   * region only once the builder has hydrated, which marks it interactive.
+   */
+  await expect(
+    page.getByRole('region', { name: 'คำถามในแบบฟอร์ม' }).getByRole('status'),
+  ).toBeAttached();
   await page.getByLabel('กำหนดส่ง').fill(extendedDeadline);
   await page.getByRole('button', { name: 'เพิ่มคำถาม' }).click();
   await page.getByLabel('คำถาม', { exact: true }).last().fill(newQuestion);
