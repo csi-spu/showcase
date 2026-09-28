@@ -16,9 +16,8 @@ import {
   closeCollectionFormAction,
   openCollectionFormAction,
   reopenCollectionFormAction,
+  saveCollectionFormAction,
   saveCollectionFormAsTemplateAction,
-  updateCollectionFormAction,
-  updateCollectionFormMetadataAction,
 } from '@/app/collection-forms.actions';
 import { FormBuilder } from '../form-builder';
 import { ShareFormDialog } from './share-form-dialog';
@@ -113,8 +112,7 @@ export default async function FormPage({ params }: FormPageProps) {
         openAction={openCollectionFormAction.bind(null, groupId, formId)}
         reopenAction={reopenCollectionFormAction.bind(null, groupId, formId)}
         reopenNewlyAssignedCount={reopenNewlyAssignedCount}
-        saveMetadataAction={updateCollectionFormMetadataAction.bind(null, groupId, formId)}
-        saveStructureAction={updateCollectionFormAction.bind(null, groupId, formId)}
+        saveAction={saveCollectionFormAction.bind(null, groupId, formId)}
         saveTemplateAction={saveCollectionFormAsTemplateAction.bind(null, formId)}
       />
     </AppShell>

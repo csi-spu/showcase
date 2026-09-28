@@ -57,6 +57,24 @@ export const INITIAL_FORM_ACTION_STATE: CollectionFormActionState = {
   submitted: false,
 };
 
+/**
+ * A save also returns the version it produced, so a second save before the page
+ * refreshes checks against that version instead of reporting itself as stale.
+ */
+export interface SaveFormActionState extends CollectionFormActionState {
+  version: number | null;
+}
+
+export const INITIAL_SAVE_FORM_ACTION_STATE: SaveFormActionState = {
+  ...INITIAL_FORM_ACTION_STATE,
+  version: null,
+};
+
+export type SaveFormAction = (
+  state: SaveFormActionState,
+  formData: FormData,
+) => Promise<SaveFormActionState>;
+
 export type CreateFormAction = (
   state: CollectionFormActionState,
   formData: FormData,

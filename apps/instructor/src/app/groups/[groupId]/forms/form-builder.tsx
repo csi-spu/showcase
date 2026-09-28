@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useActionState, useId, useMemo, useState } from 'react';
+import { useActionState, useId, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { arrayMove } from '@dnd-kit/sortable';
 import { Button } from '@showcase/ui/button';
 import { Textarea } from '@showcase/ui/textarea';
 import { toast } from '@showcase/ui/toast';
@@ -34,15 +35,18 @@ import {
   createDraftField,
   findDraftFieldError,
   INITIAL_FORM_ACTION_STATE,
+  INITIAL_SAVE_FORM_ACTION_STATE,
   toDraftField,
   toFieldPayload,
   type CollectionFormActionState,
   type CollectionFormsErrorMessage,
   type DraftField,
+  type SaveFormAction,
+  type SaveFormActionState,
 } from '@/app/collection-forms-state';
 import type { InstructorCollectionForm } from '@/lib/instructor-collection-forms-contract';
-import { FieldEditor } from './field-editor';
 import { FormPreview } from './form-preview';
+import { SortableFieldList } from './sortable-field-list';
 
 type BuilderAction = (
   state: CollectionFormActionState,
@@ -62,17 +66,32 @@ interface FormBuilderProps {
    */
   reopenNewlyAssignedCount: number | null;
   reopenAction: BuilderAction;
-  saveMetadataAction: BuilderAction;
-  saveStructureAction: BuilderAction;
+  saveAction: SaveFormAction;
   saveTemplateAction: BuilderAction;
 }
 
+/** The detail input a Core rejection points at, so focus can move to it. */
+function toDetailsErrorTarget(error: CollectionFormsErrorMessage | null) {
+  switch (error) {
+    case 'formInvalid':
+    case 'invalid':
+      return 'title';
+    case 'deadlineInvalid':
+    case 'deadlineNotExtendable':
+      return 'deadline';
+    default:
+      return null;
+  }
+}
+
 /**
- * The Draft builder.
+ * The form builder.
  *
- * Structure lives in client state and is posted once per save, so adding,
- * reordering, or previewing a field costs nothing. Open forms remain editable;
- * submitted versions retain the field snapshot they were answered against.
+ * Details and questions live in client state and are saved together, so one
+ * save is one version check and nothing is ever half-stored. Adding,
+ * reordering, or previewing a question costs nothing until then. Open forms
+ * remain editable; submitted versions retain the field snapshot they were
+ * answered against.
  */
 export function FormBuilder({
   closeAction,
@@ -80,14 +99,16 @@ export function FormBuilder({
   openAction,
   reopenAction,
   reopenNewlyAssignedCount,
-  saveMetadataAction,
-  saveStructureAction,
+  saveAction,
   saveTemplateAction,
 }: FormBuilderProps) {
   const t = useTranslations('Forms');
   const errorT = useTranslations('Forms.errors');
   const router = useRouter();
   const baseId = useId();
+  const titleId = `${baseId}-title`;
+  const deadlineId = `${baseId}-deadline`;
+  const detailsErrorId = `${baseId}-details-error`;
   const [title, setTitle] = useState(form.title);
   const [description, setDescription] = useState(form.description);
   const [deadline, setDeadline] = useState(toDeadlineInput(form.deadlineAt));
@@ -97,14 +118,23 @@ export function FormBuilder({
     fieldId: string;
     message: CollectionFormsErrorMessage;
   } | null>(null);
-  /* Tracks unsaved structure so the Instructor is never unsure what is stored. */
+  /* One flag for the whole form, so the Instructor is never unsure what is stored. */
   const [isDirty, setIsDirty] = useState(false);
-  const [isMetadataDirty, setIsMetadataDirty] = useState(false);
+  /*
+   * Counts edits, so a save that succeeds only clears the flag when nothing was
+   * edited while it was in flight; a later edit is still unsaved.
+   */
+  const editCount = useRef(0);
+
+  function markDirty() {
+    editCount.current += 1;
+    setIsDirty(true);
+  }
 
   const serializedFields = useMemo(() => JSON.stringify(fields.map(toFieldPayload)), [fields]);
 
-  const [structureState, structureFormAction] = useActionState(
-    async (previousState: CollectionFormActionState, formData: FormData) => {
+  const [saveState, saveFormAction] = useActionState(
+    async (previousState: SaveFormActionState, formData: FormData) => {
       const invalid = findDraftFieldError(fields);
       if (invalid !== null) {
         /* Stop before the round trip and point at the field that needs attention. */
@@ -124,34 +154,36 @@ export function FormBuilder({
         return { ...previousState, error: invalid.message, fieldId: invalid.fieldId };
       }
       setClientError(null);
-      const nextState = await saveStructureAction(previousState, formData);
+      const savedEditCount = editCount.current;
+      const nextState = await saveAction(previousState, formData);
       if (nextState.error !== null) {
+        /*
+         * Edits stay on screen whatever the reason. A stale save says to reload
+         * rather than reloading, so nothing typed is thrown away unasked.
+         */
         toast.error(errorT(nextState.error));
-        return nextState;
+        const target = toDetailsErrorTarget(nextState.error);
+        if (target !== null) {
+          requestAnimationFrame(() => {
+            document.getElementById(target === 'title' ? titleId : deadlineId)?.focus();
+          });
+        }
+        return { ...nextState, version: previousState.version };
       }
-      setIsDirty(false);
+      if (editCount.current === savedEditCount) setIsDirty(false);
       setActiveFieldId(null);
       toast.success(t('builder.saved'));
       router.refresh();
       return nextState;
     },
-    INITIAL_FORM_ACTION_STATE,
+    INITIAL_SAVE_FORM_ACTION_STATE,
   );
 
-  const [metadataState, metadataFormAction] = useActionState(
-    async (previousState: CollectionFormActionState, formData: FormData) => {
-      const nextState = await saveMetadataAction(previousState, formData);
-      if (nextState.error !== null) {
-        toast.error(errorT(nextState.error));
-        return nextState;
-      }
-      setIsMetadataDirty(false);
-      toast.success(t('builder.metadataSaved'));
-      router.refresh();
-      return nextState;
-    },
-    INITIAL_FORM_ACTION_STATE,
-  );
+  /*
+   * The page's version catches opening, closing, and edits made elsewhere; the
+   * last save's version covers a second save before the refresh arrives.
+   */
+  const expectedVersion = Math.max(form.version, saveState.version ?? 0);
 
   function updateField(id: string, patch: Partial<DraftField>) {
     const currentField = fields.find((field) => field.id === id);
@@ -160,7 +192,7 @@ export function FormBuilder({
         ? crypto.randomUUID()
         : id;
 
-    setIsDirty(true);
+    markDirty();
     setClientError((current) => (current?.fieldId === id ? null : current));
     setFields((current) =>
       current.map((field) => {
@@ -173,34 +205,31 @@ export function FormBuilder({
 
   function addField() {
     const field = createDraftField(crypto.randomUUID());
-    setIsDirty(true);
+    markDirty();
     setFields((current) => [...current, field]);
     setActiveFieldId(field.id);
   }
 
   function removeField(id: string) {
-    setIsDirty(true);
+    markDirty();
     setClientError((current) => (current?.fieldId === id ? null : current));
     setFields((current) => current.filter((field) => field.id !== id));
     setActiveFieldId((current) => (current === id ? null : current));
   }
 
-  function moveField(id: string, direction: -1 | 1) {
-    setIsDirty(true);
-    setFields((current) => {
-      const index = current.findIndex((field) => field.id === id);
-      const target = index + direction;
-      if (index === -1 || target < 0 || target >= current.length) return current;
-      const next = [...current];
-      const [moved] = next.splice(index, 1);
-      if (moved === undefined) return current;
-      next.splice(target, 0, moved);
-      return next;
-    });
+  function reorderField(activeId: string, overId: string) {
+    markDirty();
+    setFields((current) =>
+      arrayMove(
+        current,
+        current.findIndex((field) => field.id === activeId),
+        current.findIndex((field) => field.id === overId),
+      ),
+    );
   }
 
-  const structureError = clientError?.message ?? structureState.error;
-  const hasUnsavedChanges = isDirty || isMetadataDirty;
+  const saveError = clientError?.message ?? saveState.error;
+  const detailsErrorTarget = clientError === null ? toDetailsErrorTarget(saveState.error) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -216,7 +245,7 @@ export function FormBuilder({
               description={description}
               fields={fields}
               fieldCount={fields.length}
-              hasUnsavedChanges={hasUnsavedChanges}
+              hasUnsavedChanges={isDirty}
               title={title}
             />
           ) : null}
@@ -235,88 +264,96 @@ export function FormBuilder({
         </Alert>
       ) : null}
 
-      {/* Metadata stays editable after opening, so it remains its own save boundary. */}
-      <form
-        action={metadataFormAction}
-        className="overflow-hidden rounded-surface border border-border/80 bg-card"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
-          <span className="flex items-start gap-3">
+      <form action={saveFormAction} className="flex flex-col gap-6">
+        <input name="expectedVersion" type="hidden" value={expectedVersion} />
+        <input name="fields" type="hidden" value={serializedFields} />
+
+        <section
+          aria-labelledby={`${baseId}-details`}
+          className="overflow-hidden rounded-surface border border-border/80 bg-card"
+        >
+          <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
               <FileTextIcon aria-hidden="true" className="size-5" />
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <h2 className="font-semibold text-foreground">{t('builder.detailsHeading')}</h2>
+              <h2 className="font-semibold text-foreground" id={`${baseId}-details`}>
+                {t('builder.detailsHeading')}
+              </h2>
               <span className="text-sm text-muted-foreground">
                 {t('builder.detailsDescription')}
               </span>
             </span>
-          </span>
-          {isMetadataDirty ? (
-            <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge>
-          ) : null}
-        </div>
-        <div className="grid gap-5 p-4 sm:p-5">
-          <Field>
-            <FieldLabel htmlFor={`${baseId}-title`}>{t('builder.title')}</FieldLabel>
-            <Input
-              id={`${baseId}-title`}
-              name="title"
-              onChange={(event) => {
-                setTitle(event.target.value);
-                setIsMetadataDirty(true);
-              }}
-              required
-              value={title}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${baseId}-description`}>{t('builder.description')}</FieldLabel>
-            <Textarea
-              className="min-h-24 resize-y"
-              id={`${baseId}-description`}
-              name="description"
-              onChange={(event) => {
-                setDescription(event.target.value);
-                setIsMetadataDirty(true);
-              }}
-              value={description}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${baseId}-deadline`}>{t('builder.deadline')}</FieldLabel>
-            <Input
-              aria-describedby={`${baseId}-deadline-hint`}
-              id={`${baseId}-deadline`}
-              name="deadlineAt"
-              onChange={(event) => {
-                setDeadline(event.target.value);
-                setIsMetadataDirty(true);
-              }}
-              type="datetime-local"
-              value={deadline}
-            />
-            <FieldDescription id={`${baseId}-deadline-hint`}>
-              {t('builder.deadlineHint')}
-            </FieldDescription>
-          </Field>
-          {metadataState.error !== null ? (
-            <Alert variant="destructive">
-              <AlertDescription>{errorT(metadataState.error)}</AlertDescription>
-            </Alert>
-          ) : null}
-          <div className="flex justify-end border-t border-border/70 pt-4">
-            <SubmitButton label={t('builder.saveDetails')} />
           </div>
-        </div>
-      </form>
+          <div className="grid gap-5 p-4 sm:p-5">
+            <Field>
+              <FieldLabel htmlFor={titleId}>{t('builder.title')}</FieldLabel>
+              <Input
+                aria-describedby={detailsErrorTarget === 'title' ? detailsErrorId : undefined}
+                aria-invalid={detailsErrorTarget === 'title'}
+                id={titleId}
+                name="title"
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  markDirty();
+                }}
+                required
+                value={title}
+              />
+              {detailsErrorTarget === 'title' && saveState.error !== null ? (
+                <p className="text-sm font-medium text-destructive" id={detailsErrorId}>
+                  {errorT(saveState.error)}
+                </p>
+              ) : null}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`${baseId}-description`}>{t('builder.description')}</FieldLabel>
+              <Textarea
+                className="min-h-24 resize-y"
+                id={`${baseId}-description`}
+                name="description"
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  markDirty();
+                }}
+                value={description}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={deadlineId}>{t('builder.deadline')}</FieldLabel>
+              <Input
+                aria-describedby={
+                  detailsErrorTarget === 'deadline'
+                    ? `${detailsErrorId} ${baseId}-deadline-hint`
+                    : `${baseId}-deadline-hint`
+                }
+                aria-invalid={detailsErrorTarget === 'deadline'}
+                id={deadlineId}
+                name="deadlineAt"
+                onChange={(event) => {
+                  setDeadline(event.target.value);
+                  markDirty();
+                }}
+                type="datetime-local"
+                value={deadline}
+              />
+              {detailsErrorTarget === 'deadline' && saveState.error !== null ? (
+                <p className="text-sm font-medium text-destructive" id={detailsErrorId}>
+                  {errorT(saveState.error)}
+                </p>
+              ) : null}
+              <FieldDescription id={`${baseId}-deadline-hint`}>
+                {t('builder.deadlineHint')}
+              </FieldDescription>
+            </Field>
+          </div>
+        </section>
 
-      <section
-        aria-labelledby={`${baseId}-structure`}
-        className="overflow-hidden rounded-surface border border-border/80 bg-card"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
-          <div className="flex items-start gap-3">
+        <section
+          aria-labelledby={`${baseId}-structure`}
+          className="overflow-hidden rounded-surface border border-border/80 bg-card"
+        >
+          <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-4 sm:px-5">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
               <ListChecksIcon aria-hidden="true" className="size-5" />
             </span>
@@ -327,60 +364,61 @@ export function FormBuilder({
               <span className="text-sm text-muted-foreground">
                 {t('builder.fieldsDescription')}
               </span>
+              {fields.length > 1 ? (
+                <span className="text-sm text-muted-foreground">{t('builder.reorderHint')}</span>
+              ) : null}
             </span>
           </div>
-          {isDirty ? <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge> : null}
-        </div>
 
-        <form action={structureFormAction} className="flex flex-col gap-4 p-4 sm:p-5">
-          <input name="expectedVersion" type="hidden" value={form.version} />
-          <input name="fields" type="hidden" value={serializedFields} />
+          <div className="flex flex-col gap-4 p-4 sm:p-5">
+            <SortableFieldList
+              activeFieldId={activeFieldId}
+              clientError={clientError}
+              fields={fields}
+              onChange={updateField}
+              onRemove={removeField}
+              onReorder={reorderField}
+              onToggle={(id) => setActiveFieldId((current) => (current === id ? null : id))}
+            />
 
-          <ul className="flex list-none flex-col gap-3 p-0">
-            {fields.map((field, index) => (
-              <FieldEditor
-                errorMessage={clientError?.fieldId === field.id ? clientError.message : null}
-                field={field}
-                index={index}
-                isExpanded={activeFieldId === field.id}
-                isFirst={index === 0}
-                isLast={index === fields.length - 1}
-                key={field.id}
-                onChange={updateField}
-                onMove={moveField}
-                onRemove={removeField}
-                onToggle={(id) => setActiveFieldId((current) => (current === id ? null : id))}
-              />
-            ))}
-          </ul>
+            {fields.length === 0 ? (
+              <p className="rounded-surface border border-dashed border-input p-6 text-center text-sm text-muted-foreground">
+                {t('builder.noFields')}
+              </p>
+            ) : null}
 
-          {fields.length === 0 ? (
-            <p className="rounded-surface border border-dashed border-input p-6 text-center text-sm text-muted-foreground">
-              {t('builder.noFields')}
-            </p>
-          ) : null}
+            <Button
+              className="w-full border-dashed"
+              onClick={addField}
+              type="button"
+              variant="outline"
+            >
+              <PlusIcon aria-hidden="true" data-icon="inline-start" />
+              {t('builder.addField')}
+            </Button>
+          </div>
+        </section>
 
-          <Button
-            className="w-full border-dashed"
-            onClick={addField}
-            type="button"
-            variant="outline"
-          >
-            <PlusIcon aria-hidden="true" data-icon="inline-start" />
-            {t('builder.addField')}
-          </Button>
-
-          {structureError !== null ? (
-            <Alert variant="destructive">
-              <AlertDescription>{errorT(structureError)}</AlertDescription>
+        {/*
+         * One save for the whole form, kept in reach while scrolling a long list
+         * of questions. `data-sticky-save-bar` lets the page keep focused
+         * controls from scrolling underneath it.
+         */}
+        <div
+          className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-surface border border-border/80 bg-card/95 p-3 shadow-[0_0.75rem_2rem_-1.5rem_rgba(22,22,22,0.35)] supports-backdrop-filter:backdrop-blur-xs sm:flex-row sm:items-center sm:justify-end"
+          data-sticky-save-bar
+        >
+          {saveError !== null && detailsErrorTarget === null ? (
+            <Alert className="sm:mr-auto" variant="destructive">
+              <AlertDescription>{errorT(saveError)}</AlertDescription>
             </Alert>
           ) : null}
-
-          <div className="flex justify-end border-t border-border/70 pt-4">
-            <SubmitButton icon label={t('builder.saveStructure')} />
+          <div className="flex items-center justify-end gap-3">
+            {isDirty ? <StatusBadge tone="warning">{t('builder.unsaved')}</StatusBadge> : null}
+            <SubmitButton icon label={t('builder.save')} />
           </div>
-        </form>
-      </section>
+        </div>
+      </form>
     </div>
   );
 }

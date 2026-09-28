@@ -84,25 +84,21 @@ export class InstructorCollectionFormsCoreClient {
     });
   }
 
-  /** Replaces the live form structure using the caller's expected version. */
-  update(sessionToken: string, formId: string, body: unknown): Promise<InstructorCollectionForm> {
-    return this.client.request({
-      method: 'PUT',
-      path: `${BASE}/forms/${formId}`,
-      body,
-      responseSchema: formSchema,
-      sessionToken,
-    });
-  }
-
-  updateMetadata(
+  /** Saves details and questions as one change using the caller's expected version. */
+  save(
     sessionToken: string,
     formId: string,
-    body: unknown,
+    body: {
+      deadlineAt: string | null;
+      description: string;
+      expectedVersion: number;
+      fields: unknown[];
+      title: string;
+    },
   ): Promise<InstructorCollectionForm> {
     return this.client.request({
       method: 'PUT',
-      path: `${BASE}/forms/${formId}/metadata`,
+      path: `${BASE}/forms/${formId}`,
       body,
       responseSchema: formSchema,
       sessionToken,

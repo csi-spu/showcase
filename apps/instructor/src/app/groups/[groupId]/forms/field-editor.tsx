@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDownIcon, ChevronUpIcon, Trash2Icon } from 'lucide-react';
-import { useId } from 'react';
+import { useId, type CSSProperties, type ReactNode, type Ref } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
@@ -26,29 +26,39 @@ const SELECT_CLASS =
   'h-11 w-full rounded-control border border-input bg-card px-3 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:text-sm';
 
 interface FieldEditorProps {
+  /** Rendered before the summary when the list is reordered by dragging. */
+  dragHandle?: ReactNode;
   errorMessage: CollectionFormsErrorMessage | null;
   field: DraftField;
   index: number;
+  isDragging?: boolean;
   isExpanded?: boolean;
-  isFirst: boolean;
-  isLast: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
   onChange: (id: string, patch: Partial<DraftField>) => void;
-  onMove: (id: string, direction: -1 | 1) => void;
+  /** Up and down buttons, for a list that is not reordered by dragging. */
+  onMove?: (id: string, direction: -1 | 1) => void;
   onRemove: (id: string) => void;
   onToggle?: (id: string) => void;
+  ref?: Ref<HTMLLIElement>;
+  style?: CSSProperties;
 }
 
 export function FieldEditor({
+  dragHandle,
   errorMessage,
   field,
   index,
+  isDragging = false,
   isExpanded = true,
-  isFirst,
-  isLast,
+  isFirst = false,
+  isLast = false,
   onChange,
   onMove,
   onRemove,
   onToggle,
+  ref,
+  style,
 }: FieldEditorProps) {
   const t = useTranslations('Forms');
   const errorT = useTranslations('Forms.errors');
@@ -89,13 +99,14 @@ export function FieldEditor({
     <li
       aria-labelledby={summaryId}
       className={cn(
-        'relative animate-in rounded-surface border bg-card fade-in slide-in-from-top-1 transition-[border-color,box-shadow,transform] duration-200 motion-reduce:transform-none motion-reduce:animate-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none data-[invalid=true]:border-destructive',
+        'relative animate-in rounded-surface border bg-card fade-in slide-in-from-top-1 transition-[border-color,box-shadow,transform] duration-200 motion-reduce:transform-none motion-reduce:animate-none motion-reduce:transition-none! focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none data-[dragging=true]:z-10 data-[dragging=true]:shadow-lg data-[invalid=true]:border-destructive',
         onToggle === undefined
           ? 'border-border/80'
           : isExpanded
             ? 'border-primary/45 shadow-[0_0.75rem_2rem_-1.5rem_color-mix(in_oklch,var(--primary),transparent_65%)]'
             : 'border-border/80 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-sm',
       )}
+      data-dragging={isDragging}
       data-invalid={hasError}
       id={`field-${field.id}`}
       /*
@@ -104,9 +115,12 @@ export function FieldEditor({
        * the tab order: a valid field stays unfocusable, and tabbing through the
        * builder still walks the controls rather than the cards around them.
        */
+      ref={ref}
+      style={style}
       tabIndex={hasError ? -1 : undefined}
     >
       <div className="flex items-center gap-2 p-3 sm:p-4">
+        {dragHandle}
         {onToggle === undefined ? (
           <div className="flex min-w-0 flex-1 items-center gap-3" id={summaryId}>
             {summary}
@@ -129,26 +143,30 @@ export function FieldEditor({
           </button>
         )}
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            aria-label={t('builder.moveUp', { label: field.label || String(index + 1) })}
-            disabled={isFirst}
-            onClick={() => onMove(field.id, -1)}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronUpIcon />
-          </Button>
-          <Button
-            aria-label={t('builder.moveDown', { label: field.label || String(index + 1) })}
-            disabled={isLast}
-            onClick={() => onMove(field.id, 1)}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronDownIcon />
-          </Button>
+          {onMove === undefined ? null : (
+            <>
+              <Button
+                aria-label={t('builder.moveUp', { label: field.label || String(index + 1) })}
+                disabled={isFirst}
+                onClick={() => onMove(field.id, -1)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronUpIcon />
+              </Button>
+              <Button
+                aria-label={t('builder.moveDown', { label: field.label || String(index + 1) })}
+                disabled={isLast}
+                onClick={() => onMove(field.id, 1)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <ChevronDownIcon />
+              </Button>
+            </>
+          )}
           <Button
             aria-label={t('builder.removeField', { label: field.label || String(index + 1) })}
             onClick={() => onRemove(field.id)}

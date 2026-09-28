@@ -98,6 +98,11 @@ html {
   scroll-padding-top: calc(var(--app-topbar-height) + 1rem);
 }
 
+/* The same guarantee at the bottom edge while a sticky save bar covers it. */
+html:has([data-sticky-save-bar]) {
+  scroll-padding-bottom: 7rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

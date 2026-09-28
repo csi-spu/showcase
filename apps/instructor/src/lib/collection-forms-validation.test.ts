@@ -3,10 +3,9 @@ import {
   validateCheckSubmission,
   validateCreateForm,
   validateCreateFromTemplate,
-  validateFormMetadata,
   validateLifecycleReason,
   validateSaveAsTemplate,
-  validateUpdateForm,
+  validateSaveForm,
 } from './collection-forms-validation';
 
 function formData(entries: Record<string, string>): FormData {
@@ -115,35 +114,40 @@ describe('validateCreateForm', () => {
   });
 });
 
-describe('validateUpdateForm', () => {
-  it('accepts only fields and a positive expected version', () => {
-    const input = validateUpdateForm(
-      formData({ expectedVersion: '4', fields: JSON.stringify([VALID_FIELD]) }),
-    );
+describe('validateSaveForm', () => {
+  function saveBody(overrides: Record<string, string> = {}): Record<string, string> {
+    return {
+      deadlineAt: '2026-10-01T23:59',
+      description: 'คำอธิบาย',
+      expectedVersion: '4',
+      fields: JSON.stringify([VALID_FIELD]),
+      title: '  ชื่อใหม่  ',
+      ...overrides,
+    };
+  }
 
-    expect(input).toEqual({ expectedVersion: 4, fields: [VALID_FIELD] });
+  it('reads details, questions, and the expected version as one save', () => {
+    expect(validateSaveForm(formData(saveBody()))).toEqual({
+      deadlineAt: '2026-10-01T16:59:00.000Z',
+      description: 'คำอธิบาย',
+      expectedVersion: 4,
+      fields: [VALID_FIELD],
+      title: 'ชื่อใหม่',
+    });
   });
 
-  it('rejects a missing or invalid expected version', () => {
-    expect(validateUpdateForm(formData({ fields: JSON.stringify([VALID_FIELD]) }))).toBeNull();
-    expect(
-      validateUpdateForm(formData({ expectedVersion: '0', fields: JSON.stringify([VALID_FIELD]) })),
-    ).toBeNull();
-  });
-});
-
-describe('validateFormMetadata', () => {
-  it('accepts a title with an empty deadline', () => {
-    const input = validateFormMetadata(
-      formData({ title: 'ชื่อใหม่', description: '', deadlineAt: '' }),
-    );
-    expect(input).toEqual({ title: 'ชื่อใหม่', description: '', deadlineAt: null });
+  it('reads an empty deadline as no deadline', () => {
+    expect(validateSaveForm(formData(saveBody({ deadlineAt: '' })))?.deadlineAt).toBeNull();
   });
 
-  it('rejects a blank title', () => {
-    expect(
-      validateFormMetadata(formData({ title: '   ', description: '', deadlineAt: '' })),
-    ).toBeNull();
+  it.each([
+    ['a blank title', { title: '   ' }],
+    ['a missing expected version', { expectedVersion: '' }],
+    ['an expected version below one', { expectedVersion: '0' }],
+    ['a deadline that is not a wall-clock value', { deadlineAt: 'tomorrow' }],
+    ['fields that are not JSON', { fields: '[' }],
+  ])('rejects %s', (_case, overrides) => {
+    expect(validateSaveForm(formData(saveBody(overrides)))).toBeNull();
   });
 });
 
