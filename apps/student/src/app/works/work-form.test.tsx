@@ -127,7 +127,6 @@ describe('five-step Work authoring', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
     await act(async () => Promise.resolve());
-    expect(screen.getAllByText('media-upload')).toHaveLength(2);
     expect(mocks.saveDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedVersion: null,
@@ -166,6 +165,26 @@ describe('five-step Work authoring', () => {
     await act(async () => resolveSave(savedWorkResult()));
 
     expect(screen.getAllByText('media-upload')).toHaveLength(2);
+  });
+
+  it('holds the details step until the saved Work route replaces the new-Work form', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('ชื่อผลงาน'), { target: { value: 'ผลงานใหม่' } });
+    fillDetailsStep();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ถัดไป' }));
+
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        '/works/64000000-0000-4000-8000-000000000001?step=2',
+        { scroll: false },
+      ),
+    );
+    const savingButton = screen.getByRole('button', { name: 'กำลังบันทึก…' });
+    expect((savingButton as HTMLButtonElement).disabled).toBe(true);
+    expect(savingButton.closest('section')?.hasAttribute('inert')).toBe(true);
+    expect(screen.getByLabelText('ชื่อผลงาน')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '2 สื่อ' })).toBeNull();
   });
 
   it('stays on the current step when saving on Next fails', async () => {
