@@ -1,4 +1,8 @@
 import type { CollectionAnswers, CollectionField } from './collection-field';
+import type {
+  CollectionFormHistoryEvent,
+  CollectionFormHistoryPosition,
+} from './collection-form-history';
 import type { CollectionFile, CollectionFileStatus } from './collection-files';
 import type { CollectionMatrixRow, CollectionMatrixSummary } from './collection-matrix';
 import type { CollectionExportKind, CollectionExportStatus } from './collection-exports';
@@ -212,6 +216,25 @@ export interface CollectionSubmissionHistory {
   firstSubmittedAt: Date | null;
   form: CollectionForm;
   status: StudentObligation['status'];
+}
+
+/**
+ * One entry of a form's edit history: one save or one lifecycle change.
+ *
+ * The actor is named for reading only. Entries never carry Student data.
+ */
+export interface CollectionFormHistoryRecord {
+  actorName: string;
+  events: CollectionFormHistoryEvent[];
+  /** The entry's smallest event id, which breaks ties between entries at one time. */
+  id: string;
+  occurredAt: Date;
+  occurredAtMicros: string;
+}
+
+export interface CollectionFormHistoryRecordPage {
+  entries: CollectionFormHistoryRecord[];
+  hasMore: boolean;
 }
 
 /**
@@ -644,6 +667,18 @@ export interface CollectionFormsRepository {
     isInstructor: boolean;
     studentAccountId: string;
   }): Promise<CollectionSubmissionHistory | null>;
+  /**
+   * One page of a form's edit history, newest first, strictly after `before`.
+   *
+   * The events of one save share their actor and time and form one entry;
+   * each lifecycle event is an entry of its own. Returns null when the form
+   * does not exist.
+   */
+  readFormHistory(input: {
+    before: CollectionFormHistoryPosition | null;
+    formId: string;
+    limit: number;
+  }): Promise<CollectionFormHistoryRecordPage | null>;
   saveDraft(input: {
     answers: CollectionAnswers;
     expectedVersion: number;

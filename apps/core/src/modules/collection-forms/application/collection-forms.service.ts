@@ -10,6 +10,13 @@ import {
   type CollectionField,
 } from './collection-field';
 import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
+import {
+  FORM_HISTORY_PAGE_SIZE,
+  decodeFormHistoryCursor,
+  describeFormHistoryEvents,
+  encodeFormHistoryCursor,
+  type CollectionFormHistoryPage,
+} from './collection-form-history';
 import { findCloseReasonError, summarizePendingWork } from './collection-lifecycle';
 import { boundMatrixLimit } from './collection-matrix';
 import { buildExportArchive, buildExportWorkbook } from './collection-export-builder';
@@ -645,6 +652,47 @@ export class CollectionFormsService {
     const history = await this.repository.getSubmissionHistory(input);
     if (history === null) throw new CollectionFormsError('OBLIGATION_NOT_FOUND', 404);
     return history;
+  }
+
+  /**
+   * One page of a form's edit history, newest first.
+   *
+   * Any Instructor may read any form's history, the same rule that lets any
+   * Instructor edit it. The cursor is only ever one this method issued.
+   */
+  async getFormHistory(input: {
+    cursor: string | undefined;
+    formId: string;
+  }): Promise<CollectionFormHistoryPage> {
+    const before = input.cursor === undefined ? null : decodeFormHistoryCursor(input.cursor);
+    if (input.cursor !== undefined && before === null) {
+      const errorCode = 'FORM_HISTORY_CURSOR_INVALID';
+      this.logger.warn({
+        errorCode,
+        formId: input.formId,
+        operation: 'collection_form_history_read',
+      });
+      throw new CollectionFormsError(errorCode, 400);
+    }
+    const page = await this.repository.readFormHistory({
+      before,
+      formId: input.formId,
+      limit: FORM_HISTORY_PAGE_SIZE,
+    });
+    if (page === null) throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    const last = page.entries.at(-1);
+    return {
+      entries: page.entries.map((entry) => ({
+        actorName: entry.actorName,
+        changes: describeFormHistoryEvents(entry.events),
+        id: entry.id,
+        occurredAt: entry.occurredAt,
+      })),
+      nextCursor:
+        page.hasMore && last !== undefined
+          ? encodeFormHistoryCursor({ entryId: last.id, occurredAtMicros: last.occurredAtMicros })
+          : null,
+    };
   }
 
   async listStudentObligations(studentAccountId: string) {
