@@ -73,6 +73,7 @@ class FakeRepository implements CollectionFormsRepository {
   openResult: Result<'openForm'> = { ...FORM, status: 'open' };
   reusableValues: ReusableValueCandidate[] = [];
   saveResult: Result<'saveDraft'> = { version: 1 };
+  saveFormResult: Result<'saveForm'> = { ...FORM, title: 'ชื่อใหม่', version: 2 };
   submitResult: Result<'submit'> = {
     submissionId: '50000000-0000-4000-8000-000000000001',
     version: 1,
@@ -81,6 +82,7 @@ class FakeRepository implements CollectionFormsRepository {
   updateStructureResult: Result<'updateFormStructure'> = FORM;
 
   createdForms: Parameters<CollectionFormsRepository['createForm']>[0][] = [];
+  savedForms: Parameters<CollectionFormsRepository['saveForm']>[0][] = [];
   createdTemplates: Parameters<CollectionFormsRepository['createTemplate']>[0][] = [];
   createdUploads: Parameters<CollectionFormsRepository['createUpload']>[0][] = [];
   fieldFiles: CollectionFile[] = [];
@@ -324,6 +326,10 @@ class FakeRepository implements CollectionFormsRepository {
   saveDraft(): Promise<Result<'saveDraft'>> {
     return Promise.resolve(this.saveResult);
   }
+  saveForm(input: Parameters<CollectionFormsRepository['saveForm']>[0]) {
+    this.savedForms.push(input);
+    return Promise.resolve(this.saveFormResult);
+  }
   submit(): Promise<Result<'submit'>> {
     return Promise.resolve(this.submitResult);
   }
@@ -526,6 +532,108 @@ describe('CollectionFormsService', () => {
           title: 'รายงาน',
         }),
       ).rejects.toEqual(new CollectionFormsError('DEADLINE_NOT_EXTENDABLE', 409));
+    });
+  });
+
+  describe('saving details and questions together', () => {
+    const save = {
+      actorAccountId: ACTOR,
+      deadlineAt: '2026-10-01T09:00:00.000Z',
+      description: ' คำอธิบาย ',
+      expectedVersion: 1,
+      fields: [TEXT_FIELD, { ...TEXT_FIELD, id: 'advisor', label: 'อาจารย์ที่ปรึกษา' }],
+      formId: FORM.id,
+      title: ' ชื่อใหม่ ',
+    };
+
+    it('passes both parts to one repository write under one version check', async () => {
+      const { repository, service } = setup();
+      await expect(service.saveForm(save)).resolves.toEqual({
+        ...FORM,
+        title: 'ชื่อใหม่',
+        version: 2,
+      });
+      expect(repository.savedForms).toEqual([
+        {
+          actorAccountId: ACTOR,
+          deadlineAt: new Date('2026-10-01T09:00:00.000Z'),
+          description: 'คำอธิบาย',
+          expectedVersion: 1,
+          fields: save.fields,
+          formId: FORM.id,
+          now: NOW,
+          title: 'ชื่อใหม่',
+        },
+      ]);
+    });
+
+    it('returns the unchanged form when the save changes nothing', async () => {
+      const repository = new FakeRepository();
+      repository.saveFormResult = FORM;
+      await expect(
+        setup(repository).service.saveForm({
+          ...save,
+          deadlineAt: null,
+          description: FORM.description,
+          fields: FORM.fields,
+          title: FORM.title,
+        }),
+      ).resolves.toEqual(FORM);
+    });
+
+    it.each([
+      ['stale', new CollectionFormsError('FORM_STALE', 409)],
+      ['round_closed', new CollectionFormsError('ROUND_CLOSED', 409)],
+      ['deadline_earlier', new CollectionFormsError('DEADLINE_NOT_EXTENDABLE', 409)],
+      ['not_found', new CollectionFormsError('FORM_NOT_FOUND', 404)],
+    ] as const)('maps a %s refusal to its error code', async (result, error) => {
+      const repository = new FakeRepository();
+      repository.saveFormResult = result;
+      await expect(setup(repository).service.saveForm(save)).rejects.toEqual(error);
+    });
+
+    it('reports the field whose answer type changed without a new id', async () => {
+      const repository = new FakeRepository();
+      repository.saveFormResult = {
+        code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID',
+        fieldId: TEXT_FIELD.id,
+        outcome: 'invalid_transition',
+      };
+      await expect(setup(repository).service.saveForm(save)).rejects.toEqual(
+        new CollectionFormsError('FIELD_TYPE_CHANGE_REQUIRES_NEW_ID', 422, TEXT_FIELD.id),
+      );
+    });
+
+    /*
+     * Validation runs before the transaction, so a problem confined to one part
+     * never lets the other part reach the database.
+     */
+    it.each([
+      ['an empty title', { title: '   ' }, new CollectionFormsError('FORM_INVALID', 422)],
+      [
+        'an unreadable deadline',
+        { deadlineAt: 'not-a-date' },
+        new CollectionFormsError('FORM_INVALID', 422),
+      ],
+      [
+        'an invalid question',
+        {
+          fields: [
+            TEXT_FIELD,
+            { description: '', id: 'pick', label: 'เลือก', required: true, type: 'single_choice' },
+          ] satisfies CollectionField[],
+        },
+        new CollectionFormsError('FIELD_OPTIONS_INVALID', 422, 'pick'),
+      ],
+      [
+        'a version below one',
+        { expectedVersion: 0 },
+        new CollectionFormsError('FORM_VERSION_INVALID', 422),
+      ],
+    ])('writes nothing for %s', async (_case, patch, error) => {
+      const { repository, service } = setup();
+      await expect(service.saveForm({ ...save, ...patch })).rejects.toEqual(error);
+      expect(repository.savedForms).toEqual([]);
     });
   });
 

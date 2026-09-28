@@ -87,7 +87,7 @@ test.describe('Collection Milestone 3', () => {
       });
 
       await test.step('extending the deadline clears the recorded lateness', async () => {
-        await extendDeadline(instructorPage, collectionScenario);
+        await extendDeadlineWithNewFirstQuestion(instructorPage, collectionScenario);
 
         /*
          * Lateness is decided on the server against the current deadline, never
@@ -229,17 +229,48 @@ async function openInstructorHistory(
 }
 
 /**
- * Moves the deadline a week out.
+ * Moves the deadline a week out and adds an optional question ahead of the
+ * seeded one, all in one save.
  *
  * Deadlines only ever extend, so this is the one direction the builder accepts
- * once a form is open.
+ * once a form is open. The question is moved from the keyboard, the path the
+ * drag handle must support without a pointer.
  */
-async function extendDeadline(page: Page, scenario: CollectionLifecycleScenario): Promise<void> {
+async function extendDeadlineWithNewFirstQuestion(
+  page: Page,
+  scenario: CollectionLifecycleScenario,
+): Promise<void> {
+  const newQuestion = 'ช่วงเวลาที่สะดวกให้ติดต่อ';
+  const extendedDeadline = toBangkokDateTimeValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   await page.goto(`/groups/${scenario.groupId}/forms/${scenario.formId}`);
-  const extended = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await page.getByLabel('กำหนดส่ง').fill(toBangkokDateTimeValue(extended));
-  await page.getByRole('button', { name: 'บันทึกรายละเอียด' }).click();
-  await expect(page.getByText('บันทึกรายละเอียดแล้ว', { exact: true })).toBeVisible();
+  await page.getByLabel('กำหนดส่ง').fill(extendedDeadline);
+  await page.getByRole('button', { name: 'เพิ่มคำถาม' }).click();
+  await page.getByLabel('คำถาม', { exact: true }).last().fill(newQuestion);
+
+  /*
+   * Each key waits for its announcement: the sensor only listens for the next
+   * key once the lift has been handled, and the announcement is what a screen
+   * reader user would wait for too.
+   */
+  await page.getByRole('button', { name: `ย้ายคำถาม ${newQuestion}`, exact: true }).focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('status').filter({ hasText: 'หยิบคำถาม' })).toBeAttached();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('status').filter({ hasText: 'ไปลำดับที่ 1' })).toBeAttached();
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('status').filter({ hasText: 'วางคำถาม' })).toBeAttached();
+
+  await expect(page.getByText('ยังไม่ได้บันทึก', { exact: true })).toHaveCount(1);
+  await page.getByRole('button', { name: 'บันทึก', exact: true }).click();
+  await expect(page.getByText('บันทึกแบบฟอร์มแล้ว', { exact: true })).toBeVisible();
+
+  // Both halves of the one save are stored, not only what is still on screen.
+  await page.reload();
+  await expect(page.getByLabel('กำหนดส่ง')).toHaveValue(extendedDeadline);
+  const handles = page.getByRole('button', { name: /^ย้ายคำถาม /u });
+  await expect(handles).toHaveCount(2);
+  await expect(handles.nth(0)).toHaveAccessibleName(`ย้ายคำถาม ${newQuestion}`);
+  await expect(handles.nth(1)).toHaveAccessibleName(`ย้ายคำถาม ${scenario.answerLabel}`);
 }
 
 /**

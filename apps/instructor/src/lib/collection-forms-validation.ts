@@ -102,11 +102,11 @@ const metadataShape = {
 };
 
 const createFormSchema = z.object({ ...metadataShape, fields: fieldsJsonSchema });
-const updateFormSchema = z.object({
+const saveFormSchema = z.object({
+  ...metadataShape,
   expectedVersion: z.coerce.number().int().min(1),
   fields: fieldsJsonSchema,
 });
-const metadataSchema = z.object(metadataShape);
 const saveAsTemplateSchema = z.object({ name: z.string().trim().min(1).max(200) });
 const createFromTemplateSchema = z.object({
   templateId: z.uuid(),
@@ -130,8 +130,7 @@ const checkSubmissionSchema = z
   .refine((input) => input.decision === 'passed' || input.reason !== null, { path: ['reason'] });
 
 type CreateFormInput = z.infer<typeof createFormSchema>;
-type UpdateFormInput = z.infer<typeof updateFormSchema>;
-type MetadataInput = z.infer<typeof metadataSchema>;
+type SaveFormInput = z.infer<typeof saveFormSchema>;
 type SaveAsTemplateInput = z.infer<typeof saveAsTemplateSchema>;
 type CreateFromTemplateInput = z.infer<typeof createFromTemplateSchema>;
 type CheckSubmissionInput = z.infer<typeof checkSubmissionSchema>;
@@ -141,19 +140,14 @@ export function validateCreateForm(formData: FormData): CreateFormInput | null {
   return result.success ? result.data : null;
 }
 
-export function validateUpdateForm(formData: FormData): UpdateFormInput | null {
-  const result = updateFormSchema.safeParse({
-    expectedVersion: formData.get('expectedVersion'),
-    fields: formData.get('fields'),
-  });
-  return result.success ? result.data : null;
-}
-
-export function validateFormMetadata(formData: FormData): MetadataInput | null {
-  const result = metadataSchema.safeParse({
+/** Details and questions are saved together, so one version check covers both. */
+export function validateSaveForm(formData: FormData): SaveFormInput | null {
+  const result = saveFormSchema.safeParse({
     title: formData.get('title'),
     description: formData.get('description') ?? '',
     deadlineAt: formData.get('deadlineAt') ?? '',
+    expectedVersion: formData.get('expectedVersion'),
+    fields: formData.get('fields'),
   });
   return result.success ? result.data : null;
 }

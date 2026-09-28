@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AUTH_CLOCK } from '../../auth/application/auth.ports';
 import type { Clock } from '../../auth/application/auth.ports';
 import {
@@ -54,6 +54,8 @@ const DOWNLOAD_URL_TTL_SECONDS = 60;
 
 @Injectable()
 export class CollectionFormsService {
+  private readonly logger = new Logger(CollectionFormsService.name);
+
   constructor(
     @Inject(COLLECTION_FORMS_REPOSITORY) private readonly repository: CollectionFormsRepository,
     @Inject(AUTH_CLOCK) private readonly clock: Clock,
@@ -113,6 +115,57 @@ export class CollectionFormsService {
     if ('outcome' in result) {
       throw new CollectionFormsError(result.code, 422, result.fieldId);
     }
+    return result;
+  }
+
+  /**
+   * Saves the builder's working copy -- details and questions -- as one change.
+   *
+   * One version check covers both parts, so they can never be stored against
+   * different versions. Input is validated before the transaction and every
+   * state rule runs inside it, so a failure in either part writes nothing.
+   */
+  async saveForm(input: {
+    actorAccountId: string;
+    deadlineAt: string | null;
+    description: string;
+    expectedVersion: number;
+    fields: CollectionField[];
+    formId: string;
+    title: string;
+  }) {
+    const { description, title } = this.validateMetadata(input.title, input.description);
+    const deadlineAt = this.parseDeadline(input.deadlineAt);
+    this.validateFields(input.fields);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new CollectionFormsError('FORM_VERSION_INVALID', 422);
+    }
+    const result = await this.repository.saveForm({
+      actorAccountId: input.actorAccountId,
+      deadlineAt,
+      description,
+      expectedVersion: input.expectedVersion,
+      fields: input.fields,
+      formId: input.formId,
+      now: this.clock.now(),
+      title,
+    });
+    if (typeof result === 'string' || 'outcome' in result) {
+      const error = toSaveFormError(result);
+      this.logger.warn({
+        actorAccountId: input.actorAccountId,
+        errorCode: error.code,
+        formId: input.formId,
+        operation: 'collection_form_save',
+      });
+      throw error;
+    }
+    this.logger.log({
+      actorAccountId: input.actorAccountId,
+      formId: input.formId,
+      operation: 'collection_form_save',
+      version: result.version,
+    });
     return result;
   }
 
@@ -897,5 +950,26 @@ export class CollectionFormsService {
   private validateFields(fields: CollectionField[]): void {
     const error = findFieldDefinitionError(fields);
     if (error !== null) throw new CollectionFormsError(error.code, 422, error.fieldId);
+  }
+}
+
+function toSaveFormError(
+  result:
+    | { outcome: 'invalid_transition'; code: string; fieldId: string }
+    | 'deadline_earlier'
+    | 'not_found'
+    | 'round_closed'
+    | 'stale',
+): CollectionFormsError {
+  if (typeof result !== 'string') return new CollectionFormsError(result.code, 422, result.fieldId);
+  switch (result) {
+    case 'deadline_earlier':
+      return new CollectionFormsError('DEADLINE_NOT_EXTENDABLE', 409);
+    case 'not_found':
+      return new CollectionFormsError('FORM_NOT_FOUND', 404);
+    case 'round_closed':
+      return new CollectionFormsError('ROUND_CLOSED', 409);
+    case 'stale':
+      return new CollectionFormsError('FORM_STALE', 409);
   }
 }

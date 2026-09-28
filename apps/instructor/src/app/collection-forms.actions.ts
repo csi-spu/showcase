@@ -4,8 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { CoreClientError } from '@showcase/core-client';
 import { isExpired } from './collection-groups-action-policy';
-import { INITIAL_FORM_ACTION_STATE, toFormsErrorMessage } from './collection-forms-state';
-import type { CollectionFormActionState } from './collection-forms-state';
+import {
+  INITIAL_FORM_ACTION_STATE,
+  INITIAL_SAVE_FORM_ACTION_STATE,
+  toFormsErrorMessage,
+} from './collection-forms-state';
+import type { CollectionFormActionState, SaveFormActionState } from './collection-forms-state';
 import {
   clearInstructorSessionToken,
   readInstructorSessionToken,
@@ -17,10 +21,9 @@ import {
   validateCreateExport,
   validateCreateForm,
   validateCreateFromTemplate,
-  validateFormMetadata,
   validateLifecycleReason,
   validateSaveAsTemplate,
-  validateUpdateForm,
+  validateSaveForm,
 } from '@/lib/collection-forms-validation';
 
 /**
@@ -46,42 +49,31 @@ export async function createCollectionFormAction(
   redirect(`/groups/${groupId}/forms/${form.id}`);
 }
 
-/** Replaces the live form structure while Core preserves submitted snapshots. */
-export async function updateCollectionFormAction(
+/**
+ * Saves the form's details and questions as one change.
+ *
+ * Core checks one expected version and applies everything or nothing, so a
+ * refused save never leaves the details saved and the questions not.
+ */
+export async function saveCollectionFormAction(
   groupId: string,
   formId: string,
-  _previousState: CollectionFormActionState,
+  _previousState: SaveFormActionState,
   formData: FormData,
-): Promise<CollectionFormActionState> {
-  const input = validateUpdateForm(formData);
-  if (input === null) return { ...INITIAL_FORM_ACTION_STATE, error: 'invalid', submitted: true };
+): Promise<SaveFormActionState> {
+  const input = validateSaveForm(formData);
+  if (input === null) {
+    return { ...INITIAL_SAVE_FORM_ACTION_STATE, error: 'invalid', submitted: true };
+  }
   const sessionToken = await requireSessionToken();
+  let form;
   try {
-    await coreClient().update(sessionToken, formId, input);
+    form = await coreClient().save(sessionToken, formId, input);
   } catch (error: unknown) {
-    return await toFailure(error);
+    return { ...(await toFailure(error)), version: null };
   }
   revalidatePath(`/groups/${groupId}/forms/${formId}`);
-  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
-}
-
-/** Edits the title, description, and deadline that stay editable after opening. */
-export async function updateCollectionFormMetadataAction(
-  groupId: string,
-  formId: string,
-  _previousState: CollectionFormActionState,
-  formData: FormData,
-): Promise<CollectionFormActionState> {
-  const input = validateFormMetadata(formData);
-  if (input === null) return { ...INITIAL_FORM_ACTION_STATE, error: 'invalid', submitted: true };
-  const sessionToken = await requireSessionToken();
-  try {
-    await coreClient().updateMetadata(sessionToken, formId, input);
-  } catch (error: unknown) {
-    return await toFailure(error);
-  }
-  revalidatePath(`/groups/${groupId}/forms/${formId}`);
-  return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
+  return { ...INITIAL_SAVE_FORM_ACTION_STATE, submitted: true, version: form.version };
 }
 
 /** Opens the form for answers; later edits preserve submitted field snapshots. */

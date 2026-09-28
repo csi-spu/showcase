@@ -43,9 +43,8 @@ vi.mock('@/app/collection-forms.actions', () => ({
   closeCollectionFormAction: vi.fn(),
   openCollectionFormAction: vi.fn(),
   reopenCollectionFormAction: vi.fn(),
+  saveCollectionFormAction: vi.fn(),
   saveCollectionFormAsTemplateAction: vi.fn(),
-  updateCollectionFormAction: vi.fn(),
-  updateCollectionFormMetadataAction: vi.fn(),
 }));
 vi.mock('../form-builder', () => ({ FormBuilder: () => null }));
 vi.mock('./share-form-dialog', () => ({
