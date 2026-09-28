@@ -18,6 +18,7 @@ import { InstructorBffGuard } from '../../auth/transport/instructor-bff.guard';
 import { CollectionFormsService } from '../application/collection-forms.service';
 import {
   CheckCollectionSubmissionDto,
+  CollectionFormHistoryQueryDto,
   CollectionLifecycleReasonDto,
   CollectionMatrixQueryDto,
   CreateCollectionExportDto,
@@ -30,7 +31,12 @@ import {
   UpdateCollectionTemplateDto,
 } from './collection-forms.dto';
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
-import { toExportView, toReviewQueueView, toSubmissionHistoryView } from './collection-forms.view';
+import {
+  toExportView,
+  toFormHistoryView,
+  toReviewQueueView,
+  toSubmissionHistoryView,
+} from './collection-forms.view';
 
 @Controller('internal/instructor/collection')
 @UseFilters(CollectionFormsExceptionFilter)
@@ -156,6 +162,18 @@ export class InstructorCollectionFormsController {
   ) {
     await this.auth.authorizeInstructor(token(authorization));
     return this.forms.previewFormReopen(formId);
+  }
+
+  /** The form's edit history, newest first, one save or lifecycle change per entry. */
+  @Get('forms/:formId/history')
+  @Header('Cache-Control', 'no-store')
+  async formHistory(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Query() query: CollectionFormHistoryQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return toFormHistoryView(await this.forms.getFormHistory({ cursor: query.cursor, formId }));
   }
 
   @Post('forms/:formId/reopen')

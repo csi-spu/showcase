@@ -14,6 +14,10 @@ import {
   type CollectionMatrixCellStatus,
 } from '../application/collection-matrix';
 import { CollectionExportTooLargeError } from '../application/collection-exports';
+import type {
+  CollectionFormHistoryEvent,
+  CollectionFormHistoryPosition,
+} from '../application/collection-form-history';
 import { REMINDER_LEAD_DAYS } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
@@ -24,6 +28,7 @@ import type {
   CollectionFile,
   CollectionFileStatus,
   CollectionForm,
+  CollectionFormHistoryRecordPage,
   CollectionFormTemplate,
   CollectionFormsRepository,
   CollectionMatrixPage,
@@ -182,6 +187,25 @@ function isResponseWritable(state: ResponseWriteState): boolean {
   if (state.membership_status !== 'current') return false;
   if (state.status === 'changes_required') return state.form_status !== 'draft';
   return state.status === 'not_submitted' && state.form_status === 'open';
+}
+
+/* One audit event of a history entry, as `jsonb_build_object` returns it. */
+interface FormHistoryEventRow {
+  assignedCount: number | null;
+  kind: 'closed' | 'deadline' | 'description' | 'opened' | 'reopened' | 'structure' | 'title';
+  nextFields: unknown;
+  nextValue: string | null;
+  previousFields: unknown;
+  previousValue: string | null;
+  reason: string | null;
+}
+
+interface FormHistoryRow {
+  actor_name: string;
+  events: FormHistoryEventRow[];
+  id: string;
+  occurred_at: Date;
+  occurred_at_micros: string;
 }
 
 interface MetadataChange {
@@ -538,6 +562,13 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         on conflict do nothing
         returning student_account_id
       `;
+      await transaction`
+        insert into private.collection_form_metadata_events
+          (form_id, actor_account_id, change_kind, previous_value, next_value, assigned_count,
+            occurred_at)
+        values (${input.formId}, ${input.actorAccountId}, 'opened', 'draft', 'open',
+          ${assigned.length}, ${input.now})
+      `;
       /*
        * Notified in the same transaction as the obligation, so the two cannot
        * disagree: a Student is never told about work that was rolled back, and
@@ -671,6 +702,96 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         newlyAssignedCount: assigned.length,
       };
     });
+  }
+
+  /**
+   * One page of a form's edit history, newest first.
+   *
+   * Entries are grouped in SQL so a page never splits a save: events sharing
+   * their actor and time are one entry, and each lifecycle event is its own.
+   * Times are compared as epoch microseconds, the precision Postgres stores,
+   * so no entry is skipped or repeated across pages. Actors are joined for
+   * their name only; no Student table is read.
+   */
+  async readFormHistory(input: {
+    before: CollectionFormHistoryPosition | null;
+    formId: string;
+    limit: number;
+  }): Promise<CollectionFormHistoryRecordPage | null> {
+    const forms = await this.database.sql<{ id: string }[]>`
+      select id from public.collection_forms where id = ${input.formId}
+    `;
+    if (forms[0] === undefined) return null;
+
+    const beforeMicros = input.before?.occurredAtMicros ?? null;
+    const beforeId = input.before?.entryId ?? null;
+    const rows = await this.database.sql<FormHistoryRow[]>`
+      with form_events as (
+        select id, occurred_at, actor_account_id, false as is_structure,
+          (extract(epoch from occurred_at) * 1000000)::bigint as occurred_at_micros,
+          case when change_kind in ('opened', 'closed', 'reopened') then id end as lifecycle_id
+        from private.collection_form_metadata_events
+        where form_id = ${input.formId}
+        union all
+        select id, occurred_at, actor_account_id, true,
+          (extract(epoch from occurred_at) * 1000000)::bigint, null::uuid
+        from private.collection_form_structure_events
+        where form_id = ${input.formId}
+      ),
+      entries as (
+        select occurred_at_micros, occurred_at, actor_account_id, lifecycle_id,
+          min(id::text collate "C")::uuid as id
+        from form_events
+        group by occurred_at_micros, occurred_at, actor_account_id, lifecycle_id
+      ),
+      page as (
+        select occurred_at_micros, occurred_at, actor_account_id, lifecycle_id, id
+        from entries
+        where ${beforeMicros}::bigint is null
+          or (occurred_at_micros, id) < (${beforeMicros}::bigint, ${beforeId}::uuid)
+        order by occurred_at_micros desc, id desc
+        limit ${input.limit + 1}
+      )
+      select page.id, page.occurred_at, page.occurred_at_micros::text as occurred_at_micros,
+        coalesce(btrim(person_name.first_name_th || ' ' || person_name.last_name_th), '')
+          as actor_name,
+        jsonb_agg(jsonb_build_object(
+          'assignedCount', metadata.assigned_count,
+          'kind', coalesce(metadata.change_kind, 'structure'),
+          'nextFields', structure.next_fields,
+          'nextValue', metadata.next_value,
+          'previousFields', structure.previous_fields,
+          'previousValue', metadata.previous_value,
+          'reason', metadata.reason
+        ) order by form_event.id) as events
+      from page
+      join form_events as form_event
+        on form_event.occurred_at_micros = page.occurred_at_micros
+        and form_event.actor_account_id = page.actor_account_id
+        and form_event.lifecycle_id is not distinct from page.lifecycle_id
+      left join private.collection_form_metadata_events as metadata
+        on not form_event.is_structure and metadata.id = form_event.id
+      left join private.collection_form_structure_events as structure
+        on form_event.is_structure and structure.id = form_event.id
+      join public.accounts as account on account.id = page.actor_account_id
+      left join private.person_names as person_name on person_name.person_id = account.person_id
+      group by page.id, page.occurred_at, page.occurred_at_micros, person_name.first_name_th,
+        person_name.last_name_th
+      order by page.occurred_at_micros desc, page.id desc
+    `;
+
+    /* One row beyond the page proves there is a next page without counting. */
+    const hasMore = rows.length > input.limit;
+    return {
+      entries: rows.slice(0, input.limit).map((row) => ({
+        actorName: row.actor_name,
+        events: row.events.map((event) => this.historyEvent(event)),
+        id: row.id,
+        occurredAt: row.occurred_at,
+        occurredAtMicros: row.occurred_at_micros,
+      })),
+      hasMore,
+    };
   }
 
   /**
@@ -2397,6 +2518,43 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       status: row.status,
       studentAccountId: row.student_account_id,
     };
+  }
+
+  /* The write paths and CHECK constraints guarantee each kind's values. */
+  private historyEvent(event: FormHistoryEventRow): CollectionFormHistoryEvent {
+    switch (event.kind) {
+      case 'title':
+        return {
+          kind: 'title',
+          next: this.historyValue(event.nextValue),
+          previous: this.historyValue(event.previousValue),
+        };
+      case 'description':
+        return { kind: 'description' };
+      case 'deadline':
+        return { kind: 'deadline', next: event.nextValue, previous: event.previousValue };
+      case 'structure':
+        return {
+          kind: 'structure',
+          nextFields: this.fields(event.nextFields),
+          previousFields: this.fields(event.previousFields),
+        };
+      case 'opened':
+        return { assignedCount: this.historyValue(event.assignedCount), kind: 'opened' };
+      case 'closed':
+        return { kind: 'closed', reason: this.historyValue(event.reason) };
+      case 'reopened':
+        return {
+          assignedCount: this.historyValue(event.assignedCount),
+          kind: 'reopened',
+          reason: this.historyValue(event.reason),
+        };
+    }
+  }
+
+  private historyValue<T>(value: T | null): T {
+    if (value === null) throw new Error('COLLECTION_FORM_HISTORY_CORRUPT');
+    return value;
   }
 
   private fields(value: unknown): CollectionField[] {

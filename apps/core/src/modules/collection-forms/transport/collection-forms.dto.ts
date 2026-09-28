@@ -303,6 +303,18 @@ export class CollectionMatrixQueryDto {
 }
 
 /**
+ * One page of a form's edit history.
+ *
+ * The cursor is only shape-checked here; Core decodes it and rejects one it
+ * did not issue with a stable error code.
+ */
+export class CollectionFormHistoryQueryDto {
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+}
+
+/**
  * Notifications the Student has seen.
  *
  * The ids are only a scoping hint: the update is keyed by the caller's own

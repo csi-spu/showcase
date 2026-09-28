@@ -310,6 +310,62 @@ export const exportJobSchema = z
 
 export const exportListSchema = z.object({ exports: z.array(exportJobSchema) }).strict();
 
+/**
+ * One page of a form's edit history, newest first.
+ *
+ * Core compares the question snapshots and sends typed changes, so the app
+ * only words them. `nextCursor` is opaque and null on the last page. Entries
+ * carry the acting Instructor's name and never Student data.
+ */
+export const formHistoryChangeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('title_changed'), next: z.string(), previous: z.string() }).strict(),
+  z.object({ kind: z.literal('description_changed') }).strict(),
+  z
+    .object({
+      kind: z.literal('deadline_changed'),
+      next: z.iso.datetime().nullable(),
+      previous: z.iso.datetime().nullable(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('question_added'), label: z.string() }).strict(),
+  z.object({ kind: z.literal('question_removed'), label: z.string() }).strict(),
+  z
+    .object({ kind: z.literal('question_renamed'), next: z.string(), previous: z.string() })
+    .strict(),
+  z
+    .object({
+      isRequired: z.boolean(),
+      kind: z.literal('question_required_changed'),
+      label: z.string(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('question_description_changed'), label: z.string() }).strict(),
+  z.object({ kind: z.literal('question_options_changed'), label: z.string() }).strict(),
+  z.object({ kind: z.literal('question_settings_changed'), label: z.string() }).strict(),
+  z.object({ kind: z.literal('questions_reordered') }).strict(),
+  z.object({ assignedCount: z.number().int(), kind: z.literal('opened') }).strict(),
+  z.object({ kind: z.literal('closed'), reason: z.string() }).strict(),
+  z
+    .object({ assignedCount: z.number().int(), kind: z.literal('reopened'), reason: z.string() })
+    .strict(),
+]);
+
+export const formHistoryPageSchema = z
+  .object({
+    entries: z.array(
+      z
+        .object({
+          actorName: z.string(),
+          changes: z.array(formHistoryChangeSchema),
+          id: z.uuid(),
+          occurredAt: z.iso.datetime(),
+        })
+        .strict(),
+    ),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
 export type InstructorCollectionField = z.infer<typeof fieldSchema>;
 export type InstructorCollectionFile = z.infer<typeof fileSchema>;
 export type InstructorCollectionForm = z.infer<typeof formSchema>;
@@ -329,3 +385,9 @@ export type InstructorMatrixSummary = z.infer<typeof matrixSummarySchema>;
 export type InstructorExportJob = z.infer<typeof exportJobSchema>;
 export type InstructorExportKind = InstructorExportJob['kind'];
 export type InstructorExportStatus = InstructorExportJob['status'];
+export type InstructorFormHistoryChange = z.infer<typeof formHistoryChangeSchema>;
+export type InstructorFormHistoryPage = z.infer<typeof formHistoryPageSchema>;
+export type InstructorFormHistoryEntry = InstructorFormHistoryPage['entries'][number];
+
+/* What the history panel's server function returns; failures carry no detail. */
+export type FormHistoryReadResult = { ok: true; page: InstructorFormHistoryPage } | { ok: false };
