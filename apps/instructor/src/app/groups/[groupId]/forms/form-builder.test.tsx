@@ -153,6 +153,11 @@ function submittedFieldIds(save: ReturnType<typeof saveAction>, call = 0) {
   return fields.map((field) => field.id);
 }
 
+/** The drag-and-drop live region: what a screen reader announces last. */
+function announcement() {
+  return screen.getByRole('status', { hidden: true }).textContent;
+}
+
 function questionOrder() {
   return screen.getAllByLabelText('คำถาม').map((input) => (input as HTMLInputElement).value);
 }
@@ -406,8 +411,11 @@ describe('FormBuilder question ordering', () => {
 
     screen.getByRole('button', { name: 'ย้ายคำถาม ชื่อ-นามสกุล' }).focus();
     await user.keyboard('[Space]');
+    await waitFor(() => expect(announcement()).toBe('ยก ชื่อ-นามสกุล'));
     await user.keyboard('[ArrowDown]');
+    await waitFor(() => expect(announcement()).toBe('ย้าย ชื่อ-นามสกุล ไป 2'));
     await user.keyboard('[Space]');
+    await waitFor(() => expect(announcement()).toBe('วาง ชื่อ-นามสกุล ที่ 2'));
 
     await waitFor(() => expect(questionOrder()).toEqual(['เหตุผลที่สมัคร', 'ชื่อ-นามสกุล']));
     expect(screen.getByText('ยังไม่ได้บันทึก')).toBeDefined();
@@ -426,11 +434,7 @@ describe('FormBuilder question ordering', () => {
     await user.keyboard('[ArrowDown]');
     await user.keyboard('[Escape]');
 
-    await waitFor(() =>
-      expect(screen.getByRole('status', { hidden: true }).textContent ?? '').toContain(
-        'ยกเลิกการย้าย',
-      ),
-    );
+    await waitFor(() => expect(announcement()).toContain('ยกเลิกการย้าย'));
     expect(questionOrder()).toEqual(['ชื่อ-นามสกุล', 'เหตุผลที่สมัคร']);
     expect(screen.queryByText('ยังไม่ได้บันทึก')).toBeNull();
   });

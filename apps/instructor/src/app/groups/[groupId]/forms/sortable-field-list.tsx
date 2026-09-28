@@ -20,7 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVerticalIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -77,10 +77,23 @@ export function SortableFieldList({
     };
   }
 
+  /*
+   * A lift is immediately followed by the question being "over" its own slot.
+   * Announcing that would replace the pick-up message before a screen reader
+   * reads it, so a move is announced only when the slot actually changes.
+   */
+  const announcedOverId = useRef<UniqueIdentifier | null>(null);
+
   const announcements: Announcements = {
-    onDragStart: ({ active }) => t('builder.reorder.picked', describe(active.id)),
-    onDragOver: ({ active, over }) =>
-      over === null ? undefined : t('builder.reorder.moved', describe(active.id, over.id)),
+    onDragStart: ({ active }) => {
+      announcedOverId.current = active.id;
+      return t('builder.reorder.picked', describe(active.id));
+    },
+    onDragOver: ({ active, over }) => {
+      if (over === null || over.id === announcedOverId.current) return undefined;
+      announcedOverId.current = over.id;
+      return t('builder.reorder.moved', describe(active.id, over.id));
+    },
     onDragEnd: ({ active, over }) =>
       over === null
         ? t('builder.reorder.cancelled', describe(active.id))
