@@ -1,6 +1,9 @@
 import { ConfigService } from '@nestjs/config';
 import { DatabaseClient } from '../src/modules/auth/infrastructure/database.client';
-import type { CollectionField } from '../src/modules/collection-forms/application/collection-forms.ports';
+import type {
+  CollectionField,
+  CollectionForm,
+} from '../src/modules/collection-forms/application/collection-forms.ports';
 import { PostgresCollectionFormsRepository } from '../src/modules/collection-forms/infrastructure/postgres-collection-forms.repository';
 
 const DATABASE_URL =
@@ -268,6 +271,179 @@ describe('PostgresCollectionFormsRepository integration', () => {
         'description',
         'title',
       ]);
+    });
+  });
+
+  describe('saving details and questions together', () => {
+    const DEADLINE = new Date('2026-10-01T00:00:00.000Z');
+    const ADVISOR_FIELD: CollectionField = { ...TEXT_FIELD, id: 'advisor', label: 'อาจารย์' };
+
+    async function openFormWithDeadline() {
+      const { groupId, roundId } = await createRoundAndGroup();
+      const form = await createForm(groupId, [TEXT_FIELD, ADVISOR_FIELD], DEADLINE);
+      const opened = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+      });
+      if (typeof opened === 'string') throw new Error('expected opened form');
+      return { form: opened, roundId };
+    }
+
+    function unchangedSave(form: CollectionForm) {
+      return {
+        actorAccountId: INSTRUCTOR,
+        deadlineAt: form.deadlineAt,
+        description: form.description,
+        expectedVersion: form.version,
+        fields: form.fields,
+        formId: form.id,
+        now: new Date(NOW.getTime() + 1_000),
+        title: form.title,
+      };
+    }
+
+    async function auditCounts(formId: string) {
+      const [counts] = await database.sql<{ metadata: number; structure: number }[]>`
+        select
+          (select count(*)::int from private.collection_form_metadata_events where form_id = ${formId})
+            as metadata,
+          (select count(*)::int from private.collection_form_structure_events where form_id = ${formId})
+            as structure
+      `;
+      return counts!;
+    }
+
+    async function storedVersion(formId: string) {
+      const [row] = await database.sql<{ version: number }[]>`
+        select version from public.collection_forms where id = ${formId}
+      `;
+      return row!.version;
+    }
+
+    it('writes details and reordered questions under one version and one audit time', async () => {
+      const { form } = await openFormWithDeadline();
+      const save = {
+        ...unchangedSave(form),
+        deadlineAt: new Date('2026-10-10T00:00:00.000Z'),
+        fields: [ADVISOR_FIELD, TEXT_FIELD],
+        title: 'ชื่อใหม่',
+      };
+
+      await expect(repository.saveForm(save)).resolves.toMatchObject({
+        deadlineAt: save.deadlineAt,
+        fields: [{ id: 'advisor' }, { id: 'company' }],
+        title: 'ชื่อใหม่',
+        version: form.version + 1,
+      });
+
+      const metadata = await database.sql<
+        { actor_account_id: string; change_kind: string; occurred_at: Date }[]
+      >`
+        select actor_account_id, change_kind, occurred_at
+        from private.collection_form_metadata_events
+        where form_id = ${form.id} order by change_kind
+      `;
+      const structure = await database.sql<
+        {
+          actor_account_id: string;
+          next_version: number;
+          occurred_at: Date;
+          previous_version: number;
+        }[]
+      >`
+        select actor_account_id, previous_version, next_version, occurred_at
+        from private.collection_form_structure_events
+        where form_id = ${form.id}
+      `;
+      expect(metadata).toEqual([
+        { actor_account_id: INSTRUCTOR, change_kind: 'deadline', occurred_at: save.now },
+        { actor_account_id: INSTRUCTOR, change_kind: 'title', occurred_at: save.now },
+      ]);
+      expect(structure).toEqual([
+        {
+          actor_account_id: INSTRUCTOR,
+          next_version: form.version + 1,
+          occurred_at: save.now,
+          previous_version: form.version,
+        },
+      ]);
+    });
+
+    it('writes nothing when nothing changed, even if question keys arrive in another order', async () => {
+      const { form } = await openFormWithDeadline();
+      const reorderedKeys = form.fields.map(({ type, required, label, id, description }) => ({
+        description,
+        id,
+        label,
+        required,
+        type,
+      }));
+
+      await expect(
+        repository.saveForm({ ...unchangedSave(form), fields: reorderedKeys }),
+      ).resolves.toEqual(form);
+      await expect(storedVersion(form.id)).resolves.toBe(form.version);
+      await expect(auditCounts(form.id)).resolves.toEqual({ metadata: 0, structure: 0 });
+    });
+
+    it('audits only details when the questions are unchanged', async () => {
+      const { form } = await openFormWithDeadline();
+
+      await expect(
+        repository.saveForm({ ...unchangedSave(form), description: 'คำอธิบายใหม่' }),
+      ).resolves.toMatchObject({ version: form.version + 1 });
+      await expect(auditCounts(form.id)).resolves.toEqual({ metadata: 1, structure: 0 });
+    });
+
+    it.each([
+      ['a stale version', { expectedVersion: 1 }, 'stale'],
+      [
+        'an earlier deadline',
+        { deadlineAt: new Date('2026-09-25T00:00:00.000Z') },
+        'deadline_earlier',
+      ],
+      ['a removed deadline', { deadlineAt: null }, 'deadline_earlier'],
+      [
+        'a changed question type',
+        { fields: [{ ...TEXT_FIELD, type: 'long_text' as const }, ADVISOR_FIELD] },
+        {
+          code: 'FIELD_TYPE_CHANGE_REQUIRES_NEW_ID',
+          fieldId: 'company',
+          outcome: 'invalid_transition',
+        },
+      ],
+    ])(
+      'writes nothing for %s, even alongside a valid detail edit',
+      async (_case, patch, outcome) => {
+        const { form } = await openFormWithDeadline();
+
+        await expect(
+          repository.saveForm({ ...unchangedSave(form), title: 'ชื่อใหม่', ...patch }),
+        ).resolves.toEqual(outcome);
+        await expect(repository.getForm(form.id)).resolves.toMatchObject({
+          title: form.title,
+          version: form.version,
+        });
+        await expect(auditCounts(form.id)).resolves.toEqual({ metadata: 0, structure: 0 });
+      },
+    );
+
+    it('refuses a save once the round is closed', async () => {
+      const { form, roundId } = await openFormWithDeadline();
+      await repository.setRoundStatus({
+        actorAccountId: INSTRUCTOR,
+        expectedStatus: 'active',
+        nextStatus: 'closed',
+        now: NOW,
+        reason: 'สิ้นสุดภาคการศึกษา',
+        roundId,
+      });
+
+      await expect(
+        repository.saveForm({ ...unchangedSave(form), title: 'ชื่อใหม่' }),
+      ).resolves.toBe('round_closed');
+      await expect(auditCounts(form.id)).resolves.toEqual({ metadata: 0, structure: 0 });
     });
   });
 

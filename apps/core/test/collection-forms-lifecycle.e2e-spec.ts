@@ -100,6 +100,8 @@ describe('collection forms lifecycle (e2e)', () => {
       .fn()
       .mockResolvedValue({ form: { id: FORM_ID, status: 'open' }, newlyAssignedCount: 2 }),
     reopenRound: jest.fn().mockResolvedValue({ pendingWork: pendingWork() }),
+    saveForm: jest.fn().mockResolvedValue({ id: FORM_ID, version: 3 }),
+    updateFormStructure: jest.fn().mockResolvedValue({ id: FORM_ID, version: 3 }),
     markNotificationsRead: jest.fn().mockResolvedValue({ readCount: 1 }),
     readNotificationFeed: jest.fn().mockResolvedValue({
       notifications: [
@@ -492,7 +494,7 @@ describe('collection forms lifecycle (e2e)', () => {
     });
   });
 
-  function instructorRequest(method: 'get' | 'post', path: string) {
+  function instructorRequest(method: 'get' | 'post' | 'put', path: string) {
     return request(app.getHttpServer())
       [method](`/v1/internal/instructor/collection/${path}`)
       .set('x-instructor-bff-secret', instructorSecret)
@@ -505,6 +507,96 @@ describe('collection forms lifecycle (e2e)', () => {
       .set('x-student-collection-bff-secret', studentSecret)
       .set('Authorization', 'Bearer opaque-session');
   }
+
+  describe('saving a form', () => {
+    const FIELD = {
+      description: '',
+      id: 'company',
+      label: 'บริษัท',
+      required: true,
+      type: 'short_text',
+    };
+    const SAVE = {
+      deadlineAt: '2026-10-10T00:00:00.000Z',
+      description: 'คำอธิบาย',
+      expectedVersion: 2,
+      fields: [FIELD],
+      title: 'แบบฟอร์มสหกิจศึกษา',
+    };
+
+    it('saves details and questions in one call, as the session Instructor', async () => {
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send(SAVE)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(forms.saveForm).toHaveBeenCalledWith({
+        ...SAVE,
+        actorAccountId: INSTRUCTOR_ACCOUNT,
+        formId: FORM_ID,
+      });
+      expect(forms.updateFormStructure).not.toHaveBeenCalled();
+    });
+
+    it('accepts an explicit null to leave the form without a deadline', async () => {
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send({ ...SAVE, deadlineAt: null })
+        .expect(200);
+      expect(forms.saveForm).toHaveBeenCalledWith(expect.objectContaining({ deadlineAt: null }));
+    });
+
+    /* Older Instructor images still send questions alone until the follow-up removes it. */
+    it('keeps the questions-only body on the legacy structure save', async () => {
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send({ expectedVersion: 2, fields: [FIELD] })
+        .expect(200);
+
+      expect(forms.updateFormStructure).toHaveBeenCalledWith({
+        actorAccountId: INSTRUCTOR_ACCOUNT,
+        expectedVersion: 2,
+        fields: [FIELD],
+        formId: FORM_ID,
+      });
+      expect(forms.saveForm).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an unknown field', { ...SAVE, actorAccountId: INSTRUCTOR_ACCOUNT }],
+      ['a title without the other details', { expectedVersion: 2, fields: [FIELD], title: 'ชื่อ' }],
+      ['details without a deadline', { ...SAVE, deadlineAt: undefined }],
+      ['an empty title', { ...SAVE, title: '' }],
+      ['a title over 200 characters', { ...SAVE, title: 'ก'.repeat(201) }],
+      ['a description over 5,000 characters', { ...SAVE, description: 'ก'.repeat(5_001) }],
+      ['a deadline that is not ISO 8601', { ...SAVE, deadlineAt: '10/10/2026' }],
+      ['a version below one', { ...SAVE, expectedVersion: 0 }],
+    ])('rejects %s before reaching the service', async (_case, body) => {
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send(body)
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      expect(forms.saveForm).not.toHaveBeenCalled();
+      expect(forms.updateFormStructure).not.toHaveBeenCalled();
+    });
+
+    it('refuses a save from a session that is not an Instructor', async () => {
+      instructorAuthorized = false;
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send(SAVE)
+        .expect(403)
+        .expect({ error: { code: 'FORBIDDEN' } });
+      expect(forms.saveForm).not.toHaveBeenCalled();
+    });
+
+    it('reports a stale version as a conflict', async () => {
+      forms.saveForm.mockRejectedValueOnce(new CollectionFormsError('FORM_STALE', 409));
+      await instructorRequest('put', `forms/${FORM_ID}`)
+        .send(SAVE)
+        .expect(409)
+        .expect((response) => {
+          expect((response.body as { error: { code: string } }).error.code).toBe('FORM_STALE');
+        });
+    });
+  });
 
   describe('notifications', () => {
     it('refuses the feed without the Student collection BFF secret', async () => {

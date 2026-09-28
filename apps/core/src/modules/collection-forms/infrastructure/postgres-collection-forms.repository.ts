@@ -184,6 +184,42 @@ function isResponseWritable(state: ResponseWriteState): boolean {
   return state.status === 'not_submitted' && state.form_status === 'open';
 }
 
+interface MetadataChange {
+  kind: 'deadline' | 'description' | 'title';
+  next: string | null;
+  previous: string | null;
+}
+
+/**
+ * Whether a deadline edit would pull an announced deadline earlier.
+ *
+ * A deadline may be extended but never pulled earlier or removed, because
+ * Students may already be working against the announced one.
+ */
+function isDeadlinePulledEarlier(current: Date | null, next: Date | null): boolean {
+  return current !== null && (next === null || next.getTime() < current.getTime());
+}
+
+/** One audit entry per changed property, so an unchanged value leaves no trace. */
+function findMetadataChanges(
+  current: { deadline_at: Date | null; description: string; title: string },
+  next: { deadlineAt: Date | null; description: string; title: string },
+): MetadataChange[] {
+  const changes: MetadataChange[] = [];
+  if (current.title !== next.title) {
+    changes.push({ kind: 'title', next: next.title, previous: current.title });
+  }
+  if (current.description !== next.description) {
+    changes.push({ kind: 'description', next: next.description, previous: current.description });
+  }
+  const previousDeadline = current.deadline_at?.toISOString() ?? null;
+  const nextDeadline = next.deadlineAt?.toISOString() ?? null;
+  if (previousDeadline !== nextDeadline) {
+    changes.push({ kind: 'deadline', next: nextDeadline, previous: previousDeadline });
+  }
+  return changes;
+}
+
 @Injectable()
 export class PostgresCollectionFormsRepository implements CollectionFormsRepository {
   constructor(private readonly database: DatabaseClient) {}
@@ -285,6 +321,93 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
+   * Saves a form's details and questions as one change.
+   *
+   * The audit keeps its existing shape -- one metadata event per changed
+   * property and one structure event when the questions changed -- and every
+   * event of one save shares its actor and time, which is what groups them.
+   * The questions are compared as `jsonb`, so key order in the request is not
+   * mistaken for a change while question order is.
+   */
+  async saveForm(input: {
+    actorAccountId: string;
+    deadlineAt: Date | null;
+    description: string;
+    expectedVersion: number;
+    fields: CollectionField[];
+    formId: string;
+    now: Date;
+    title: string;
+  }) {
+    return this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<
+        (FormRow & { has_same_fields: boolean; round_status: string })[]
+      >`
+        select form.id, form.group_id, form.title, form.description, form.status, form.fields,
+          form.deadline_at, form.version, form.created_from_template_id, round.status as round_status,
+          form.fields = ${transaction.json(input.fields)}::jsonb as has_same_fields
+        from public.collection_forms as form
+        join public.collection_groups as collection_group on collection_group.id = form.group_id
+        join public.collection_rounds as round on round.id = collection_group.round_id
+        where form.id = ${input.formId}
+        for update of form, round
+      `;
+      const current = rows[0];
+      if (current === undefined) return 'not_found' as const;
+      if (current.round_status === 'closed') return 'round_closed' as const;
+      if (current.version !== input.expectedVersion) return 'stale' as const;
+      if (isDeadlinePulledEarlier(current.deadline_at, input.deadlineAt)) {
+        return 'deadline_earlier' as const;
+      }
+      const transitionError = findFieldTransitionError(this.fields(current.fields), input.fields);
+      if (transitionError !== null) {
+        return { ...transitionError, outcome: 'invalid_transition' as const };
+      }
+
+      const metadataChanges = findMetadataChanges(current, input);
+      const hasFieldChanges = !current.has_same_fields;
+      if (metadataChanges.length === 0 && !hasFieldChanges) return this.mapForm(current);
+
+      const nextVersion = current.version + 1;
+      const updated = await transaction<FormRow[]>`
+        update public.collection_forms
+        set title = ${input.title}, description = ${input.description},
+          deadline_at = ${input.deadlineAt}, fields = ${transaction.json(input.fields)},
+          version = ${nextVersion}
+        where id = ${input.formId}
+        returning id, group_id, title, description, status, fields, deadline_at, version,
+        created_from_template_id
+      `;
+      for (const change of metadataChanges) {
+        await transaction`
+          insert into private.collection_form_metadata_events
+            (form_id, actor_account_id, change_kind, previous_value, next_value, occurred_at)
+          values (${input.formId}, ${input.actorAccountId}, ${change.kind}, ${change.previous},
+            ${change.next}, ${input.now})
+        `;
+      }
+      if (hasFieldChanges) {
+        await transaction`
+          insert into private.collection_form_structure_events
+            (form_id, actor_account_id, previous_version, next_version, previous_fields,
+              next_fields, occurred_at)
+          values (${input.formId}, ${input.actorAccountId}, ${current.version}, ${nextVersion},
+            ${transaction.json(current.fields)}, ${transaction.json(input.fields)}, ${input.now})
+        `;
+        const activeFileFieldIds = input.fields
+          .filter((field) => field.type === 'file_upload')
+          .map((field) => field.id);
+        await transaction`
+          delete from private.collection_draft_files
+          where form_id = ${input.formId}
+            and not (field_id = any(${activeFileFieldIds}::text[]))
+        `;
+      }
+      return this.mapForm(updated[0]!);
+    });
+  }
+
+  /**
    * Applies the metadata edits that stay permitted after a form is opened.
    *
    * A deadline may be extended but never pulled earlier, because Students may
@@ -311,10 +434,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       const current = rows[0];
       if (current === undefined) return 'not_found' as const;
       if (current.round_status === 'closed') return 'round_closed' as const;
-      if (
-        current.deadline_at !== null &&
-        (input.deadlineAt === null || input.deadlineAt.getTime() < current.deadline_at.getTime())
-      ) {
+      if (isDeadlinePulledEarlier(current.deadline_at, input.deadlineAt)) {
         return 'deadline_earlier' as const;
       }
 
@@ -327,27 +447,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         created_from_template_id
       `;
 
-      const changes: {
-        kind: 'title' | 'description' | 'deadline';
-        next: string | null;
-        previous: string | null;
-      }[] = [];
-      if (current.title !== input.title) {
-        changes.push({ kind: 'title', next: input.title, previous: current.title });
-      }
-      if (current.description !== input.description) {
-        changes.push({
-          kind: 'description',
-          next: input.description,
-          previous: current.description,
-        });
-      }
-      const previousDeadline = current.deadline_at?.toISOString() ?? null;
-      const nextDeadline = input.deadlineAt?.toISOString() ?? null;
-      if (previousDeadline !== nextDeadline) {
-        changes.push({ kind: 'deadline', next: nextDeadline, previous: previousDeadline });
-      }
-      for (const change of changes) {
+      for (const change of findMetadataChanges(current, input)) {
         await transaction`
           insert into private.collection_form_metadata_events
             (form_id, actor_account_id, change_kind, previous_value, next_value, occurred_at)

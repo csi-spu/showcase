@@ -675,6 +675,29 @@ export interface CollectionFormsRepository {
     | 'round_closed'
     | 'stale'
   >;
+  /**
+   * Saves details and questions as one change under one version check.
+   *
+   * All-or-nothing: any refusal writes nothing. A change increments the version
+   * once, and a save that changes nothing writes nothing.
+   */
+  saveForm(input: {
+    actorAccountId: string;
+    deadlineAt: Date | null;
+    description: string;
+    expectedVersion: number;
+    fields: CollectionField[];
+    formId: string;
+    now: Date;
+    title: string;
+  }): Promise<
+    | CollectionForm
+    | { outcome: 'invalid_transition'; code: string; fieldId: string }
+    | 'deadline_earlier'
+    | 'not_found'
+    | 'round_closed'
+    | 'stale'
+  >;
   /** Metadata edits permitted after opening; structural changes are rejected earlier. */
   updateFormMetadata(input: {
     actorAccountId: string;

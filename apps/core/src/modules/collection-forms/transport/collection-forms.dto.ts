@@ -16,6 +16,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -114,6 +115,20 @@ class CollectionFormBodyDto {
 
 export class CreateCollectionFormDto extends CollectionFormBodyDto {}
 
+function hasFormDetails(body: UpdateCollectionFormDto): boolean {
+  return (
+    body.title !== undefined || body.description !== undefined || body.deadlineAt !== undefined
+  );
+}
+
+/**
+ * Saves a form's details and questions together.
+ *
+ * The details are all-or-nothing: a body with any of them must carry all three,
+ * with `deadlineAt: null` to leave no deadline. A body with none of them is the
+ * legacy questions-only save, kept only while older Instructor images still
+ * send it; it is removed together with `PUT forms/:formId/metadata`.
+ */
 export class UpdateCollectionFormDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -125,6 +140,21 @@ export class UpdateCollectionFormDto {
   @IsInt()
   @Min(1)
   expectedVersion!: number;
+
+  @ValidateIf(hasFormDetails)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title?: string;
+
+  @ValidateIf(hasFormDetails)
+  @IsString()
+  @MaxLength(5_000)
+  description?: string;
+
+  @ValidateIf((body: UpdateCollectionFormDto) => hasFormDetails(body) && body.deadlineAt !== null)
+  @IsISO8601({ strict: true })
+  deadlineAt?: string | null;
 }
 
 /** The subset of metadata that stays editable after a form is opened. */

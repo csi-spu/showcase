@@ -77,7 +77,10 @@ export class InstructorCollectionFormsController {
     return this.forms.listGroupForms(groupId);
   }
 
-  /** Replaces the live structure using optimistic form-version concurrency. */
+  /**
+   * Saves details and questions as one change under optimistic form-version
+   * concurrency. A body without details is the legacy questions-only save.
+   */
   @Put('forms/:formId')
   @Header('Cache-Control', 'no-store')
   async update(
@@ -86,7 +89,24 @@ export class InstructorCollectionFormsController {
     @Headers('authorization') authorization: string | undefined,
   ) {
     const actor = await this.auth.authorizeInstructor(token(authorization));
-    return this.forms.updateFormStructure({ actorAccountId: actor.accountId, formId, ...body });
+    const { deadlineAt, description, expectedVersion, fields, title } = body;
+    if (title === undefined || description === undefined || deadlineAt === undefined) {
+      return this.forms.updateFormStructure({
+        actorAccountId: actor.accountId,
+        expectedVersion,
+        fields,
+        formId,
+      });
+    }
+    return this.forms.saveForm({
+      actorAccountId: actor.accountId,
+      deadlineAt,
+      description,
+      expectedVersion,
+      fields,
+      formId,
+      title,
+    });
   }
 
   @Put('forms/:formId/metadata')
