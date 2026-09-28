@@ -2,6 +2,7 @@ import type { Clock } from '../../auth/application/auth.ports';
 import type { CollectionField } from './collection-field';
 import { CollectionFormsService } from './collection-forms.service';
 import { CollectionFormsError } from './collection-forms.ports';
+import { decodeFormHistoryCursor, encodeFormHistoryCursor } from './collection-form-history';
 import {
   CollectionExportTooLargeError,
   EXPORT_CONTENT_TYPES,
@@ -128,6 +129,8 @@ class FakeRepository implements CollectionFormsRepository {
     pendingWork: { awaitingChecking: 1, changesRequired: 2, notSubmitted: 3 },
   };
   history: Result<'getSubmissionHistory'> = null;
+  formHistory: Result<'readFormHistory'> = { entries: [], hasMore: false };
+  formHistoryReads: Parameters<CollectionFormsRepository['readFormHistory']>[0][] = [];
 
   attachDraftFile(): Promise<Result<'attachDraftFile'>> {
     return Promise.resolve(this.attachResult);
@@ -322,6 +325,10 @@ class FakeRepository implements CollectionFormsRepository {
   }
   getSubmissionHistory(): Promise<Result<'getSubmissionHistory'>> {
     return Promise.resolve(this.history);
+  }
+  readFormHistory(input: Parameters<CollectionFormsRepository['readFormHistory']>[0]) {
+    this.formHistoryReads.push(input);
+    return Promise.resolve(this.formHistory);
   }
   saveDraft(): Promise<Result<'saveDraft'>> {
     return Promise.resolve(this.saveResult);
@@ -1441,6 +1448,101 @@ describe('CollectionFormsService', () => {
           studentAccountId: '20000000-0000-4000-8000-00000000000f',
         }),
       ).rejects.toEqual(new CollectionFormsError('OBLIGATION_NOT_FOUND', 404));
+    });
+  });
+
+  describe('getFormHistory', () => {
+    const SAVE_ID = '58000000-0000-4000-8000-000000000002';
+    const OPENED_ID = '58000000-0000-4000-8000-000000000001';
+
+    it('describes each entry and ends without a cursor on the last page', async () => {
+      const repository = new FakeRepository();
+      repository.formHistory = {
+        entries: [
+          {
+            actorName: 'ผู้สอน ทดสอบ',
+            events: [
+              { kind: 'title', next: 'แบบฟอร์มใหม่', previous: 'แบบฟอร์ม' },
+              { kind: 'structure', nextFields: [TEXT_FIELD], previousFields: [] },
+            ],
+            id: SAVE_ID,
+            occurredAt: NOW,
+            occurredAtMicros: '1790071200000000',
+          },
+        ],
+        hasMore: false,
+      };
+      const { service } = setup(repository);
+
+      const history = await service.getFormHistory({ cursor: undefined, formId: FORM.id });
+
+      expect(history).toEqual({
+        entries: [
+          {
+            actorName: 'ผู้สอน ทดสอบ',
+            changes: [
+              { kind: 'title_changed', next: 'แบบฟอร์มใหม่', previous: 'แบบฟอร์ม' },
+              { kind: 'question_added', label: TEXT_FIELD.label },
+            ],
+            id: SAVE_ID,
+            occurredAt: NOW,
+          },
+        ],
+        nextCursor: null,
+      });
+      expect(repository.formHistoryReads).toEqual([{ before: null, formId: FORM.id, limit: 20 }]);
+    });
+
+    it('continues from the last entry of a full page', async () => {
+      const repository = new FakeRepository();
+      repository.formHistory = {
+        entries: [
+          {
+            actorName: 'ผู้สอน ทดสอบ',
+            events: [{ assignedCount: 3, kind: 'opened' }],
+            id: OPENED_ID,
+            occurredAt: NOW,
+            occurredAtMicros: '1790071200000001',
+          },
+        ],
+        hasMore: true,
+      };
+      const { service } = setup(repository);
+      const cursor = encodeFormHistoryCursor({
+        entryId: SAVE_ID,
+        occurredAtMicros: '1790071200000002',
+      });
+
+      const history = await service.getFormHistory({ cursor, formId: FORM.id });
+
+      expect(repository.formHistoryReads[0]?.before).toEqual({
+        entryId: SAVE_ID,
+        occurredAtMicros: '1790071200000002',
+      });
+      expect(decodeFormHistoryCursor(history.nextCursor ?? '')).toEqual({
+        entryId: OPENED_ID,
+        occurredAtMicros: '1790071200000001',
+      });
+    });
+
+    it('rejects a cursor it did not issue before reading', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await expect(
+        service.getFormHistory({ cursor: 'bm90LWEtY3Vyc29y', formId: FORM.id }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_HISTORY_CURSOR_INVALID', 400));
+      expect(repository.formHistoryReads).toEqual([]);
+    });
+
+    it('reports a missing form', async () => {
+      const repository = new FakeRepository();
+      repository.formHistory = null;
+      const { service } = setup(repository);
+
+      await expect(service.getFormHistory({ cursor: undefined, formId: FORM.id })).rejects.toEqual(
+        new CollectionFormsError('FORM_NOT_FOUND', 404),
+      );
     });
   });
 

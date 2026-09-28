@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   exportJobSchema,
   exportListSchema,
+  formHistoryPageSchema,
   formSchema,
   matrixPageSchema,
   pendingWorkSchema,
@@ -19,6 +20,7 @@ import type {
   InstructorExportJob,
   InstructorExportKind,
   InstructorCollectionTemplate,
+  InstructorFormHistoryPage,
   InstructorMatrixPage,
   InstructorPendingWork,
   InstructorReopenPreview,
@@ -141,6 +143,21 @@ export class InstructorCollectionFormsCoreClient {
       method: 'GET',
       path: `${BASE}/forms/${formId}/reopen-preview`,
       responseSchema: reopenPreviewSchema,
+      sessionToken,
+    });
+  }
+
+  /** One page of the form's edit history; `cursor` is the previous page's `nextCursor`. */
+  formHistory(
+    sessionToken: string,
+    formId: string,
+    cursor: string | null,
+  ): Promise<InstructorFormHistoryPage> {
+    const suffix = cursor === null ? '' : `?${new URLSearchParams({ cursor }).toString()}`;
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/history${suffix}`,
+      responseSchema: formHistoryPageSchema,
       sessionToken,
     });
   }

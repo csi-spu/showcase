@@ -1,13 +1,14 @@
 'use client';
 
 import {
-  closestCenter,
   DndContext,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type Announcements,
+  type Collision,
+  type CollisionDetection,
   type DragEndEvent,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
@@ -26,6 +27,32 @@ import { cn } from '@showcase/ui/cn';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CollectionFormsErrorMessage, DraftField } from '@/app/collection-forms-state';
 import { FieldEditor } from './field-editor';
+
+/*
+ * Questions differ a lot in height: an expanded one holds its whole editor.
+ * Comparing centres or corners lets a tall question's own slot win over a short
+ * neighbour, so an expanded question could not be moved past a collapsed one.
+ * dnd-kit's keyboard coordinates align the moved card's top edge with the
+ * question above, or its bottom edge with the one below, so matching the nearer
+ * of those edges makes that neighbour the target. A pointer drag swaps once the
+ * card's edge is nearer its neighbour's edge than its own slot's.
+ */
+const closestEdge: CollisionDetection = ({ collisionRect, droppableContainers, droppableRects }) =>
+  droppableContainers
+    .flatMap((droppableContainer) => {
+      const rect = droppableRects.get(droppableContainer.id);
+      if (rect === undefined) return [];
+      const distance = Math.min(
+        Math.abs(rect.top - collisionRect.top),
+        Math.abs(rect.bottom - collisionRect.bottom),
+      );
+      return [{ distance, droppableContainer }];
+    })
+    .sort((left, right) => left.distance - right.distance)
+    .map(({ distance, droppableContainer }): Collision => ({
+      data: { droppableContainer, value: distance },
+      id: droppableContainer.id,
+    }));
 
 interface SortableFieldListProps {
   activeFieldId: string | null;
@@ -112,7 +139,7 @@ export function SortableFieldList({
         announcements,
         screenReaderInstructions: { draggable: t('builder.reorder.instructions') },
       }}
-      collisionDetection={closestCenter}
+      collisionDetection={closestEdge}
       id={contextId}
       onDragEnd={handleDragEnd}
       sensors={sensors}

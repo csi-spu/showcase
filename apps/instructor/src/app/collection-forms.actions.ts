@@ -14,7 +14,10 @@ import {
   clearInstructorSessionToken,
   readInstructorSessionToken,
 } from '@/lib/instructor-auth-session';
-import { InstructorCollectionFormsCoreClient } from '@/lib/instructor-collection-forms-core';
+import {
+  InstructorCollectionFormsCoreClient,
+  type FormHistoryReadResult,
+} from '@/lib/instructor-collection-forms-core';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import {
   validateCheckSubmission,
@@ -47,6 +50,30 @@ export async function createCollectionFormAction(
     return await toFailure(error);
   }
   redirect(`/groups/${groupId}/forms/${form.id}`);
+}
+
+/* A cursor Core issued: base64url, bounded. Anything else is not sent on. */
+const FORM_HISTORY_CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Reads one page of the form's edit history for the history panel.
+ *
+ * A failure, including a Core that does not serve history yet, is returned
+ * rather than thrown, so the panel shows a retry and the form page keeps
+ * working.
+ */
+export async function readCollectionFormHistoryAction(
+  formId: string,
+  cursor: string | null,
+): Promise<FormHistoryReadResult> {
+  if (!isFormHistoryCursor(cursor)) return { ok: false };
+  const sessionToken = await requireSessionToken();
+  try {
+    return { ok: true, page: await coreClient().formHistory(sessionToken, formId, cursor) };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { ok: false };
+  }
 }
 
 /**
@@ -327,6 +354,13 @@ async function toFailure(error: unknown): Promise<CollectionFormActionState> {
     return { ...INITIAL_FORM_ACTION_STATE, error: 'unavailable', submitted: true };
   }
   return { ...INITIAL_FORM_ACTION_STATE, error: toFormsErrorMessage(error.code), submitted: true };
+}
+
+/* Server function arguments arrive from the browser, whatever their declared type. */
+function isFormHistoryCursor(cursor: unknown): boolean {
+  return (
+    cursor === null || (typeof cursor === 'string' && FORM_HISTORY_CURSOR_PATTERN.test(cursor))
+  );
 }
 
 async function requireSessionToken(): Promise<string> {

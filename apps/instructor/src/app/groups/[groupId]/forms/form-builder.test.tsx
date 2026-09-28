@@ -364,19 +364,27 @@ describe('FormBuilder question ordering', () => {
 
   beforeEach(() => {
     /*
-     * jsdom has no layout. Stack the question cards 100px apart, in their
-     * current DOM order, so dnd-kit's keyboard coordinates find a neighbour.
+     * jsdom has no layout. Stack the question cards in their current DOM
+     * order, 20px apart, so dnd-kit's keyboard coordinates find a neighbour.
+     * An expanded card holds its whole editor, so it is far taller than a
+     * collapsed one, as in a browser.
      */
+    const cardHeight = (card: Element) =>
+      card.querySelector('button[aria-expanded="true"]') === null ? 80 : 400;
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect(
       this: HTMLElement,
     ) {
       if (this.tagName !== 'LI' || this.parentElement === null) {
         return originalGetBoundingClientRect.call(this);
       }
-      const top = Array.from(this.parentElement.children).indexOf(this) * 100;
+      const cards = Array.from(this.parentElement.children);
+      const top = cards
+        .slice(0, cards.indexOf(this))
+        .reduce((offset, card) => offset + cardHeight(card) + 20, 0);
+      const height = cardHeight(this);
       return {
-        bottom: top + 80,
-        height: 80,
+        bottom: top + height,
+        height,
         left: 0,
         right: 600,
         toJSON: () => ({}),
@@ -423,6 +431,21 @@ describe('FormBuilder question ordering', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึก' }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect(submittedFieldIds(save)).toEqual(['reason', 'name']);
+  });
+
+  it('moves an expanded question above a collapsed one from the keyboard', async () => {
+    const user = userEvent.setup();
+    renderBuilder();
+    await user.click(screen.getByRole('button', { name: /^แก้ไขคำถาม 2:/u }));
+
+    screen.getByRole('button', { name: 'ย้ายคำถาม เหตุผลที่สมัคร' }).focus();
+    await user.keyboard('[Space]');
+    await waitFor(() => expect(announcement()).toBe('ยก เหตุผลที่สมัคร'));
+    await user.keyboard('[ArrowUp]');
+    await waitFor(() => expect(announcement()).toBe('ย้าย เหตุผลที่สมัคร ไป 1'));
+    await user.keyboard('[Space]');
+
+    await waitFor(() => expect(questionOrder()).toEqual(['เหตุผลที่สมัคร', 'ชื่อ-นามสกุล']));
   });
 
   it('leaves the order and the saved state alone when a move is cancelled', async () => {

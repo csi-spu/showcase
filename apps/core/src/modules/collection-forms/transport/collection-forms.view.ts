@@ -8,6 +8,7 @@ import type {
   DraftFileSelection,
   StudentObligation,
 } from '../application/collection-forms.ports';
+import type { CollectionFormHistoryPage } from '../application/collection-form-history';
 
 /*
  * Transport views for the collection surfaces.
@@ -236,5 +237,18 @@ export function toExportView(job: CollectionExportJob): CollectionExportView {
     readyAt: job.readyAt?.toISOString() ?? null,
     requestedAt: job.requestedAt.toISOString(),
     status: job.status,
+  };
+}
+
+/** A form's edit history page. Changes are already typed; only times need formatting. */
+export function toFormHistoryView(history: CollectionFormHistoryPage) {
+  return {
+    entries: history.entries.map((entry) => ({
+      actorName: entry.actorName,
+      changes: entry.changes,
+      id: entry.id,
+      occurredAt: entry.occurredAt.toISOString(),
+    })),
+    nextCursor: history.nextCursor,
   };
 }

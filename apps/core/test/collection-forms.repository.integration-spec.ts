@@ -1,8 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { DatabaseClient } from '../src/modules/auth/infrastructure/database.client';
+import type { CollectionFormHistoryPosition } from '../src/modules/collection-forms/application/collection-form-history';
 import type {
   CollectionField,
   CollectionForm,
+  CollectionFormHistoryRecord,
 } from '../src/modules/collection-forms/application/collection-forms.ports';
 import { PostgresCollectionFormsRepository } from '../src/modules/collection-forms/infrastructure/postgres-collection-forms.repository';
 
@@ -264,7 +266,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       ).resolves.toMatchObject({ title: 'ชื่อใหม่' });
       const events = await database.sql<{ change_kind: string }[]>`
         select change_kind from private.collection_form_metadata_events
-        where form_id = ${form.id} order by change_kind
+        where form_id = ${form.id} and change_kind <> 'opened' order by change_kind
       `;
       expect(events.map((event) => event.change_kind)).toEqual([
         'deadline',
@@ -303,11 +305,12 @@ describe('PostgresCollectionFormsRepository integration', () => {
       };
     }
 
+    /* Opening is audited too; these count only what saving wrote. */
     async function auditCounts(formId: string) {
       const [counts] = await database.sql<{ metadata: number; structure: number }[]>`
         select
-          (select count(*)::int from private.collection_form_metadata_events where form_id = ${formId})
-            as metadata,
+          (select count(*)::int from private.collection_form_metadata_events
+            where form_id = ${formId} and change_kind <> 'opened') as metadata,
           (select count(*)::int from private.collection_form_structure_events where form_id = ${formId})
             as structure
       `;
@@ -342,7 +345,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       >`
         select actor_account_id, change_kind, occurred_at
         from private.collection_form_metadata_events
-        where form_id = ${form.id} order by change_kind
+        where form_id = ${form.id} and change_kind <> 'opened' order by change_kind
       `;
       const structure = await database.sql<
         {
@@ -444,6 +447,126 @@ describe('PostgresCollectionFormsRepository integration', () => {
         repository.saveForm({ ...unchangedSave(form), title: 'ชื่อใหม่' }),
       ).resolves.toBe('round_closed');
       await expect(auditCounts(form.id)).resolves.toEqual({ metadata: 0, structure: 0 });
+    });
+  });
+
+  describe('edit history', () => {
+    const RENAMED_FIELD: CollectionField = { ...TEXT_FIELD, label: 'ชื่อบริษัท' };
+
+    function at(seconds: number) {
+      return new Date(NOW.getTime() + seconds * 1_000);
+    }
+
+    /* Opened, one combined save, then closed and reopened at the same instant. */
+    async function formWithHistory() {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const draft = await createForm(groupId, [TEXT_FIELD]);
+      const form = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: draft.id,
+        now: at(0),
+      });
+      if (typeof form === 'string') throw new Error('expected opened form');
+      await repository.saveForm({
+        actorAccountId: INSTRUCTOR,
+        deadlineAt: null,
+        description: form.description,
+        expectedVersion: form.version,
+        fields: [RENAMED_FIELD],
+        formId: form.id,
+        now: at(1),
+        title: 'ชื่อใหม่',
+      });
+      await repository.closeForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: at(2),
+        reason: 'ปิดชั่วคราว',
+      });
+      await repository.reopenForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: at(2),
+        reason: 'เปิดรับเพิ่ม',
+      });
+      return form;
+    }
+
+    it('audits opening with the number of obligations it assigned', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+
+      const events = await database.sql`
+        select actor_account_id, change_kind, previous_value, next_value, assigned_count,
+          occurred_at
+        from private.collection_form_metadata_events where form_id = ${form.id}
+      `;
+      expect(events).toEqual([
+        {
+          actor_account_id: INSTRUCTOR,
+          assigned_count: 2,
+          change_kind: 'opened',
+          next_value: 'open',
+          occurred_at: NOW,
+          previous_value: 'draft',
+        },
+      ]);
+    });
+
+    it('reads one save as one entry and each lifecycle change as its own, newest first', async () => {
+      const form = await formWithHistory();
+
+      const page = await repository.readFormHistory({ before: null, formId: form.id, limit: 20 });
+
+      expect(page?.hasMore).toBe(false);
+      const entries = page?.entries ?? [];
+      expect(entries.map((entry) => entry.occurredAt)).toEqual([at(2), at(2), at(1), at(0)]);
+      expect(entries.every((entry) => entry.actorName === 'ผู้สอน ทดสอบ')).toBe(true);
+      expect(entries.slice(0, 2).map((entry) => entry.events)).toEqual(
+        expect.arrayContaining([
+          [{ assignedCount: 0, kind: 'reopened', reason: 'เปิดรับเพิ่ม' }],
+          [{ kind: 'closed', reason: 'ปิดชั่วคราว' }],
+        ]),
+      );
+      expect(entries[2]?.events).toEqual(
+        expect.arrayContaining([
+          { kind: 'title', next: 'ชื่อใหม่', previous: 'แบบฟอร์ม' },
+          { kind: 'structure', nextFields: [RENAMED_FIELD], previousFields: [TEXT_FIELD] },
+        ]),
+      );
+      expect(entries[2]?.events).toHaveLength(2);
+      expect(entries[3]?.events).toEqual([{ assignedCount: 2, kind: 'opened' }]);
+    });
+
+    it('pages without splitting, skipping, or repeating entries that share a time', async () => {
+      const form = await formWithHistory();
+      const full = await repository.readFormHistory({ before: null, formId: form.id, limit: 20 });
+
+      const paged: CollectionFormHistoryRecord[] = [];
+      let before: CollectionFormHistoryPosition | null = null;
+      for (;;) {
+        const page = await repository.readFormHistory({ before, formId: form.id, limit: 1 });
+        paged.push(...(page?.entries ?? []));
+        const last = page?.entries.at(-1);
+        if (!page?.hasMore || last === undefined) break;
+        before = { entryId: last.id, occurredAtMicros: last.occurredAtMicros };
+      }
+
+      expect(paged).toEqual(full?.entries);
+    });
+
+    it('returns null for a form that does not exist', async () => {
+      await expect(
+        repository.readFormHistory({
+          before: null,
+          formId: '58000000-0000-4000-8000-0000000000ff',
+          limit: 20,
+        }),
+      ).resolves.toBeNull();
     });
   });
 

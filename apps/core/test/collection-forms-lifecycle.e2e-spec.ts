@@ -93,6 +93,20 @@ describe('collection forms lifecycle (e2e)', () => {
     listGroupExports: jest.fn().mockResolvedValue([exportJob]),
     closeForm: jest.fn().mockResolvedValue({ id: FORM_ID, status: 'closed' }),
     closeRound: jest.fn().mockResolvedValue({ pendingWork: pendingWork() }),
+    getFormHistory: jest.fn().mockResolvedValue({
+      entries: [
+        {
+          actorName: 'อาจารย์สมหญิง',
+          changes: [
+            { kind: 'title_changed', next: 'แบบฟอร์มใหม่', previous: 'แบบฟอร์ม' },
+            { kind: 'question_added', label: 'บริษัท' },
+          ],
+          id: SUBMISSION_ID,
+          occurredAt: new Date('2026-09-20T03:00:00.000Z'),
+        },
+      ],
+      nextCursor: 'bmV4dC1wYWdl',
+    }),
     getRoundPendingWork: jest.fn().mockResolvedValue({ ...pendingWork(), total: 3 }),
     getSubmissionHistory: jest.fn().mockResolvedValue(history),
     previewFormReopen: jest.fn().mockResolvedValue({ newlyAssignedCount: 2 }),
@@ -595,6 +609,78 @@ describe('collection forms lifecycle (e2e)', () => {
         .expect((response) => {
           expect((response.body as { error: { code: string } }).error.code).toBe('FORM_STALE');
         });
+    });
+  });
+
+  describe('form edit history', () => {
+    it('returns entries with UTC times and typed changes, marked no-store', async () => {
+      const response = await instructorRequest('get', `forms/${FORM_ID}/history`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toEqual({
+        entries: [
+          {
+            actorName: 'อาจารย์สมหญิง',
+            changes: [
+              { kind: 'title_changed', next: 'แบบฟอร์มใหม่', previous: 'แบบฟอร์ม' },
+              { kind: 'question_added', label: 'บริษัท' },
+            ],
+            id: SUBMISSION_ID,
+            occurredAt: '2026-09-20T03:00:00.000Z',
+          },
+        ],
+        nextCursor: 'bmV4dC1wYWdl',
+      });
+      expect(forms.getFormHistory).toHaveBeenCalledWith({ cursor: undefined, formId: FORM_ID });
+    });
+
+    it('passes the cursor through to the service', async () => {
+      await instructorRequest('get', `forms/${FORM_ID}/history?cursor=bmV4dC1wYWdl`).expect(200);
+      expect(forms.getFormHistory).toHaveBeenCalledWith({
+        cursor: 'bmV4dC1wYWdl',
+        formId: FORM_ID,
+      });
+    });
+
+    it('refuses the history without the Instructor BFF secret or session', async () => {
+      await request(app.getHttpServer())
+        .get(`/v1/internal/instructor/collection/forms/${FORM_ID}/history`)
+        .set('Authorization', 'Bearer opaque-session')
+        .expect(403);
+      instructorAuthorized = false;
+      await instructorRequest('get', `forms/${FORM_ID}/history`)
+        .expect(403)
+        .expect({ error: { code: 'FORBIDDEN' } });
+      expect(forms.getFormHistory).not.toHaveBeenCalled();
+    });
+
+    it('does not expose the history on the Student surface', async () => {
+      await studentRequest('get', `forms/${FORM_ID}/edit-history`).expect(404);
+      expect(forms.getFormHistory).not.toHaveBeenCalled();
+    });
+
+    it('rejects a repeated cursor, an unknown parameter, and a malformed form id', async () => {
+      await instructorRequest('get', `forms/${FORM_ID}/history?cursor=a&cursor=b`)
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      await instructorRequest('get', `forms/${FORM_ID}/history?limit=500`)
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      await instructorRequest('get', 'forms/not-a-uuid/history').expect(400);
+      expect(forms.getFormHistory).not.toHaveBeenCalled();
+    });
+
+    it('reports a tampered cursor and a missing form with stable codes', async () => {
+      forms.getFormHistory
+        .mockRejectedValueOnce(new CollectionFormsError('FORM_HISTORY_CURSOR_INVALID', 400))
+        .mockRejectedValueOnce(new CollectionFormsError('FORM_NOT_FOUND', 404));
+      await instructorRequest('get', `forms/${FORM_ID}/history?cursor=dGFtcGVyZWQ`)
+        .expect(400)
+        .expect({ error: { code: 'FORM_HISTORY_CURSOR_INVALID' } });
+      await instructorRequest('get', `forms/${FORM_ID}/history`)
+        .expect(404)
+        .expect({ error: { code: 'FORM_NOT_FOUND' } });
     });
   });
 
