@@ -1,3 +1,8 @@
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  evaluatePassword,
+} from '@showcase/password-policy';
 import { z } from 'zod';
 import type { AuthErrorMessage } from '../app/student-collection-auth-action-state';
 
@@ -7,9 +12,9 @@ const loginSchema = z.object({
 });
 
 const passwordChangeSchema = z.object({
-  confirmPassword: z.string().min(12).max(128),
-  currentPassword: z.string().min(1).max(128),
-  newPassword: z.string().min(12).max(128),
+  confirmPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+  newPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
 });
 
 export interface StudentCollectionLoginInput {
@@ -38,7 +43,11 @@ export function validatePasswordChange(
     currentPassword: formData.get('currentPassword'),
     newPassword: formData.get('newPassword'),
   });
-  if (!result.success || result.data.newPassword === result.data.currentPassword) {
+  if (
+    !result.success ||
+    result.data.newPassword === result.data.currentPassword ||
+    !evaluatePassword(result.data.newPassword).isValid
+  ) {
     return 'passwordPolicy';
   }
   if (result.data.newPassword !== result.data.confirmPassword) {

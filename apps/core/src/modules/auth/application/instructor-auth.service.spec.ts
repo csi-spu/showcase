@@ -272,7 +272,7 @@ describe('InstructorAuthService authorization and lifecycle', () => {
     await expect(
       service.changePassword({
         currentPassword: 'temporary-password-value',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
         sessionToken: 'current-token',
       }),
     ).resolves.toEqual({ sessionState: 'active', sessionToken: 'new-instructor-session-token' });
@@ -281,6 +281,21 @@ describe('InstructorAuthService authorization and lifecycle', () => {
       audience: 'instructor',
       eventType: 'instructor_password_changed',
     });
+  });
+
+  it('rejects a password missing a character class without rotating the session', async () => {
+    const repository = new FakeRepository();
+    repository.instructorSession = storedSession();
+    const { service } = setup(repository);
+
+    await expect(
+      service.changePassword({
+        currentPassword: 'temporary-password-value',
+        newPassword: 'correct horse battery staple',
+        sessionToken: 'current-token',
+      }),
+    ).rejects.toEqual(new AuthError('PASSWORD_MISSING_CHARACTER_CLASS', 422));
+    expect(repository.replacedSession).toBeNull();
   });
 
   it('revokes Core logout even when provider cleanup fails', async () => {

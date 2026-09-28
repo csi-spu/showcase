@@ -1,6 +1,13 @@
 'use client';
 
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  evaluatePassword,
+} from '@showcase/password-policy';
 import { Button } from '@showcase/ui/button';
+import { cn } from '@showcase/ui/cn';
+import { PasswordStrength } from '@showcase/ui/password-strength';
 import { toast } from '@showcase/ui/toast';
 import {
   EyeIcon,
@@ -12,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useActionState, useState } from 'react';
+import { useActionState, useState, type ChangeEventHandler } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
@@ -99,7 +106,20 @@ export function LoginForm({ action }: { action: AuthAction }) {
 
 export function ChangePasswordForm({ action }: { action: AuthAction }) {
   const t = useTranslations('Auth');
+  const tStrength = useTranslations('Auth.change.strength');
   const [state, formAction] = useAuthActionWithErrorToast(action);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const passwordEvaluation = evaluatePassword(newPassword);
+  const isSameAsCurrent = newPassword.length > 0 && newPassword === currentPassword;
+  const isConfirmationEntered = confirmPassword.length > 0;
+  const isConfirmationMatching = isConfirmationEntered && confirmPassword === newPassword;
+  const canSubmit =
+    currentPassword.length > 0 &&
+    passwordEvaluation.isValid &&
+    !isSameAsCurrent &&
+    isConfirmationMatching;
   return (
     <form action={formAction} className="flex flex-col gap-5">
       <FieldSet aria-label={t('change.groupLabel')}>
@@ -109,24 +129,56 @@ export function ChangePasswordForm({ action }: { action: AuthAction }) {
             id="current-password"
             label={t('change.currentPassword')}
             name="currentPassword"
+            onChange={(event) => setCurrentPassword(event.currentTarget.value)}
+            value={currentPassword}
           />
           <PasswordField
+            ariaDescribedBy="new-password-strength"
             autoComplete="new-password"
+            description={isSameAsCurrent ? t('change.sameAsCurrent') : undefined}
+            descriptionId="new-password-description"
             id="new-password"
+            isInvalid={
+              isSameAsCurrent ||
+              (newPassword.length >= PASSWORD_MIN_LENGTH && !passwordEvaluation.isValid)
+            }
             label={t('change.newPassword')}
             name="newPassword"
+            onChange={(event) => setNewPassword(event.currentTarget.value)}
+            value={newPassword}
+          />
+          <PasswordStrength
+            id="new-password-strength"
+            password={newPassword}
+            translate={tStrength}
           />
           <PasswordField
             autoComplete="new-password"
+            description={
+              !isConfirmationEntered
+                ? undefined
+                : isConfirmationMatching
+                  ? t('change.confirmationMatch')
+                  : t('errors.passwordMismatch')
+            }
+            descriptionId="confirm-password-description"
+            descriptionTone={isConfirmationMatching ? 'success' : 'default'}
             id="confirm-password"
+            isInvalid={isConfirmationEntered && !isConfirmationMatching}
             label={t('change.confirmPassword')}
             name="confirmPassword"
+            onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+            value={confirmPassword}
           />
-          <FieldDescription>{t('change.requirements')}</FieldDescription>
         </FieldGroup>
       </FieldSet>
       <ActionError error={state.error} />
-      <SubmitButton icon={KeyRoundIcon} label={t('change.submit')} pendingLabel={t('submitting')} />
+      <SubmitButton
+        icon={KeyRoundIcon}
+        isDisabled={!canSubmit}
+        label={t('change.submit')}
+        pendingLabel={t('submitting')}
+      />
     </form>
   );
 }
@@ -144,27 +196,58 @@ export function LogoutForm({ action }: { action: AuthAction }) {
 
 function PasswordField({
   autoComplete,
+  ariaDescribedBy,
+  description,
+  descriptionId,
+  descriptionTone = 'default',
   id,
+  isInvalid = false,
   label,
   name,
+  onChange,
+  value,
 }: {
   autoComplete: 'current-password' | 'new-password';
+  ariaDescribedBy?: string;
+  description?: string | undefined;
+  descriptionId?: string;
+  descriptionTone?: 'default' | 'success';
   id: string;
+  isInvalid?: boolean;
   label: string;
   name: string;
+  onChange: ChangeEventHandler<HTMLInputElement>;
+  value: string;
 }) {
   return (
-    <Field>
+    <Field data-invalid={isInvalid || undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
+        aria-describedby={
+          description ? [ariaDescribedBy, descriptionId].filter(Boolean).join(' ') : ariaDescribedBy
+        }
+        aria-invalid={isInvalid || undefined}
         autoComplete={autoComplete}
         id={id}
-        maxLength={128}
-        minLength={name === 'currentPassword' ? undefined : 12}
+        maxLength={PASSWORD_MAX_LENGTH}
+        minLength={name === 'currentPassword' ? undefined : PASSWORD_MIN_LENGTH}
         name={name}
+        onChange={onChange}
         required
         type="password"
+        value={value}
       />
+      {description ? (
+        <FieldDescription
+          className={cn(
+            isInvalid && 'text-destructive',
+            descriptionTone === 'success' && 'text-success',
+          )}
+          id={descriptionId}
+        >
+          {description}
+        </FieldDescription>
+      ) : null}
     </Field>
   );
 }
@@ -180,11 +263,13 @@ function ActionError({ error }: { error: AuthErrorMessage | null }) {
 
 function SubmitButton({
   icon: Icon,
+  isDisabled = false,
   label,
   pendingLabel,
   variant = 'default',
 }: {
   icon?: LucideIcon;
+  isDisabled?: boolean;
   label: string;
   pendingLabel: string;
   variant?: 'default' | 'outline';
@@ -193,7 +278,7 @@ function SubmitButton({
   return (
     <Button
       className="auth-submit-button w-full"
-      disabled={pending}
+      disabled={pending || isDisabled}
       size="lg"
       type="submit"
       variant={variant}

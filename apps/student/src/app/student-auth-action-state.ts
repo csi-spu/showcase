@@ -2,6 +2,7 @@ export type AuthErrorMessage =
   | 'credentials'
   | 'currentPassword'
   | 'network'
+  | 'passwordComposition'
   | 'passwordMismatch'
   | 'passwordPolicy'
   | 'rateLimited'

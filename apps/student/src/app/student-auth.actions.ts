@@ -135,6 +135,9 @@ function mapCoreError(error: unknown): AuthErrorMessage {
   if (error.code === 'INVALID_PASSWORD') {
     return 'passwordPolicy';
   }
+  if (error.code === 'PASSWORD_MISSING_CHARACTER_CLASS') {
+    return 'passwordComposition';
+  }
   if (isExpired(error)) {
     return 'sessionExpired';
   }

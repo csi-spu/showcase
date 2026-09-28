@@ -227,7 +227,7 @@ describe('StudentAuthService password change', () => {
     await expect(
       service.changePassword({
         currentPassword: '69000001',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
         sessionToken: 'current-session-token',
       }),
     ).resolves.toEqual({
@@ -254,6 +254,21 @@ describe('StudentAuthService password change', () => {
         sessionToken: 'current-session-token',
       }),
     ).rejects.toEqual(new AuthError('INVALID_PASSWORD', 422));
+    expect(repository.replacedSession).toBeNull();
+  });
+
+  it('rejects a chosen password missing a character class with its own code', async () => {
+    const repository = new FakeAuthRepository();
+    repository.session = createStoredSession();
+    const { service } = createService(repository);
+
+    await expect(
+      service.changePassword({
+        currentPassword: '69000001',
+        newPassword: 'correct horse battery staple',
+        sessionToken: 'current-session-token',
+      }),
+    ).rejects.toEqual(new AuthError('PASSWORD_MISSING_CHARACTER_CLASS', 422));
     expect(repository.replacedSession).toBeNull();
   });
 });

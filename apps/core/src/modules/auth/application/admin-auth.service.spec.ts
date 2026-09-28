@@ -290,7 +290,7 @@ describe('AdminAuthService password and authorization', () => {
     await expect(
       service.changePassword({
         currentPassword: 'temporary-password-value',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
         sessionToken: 'current-token',
       }),
     ).resolves.toEqual({ sessionState: 'active', sessionToken: 'new-admin-session-token' });
@@ -319,6 +319,20 @@ describe('AdminAuthService password and authorization', () => {
       ).rejects.toEqual(new AuthError('INVALID_PASSWORD', 422));
       expect(repository.replacedSession).toBeNull();
     }
+  });
+
+  it('rejects a password missing a character class before provider mutation', async () => {
+    const repository = new FakeRepository();
+    repository.adminSession = storedSession();
+
+    await expect(
+      setup(repository).service.changePassword({
+        currentPassword: 'temporary-password-value',
+        newPassword: 'correct horse battery staple',
+        sessionToken: 'current-token',
+      }),
+    ).rejects.toEqual(new AuthError('PASSWORD_MISSING_CHARACTER_CLASS', 422));
+    expect(repository.replacedSession).toBeNull();
   });
 
   it('maps each password-provider failure without persisting a replacement session', async () => {
@@ -357,7 +371,7 @@ describe('AdminAuthService password and authorization', () => {
       await expect(
         setup(repository, provider).service.changePassword({
           currentPassword: 'temporary-password-value',
-          newPassword: 'correct horse battery staple',
+          newPassword: 'Correct horse battery 1!',
           sessionToken: 'current-token',
         }),
       ).rejects.toBeInstanceOf(AuthError);
@@ -377,7 +391,7 @@ describe('AdminAuthService password and authorization', () => {
     await expect(
       setup(repository, provider).service.changePassword({
         currentPassword: 'temporary-password-value',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
         sessionToken: 'current-token',
       }),
     ).rejects.toEqual(new AuthError('INVALID_CREDENTIALS', 401));

@@ -129,7 +129,7 @@ const hasBetterAuthIntegration = process.env.BETTER_AUTH_INTEGRATION === 'true';
         .post('/v1/internal/student/auth/change-password')
         .set('Authorization', `Bearer ${loginBody.sessionToken}`)
         .set('x-student-bff-secret', STUDENT_BFF_SECRET)
-        .send({ currentPassword: studentId, newPassword: 'full stack changed password' })
+        .send({ currentPassword: studentId, newPassword: 'Full stack changed password 1!' })
         .expect(200);
       const changedBody = changed.body as { sessionState: string; sessionToken: string };
       expect(changedBody.sessionState).toBe('active');

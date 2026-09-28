@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { evaluatePasswordChange } from '../domain/password-policy';
 import { evaluateStudentAccess } from '../domain/student-access-policy';
-import { AuthError } from './auth.error';
+import { AuthError, passwordPolicyError } from './auth.error';
 import {
   AUTH_CLOCK,
   AUTH_IDENTITY_PROTECTOR,
@@ -127,7 +127,7 @@ export class StudentAuthService {
       newPassword: input.newPassword,
     });
     if (!policy.isValid) {
-      throw new AuthError('INVALID_PASSWORD', 422, undefined);
+      throw passwordPolicyError(policy.errorCode);
     }
 
     let verifiedSession;

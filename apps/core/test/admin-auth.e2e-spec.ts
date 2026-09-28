@@ -285,7 +285,7 @@ describe('Admin authentication (e2e)', () => {
       .set('x-admin-bff-secret', ADMIN_BFF_SECRET)
       .send({
         currentPassword: 'temporary-password-value',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
       })
       .expect(200);
     expect(changed.body).toEqual({ sessionState: 'active', sessionToken: 'opaque-session-2' });

@@ -14,6 +14,7 @@ COPY apps/core/package.json apps/core/package.json
 COPY packages/core-client/package.json packages/core-client/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/observability/package.json packages/observability/package.json
+COPY packages/password-policy/package.json packages/password-policy/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
 
@@ -27,6 +28,7 @@ ENV SENTRY_ORG=$SENTRY_ORG
 ENV SENTRY_PROJECT=showcase-core
 ENV SENTRY_RELEASE=showcase-core@$GIT_SHA
 RUN pnpm --filter @showcase/observability build
+RUN pnpm --filter @showcase/password-policy build
 RUN pnpm --filter @showcase/core db:generate
 RUN pnpm --filter @showcase/core build
 RUN --mount=type=secret,id=sentry-auth-token \
