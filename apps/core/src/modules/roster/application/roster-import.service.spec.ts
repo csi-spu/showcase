@@ -276,6 +276,35 @@ describe('RosterImportService and RosterWorker', () => {
     expect(ensureIdentity).toHaveBeenCalledTimes(2);
   });
 
+  /*
+   * Each in-flight row holds a pooled database connection. The worker shares
+   * that pool with every request, so it must leave most of it free; with a
+   * wider fan-out a Roster import starved Instructor login (P2028).
+   */
+  it('provisions at most two rows at a time so requests keep database connections', async () => {
+    const repository = new MemoryRosterRepository();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const ensureIdentity = jest.fn(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+    });
+    const service = new RosterImportService(repository, clock, identityProtector);
+    const worker = new RosterWorker(repository, { ensureIdentity }, clock, new ConfigService());
+    const rows = Array.from({ length: 10 }, (_, index) => `${69000001 + index},สมชาย,ใจดี`);
+    await service.createBatch({
+      actorAccountId: ADMIN_ACCOUNT_ID,
+      content: Buffer.from(['student_id,first_name_th,last_name_th', ...rows].join('\n'), 'utf8'),
+    });
+
+    await worker.processNextChunk();
+
+    expect(ensureIdentity).toHaveBeenCalledTimes(10);
+    expect(maxInFlight).toBe(2);
+  });
+
   it('completes valid rows independently when another row is invalid', async () => {
     const repository = new MemoryRosterRepository();
     const ensureIdentity = jest.fn().mockResolvedValue(undefined);
