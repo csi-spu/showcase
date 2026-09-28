@@ -84,4 +84,40 @@ describe('createPrismaSqlClient', () => {
 
     expect(fragment.text).toBe('("id", "label") values ($1::uuid, $2), ($3::uuid, $4)');
   });
+
+  /*
+   * Prisma abandons an interactive transaction after its timeout, but a
+   * statement still blocked on a lock keeps the connection until Postgres
+   * returns. Postgres must enforce the same bound, or one stuck lock drains
+   * the pool and every request fails until Core restarts.
+   */
+  it('bounds lock waits and idle gaps inside a transaction to the Prisma timeout', async () => {
+    const { calls, client } = fakeClient();
+    const transactionOptions: unknown[] = [];
+    const prisma = {
+      ...client,
+      $transaction: (
+        callback: (transaction: FakePrismaExecutor) => Promise<unknown>,
+        options?: unknown,
+      ) => {
+        transactionOptions.push(options);
+        return callback(client);
+      },
+    } as unknown as PrismaClient;
+    const sql = createPrismaSqlClient(prisma);
+
+    await sql.begin(async (transaction) => {
+      await transaction`select 1`;
+    });
+
+    expect(transactionOptions).toEqual([{ timeout: 5_000 }]);
+    expect(calls).toEqual([
+      {
+        method: 'query',
+        text: "select set_config('lock_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)",
+        values: ['5000ms'],
+      },
+      { method: 'query', text: 'select 1', values: [] },
+    ]);
+  });
 });

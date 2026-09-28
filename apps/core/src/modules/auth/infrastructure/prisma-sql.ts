@@ -48,6 +48,14 @@ export interface PrismaSql {
 
 type PrismaExecutor = Pick<PrismaClient, '$executeRawUnsafe' | '$queryRawUnsafe'>;
 
+/**
+ * Prisma abandons an interactive transaction after this long, but a statement
+ * blocked on a lock keeps its connection until Postgres returns. Postgres
+ * enforces the same bound on lock waits and idle gaps, so one stuck lock
+ * cannot hold the shared pool indefinitely.
+ */
+const TRANSACTION_TIMEOUT_MILLISECONDS = 5_000;
+
 export function createPrismaSqlClient(
   client: PrismaExecutor | Prisma.TransactionClient,
 ): PrismaSql {
@@ -70,9 +78,16 @@ export function createPrismaSqlClient(
     if (!('$transaction' in client)) {
       return Promise.reject(new Error('PRISMA_TRANSACTION_NESTED'));
     }
-    return (client as PrismaClient).$transaction(async (transaction) => {
-      return callback(createPrismaSqlClient(transaction));
-    });
+    return (client as PrismaClient).$transaction(
+      async (transaction) => {
+        await transaction.$queryRawUnsafe(
+          "select set_config('lock_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)",
+          `${TRANSACTION_TIMEOUT_MILLISECONDS}ms`,
+        );
+        return callback(createPrismaSqlClient(transaction));
+      },
+      { timeout: TRANSACTION_TIMEOUT_MILLISECONDS },
+    );
   };
   sql.json = (value: unknown) => new PrismaValueFragment(JSON.stringify(value), 'jsonb');
   sql.text = (value: string) => new PrismaValueFragment(value, 'text');
