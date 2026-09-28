@@ -677,13 +677,16 @@ export class PostgresRosterRepository implements RosterRepository {
     batchId: string,
     now: Date,
   ): Promise<void> {
+    // NO KEY UPDATE, not UPDATE: a conflict row insert already holds FOR KEY
+    // SHARE on this Batch through its foreign key, and upgrading two of those
+    // concurrently to FOR UPDATE deadlocks. Refreshes still serialize here.
     const batches = await transaction<
       { status: RosterBatchStatus; total_row_count: number; uploader_account_id: string }[]
     >`
       select status, total_row_count, uploader_account_id
       from private.roster_batches
       where id = ${batchId}
-      for update
+      for no key update
     `;
     const batch = batches[0];
     if (batch === undefined) throw new Error('ROSTER_BATCH_NOT_FOUND');

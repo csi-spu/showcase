@@ -13,7 +13,9 @@ import {
 
 const CHUNK_SIZE = 100;
 const CLEANUP_CHUNK_SIZE = 1_000;
-const CONCURRENCY = 10;
+// Each in-flight row holds a connection from the pool shared with requests
+// (Prisma defaults to 5 on production's 2 vCPUs); stay well below it.
+const CONCURRENCY = 2;
 const LEASE_MILLISECONDS = 60_000;
 const MAX_ATTEMPTS = 3;
 const POLL_MILLISECONDS = 1_000;
