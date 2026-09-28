@@ -104,6 +104,15 @@
     "submit": "ส่งคำตอบ",
     "submitting": "กำลังส่ง…",
     "submitHint": "การบันทึกแบบร่างยังไม่นับว่าส่ง กรุณากดปุ่มส่งคำตอบเมื่อกรอกครบแล้ว",
+    "submitWaitingForFiles": "รอไฟล์อัปโหลดเสร็จ…",
+    "confirmation": {
+      "title": "ส่งคำตอบเรียบร้อยแล้ว",
+      "status": "สถานะ: {status}",
+      "submittedAt": "ส่งเมื่อ {date}",
+      "announcement": "ส่งคำตอบเรียบร้อยแล้ว {status}",
+      "viewAnswers": "ดูคำตอบที่ส่ง",
+      "backHome": "กลับหน้าหลัก"
+    },
     "saveDraft": "บันทึกแบบร่าง",
     "submitBlockedTitle": "ยังส่งไม่ได้ กรุณาตรวจสอบรายการต่อไปนี้",
     "status": {

@@ -4,7 +4,7 @@ import { AlertCircleIcon, CheckIcon, RefreshCwIcon, SendIcon } from 'lucide-reac
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '@showcase/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { BlurFade } from '@/components/ui/blur-fade';
@@ -18,10 +18,16 @@ import {
   type CollectionAnswers,
   type CollectionAnswerValue,
 } from './collection-answers';
-import { saveCollectionDraftAction, submitCollectionFormAction } from './collection-forms.actions';
+import {
+  saveCollectionDraftAction,
+  submitCollectionFormAction,
+  type SaveDraftResult,
+  type SubmitResult,
+} from './collection-forms.actions';
 import type { StudentFormsErrorMessage } from './collection-forms-errors';
 import { FormFieldControl } from './form-field-control';
 import { FormFileField } from './form-file-field';
+import { SubmissionConfirmation } from './submission-confirmation';
 import type {
   StudentCollectionObligation,
   StudentCollectionPrefill,
@@ -45,6 +51,10 @@ type SaveState =
  *
  * Nothing is discarded on a failed save: the Student's own edits stay on screen
  * and a retry is offered, so a dropped connection cannot lose their work.
+ *
+ * Draft writes go out one at a time. Submit waits for a write in flight,
+ * replaces the pending autosave, and after it succeeds nothing more is written,
+ * so the Student's own autosave can never be refused behind their submission.
  */
 export function CollectionForm({
   obligation,
@@ -55,6 +65,7 @@ export function CollectionForm({
 }) {
   const t = useTranslations('Forms');
   const errorT = useTranslations('Forms.errors');
+  const statusT = useTranslations('Forms.status');
   const router = useRouter();
   const baseId = useId();
 
@@ -79,11 +90,12 @@ export function CollectionForm({
   );
 
   const [answers, setAnswers] = useState<CollectionAnswers>(initial.answers);
-  const [version, setVersion] = useState(obligation.draft?.version ?? 0);
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
   const [blockers, setBlockers] = useState<{ fieldId: string; reason: string }[]>([]);
   const [submitError, setSubmitError] = useState<StudentFormsErrorMessage | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [busyFileFieldIds, setBusyFileFieldIds] = useState<string[]>([]);
   const [prefilledFieldIds, setPrefilledFieldIds] = useState(initial.prefilledFieldIds);
 
   /*
@@ -97,6 +109,19 @@ export function CollectionForm({
   /* The server's answers when a save was refused, shown so the Student can choose. */
   const [conflict, setConflict] = useState<CollectionAnswers | null>(null);
 
+  /*
+   * What a draft write reads when it starts rather than when it was scheduled:
+   * the answers on screen now, and the version Core accepted last, which an
+   * earlier write may have moved on in the meantime.
+   */
+  const answersRef = useRef(answers);
+  const versionRef = useRef(obligation.draft?.version ?? 0);
+  /* The write in flight, if any. The next write waits for it. */
+  const inFlightRef = useRef<Promise<number | null> | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /* The answers the last submit was sent for, saved at the version Core accepted. */
+  const submittedAnswersRef = useRef<CollectionAnswers | null>(null);
+
   const fileCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const [fieldId, files] of Object.entries(obligation.draft?.files ?? {})) {
@@ -106,16 +131,19 @@ export function CollectionForm({
   }, [obligation.draft?.files]);
 
   /*
-   * Saves the given answers at the given version.
-   *
-   * Both are passed in rather than read from a ref so that what is sent is
-   * exactly what the caller decided to send. Returns the version to continue
-   * from, or null when the save did not go through.
+   * Writes the given answers at the version Core accepted last. Returns the
+   * new version, or null when the write did not go through.
    */
-  const save = useCallback(
-    async (nextAnswers: CollectionAnswers, atVersion: number): Promise<number | null> => {
+  const writeDraft = useCallback(
+    async (nextAnswers: CollectionAnswers): Promise<number | null> => {
       setSaveState({ kind: 'saving' });
-      const result = await saveCollectionDraftAction(form.id, atVersion, nextAnswers);
+      let result: SaveDraftResult;
+      try {
+        result = await saveCollectionDraftAction(form.id, versionRef.current, nextAnswers);
+      } catch {
+        /* The response never arrived. The answers stay on screen with a retry. */
+        result = { error: 'unavailable', fieldId: null, serverAnswers: null, version: null };
+      }
 
       if (result.error === 'draftStale') {
         /*
@@ -124,7 +152,7 @@ export function CollectionForm({
          * and adopted deliberately, and the version moves on so that a chosen
          * resolution can actually be saved.
          */
-        if (result.version !== null) setVersion(result.version);
+        if (result.version !== null) versionRef.current = result.version;
         setConflict(result.serverAnswers);
         setSaveState({ kind: 'conflict' });
         return null;
@@ -133,29 +161,63 @@ export function CollectionForm({
         setSaveState({ kind: 'error', message: result.error });
         return null;
       }
-      if (result.version !== null) setVersion(result.version);
-      setSaveState({ kind: 'saved' });
+      if (result.version !== null) versionRef.current = result.version;
+      /* An edit made while this write was out is still unsaved; its autosave follows. */
+      setSaveState({ kind: answersRef.current === nextAnswers ? 'saved' : 'unsaved' });
       return result.version;
     },
     [form.id],
   );
 
   /*
+   * Saves the given answers once any write in flight has landed, so at most
+   * one write for this form is ever outstanding.
+   *
+   * A write queued behind one that failed is dropped: that failure is on
+   * screen with its retry, and writing past a conflict would overwrite the
+   * other device's answers without the Student choosing to.
+   */
+  const save = useCallback(
+    (nextAnswers: CollectionAnswers): Promise<number | null> => {
+      const previous = inFlightRef.current;
+      const write =
+        previous === null
+          ? writeDraft(nextAnswers)
+          : previous.then((version) => (version === null ? null : writeDraft(nextAnswers)));
+      inFlightRef.current = write;
+      void write.then(() => {
+        if (inFlightRef.current === write) inFlightRef.current = null;
+      });
+      return write;
+    },
+    [writeDraft],
+  );
+
+  /*
    * Debounced autosave. Every edit restarts the timer, so typing is not chatty.
-   * The timer closes over the answers and version of the render that scheduled
-   * it, and any later edit replaces it, so the request always carries the
-   * values it was scheduled for.
+   * It stops for good once a submit starts: the submit writes the answers
+   * itself, and a write behind an accepted submission would only be refused.
    */
   useEffect(() => {
-    if (isReadOnly || saveState.kind !== 'unsaved') return;
+    if (isReadOnly || isSubmitting || saveState.kind !== 'unsaved') return;
     const timer = setTimeout(() => {
-      void save(answers, version);
+      void save(answers);
     }, AUTOSAVE_DELAY_MS);
+    autosaveTimerRef.current = timer;
     return () => clearTimeout(timer);
-  }, [answers, isReadOnly, save, saveState.kind, version]);
+  }, [answers, isReadOnly, isSubmitting, save, saveState.kind]);
+
+  const handleFileBusyChange = useCallback((fieldId: string, isBusy: boolean) => {
+    setBusyFileFieldIds((current) => {
+      if (current.includes(fieldId) === isBusy) return current;
+      return isBusy ? [...current, fieldId] : current.filter((id) => id !== fieldId);
+    });
+  }, []);
 
   function updateAnswer(fieldId: string, value: CollectionAnswerValue) {
-    setAnswers((current) => ({ ...current, [fieldId]: value }));
+    const next = { ...answersRef.current, [fieldId]: value };
+    answersRef.current = next;
+    setAnswers(next);
     setSaveState({ kind: 'unsaved' });
     /* A fresh edit answers the conflict: this is the version the Student wants. */
     setConflict(null);
@@ -166,7 +228,12 @@ export function CollectionForm({
 
   async function handleSubmit() {
     setSubmitError(null);
-    const found = findSubmitBlockers(form.fields, answers, fileCounts);
+    /*
+     * Exactly the answers on screen now. File counts are settled: submit is
+     * disabled while any upload or its refresh is still pending.
+     */
+    const submitted = answersRef.current;
+    const found = findSubmitBlockers(form.fields, submitted, fileCounts);
     if (found.length > 0) {
       setBlockers(found);
       /*
@@ -184,190 +251,257 @@ export function CollectionForm({
     }
     setBlockers([]);
     setIsSubmitting(true);
-    const result = await submitCollectionFormAction(form.id, version, answers, idempotencyKey);
-    setIsSubmitting(false);
-    if (result.error !== null) {
-      /*
-       * A stale version here means another device saved while this form was
-       * open. It is reported as a conflict rather than retried, so the Student
-       * decides which answers are submitted.
-       */
-      if (result.error === 'draftStale') {
-        setSaveState({ kind: 'conflict' });
+    /* The submit's own save replaces the pending autosave. */
+    clearTimeout(autosaveTimerRef.current);
+
+    /*
+     * The save waits for any write in flight and continues from the version it
+     * returned. A stale version means another device saved while this form was
+     * open; that is the conflict flow, so the Student decides what is sent.
+     *
+     * A retry of a submit whose response was lost skips the save: Core may
+     * already hold the submission and would refuse the write, and the same key
+     * returns that submission rather than recording another.
+     */
+    if (submittedAnswersRef.current !== submitted) {
+      if ((await save(submitted)) === null) {
+        setIsSubmitting(false);
         return;
       }
+      submittedAnswersRef.current = submitted;
+    }
+
+    let result: SubmitResult;
+    try {
+      result = await submitCollectionFormAction(form.id, idempotencyKey);
+    } catch {
+      result = { blockedFieldId: null, error: 'unavailable', submissionId: null };
+    }
+    if (result.error !== null) {
+      /* A definite refusal was no lost response, so the next attempt saves first. */
+      if (result.error !== 'unavailable') submittedAnswersRef.current = null;
+      setIsSubmitting(false);
       setSubmitError(result.error);
       return;
     }
+    /* The submit stays in progress until the refresh brings Core's record of it. */
+    setSubmissionId(result.submissionId);
     router.refresh();
+  }
+
+  /*
+   * Core's record of the submit just made. The confirmation waits for it, so
+   * the time shown is Core's, and it exists only on this page: a later visit
+   * starts without a submission id and shows the ordinary read-only view.
+   */
+  const confirmedSubmission =
+    submissionId !== null && obligation.latestSubmission?.id === submissionId
+      ? obligation.latestSubmission
+      : null;
+  const isWaitingForFiles = busyFileFieldIds.length > 0;
+  let submitLabel = t('submit');
+  if (isSubmitting) submitLabel = t('submitting');
+  else if (isWaitingForFiles) submitLabel = t('submitWaitingForFiles');
+
+  function renderQuestions(areQuestionsReadOnly: boolean) {
+    return form.fields.map((field, index) => {
+      const controlId = `${baseId}-${field.id}`;
+      const blocker = blockers.find((entry) => entry.fieldId === field.id);
+      const hintId = field.description ? `${controlId}-hint` : undefined;
+      return (
+        <BlurFade delay={0.03 * (index + 1)} key={field.id} offset={8}>
+          <div
+            className="form-question rounded-surface border border-border/80 bg-card p-5 shadow-xs transition-[box-shadow,border-color] duration-200 hover:shadow-md data-[invalid=true]:border-destructive/50 sm:p-6"
+            data-invalid={blocker !== undefined}
+            id={`field-${field.id}`}
+          >
+            <Field className="gap-3">
+              <FieldLabel className="gap-1 text-base font-medium" htmlFor={controlId}>
+                {field.label}
+                {field.required ? (
+                  <>
+                    <span aria-hidden="true" className="text-destructive">
+                      *
+                    </span>
+                    <span className="sr-only">{t('requiredLabel')}</span>
+                  </>
+                ) : null}
+              </FieldLabel>
+              {field.description ? (
+                <FieldDescription className="whitespace-pre-line" id={hintId}>
+                  {field.description}
+                </FieldDescription>
+              ) : null}
+
+              {isValueField(field.type) ? (
+                <FormFieldControl
+                  controlId={controlId}
+                  describedBy={hintId}
+                  field={field}
+                  isInvalid={blocker !== undefined}
+                  isReadOnly={areQuestionsReadOnly}
+                  onChange={(value) => updateAnswer(field.id, value)}
+                  value={answers[field.id] ?? ''}
+                />
+              ) : (
+                <FormFileField
+                  field={field}
+                  files={obligation.draft?.files[field.id] ?? []}
+                  formId={form.id}
+                  isReadOnly={areQuestionsReadOnly}
+                  onBusyChange={handleFileBusyChange}
+                  onChanged={() => router.refresh()}
+                />
+              )}
+
+              {prefilledFieldIds.includes(field.id) ? (
+                <StatusBadge tone="information">{t('prefilled')}</StatusBadge>
+              ) : null}
+              {blocker !== undefined ? (
+                <p className="flex items-center gap-1.5 text-sm font-medium text-destructive animate-in duration-200 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
+                  <AlertCircleIcon aria-hidden="true" className="size-4 shrink-0" />
+                  {t(`blocker.${blocker.reason}`)}
+                </p>
+              ) : null}
+            </Field>
+          </div>
+        </BlurFade>
+      );
+    });
   }
 
   return (
     <section aria-label={form.title} className="flex flex-col gap-4">
-      {status === 'changes_required' && obligation.latestCheckingReason !== null ? (
-        <Alert variant="warning">
-          <AlertCircleIcon aria-hidden="true" />
-          <AlertTitle>{t('changesRequiredTitle')}</AlertTitle>
-          <AlertDescription>{obligation.latestCheckingReason}</AlertDescription>
-        </Alert>
-      ) : null}
+      {/* Mounted from the start, so the success is announced when it arrives. */}
+      <p className="sr-only" role="status">
+        {confirmedSubmission === null
+          ? ''
+          : t('confirmation.announcement', { status: statusT(status) })}
+      </p>
 
-      {/* History only exists once something was submitted, so the link appears with it. */}
-      {obligation.latestSubmission !== null ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-surface border border-border/80 bg-card px-4 py-3">
-          <p className="text-sm text-muted-foreground">
-            {t('lastSubmitted', {
-              date: new Intl.DateTimeFormat('th-TH', {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-                timeZone: 'Asia/Bangkok',
-              }).format(new Date(obligation.latestSubmission.submittedAt)),
-            })}
-          </p>
-          <Link
-            className="rounded-control text-sm font-medium text-accent-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-            href={`/history/${obligation.form.id}`}
-          >
-            {t('history.openAction')}
-          </Link>
-        </div>
-      ) : null}
-
-      {form.fields.map((field, index) => {
-        const controlId = `${baseId}-${field.id}`;
-        const blocker = blockers.find((entry) => entry.fieldId === field.id);
-        const hintId = field.description ? `${controlId}-hint` : undefined;
-        return (
-          <BlurFade delay={0.03 * (index + 1)} key={field.id} offset={8}>
-            <div
-              className="form-question rounded-surface border border-border/80 bg-card p-5 shadow-xs transition-[box-shadow,border-color] duration-200 hover:shadow-md data-[invalid=true]:border-destructive/50 sm:p-6"
-              data-invalid={blocker !== undefined}
-              id={`field-${field.id}`}
-            >
-              <Field className="gap-3">
-                <FieldLabel className="gap-1 text-base font-medium" htmlFor={controlId}>
-                  {field.label}
-                  {field.required ? (
-                    <>
-                      <span aria-hidden="true" className="text-destructive">
-                        *
-                      </span>
-                      <span className="sr-only">{t('requiredLabel')}</span>
-                    </>
-                  ) : null}
-                </FieldLabel>
-                {field.description ? (
-                  <FieldDescription className="whitespace-pre-line" id={hintId}>
-                    {field.description}
-                  </FieldDescription>
-                ) : null}
-
-                {isValueField(field.type) ? (
-                  <FormFieldControl
-                    controlId={controlId}
-                    describedBy={hintId}
-                    field={field}
-                    isInvalid={blocker !== undefined}
-                    isReadOnly={isReadOnly}
-                    onChange={(value) => updateAnswer(field.id, value)}
-                    value={answers[field.id] ?? ''}
-                  />
-                ) : (
-                  <FormFileField
-                    field={field}
-                    files={obligation.draft?.files[field.id] ?? []}
-                    formId={form.id}
-                    isReadOnly={isReadOnly}
-                    onChanged={() => router.refresh()}
-                  />
-                )}
-
-                {prefilledFieldIds.includes(field.id) ? (
-                  <StatusBadge tone="information">{t('prefilled')}</StatusBadge>
-                ) : null}
-                {blocker !== undefined ? (
-                  <p className="flex items-center gap-1.5 text-sm font-medium text-destructive animate-in duration-200 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none">
-                    <AlertCircleIcon aria-hidden="true" className="size-4 shrink-0" />
-                    {t(`blocker.${blocker.reason}`)}
-                  </p>
-                ) : null}
-              </Field>
-            </div>
-          </BlurFade>
-        );
-      })}
-
-      {isReadOnly ? (
-        <Alert>
-          <AlertDescription>{t(`readOnly.${readOnlyReason}`)}</AlertDescription>
-        </Alert>
+      {confirmedSubmission !== null ? (
+        <SubmissionConfirmation
+          statusLabel={statusT(status)}
+          submittedAt={confirmedSubmission.submittedAt}
+        >
+          {renderQuestions(true)}
+        </SubmissionConfirmation>
       ) : (
         <>
-          {blockers.length > 0 ? (
-            <Alert
-              className="scroll-mt-24 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-              id={`${baseId}-summary`}
-              /* Focusable only as a focus target, so it never joins the tab order. */
-              tabIndex={-1}
-              variant="destructive"
-            >
+          {status === 'changes_required' && obligation.latestCheckingReason !== null ? (
+            <Alert variant="warning">
               <AlertCircleIcon aria-hidden="true" />
-              <AlertTitle>{t('submitBlockedTitle')}</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc ps-5">
-                  {blockers.map((blocker) => (
-                    <li key={blocker.fieldId}>
-                      <a className="underline" href={`#field-${blocker.fieldId}`}>
-                        {form.fields.find((field) => field.id === blocker.fieldId)?.label ??
-                          blocker.fieldId}
-                      </a>
-                      {` — ${t(`blocker.${blocker.reason}`)}`}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
+              <AlertTitle>{t('changesRequiredTitle')}</AlertTitle>
+              <AlertDescription>{obligation.latestCheckingReason}</AlertDescription>
             </Alert>
           ) : null}
 
-          <SaveStatus
-            canAdoptServerAnswers={conflict !== null}
-            onAdoptServerAnswers={() => {
-              /*
-               * The Student chose the other version. It replaces what is on
-               * screen only because they asked for it, and is then saved so
-               * both sides agree.
-               */
-              if (conflict === null) return;
-              setAnswers(conflict);
-              setPrefilledFieldIds([]);
-              setConflict(null);
-              void save(conflict, version);
-            }}
-            onRetry={() => void save(answers, version)}
-            state={saveState}
-          />
-
-          {submitError !== null ? (
-            <Alert variant="destructive">
-              <AlertDescription>{errorT(submitError)}</AlertDescription>
-            </Alert>
+          {/* History only exists once something was submitted, so the link appears with it. */}
+          {obligation.latestSubmission !== null ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-surface border border-border/80 bg-card px-4 py-3">
+              <p className="text-sm text-muted-foreground">
+                {t('lastSubmitted', {
+                  date: new Intl.DateTimeFormat('th-TH', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                    timeZone: 'Asia/Bangkok',
+                  }).format(new Date(obligation.latestSubmission.submittedAt)),
+                })}
+              </p>
+              <Link
+                className="rounded-control text-sm font-medium text-accent-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                href={`/history/${obligation.form.id}`}
+              >
+                {t('history.openAction')}
+              </Link>
+            </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={isSubmitting} onClick={() => void handleSubmit()} type="button">
-              {isSubmitting ? <Spinner aria-hidden="true" /> : <SendIcon aria-hidden="true" />}
-              {isSubmitting ? t('submitting') : t('submit')}
-            </Button>
-            <Button
-              disabled={saveState.kind === 'saving'}
-              onClick={() => void save(answers, version)}
-              type="button"
-              variant="outline"
-            >
-              {t('saveDraft')}
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground">{t('submitHint')}</p>
+          {/* Held still while submitting, so what is on screen is what was sent. */}
+          {renderQuestions(isReadOnly || isSubmitting)}
+
+          {isReadOnly ? (
+            <Alert>
+              <AlertDescription>{t(`readOnly.${readOnlyReason}`)}</AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              {blockers.length > 0 ? (
+                <Alert
+                  className="scroll-mt-24 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                  id={`${baseId}-summary`}
+                  /* Focusable only as a focus target, so it never joins the tab order. */
+                  tabIndex={-1}
+                  variant="destructive"
+                >
+                  <AlertCircleIcon aria-hidden="true" />
+                  <AlertTitle>{t('submitBlockedTitle')}</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc ps-5">
+                      {blockers.map((blocker) => (
+                        <li key={blocker.fieldId}>
+                          <a className="underline" href={`#field-${blocker.fieldId}`}>
+                            {form.fields.find((field) => field.id === blocker.fieldId)?.label ??
+                              blocker.fieldId}
+                          </a>
+                          {` — ${t(`blocker.${blocker.reason}`)}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <SaveStatus
+                canAdoptServerAnswers={conflict !== null}
+                onAdoptServerAnswers={() => {
+                  /*
+                   * The Student chose the other version. It replaces what is on
+                   * screen only because they asked for it, and is then saved so
+                   * both sides agree.
+                   */
+                  if (conflict === null) return;
+                  answersRef.current = conflict;
+                  setAnswers(conflict);
+                  setPrefilledFieldIds([]);
+                  setConflict(null);
+                  void save(conflict);
+                }}
+                onRetry={() => void save(answersRef.current)}
+                state={saveState}
+              />
+
+              {submitError !== null ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{errorT(submitError)}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={isSubmitting || isWaitingForFiles}
+                  onClick={() => void handleSubmit()}
+                  type="button"
+                >
+                  {isSubmitting || isWaitingForFiles ? (
+                    <Spinner aria-hidden="true" />
+                  ) : (
+                    <SendIcon aria-hidden="true" />
+                  )}
+                  {submitLabel}
+                </Button>
+                <Button
+                  disabled={isSubmitting || saveState.kind === 'saving'}
+                  onClick={() => void save(answersRef.current)}
+                  type="button"
+                  variant="outline"
+                >
+                  {t('saveDraft')}
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">{t('submitHint')}</p>
+            </>
+          )}
         </>
       )}
     </section>

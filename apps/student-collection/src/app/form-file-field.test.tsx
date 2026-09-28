@@ -73,6 +73,7 @@ describe('FormFileField', () => {
           files={[]}
           formId="form-id"
           isReadOnly={false}
+          onBusyChange={vi.fn()}
           onChanged={vi.fn()}
         />
       </NextIntlClientProvider>,

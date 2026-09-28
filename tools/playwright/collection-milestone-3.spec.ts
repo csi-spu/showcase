@@ -48,7 +48,7 @@ test.describe('Collection Milestone 3', () => {
       await expect(studentPage.getByText('เลยกำหนดส่งแล้ว')).toBeVisible();
 
       await submitAnswer(studentPage, collectionScenario, firstAnswer);
-      await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
+      await expect(studentPage.getByText('สถานะ: รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
       await loginInstructor(instructorPage, collectionScenario);
       await requestCorrection(instructorPage, collectionScenario, firstAnswer, correctionReason);
@@ -57,7 +57,7 @@ test.describe('Collection Milestone 3', () => {
       await studentPage.reload();
       await expect(studentPage.getByText(correctionReason, { exact: true })).toBeVisible();
       await submitAnswer(studentPage, collectionScenario, correctedAnswer);
-      await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
+      await expect(studentPage.getByText('สถานะ: รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
       await test.step('the Student can read both versions and the decision', async () => {
         await studentPage.goto(
