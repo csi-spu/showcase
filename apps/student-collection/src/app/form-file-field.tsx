@@ -71,17 +71,26 @@ type Transfer =
   | { file: File; progress: number; state: 'sending'; ticket?: UploadTicket }
   | { file: File; progress: 0; state: 'failed'; ticket: UploadTicket };
 
+/** A change Core accepted that the refreshed `files` has not shown yet. */
+interface Settling {
+  fileId: string;
+  kind: 'attach' | 'detach';
+}
+
 export function FormFileField({
   field,
   files,
   formId,
   isReadOnly,
+  onBusyChange,
   onChanged,
 }: {
   field: StudentCollectionField;
   files: StudentCollectionFile[];
   formId: string;
   isReadOnly: boolean;
+  /** Told whether this field's files are still changing, so a submit never reads them mid-change. */
+  onBusyChange: (fieldId: string, isBusy: boolean) => void;
   onChanged: () => void;
 }) {
   const t = useTranslations('Forms');
@@ -93,15 +102,28 @@ export function FormFileField({
   const [localError, setLocalError] = useState<LocalError | null>(null);
   /* The file being sent right now, kept so a failed send can be retried. */
   const [transfer, setTransfer] = useState<Transfer | null>(null);
+  const [settling, setSettling] = useState<Settling | null>(null);
 
   const allowedTypes = field.file?.allowedFileTypes ?? [];
   const maxFiles = field.file?.maxFiles ?? 1;
   const accept = allowedTypes.map((type) => CONTENT_TYPES[type]).join(',');
   const isFull = files.length >= maxFiles;
-  const isBusy = isPending || transfer?.state === 'sending';
+  /*
+   * Core has the change, but `files` still comes from the page before it. The
+   * field stays busy until the refreshed list shows the change, so nothing
+   * reads a count that is about to move.
+   */
+  const isSettling =
+    settling !== null &&
+    files.some((file) => file.id === settling.fileId) === (settling.kind === 'detach');
+  const isBusy = isPending || transfer?.state === 'sending' || isSettling;
 
   /* A transfer must not outlive the field that started it. */
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    onBusyChange(field.id, isBusy);
+  }, [field.id, isBusy, onBusyChange]);
 
   function findLocalError(selected: File): LocalError | null {
     /* Checked here for a fast answer; Core checks all of it again before accepting. */
@@ -198,6 +220,7 @@ export function FormFileField({
         setError(attached.error);
         return;
       }
+      setSettling({ fileId: ticket.file.id, kind: 'attach' });
       onChanged();
     });
   }
@@ -210,6 +233,7 @@ export function FormFileField({
         setError(result.error);
         return;
       }
+      setSettling({ fileId, kind: 'detach' });
       onChanged();
     });
   }

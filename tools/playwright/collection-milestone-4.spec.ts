@@ -46,7 +46,7 @@ test.describe('Collection Milestone 4', () => {
         `${collectionScenario.studentCollectionUrl}/forms/${collectionScenario.formId}`,
       );
       await submitAnswer(studentPage, collectionScenario, answer);
-      await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
+      await expect(studentPage.getByText('สถานะ: รอผู้สอนตรวจ', { exact: true })).toBeVisible();
 
       await loginInstructor(instructorPage, collectionScenario);
 

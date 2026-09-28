@@ -40,11 +40,17 @@ test.describe('Collection lifecycle', () => {
       await studentPage.reload();
       await expect(studentPage.getByLabel(collectionScenario.answerLabel)).toHaveValue(firstAnswer);
       await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
-      await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
+      await expectSubmissionConfirmed(studentPage, collectionScenario, firstAnswer);
+
+      /* The confirmation belongs to the submit itself; a revisit shows the plain read-only view. */
+      await studentPage.reload();
       await expect(studentPage.getByLabel(collectionScenario.answerLabel)).not.toBeEditable();
       await expect(
         studentPage.getByText('ส่งคำตอบแล้ว อยู่ระหว่างรอผู้สอนตรวจ จึงยังแก้ไขไม่ได้'),
       ).toBeVisible();
+      await expect(studentPage.getByRole('heading', { name: 'ส่งคำตอบเรียบร้อยแล้ว' })).toHaveCount(
+        0,
+      );
 
       await loginInstructor(instructorPage, collectionScenario);
       await instructorPage.goto(
@@ -70,18 +76,35 @@ test.describe('Collection lifecycle', () => {
       await expect(studentPage.getByText(correctionReason, { exact: true })).toBeVisible();
       const editableAnswer = studentPage.getByLabel(collectionScenario.answerLabel);
       await expect(editableAnswer).toBeEnabled();
+      /* Submitting straight away, inside the autosave delay, still sends what is on screen. */
       await editableAnswer.fill(correctedAnswer);
-      await expect(studentPage.getByText('บันทึกแบบร่างแล้ว', { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
       await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
-      await expect(studentPage.getByText('รอผู้สอนตรวจ', { exact: true })).toBeVisible();
-      await expect(editableAnswer).not.toBeEditable();
+      await expectSubmissionConfirmed(studentPage, collectionScenario, correctedAnswer);
+      await expect(studentPage.getByText('บันทึกไม่สำเร็จ', { exact: true })).toHaveCount(0);
     } finally {
       await instructorContext.close();
     }
   });
 });
+
+async function expectSubmissionConfirmed(
+  page: Page,
+  scenario: import('./collection-fixtures.ts').CollectionLifecycleScenario,
+  submittedAnswer: string,
+): Promise<void> {
+  const heading = page.getByRole('heading', { name: 'ส่งคำตอบเรียบร้อยแล้ว' });
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+  await expect(page.getByText('สถานะ: รอผู้สอนตรวจ', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'กลับหน้าหลัก' })).toHaveAttribute('href', '/');
+
+  const reveal = page.getByRole('button', { name: 'ดูคำตอบที่ส่ง' });
+  await reveal.click();
+  await expect(reveal).toHaveAttribute('aria-expanded', 'true');
+  const answer = page.getByLabel(scenario.answerLabel);
+  await expect(answer).toHaveValue(submittedAnswer);
+  await expect(answer).not.toBeEditable();
+}
 
 async function loginStudentCollection(
   page: Page,

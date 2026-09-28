@@ -69,33 +69,22 @@ export async function saveCollectionDraftAction(
 }
 
 /**
- * The explicit submit.
+ * The explicit submit of the saved draft.
  *
- * `idempotencyKey` is chosen by the caller and reused across retries, so a lost
- * response cannot produce a second submission.
+ * The caller saves the answers on screen first, through the same draft write
+ * as autosave, so a stale version reaches the Student as the usual conflict.
+ * Keeping the save out of this call is what makes a retry safe: after a lost
+ * response Core may already hold the submission and would refuse a save,
+ * while the same `idempotencyKey` returns that submission instead of
+ * recording a second one.
  */
 export async function submitCollectionFormAction(
   formId: string,
-  expectedVersion: number,
-  answers: CollectionAnswers,
   idempotencyKey: string,
 ): Promise<SubmitResult> {
   const token = await requireSessionToken();
-  const client = coreClient();
   try {
-    /* Save first so the submission reflects exactly what is on screen. */
-    await client.saveDraft(token, formId, { answers, expectedVersion });
-  } catch (error: unknown) {
-    await expireSessionIfRequired(error);
-    if (error instanceof CoreClientError && error.code === 'DRAFT_STALE') {
-      return { blockedFieldId: null, error: 'draftStale', submissionId: null };
-    }
-    const failure = toFailure(error);
-    return { blockedFieldId: failure.fieldId, error: failure.error, submissionId: null };
-  }
-
-  try {
-    const result = await client.submit(token, formId, idempotencyKey);
+    const result = await coreClient().submit(token, formId, idempotencyKey);
     revalidatePath('/');
     return { blockedFieldId: null, error: null, submissionId: result.submissionId };
   } catch (error: unknown) {
