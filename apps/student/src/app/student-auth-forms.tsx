@@ -1,7 +1,9 @@
 'use client';
 
+import { PASSWORD_MIN_LENGTH, evaluatePassword } from '@showcase/password-policy';
 import { Button } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
+import { PasswordStrength } from '@showcase/ui/password-strength';
 import { toast } from '@showcase/ui/toast';
 import {
   EyeIcon,
@@ -14,12 +16,10 @@ import {
 import { useTranslations } from 'next-intl';
 import { useActionState, useState, type ChangeEventHandler } from 'react';
 import { useFormStatus } from 'react-dom';
-import { PasswordStrength } from '@/components/password-strength';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { evaluateStudentPassword } from '@/lib/student-password-policy';
 import type { AuthAction, AuthActionState, AuthErrorMessage } from './student-auth-action-state';
 import { INITIAL_AUTH_ACTION_STATE } from './student-auth-action-state';
 
@@ -83,11 +83,12 @@ export function ChangePasswordForm({
   submitLabel?: string | undefined;
 }) {
   const t = useTranslations('Auth');
+  const tStrength = useTranslations('Auth.change.strength');
   const [state, formAction] = useAuthActionWithErrorToast(action);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const passwordEvaluation = evaluateStudentPassword(newPassword);
+  const passwordEvaluation = evaluatePassword(newPassword);
   const isSameAsCurrent = newPassword.length > 0 && newPassword === currentPassword;
   const isConfirmationEntered = confirmPassword.length > 0;
   const isConfirmationMatching = isConfirmationEntered && confirmPassword === newPassword;
@@ -107,6 +108,7 @@ export function ChangePasswordForm({
             label={t('change.currentPassword')}
             name="currentPassword"
             onChange={(event) => setCurrentPassword(event.currentTarget.value)}
+            value={currentPassword}
           />
           <PasswordField
             ariaDescribedBy="new-password-strength"
@@ -114,12 +116,20 @@ export function ChangePasswordForm({
             description={isSameAsCurrent ? t('change.sameAsCurrent') : undefined}
             descriptionId="new-password-description"
             id="new-password"
-            isInvalid={isSameAsCurrent || (newPassword.length >= 12 && !passwordEvaluation.isValid)}
+            isInvalid={
+              isSameAsCurrent ||
+              (newPassword.length >= PASSWORD_MIN_LENGTH && !passwordEvaluation.isValid)
+            }
             label={t('change.newPassword')}
             name="newPassword"
             onChange={(event) => setNewPassword(event.currentTarget.value)}
+            value={newPassword}
           />
-          <PasswordStrength password={newPassword} />
+          <PasswordStrength
+            id="new-password-strength"
+            password={newPassword}
+            translate={tStrength}
+          />
           <PasswordField
             autoComplete="new-password"
             description={
@@ -136,6 +146,7 @@ export function ChangePasswordForm({
             label={t('change.confirmPassword')}
             name="confirmPassword"
             onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+            value={confirmPassword}
           />
         </FieldGroup>
       </FieldSet>
@@ -172,6 +183,7 @@ function PasswordField({
   label,
   name,
   onChange,
+  value,
 }: {
   autoComplete: 'current-password' | 'new-password';
   ariaDescribedBy?: string;
@@ -182,7 +194,8 @@ function PasswordField({
   isInvalid?: boolean;
   label: string;
   name: string;
-  onChange?: ChangeEventHandler<HTMLInputElement>;
+  onChange: ChangeEventHandler<HTMLInputElement>;
+  value: string;
 }) {
   return (
     <Field data-invalid={isInvalid || undefined}>
@@ -195,9 +208,10 @@ function PasswordField({
         id={id}
         isInvalid={isInvalid}
         label={label}
-        minLength={name === 'currentPassword' ? undefined : 12}
+        minLength={name === 'currentPassword' ? undefined : PASSWORD_MIN_LENGTH}
         name={name}
         onChange={onChange}
+        value={value}
       />
       {description ? (
         <FieldDescription
@@ -224,6 +238,7 @@ function PasswordInput({
   name,
   onChange,
   placeholder,
+  value,
 }: {
   ariaDescribedBy?: string | undefined;
   autoComplete: 'current-password' | 'new-password';
@@ -234,6 +249,7 @@ function PasswordInput({
   name: string;
   onChange?: ChangeEventHandler<HTMLInputElement> | undefined;
   placeholder?: string | undefined;
+  value?: string | undefined;
 }) {
   const t = useTranslations('Auth.passwordVisibility');
   const [isVisible, setIsVisible] = useState(false);
@@ -256,6 +272,7 @@ function PasswordInput({
         required
         spellCheck={false}
         type={isVisible ? 'text' : 'password'}
+        value={value}
       />
       <Button
         aria-controls={id}

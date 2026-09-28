@@ -13,6 +13,7 @@ COPY apps/core/package.json apps/core/package.json
 COPY packages/core-client/package.json packages/core-client/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 COPY packages/observability/package.json packages/observability/package.json
+COPY packages/password-policy/package.json packages/password-policy/package.json
 COPY packages/ui/package.json packages/ui/package.json
 RUN pnpm install --frozen-lockfile
 
@@ -27,6 +28,7 @@ ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV SENTRY_ORG=$SENTRY_ORG
 ENV NODE_ENV=production
 RUN pnpm --filter @showcase/observability build
+RUN pnpm --filter @showcase/password-policy build
 RUN --mount=type=secret,id=sentry-auth-token \
     if [ "$SENTRY_UPLOAD_SOURCE_MAPS" = "true" ]; then \
       export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry-auth-token)" && \

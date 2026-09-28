@@ -66,7 +66,14 @@ describe('Student authentication forms', () => {
     expect(submit.hasAttribute('disabled')).toBe(true);
 
     await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'temporary-password');
-    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'StrongPassword1!');
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'Strong');
+
+    expect(
+      screen.getAllByRole('listitem').map((requirement) => requirement.dataset.satisfied),
+    ).toEqual(['false', 'true', 'true', 'false', 'false']);
+    expect(submit.hasAttribute('disabled')).toBe(true);
+
+    await user.type(screen.getByLabelText('รหัสผ่านใหม่'), 'Password1!');
 
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
     expect(
@@ -115,6 +122,23 @@ describe('Student authentication forms', () => {
       true,
     );
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it('keeps the typed passwords after Core rejects the change', async () => {
+    const action = vi.fn<AuthAction>().mockResolvedValue({ error: 'passwordComposition' });
+    const user = userEvent.setup();
+    renderWithMessages(<ChangePasswordForm action={action} />);
+    const newPassword = screen.getByLabelText('รหัสผ่านใหม่') as HTMLInputElement;
+
+    await user.type(screen.getByLabelText('รหัสผ่านปัจจุบัน'), 'temporary-password-value');
+    await user.type(newPassword, 'Correct horse battery 1!');
+    await user.type(screen.getByLabelText('ยืนยันรหัสผ่านใหม่'), 'Correct horse battery 1!');
+    await user.click(screen.getByRole('button', { name: 'ตั้งรหัสผ่าน' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'รหัสผ่านต้องมีตัวพิมพ์เล็ก ตัวพิมพ์ใหญ่ ตัวเลข และอักขระพิเศษอย่างน้อยอย่างละหนึ่งตัว',
+    );
+    expect(newPassword.value).toBe('Correct horse battery 1!');
   });
 
   it('uses a form action for logout without client-side fetch', async () => {

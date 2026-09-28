@@ -256,7 +256,7 @@ describe('Student authentication (e2e)', () => {
       .post('/v1/internal/student/auth/change-password')
       .set('Authorization', `Bearer ${loginBody.sessionToken}`)
       .set('x-student-bff-secret', STUDENT_BFF_SECRET)
-      .send({ currentPassword: '69000001', newPassword: 'correct horse battery staple' })
+      .send({ currentPassword: '69000001', newPassword: 'Correct horse battery 1!' })
       .expect(200);
     const passwordChangeBody = passwordChange.body as {
       canUseStudentCapabilities: boolean;

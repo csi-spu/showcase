@@ -45,6 +45,9 @@ importers:
       '@showcase/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../../packages/password-policy
       '@showcase/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -148,6 +151,9 @@ importers:
       '@showcase/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../../packages/password-policy
       better-auth:
         specifier: 1.7.2
         version: 1.7.2(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(next@16.3.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(prisma@6.19.3(typescript@5.9.3))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.4.0))(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0))
@@ -254,6 +260,9 @@ importers:
       '@showcase/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../../packages/password-policy
       '@showcase/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -376,6 +385,9 @@ importers:
       '@showcase/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../../packages/password-policy
       '@showcase/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -476,6 +488,9 @@ importers:
       '@showcase/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../../packages/password-policy
       '@showcase/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -703,17 +718,38 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.4.0))(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0)
 
+  packages/password-policy:
+    devDependencies:
+      '@showcase/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      eslint:
+        specifier: ^9
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.4.0))(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0)
+
   packages/ui:
     dependencies:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@showcase/password-policy':
+        specifier: workspace:*
+        version: link:../password-policy
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      lucide-react:
+        specifier: ^1.33.0
+        version: 1.33.0(react@19.2.8)
       sonner:
         specifier: ^2.0.7
         version: 2.0.8(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

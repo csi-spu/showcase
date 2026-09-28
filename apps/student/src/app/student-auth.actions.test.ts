@@ -126,4 +126,18 @@ describe('changePasswordFromProfileAction', () => {
       changePasswordFromProfileAction(INITIAL_AUTH_ACTION_STATE, formData),
     ).resolves.toEqual({ error: 'currentPassword' });
   });
+
+  it('explains a Core rejection for missing character classes', async () => {
+    dependencies.changePassword.mockRejectedValue(
+      new StudentAuthCoreError('PASSWORD_MISSING_CHARACTER_CLASS', 422),
+    );
+    const formData = new FormData();
+    formData.set('currentPassword', 'TemporaryPassword1!');
+    formData.set('newPassword', 'StrongerPassword2!');
+    formData.set('confirmPassword', 'StrongerPassword2!');
+
+    await expect(
+      changePasswordFromProfileAction(INITIAL_AUTH_ACTION_STATE, formData),
+    ).resolves.toEqual({ error: 'passwordComposition' });
+  });
 });

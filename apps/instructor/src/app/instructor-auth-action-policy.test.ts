@@ -27,6 +27,9 @@ describe('mapCoreError', () => {
     expect(mapCoreError(new CoreClientError('INVALID_CREDENTIALS', 401))).toBe('credentials');
     expect(mapCoreError(new CoreClientError('RATE_LIMITED', 429))).toBe('rateLimited');
     expect(mapCoreError(new CoreClientError('INVALID_PASSWORD', 422))).toBe('passwordPolicy');
+    expect(mapCoreError(new CoreClientError('PASSWORD_MISSING_CHARACTER_CLASS', 422))).toBe(
+      'passwordComposition',
+    );
     expect(mapCoreError(new CoreClientError('SESSION_EXPIRED', 401))).toBe('sessionExpired');
     expect(mapCoreError(new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503))).toBe('network');
     expect(mapCoreError(new CoreClientError('FORBIDDEN', 403))).toBe('unavailable');

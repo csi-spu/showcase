@@ -7,6 +7,7 @@
 @source './card.tsx';
 @source './input.tsx';
 @source './label.tsx';
+@source './password-strength.tsx';
 @source './separator.tsx';
 @source './textarea.tsx';
 @source './toast.tsx';

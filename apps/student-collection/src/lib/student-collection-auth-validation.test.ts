@@ -24,7 +24,7 @@ describe('validateLogin', () => {
 describe('validatePasswordChange', () => {
   const base = {
     currentPassword: '69000001',
-    newPassword: 'correct horse battery staple',
+    newPassword: 'Correct horse battery 1!',
   };
 
   it('accepts a valid change with a matching confirmation', () => {
@@ -49,5 +49,17 @@ describe('validatePasswordChange', () => {
     expect(
       validatePasswordChange(formData({ ...base, confirmPassword: 'something else entirely' })),
     ).toBe('passwordMismatch');
+  });
+
+  it('rejects a new password missing a required character class', () => {
+    expect(
+      validatePasswordChange(
+        formData({
+          ...base,
+          confirmPassword: 'correct horse battery staple',
+          newPassword: 'correct horse battery staple',
+        }),
+      ),
+    ).toBe('passwordPolicy');
   });
 });

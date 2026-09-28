@@ -7,6 +7,7 @@ describe('Admin Server Action policy', () => {
     [new CoreClientError('INVALID_CREDENTIALS', 401), 'credentials'],
     [new CoreClientError('RATE_LIMITED', 429), 'rateLimited'],
     [new CoreClientError('INVALID_PASSWORD', 422), 'passwordPolicy'],
+    [new CoreClientError('PASSWORD_MISSING_CHARACTER_CLASS', 422), 'passwordComposition'],
     [new CoreClientError('SESSION_EXPIRED', 401), 'sessionExpired'],
     [new CoreClientError('UNAUTHENTICATED', 401), 'sessionExpired'],
     [new CoreClientError('AUTH_SERVICE_UNAVAILABLE', 503), 'network'],

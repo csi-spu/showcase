@@ -24,5 +24,6 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0018](0018-identify-students-by-roster-name-in-instructor-follow-up.md)     | Identify Students by Roster name in Instructor follow-up     |
 | [0019](0019-let-instructors-browse-eligible-students-for-group-selection.md) | Let Instructors browse eligible Students for group selection |
 | [0020](0020-show-student-ids-to-instructors.md)                              | Show Student IDs to Instructors                              |
+| [0021](0021-require-character-classes-in-chosen-passwords.md)                | Require character classes in chosen passwords                |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

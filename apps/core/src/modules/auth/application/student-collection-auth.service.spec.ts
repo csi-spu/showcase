@@ -216,7 +216,7 @@ describe('StudentCollectionAuthService session lifecycle', () => {
     await expect(
       createService(repository).service.changePassword({
         currentPassword: '69000001',
-        newPassword: 'correct horse battery staple',
+        newPassword: 'Correct horse battery 1!',
         sessionToken: 'current-token',
       }),
     ).resolves.toEqual({
@@ -227,6 +227,20 @@ describe('StudentCollectionAuthService session lifecycle', () => {
       audience: 'student_collection',
       eventType: 'student_collection_password_changed',
     });
+  });
+
+  it('rejects a password missing a character class without rotating the session', async () => {
+    const repository = new FakeAuthRepository();
+    repository.collectionSession = createStoredSession();
+
+    await expect(
+      createService(repository).service.changePassword({
+        currentPassword: '69000001',
+        newPassword: 'correct horse battery staple',
+        sessionToken: 'current-token',
+      }),
+    ).rejects.toEqual(new AuthError('PASSWORD_MISSING_CHARACTER_CLASS', 422));
+    expect(repository.replacedSession).toBeNull();
   });
 
   it('revokes the session on logout', async () => {

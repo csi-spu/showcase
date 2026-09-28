@@ -19,12 +19,12 @@ describe('Admin authentication validation', () => {
 
   it('preserves password whitespace and rejects mismatch or unchanged values', () => {
     const valid = new FormData();
-    valid.set('confirmPassword', '  correct horse battery staple  ');
+    valid.set('confirmPassword', '  Correct horse battery 1!  ');
     valid.set('currentPassword', 'temporary-password-value');
-    valid.set('newPassword', '  correct horse battery staple  ');
+    valid.set('newPassword', '  Correct horse battery 1!  ');
     expect(validatePasswordChange(valid)).toEqual({
       currentPassword: 'temporary-password-value',
-      newPassword: '  correct horse battery staple  ',
+      newPassword: '  Correct horse battery 1!  ',
     });
 
     const unchanged = new FormData();
@@ -36,7 +36,15 @@ describe('Admin authentication validation', () => {
     const mismatch = new FormData();
     mismatch.set('confirmPassword', 'different password value');
     mismatch.set('currentPassword', 'temporary-password-value');
-    mismatch.set('newPassword', 'correct horse battery staple');
+    mismatch.set('newPassword', 'Correct horse battery 1!');
     expect(validatePasswordChange(mismatch)).toBe('passwordMismatch');
+  });
+
+  it('rejects a new password missing a required character class', () => {
+    const weak = new FormData();
+    weak.set('confirmPassword', 'correct horse battery staple');
+    weak.set('currentPassword', 'temporary-password-value');
+    weak.set('newPassword', 'correct horse battery staple');
+    expect(validatePasswordChange(weak)).toBe('passwordPolicy');
   });
 });

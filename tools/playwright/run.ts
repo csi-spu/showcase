@@ -39,6 +39,12 @@ try {
     requestedEnvironment,
     'E2E_SETUP_OBSERVABILITY_BUILD_FAILED',
   );
+  run(
+    'pnpm',
+    ['--filter', '@showcase/password-policy', 'build'],
+    requestedEnvironment,
+    'E2E_SETUP_PASSWORD_POLICY_BUILD_FAILED',
+  );
   await ensureLocalPostgres(requestedEnvironment);
   run(
     'pnpm',
