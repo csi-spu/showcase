@@ -241,6 +241,78 @@ describe('PostgresRosterRepository integration', () => {
     ).rejects.toThrow();
   });
 
+  /*
+   * Recording a conflict inserts a roster_conflicts row whose foreign key takes
+   * FOR KEY SHARE on the Batch. Two rows doing that concurrently each then
+   * asked for FOR UPDATE on the same Batch and deadlocked in production, which
+   * drained the connection pool. The Batch refresh must not wait on KEY SHARE.
+   */
+  it('settles a name conflict while another transaction holds a foreign-key lock on the Batch', async () => {
+    const firstBatch = await repository.createBatch(batchInput());
+    const firstClaim = await repository.claimRows({
+      leaseUntil: new Date(NOW.getTime() + 60_000),
+      limit: 1,
+      now: NOW,
+    });
+    await repository.completeProvisioning({
+      batchId: firstBatch.batchId,
+      entryYear: 2569,
+      firstNameTh: 'สมชาย',
+      lastNameTh: 'ใจดี',
+      now: NOW,
+      providerUserId: STUDENT_PROVIDER_USER_ID,
+      rowId: firstClaim[0]!.rowId,
+      studentIdHash: STUDENT_ID_HASH,
+      studentIdPrefixHashes: firstClaim[0]!.studentIdPrefixHashes,
+      syntheticIdentity: SYNTHETIC_IDENTITY,
+    });
+    const conflictBatch = await repository.createBatch({
+      ...batchInput(),
+      now: new Date(NOW.getTime() + 1_000),
+      rows: [{ ...batchInput().rows[0]!, firstNameTh: 'สมหญิง', lastNameTh: 'มั่นคง' }],
+    });
+    const conflictClaim = await repository.claimRows({
+      leaseUntil: new Date(NOW.getTime() + 61_000),
+      limit: 1,
+      now: new Date(NOW.getTime() + 1_000),
+    });
+
+    let releaseKeyShare!: () => void;
+    const keyShareReleased = new Promise<void>((resolve) => (releaseKeyShare = resolve));
+    let markKeyShareHeld!: () => void;
+    const keyShareHeld = new Promise<void>((resolve) => (markKeyShareHeld = resolve));
+    const keyShareHolder = database.sql.begin(async (transaction) => {
+      await transaction`
+        select id from private.roster_batches where id = ${conflictBatch.batchId} for key share
+      `;
+      markKeyShareHeld();
+      await keyShareReleased;
+    });
+    await keyShareHeld;
+
+    const settlement = repository.settleExistingRow({
+      batchId: conflictBatch.batchId,
+      now: new Date(NOW.getTime() + 1_000),
+      rowId: conflictClaim[0]!.rowId,
+      studentIdHash: STUDENT_ID_HASH,
+      studentIdPrefixHashes: conflictClaim[0]!.studentIdPrefixHashes,
+    });
+    try {
+      const outcome = await Promise.race([
+        settlement,
+        new Promise((resolve) => setTimeout(() => resolve('blocked'), 2_000)),
+      ]);
+      expect(outcome).toBe('conflict');
+    } finally {
+      releaseKeyShare();
+      await Promise.allSettled([keyShareHolder, settlement]);
+    }
+    await expect(repository.getBatch(conflictBatch.batchId)).resolves.toMatchObject({
+      failedCount: 1,
+      status: 'completed_with_errors',
+    });
+  });
+
   it('creates and idempotently resolves an audited name conflict without reassigning identity', async () => {
     const firstBatch = await repository.createBatch(batchInput());
     const firstClaim = await repository.claimRows({
