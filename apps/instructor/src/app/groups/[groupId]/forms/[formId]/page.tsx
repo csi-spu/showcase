@@ -15,11 +15,13 @@ import { AppShell } from '@/app/app-shell';
 import {
   closeCollectionFormAction,
   openCollectionFormAction,
+  readCollectionFormHistoryAction,
   reopenCollectionFormAction,
   saveCollectionFormAction,
   saveCollectionFormAsTemplateAction,
 } from '@/app/collection-forms.actions';
 import { FormBuilder } from '../form-builder';
+import { FormEditHistory } from './form-edit-history';
 import { ShareFormDialog } from './share-form-dialog';
 
 interface FormPageProps {
@@ -83,25 +85,28 @@ export default async function FormPage({ params }: FormPageProps) {
     >
       <PageHeader
         action={
-          /* A Draft has no submissions yet, so the queue and the Student link
-           * only appear once the form has been opened to Students. */
-          share === null ? undefined : (
-            <div className="flex flex-wrap items-center gap-2">
-              <ShareFormDialog
-                downloadHref={`/groups/${groupId}/forms/${formId}/qr-code`}
-                formTitle={form.title}
-                link={share.link}
-                qrCodeSvg={share.qrCodeSvg}
-              />
-              <Link
-                className={buttonVariants({ variant: 'outline' })}
-                href={`/groups/${groupId}/forms/${formId}/submissions`}
-              >
-                <InboxIcon aria-hidden="true" data-icon="inline-start" />
-                {t('review.openAction')}
-              </Link>
-            </div>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            <FormEditHistory readHistory={readCollectionFormHistoryAction.bind(null, formId)} />
+            {/* A Draft has no submissions yet, so the queue and the Student link
+             * only appear once the form has been opened to Students. */}
+            {share === null ? null : (
+              <>
+                <ShareFormDialog
+                  downloadHref={`/groups/${groupId}/forms/${formId}/qr-code`}
+                  formTitle={form.title}
+                  link={share.link}
+                  qrCodeSvg={share.qrCodeSvg}
+                />
+                <Link
+                  className={buttonVariants({ variant: 'outline' })}
+                  href={`/groups/${groupId}/forms/${formId}/submissions`}
+                >
+                  <InboxIcon aria-hidden="true" data-icon="inline-start" />
+                  {t('review.openAction')}
+                </Link>
+              </>
+            )}
+          </div>
         }
         description={t('builder.pageDescription')}
         title={form.title}

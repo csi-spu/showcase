@@ -42,11 +42,15 @@ vi.mock('@/app/app-shell', () => ({
 vi.mock('@/app/collection-forms.actions', () => ({
   closeCollectionFormAction: vi.fn(),
   openCollectionFormAction: vi.fn(),
+  readCollectionFormHistoryAction: vi.fn(),
   reopenCollectionFormAction: vi.fn(),
   saveCollectionFormAction: vi.fn(),
   saveCollectionFormAsTemplateAction: vi.fn(),
 }));
 vi.mock('../form-builder', () => ({ FormBuilder: () => null }));
+vi.mock('./form-edit-history', () => ({
+  FormEditHistory: () => <button type="button">history</button>,
+}));
 vi.mock('./share-form-dialog', () => ({
   ShareFormDialog: (props: { downloadHref: string; link: string; qrCodeSvg: string }) => {
     shareDialog(props);
@@ -93,6 +97,15 @@ describe('Form page header', () => {
     expect(screen.queryByRole('button', { name: 'share' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'review.openAction' })).toBeNull();
   });
+
+  it.each(['draft', 'open', 'closed'] as const)(
+    'offers the edit history on a %s form',
+    async (status) => {
+      await renderPage(status);
+
+      expect(screen.getByRole('button', { name: 'history' })).toBeDefined();
+    },
+  );
 
   it.each(['open', 'closed'] as const)(
     'shares the Student link beside the queue on a %s form',
