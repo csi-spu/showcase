@@ -248,13 +248,16 @@ async function extendDeadlineWithNewFirstQuestion(
   await page.getByLabel('คำถาม', { exact: true }).last().fill(newQuestion);
 
   /*
-   * Each key waits for its announcement: the sensor only listens for the next
-   * key once the lift has been handled, and the announcement is what a screen
-   * reader user would wait for too.
+   * Each key waits for its announcement, as a screen reader user would. After
+   * the lift, dnd-kit adds its key listener in a zero-delay timeout, and Chrome
+   * may run a queued key press before that timer. A later zero-delay timer in
+   * the page fires after it, so the move is only pressed once the listener is
+   * there.
    */
   await page.getByRole('button', { name: `ย้ายคำถาม ${newQuestion}`, exact: true }).focus();
   await page.keyboard.press('Space');
   await expect(page.getByRole('status').filter({ hasText: 'หยิบคำถาม' })).toBeAttached();
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   await page.keyboard.press('ArrowUp');
   await expect(page.getByRole('status').filter({ hasText: 'ไปลำดับที่ 1' })).toBeAttached();
   await page.keyboard.press('Space');

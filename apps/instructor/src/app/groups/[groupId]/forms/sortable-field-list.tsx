@@ -1,13 +1,13 @@
 'use client';
 
 import {
-  closestCenter,
   DndContext,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
@@ -37,6 +37,32 @@ interface SortableFieldListProps {
   onReorder: (activeId: string, overId: string) => void;
   onToggle: (id: string) => void;
 }
+
+/*
+ * An expanded question card is several times taller than a collapsed one. The
+ * keyboard moves a lifted card by lining up its top edge (moving up) or its
+ * bottom edge (moving down) with the target slot, and `closestCenter` would
+ * still find a tall card nearer its own slot, so the move was announced and
+ * then dropped where it started. Measuring the nearer of the matching edges
+ * picks the slot the card was moved to, and a pointer drag swaps once the card
+ * has travelled half the gap to its neighbour's edge, whatever the heights.
+ */
+const closestMatchingEdge: CollisionDetection = ({
+  collisionRect,
+  droppableContainers,
+  droppableRects,
+}) =>
+  droppableContainers
+    .flatMap((droppableContainer) => {
+      const rect = droppableRects.get(droppableContainer.id);
+      if (rect === undefined) return [];
+      const value = Math.min(
+        Math.abs(rect.top - collisionRect.top),
+        Math.abs(rect.bottom - collisionRect.bottom),
+      );
+      return [{ data: { droppableContainer, value }, id: droppableContainer.id }];
+    })
+    .sort((first, second) => first.data.value - second.data.value);
 
 /**
  * The builder's question list, reordered by dragging a handle.
@@ -112,7 +138,7 @@ export function SortableFieldList({
         announcements,
         screenReaderInstructions: { draggable: t('builder.reorder.instructions') },
       }}
-      collisionDetection={closestCenter}
+      collisionDetection={closestMatchingEdge}
       id={contextId}
       onDragEnd={handleDragEnd}
       sensors={sensors}
