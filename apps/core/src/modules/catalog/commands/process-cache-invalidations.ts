@@ -2,7 +2,7 @@ import '../../../instrument';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../../../app.module';
+import { CacheInvalidationWorkerModule } from './cache-invalidation-worker.module';
 import { CacheInvalidationService } from '../application/cache-invalidation.service';
 import { flushSentry, reportOperationalError } from '../../../observability/sentry';
 
@@ -18,7 +18,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 
 async function main(): Promise<void> {
   const logger = new Logger('PublicCacheInvalidationWorker');
-  const app = await NestFactory.createApplicationContext(AppModule, {
+  const app = await NestFactory.createApplicationContext(CacheInvalidationWorkerModule, {
     logger: ['error', 'warn', 'log'],
   });
   try {
