@@ -17,7 +17,7 @@ test('production consumes the CI plan and builds only its application matrix', (
   assert.deepEqual(production.on.workflow_run.workflows, ['CI']);
   assert.equal(
     production.jobs.build.strategy.matrix,
-    '${{ fromJSON(needs.resolve-plan.outputs.matrix) }}',
+    '${{ fromJSON(needs.resolve-plan.outputs.build_matrix) }}',
   );
   assert.match(production.jobs['deploy-media'].if, /contains\(fromJSON\(.+apps\), 'media'\)/u);
   assert.match(production.jobs['deploy-core'].if, /contains\(fromJSON\(.+apps\), 'core'\)/u);
@@ -29,6 +29,30 @@ test('production consumes the CI plan and builds only its application matrix', (
   assert.match(
     production.jobs['deploy-student-collection'].if,
     /contains\(fromJSON\(.+apps\), 'student-collection'\)/u,
+  );
+});
+
+test('manual deployment builds only missing images and only when explicitly requested', () => {
+  const input = production.on.workflow_dispatch.inputs.build_missing_images;
+  assert.equal(input.type, 'boolean');
+  assert.equal(input.default, false);
+
+  const selectStep = production.jobs['resolve-plan'].steps.find(
+    (step) => step.id === 'select-builds',
+  );
+  assert.equal(
+    selectStep.env.SHOULD_BUILD_MISSING_IMAGES,
+    '${{ inputs.build_missing_images == true }}',
+  );
+  assert.match(selectStep.run, /docker buildx imagetools inspect/u);
+  assert.match(selectStep.run, /grep -q 'not found'/u);
+  assert.match(selectStep.run, /SHOULD_BUILD_MISSING_IMAGES" != 'true'/u);
+
+  assert.equal(production.jobs.build.if, "needs.resolve-plan.outputs.build_apps != '[]'");
+  assert.equal(production.jobs['verify-images'], undefined);
+  assert.match(
+    production.jobs['approve-production'].if,
+    /needs\.build\.result == 'skipped' && needs\.resolve-plan\.outputs\.build_apps == '\[\]'/u,
   );
 });
 

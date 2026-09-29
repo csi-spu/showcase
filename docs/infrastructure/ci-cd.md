@@ -43,7 +43,7 @@ Every production image build uploads source maps to its matching Sentry project 
 
 The production workflow starts after successful `main` push CI, verifies the source commit belongs to `main`, builds the selected matrix, and then enters the protected `production` Environment approval gate. Media deploys first when selected, Core and its three workers follow when selected, then selected frontends deploy independently. A failed dependency prevents downstream deployment; an unrelated skipped application does not.
 
-`workflow_dispatch` remains available for redeploying existing images. It requires a full `main` commit SHA and an exact JSON application list such as `["media"]`. The workflow validates the list, verifies only those immutable images exist, requests production approval, and deploys only those applications. It never rebuilds a manual source SHA.
+`workflow_dispatch` remains available for redeploying existing images. It requires a full `main` commit SHA and an exact JSON application list such as `["media"]`. The workflow validates the list, checks which of those immutable images exist, requests production approval, and deploys only those applications. A missing image fails the run unless `build_missing_images` is set; then the workflow builds only the missing images before approval (ADR 0022). It never rebuilds an existing tag. Use this to deliver applications stranded by a failed `main` CI run, choosing a `main` SHA whose CI quality gates passed.
 
 Staging is intentionally not part of the current delivery path. Adding it later requires a new decision and an isolated Coolify environment; do not create a long-lived staging branch.
 

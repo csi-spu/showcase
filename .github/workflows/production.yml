@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Full main-branch commit SHA with existing GHCR images
+        description: Full main-branch commit SHA to deploy
         required: true
         type: string
       apps:
@@ -16,6 +16,11 @@ on:
         required: true
         default: '["core","admin","instructor","student","student-collection","visitor","media"]'
         type: string
+      build_missing_images:
+        description: Build selected images that do not exist for that SHA; existing tags are never rebuilt
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deploy-production
@@ -37,7 +42,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.resolve.outputs.apps }}
-      matrix: ${{ steps.resolve.outputs.matrix }}
+      build_apps: ${{ steps.select-builds.outputs.build_apps }}
+      build_matrix: ${{ steps.select-builds.outputs.build_matrix }}
       source_sha: ${{ steps.resolve.outputs.source_sha }}
     steps:
       - name: Checkout repository
@@ -85,8 +91,52 @@ jobs:
           ' "$PLAN_PATH" > /dev/null
           echo "source_sha=$(jq -r '.sourceSha' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
           echo "apps=$(jq -c '.apps' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
-          echo "matrix=$(jq -c '{include: .matrix}' "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
           jq . "$PLAN_PATH"
+
+      - name: Sign in to GHCR
+        if: github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Select images to build
+        id: select-builds
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IMAGE_REPOSITORY_PREFIX: ghcr.io/${{ github.repository_owner }}/showcase-
+          SHOULD_BUILD_MISSING_IMAGES: ${{ inputs.build_missing_images == true }}
+          PLAN_PATH: ${{ runner.temp }}/deployment-plan/deployment-plan.json
+          SOURCE_SHA: ${{ steps.resolve.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            build_apps=$(jq -c '.apps' "$PLAN_PATH")
+          else
+            build_apps='[]'
+            while read -r app; do
+              image="${IMAGE_REPOSITORY_PREFIX}${app}:sha-${SOURCE_SHA}"
+              if inspect_output=$(docker buildx imagetools inspect "$image" 2>&1); then
+                echo "$image exists"
+              elif grep -q 'not found' <<< "$inspect_output"; then
+                echo "$image does not exist"
+                build_apps=$(jq -c --arg app "$app" '. + [$app]' <<< "$build_apps")
+              else
+                echo "$inspect_output" >&2
+                exit 1
+              fi
+            done < <(jq -r '.apps[]' "$PLAN_PATH")
+            if [ "$build_apps" != '[]' ] && [ "$SHOULD_BUILD_MISSING_IMAGES" != 'true' ]; then
+              echo "Missing images for $build_apps; rerun with build_missing_images to build them" >&2
+              exit 1
+            fi
+          fi
+          echo "build_apps=$build_apps" >> "$GITHUB_OUTPUT"
+          echo "build_matrix=$(jq -c --argjson build_apps "$build_apps" \
+            '{include: [.matrix[] | select(.app as $app | $build_apps | index($app))]}' \
+            "$PLAN_PATH")" >> "$GITHUB_OUTPUT"
 
   verify-source:
     needs: resolve-plan
@@ -112,14 +162,14 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
 
   build:
-    if: github.event_name == 'workflow_run' && needs.resolve-plan.outputs.apps != '[]'
+    if: needs.resolve-plan.outputs.build_apps != '[]'
     needs: [resolve-plan, verify-source]
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve-plan.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.resolve-plan.outputs.build_matrix) }}
     uses: ./.github/workflows/build-image.yml
     with:
       app: ${{ matrix.app }}
@@ -130,37 +180,15 @@ jobs:
     secrets:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
-  verify-images:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [resolve-plan, verify-source]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        app: ${{ fromJSON(needs.resolve-plan.outputs.apps) }}
-    steps:
-      - name: Sign in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify immutable image exists
-        env:
-          APP: ${{ matrix.app }}
-          SOURCE_SHA: ${{ needs.resolve-plan.outputs.source_sha }}
-        run: docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/showcase-$APP:sha-$SOURCE_SHA"
-
   approve-production:
-    needs: [resolve-plan, verify-source, build, verify-images]
+    needs: [resolve-plan, verify-source, build]
     if: >-
       always() &&
+      needs.resolve-plan.result == 'success' &&
       needs.resolve-plan.outputs.apps != '[]' &&
       needs.verify-source.result == 'success' &&
-      ((github.event_name == 'workflow_run' && needs.build.result == 'success') ||
-      (github.event_name == 'workflow_dispatch' && needs.verify-images.result == 'success'))
+      (needs.build.result == 'success' ||
+      (needs.build.result == 'skipped' && needs.resolve-plan.outputs.build_apps == '[]'))
     environment: production
     runs-on: ubuntu-24.04
     steps:
