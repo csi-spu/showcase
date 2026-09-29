@@ -4,6 +4,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { parseEnvironment } from './config/environment.schema';
 import { AuthModule } from './modules/auth/auth.module';
+import { CollectionDeletionsModule } from './modules/collection-deletions/collection-deletions.module';
 import { CollectionGroupsModule } from './modules/collection-groups/collection-groups.module';
 import { CollectionFormsModule } from './modules/collection-forms/collection-forms.module';
 import { CollectionOverviewModule } from './modules/collection-overview/collection-overview.module';
@@ -26,6 +27,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
     AuthModule,
     AccountControlsModule,
     CatalogModule,
+    CollectionDeletionsModule,
     CollectionGroupsModule,
     CollectionFormsModule,
     CollectionOverviewModule,

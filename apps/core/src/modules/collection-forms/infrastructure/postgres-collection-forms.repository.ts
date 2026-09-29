@@ -258,13 +258,22 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     now: Date;
     title: string;
   }): Promise<CollectionForm | null> {
+    /*
+     * The live group is locked, not just checked, so a deletion waiting on it
+     * stamps this form too rather than leaving it live under a deleted group.
+     */
     const rows = await this.database.sql<FormRow[]>`
+      with live_group as (
+        select id from public.collection_groups
+        where id = ${input.groupId} and deletion_id is null
+        for share
+      )
       insert into public.collection_forms
         (group_id, title, description, fields, deadline_at, created_by_account_id, created_at,
           created_from_template_id)
-      select ${input.groupId}, ${input.title}, ${input.description}, ${this.database.sql.json(input.fields)},
+      select live_group.id, ${input.title}, ${input.description}, ${this.database.sql.json(input.fields)},
         ${input.deadlineAt}, ${input.actorAccountId}, ${input.now}, ${input.createdFromTemplateId}
-      where exists (select 1 from public.collection_groups where id = ${input.groupId})
+      from live_group
       returning id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
     `;
@@ -275,7 +284,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     const rows = await this.database.sql<FormRow[]>`
       select id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
-      from public.collection_forms where id = ${formId}
+      from public.collection_forms where id = ${formId} and deletion_id is null
     `;
     return rows[0] === undefined ? null : this.mapForm(rows[0]);
   }
@@ -284,7 +293,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     const rows = await this.database.sql<FormRow[]>`
       select id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
-      from public.collection_forms where group_id = ${groupId}
+      from public.collection_forms where group_id = ${groupId} and deletion_id is null
       order by created_at desc limit 200
     `;
     return rows.map((row) => this.mapForm(row));
@@ -306,7 +315,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const row = rows[0];
@@ -373,7 +382,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const current = rows[0];
@@ -452,7 +461,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const current = rows[0];
@@ -543,7 +552,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const row = rows[0];
@@ -600,7 +609,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const row = rows[0];
@@ -637,7 +646,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           )
       ) as newly_assigned
       from public.collection_forms as form
-      where form.id = ${formId}
+      where form.id = ${formId} and form.deletion_id is null
     `;
     const row = rows[0];
     if (row === undefined) return 'not_found' as const;
@@ -661,7 +670,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         from public.collection_forms as form
         join public.collection_groups as collection_group on collection_group.id = form.group_id
         join public.collection_rounds as round on round.id = collection_group.round_id
-        where form.id = ${input.formId}
+        where form.id = ${input.formId} and form.deletion_id is null
         for update of form, round
       `;
       const row = rows[0];
@@ -719,7 +728,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     limit: number;
   }): Promise<CollectionFormHistoryRecordPage | null> {
     const forms = await this.database.sql<{ id: string }[]>`
-      select id from public.collection_forms where id = ${input.formId}
+      select id from public.collection_forms where id = ${input.formId} and deletion_id is null
     `;
     if (forms[0] === undefined) return null;
 
@@ -802,7 +811,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
    */
   async getRoundPendingWork(roundId: string): Promise<RoundPendingWork | null> {
     const rounds = await this.database.sql<{ id: string }[]>`
-      select id from public.collection_rounds where id = ${roundId}
+      select id from public.collection_rounds where id = ${roundId} and deletion_id is null
     `;
     if (rounds[0] === undefined) return null;
     return this.readRoundPendingWork(this.database.sql, roundId);
@@ -828,7 +837,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     limit: number;
   }): Promise<CollectionMatrixPage | null> {
     const groups = await this.database.sql<{ id: string }[]>`
-      select id from public.collection_groups where id = ${input.groupId}
+      select id from public.collection_groups where id = ${input.groupId} and deletion_id is null
     `;
     if (groups[0] === undefined) return null;
 
@@ -837,7 +846,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     >`
       select id, title, status, deadline_at
       from public.collection_forms
-      where group_id = ${input.groupId} and status <> 'draft'
+      where group_id = ${input.groupId} and status <> 'draft' and deletion_id is null
       order by created_at, id
       limit ${MAX_MATRIX_FORMS}
     `;
@@ -983,6 +992,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         on membership.group_id = collection_group.id
         and membership.student_account_id = obligation.student_account_id
       where round.status <> 'closed' and membership.status = 'current'
+        and form.deletion_id is null
       on conflict do nothing
       returning id
     `;
@@ -1012,6 +1022,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       cross join unnest(${leadDays}::int[]) as lead(days)
       where form.deadline_at is not null
         and form.status = 'open'
+        and form.deletion_id is null
         and round.status <> 'closed'
         and membership.status = 'current'
         and obligation.status = 'not_submitted'
@@ -1065,14 +1076,18 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       from private.collection_notifications as notification
       join public.collection_forms as form on form.id = notification.form_id
       where notification.student_account_id = ${input.studentAccountId}
+        and form.deletion_id is null
       order by notification.created_at desc, notification.id desc
       limit ${input.limit}
     `;
     /* Counted across every notification, so a full page never hides the rest. */
     const unread = await this.database.sql<{ total: number }[]>`
       select count(*)::int as total
-      from private.collection_notifications
-      where student_account_id = ${input.studentAccountId} and read_at is null
+      from private.collection_notifications as notification
+      join public.collection_forms as form on form.id = notification.form_id
+      where notification.student_account_id = ${input.studentAccountId}
+        and notification.read_at is null
+        and form.deletion_id is null
     `;
     return {
       notifications: rows.map((row) => ({
@@ -1132,7 +1147,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
        * concurrent submission that would leave half the rows on each side.
        */
       const groups = await transaction<{ id: string }[]>`
-        select id from public.collection_groups where id = ${input.groupId} for share
+        select id from public.collection_groups
+        where id = ${input.groupId} and deletion_id is null
+        for share
       `;
       if (groups[0] === undefined) return null;
 
@@ -1143,6 +1160,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
           and id = any(${input.formIds}::uuid[])
           /* A draft form has no submissions to export. */
           and status <> 'draft'
+          and deletion_id is null
         order by created_at, id
         limit ${input.maxForms}
       `;
@@ -1247,9 +1265,11 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
 
   async getExport(exportId: string) {
     const rows = await this.database.sql<ExportRow[]>`
-      select id, group_id, kind, status, requested_by_account_id, requested_at,
-        ready_at, expires_at, byte_size, error_code
-      from private.collection_exports where id = ${exportId}
+      select job.id, job.group_id, job.kind, job.status, job.requested_by_account_id,
+        job.requested_at, job.ready_at, job.expires_at, job.byte_size, job.error_code
+      from private.collection_exports as job
+      join public.collection_groups as collection_group on collection_group.id = job.group_id
+      where job.id = ${exportId} and collection_group.deletion_id is null
     `;
     const row = rows[0];
     return row === undefined ? null : mapExportRow(row);
@@ -1265,11 +1285,12 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
 
   async listGroupExports(input: { groupId: string; limit: number }) {
     const rows = await this.database.sql<ExportRow[]>`
-      select id, group_id, kind, status, requested_by_account_id, requested_at,
-        ready_at, expires_at, byte_size, error_code
-      from private.collection_exports
-      where group_id = ${input.groupId}
-      order by requested_at desc, id desc
+      select job.id, job.group_id, job.kind, job.status, job.requested_by_account_id,
+        job.requested_at, job.ready_at, job.expires_at, job.byte_size, job.error_code
+      from private.collection_exports as job
+      join public.collection_groups as collection_group on collection_group.id = job.group_id
+      where job.group_id = ${input.groupId} and collection_group.deletion_id is null
+      order by job.requested_at desc, job.id desc
       limit ${input.limit}
     `;
     return rows.map(mapExportRow);
@@ -1283,27 +1304,54 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
    * job whose worker died be retried rather than stranded in `building`.
    */
   async claimExportForBuilding(input: { leaseSeconds: number; maxAttempts: number; now: Date }) {
+    /*
+     * An export whose group was deleted after it was requested fails instead
+     * of building: the group is hidden, so nobody could download it. It stays
+     * failed if the group is restored; the Instructor requests a new one.
+     */
     const claimed = await this.database.sql<
-      { attempt_count: number; group_id: string; id: string; kind: string; lease_id: string }[]
+      {
+        attempt_count: number;
+        group_id: string;
+        id: string;
+        kind: string;
+        lease_id: string | null;
+        status: string;
+      }[]
     >`
       with candidate as (
-        select id from private.collection_exports
-        where (status = 'pending' or (status = 'building' and lease_expires_at <= ${input.now}))
-          and attempt_count < ${input.maxAttempts}
-        order by requested_at
+        select job.id, collection_group.deletion_id is not null as is_group_deleted
+        from private.collection_exports as job
+        join public.collection_groups as collection_group on collection_group.id = job.group_id
+        where (job.status = 'pending'
+            or (job.status = 'building' and job.lease_expires_at <= ${input.now}))
+          and job.attempt_count < ${input.maxAttempts}
+        order by job.requested_at
         limit 1
-        for update skip locked
+        for update of job skip locked
       )
       update private.collection_exports as job
-      set status = 'building', attempt_count = job.attempt_count + 1,
-        lease_id = gen_random_uuid(),
-        lease_expires_at = ${input.now} + make_interval(secs => ${input.leaseSeconds})
+      set status = case when candidate.is_group_deleted then 'failed' else 'building' end,
+        error_code = case
+          when candidate.is_group_deleted then 'COLLECTION_EXPORT_GROUP_DELETED'
+          else job.error_code
+        end,
+        attempt_count = case
+          when candidate.is_group_deleted then job.attempt_count
+          else job.attempt_count + 1
+        end,
+        lease_id = case when candidate.is_group_deleted then null else gen_random_uuid() end,
+        lease_expires_at = case
+          when candidate.is_group_deleted then null
+          else ${input.now} + make_interval(secs => ${input.leaseSeconds})
+        end
       from candidate
       where job.id = candidate.id
-      returning job.id, job.group_id, job.kind, job.lease_id, job.attempt_count
+      returning job.id, job.group_id, job.kind, job.lease_id, job.attempt_count, job.status
     `;
     const job = claimed[0];
     if (job === undefined) return null;
+    if (job.status === 'failed' || job.lease_id === null) return 'group_deleted' as const;
 
     const forms = await this.database.sql<
       { fields: unknown; form_id: string; position: number; title: string }[]
@@ -1477,7 +1525,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }) {
     return this.database.sql.begin(async (transaction) => {
       const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
-        select status from public.collection_rounds where id = ${input.roundId} for update
+        select status from public.collection_rounds
+        where id = ${input.roundId} and deletion_id is null
+        for update
       `;
       const round = rounds[0];
       if (round === undefined) return 'not_found' as const;
@@ -1528,6 +1578,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       where obligation.form_id = ${input.formId}
         and obligation.student_account_id = ${input.studentAccountId}
         and (${input.isInstructor} or obligation.student_account_id = ${input.actorAccountId})
+        and form.deletion_id is null
     `;
     const obligation = obligations[0];
     if (obligation === undefined) return null;
@@ -1586,7 +1637,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       select id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
       from public.collection_forms
-      where id = ${formId}
+      where id = ${formId} and deletion_id is null
     `;
     const form = forms[0];
     if (form === undefined) return null;
@@ -1691,6 +1742,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         limit 1
       ) as checking on true
       where obligation.student_account_id = ${studentAccountId}
+        and form.deletion_id is null
       order by obligation.assigned_at desc limit 200
     `;
     if (rows.length === 0) return [];
@@ -1769,6 +1821,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
         and obligation.status = 'passed'
         and form.group_id = ${input.groupId}
         and form.id <> ${input.excludeFormId}
+        and form.deletion_id is null
       order by submission.submitted_at desc
       limit 200
     `;
@@ -1799,6 +1852,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     studentAccountId: string;
   }) {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return 'not_found' as const;
       const eligible = await transaction<ResponseWriteState[]>`
         select obligation.status, form.status as form_status, membership.status as membership_status,
           round.status as round_status
@@ -1850,17 +1904,20 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     now: Date;
     storageKey: string;
     studentAccountId: string;
-  }): Promise<CollectionFile> {
-    const rows = await this.database.sql<FileRow[]>`
-      insert into private.collection_files
-        (form_id, field_id, student_account_id, storage_key, original_filename,
-          declared_content_type, byte_size, status, created_at)
-      values (${input.formId}, ${this.database.sql.text(input.fieldId)}, ${input.studentAccountId}, ${input.storageKey},
-        ${input.filename}, ${input.declaredContentType}, ${input.byteSize}, 'pending_upload', ${input.now})
-      returning id, form_id, field_id, student_account_id, original_filename, declared_content_type,
-        detected_content_type, byte_size, status, inspection_error_code, created_at
-    `;
-    return this.mapFile(rows[0]!);
+  }): Promise<CollectionFile | null> {
+    return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return null;
+      const rows = await transaction<FileRow[]>`
+        insert into private.collection_files
+          (form_id, field_id, student_account_id, storage_key, original_filename,
+            declared_content_type, byte_size, status, created_at)
+        values (${input.formId}, ${transaction.text(input.fieldId)}, ${input.studentAccountId}, ${input.storageKey},
+          ${input.filename}, ${input.declaredContentType}, ${input.byteSize}, 'pending_upload', ${input.now})
+        returning id, form_id, field_id, student_account_id, original_filename, declared_content_type,
+          detected_content_type, byte_size, status, inspection_error_code, created_at
+      `;
+      return this.mapFile(rows[0]!);
+    });
   }
 
   async listFieldFiles(input: {
@@ -1887,21 +1944,24 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   async finalizeUpload(input: { fileId: string; formId: string; studentAccountId: string }) {
-    const rows = await this.database.sql<{ id: string }[]>`
-      update private.collection_files
-      set status = 'quarantined'
-      where id = ${input.fileId} and form_id = ${input.formId}
-        and student_account_id = ${input.studentAccountId} and status = 'pending_upload'
-      returning id
-    `;
-    if (rows[0] !== undefined) return 'finalized' as const;
-    const existing = await this.database.sql<{ id: string }[]>`
-      select id from private.collection_files
-      where id = ${input.fileId} and form_id = ${input.formId}
-        and student_account_id = ${input.studentAccountId}
-        and status in ('quarantined', 'inspecting', 'ready')
-    `;
-    return existing[0] === undefined ? ('not_found' as const) : ('finalized' as const);
+    return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return 'form_not_found' as const;
+      const rows = await transaction<{ id: string }[]>`
+        update private.collection_files
+        set status = 'quarantined'
+        where id = ${input.fileId} and form_id = ${input.formId}
+          and student_account_id = ${input.studentAccountId} and status = 'pending_upload'
+        returning id
+      `;
+      if (rows[0] !== undefined) return 'finalized' as const;
+      const existing = await transaction<{ id: string }[]>`
+        select id from private.collection_files
+        where id = ${input.fileId} and form_id = ${input.formId}
+          and student_account_id = ${input.studentAccountId}
+          and status in ('quarantined', 'inspecting', 'ready')
+      `;
+      return existing[0] === undefined ? ('not_found' as const) : ('finalized' as const);
+    });
   }
 
   async findPendingUploadForRetry(input: {
@@ -1910,9 +1970,12 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     studentAccountId: string;
   }) {
     const rows = await this.database.sql<{ declared_content_type: string; storage_key: string }[]>`
-      select declared_content_type, storage_key from private.collection_files
-      where id = ${input.fileId} and form_id = ${input.formId}
-        and student_account_id = ${input.studentAccountId} and status = 'pending_upload'
+      select file.declared_content_type, file.storage_key
+      from private.collection_files as file
+      join public.collection_forms as form on form.id = file.form_id
+      where file.id = ${input.fileId} and file.form_id = ${input.formId}
+        and file.student_account_id = ${input.studentAccountId} and file.status = 'pending_upload'
+        and form.deletion_id is null
     `;
     const row = rows[0];
     return row === undefined
@@ -1927,6 +1990,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     studentAccountId: string;
   }) {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return 'form_not_found' as const;
       /*
        * Ownership is verified by the where clause rather than trusted from the
        * request, so a file id from another Student or form cannot be attached.
@@ -1967,6 +2031,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
 
   async detachDraftFile(input: { fileId: string; formId: string; studentAccountId: string }) {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return 'form_not_found' as const;
       const removed = await transaction<{ field_id: string }[]>`
         delete from private.collection_draft_files
         where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
@@ -2083,7 +2148,9 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     >`
       select file.storage_key, file.original_filename, file.status
       from private.collection_files as file
+      join public.collection_forms as form on form.id = file.form_id
       where file.id = ${input.fileId}
+        and form.deletion_id is null
         and (
           (${input.isInstructor} and exists (
             select 1 from private.collection_submission_files as submitted
@@ -2108,6 +2175,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     studentAccountId: string;
   }) {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveForm(transaction, input.formId))) return 'not_found' as const;
       const prior = await transaction<{ id: string; version: number }[]>`
         select id, version from private.collection_submissions
         where form_id = ${input.formId} and student_account_id = ${input.studentAccountId}
@@ -2215,6 +2283,15 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     reason: string | null;
   }): Promise<'checked' | 'not_found' | 'round_closed' | 'stale'> {
     return this.database.sql.begin(async (transaction) => {
+      /* The form first, as every collection write locks it before its round. */
+      const forms = await transaction<{ id: string }[]>`
+        select form.id
+        from private.collection_submissions as submission
+        join public.collection_forms as form on form.id = submission.form_id
+        where submission.id = ${input.expectedSubmissionId} and form.deletion_id is null
+        for share of form
+      `;
+      if (forms[0] === undefined) return 'not_found';
       const round = await transaction<{ status: string }[]>`
         select collection_round.status
         from private.collection_submissions as submission
@@ -2267,6 +2344,21 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
    * caused the event, so the round is open and the membership is current by
    * construction. `on conflict do nothing` keeps a retried write idempotent.
    */
+  /**
+   * Holds a live form for the rest of a Student write. A deletion locks the
+   * form before stamping it, so the write either finishes first and is
+   * counted, or waits and then sees the form gone. Taken before the
+   * obligation and round locks to keep the form-then-round order.
+   */
+  private async lockLiveForm(transaction: DatabaseClient['sql'], formId: string): Promise<boolean> {
+    const rows = await transaction<{ id: string }[]>`
+      select id from public.collection_forms
+      where id = ${formId} and deletion_id is null
+      for share
+    `;
+    return rows[0] !== undefined;
+  }
+
   private async insertNotifications(
     transaction: DatabaseClient['sql'],
     input: {
@@ -2424,7 +2516,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
       from public.collection_obligations as obligation
       join public.collection_forms as form on form.id = obligation.form_id
       join public.collection_groups as collection_group on collection_group.id = form.group_id
-      where collection_group.round_id = ${roundId}
+      where collection_group.round_id = ${roundId} and form.deletion_id is null
     `;
     const row = rows[0];
     return {

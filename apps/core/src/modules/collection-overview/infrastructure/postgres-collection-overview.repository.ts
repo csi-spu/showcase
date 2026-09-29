@@ -117,9 +117,9 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
         )
         select
           (select count(*) filter (where status = 'active')::int
-            from public.collection_rounds) as active_rounds,
+            from public.collection_rounds where deletion_id is null) as active_rounds,
           (select count(*) filter (where status = 'closed')::int
-            from public.collection_rounds) as closed_rounds,
+            from public.collection_rounds where deletion_id is null) as closed_rounds,
           (select count(*)::int from scoped_groups) as active_groups,
           (select count(distinct student_account_id)::int from scoped_memberships)
             as active_students,
@@ -334,6 +334,7 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
       this.database.sql<FilterRoundRow[]>`
         select id, name, status
         from public.collection_rounds
+        where deletion_id is null
         order by status = 'active' desc, created_at desc
         limit ${limits.roundLimit}
       `,
@@ -341,6 +342,7 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
         select collection_group.id, collection_group.name, collection_group.round_id
         from public.collection_groups as collection_group
         join public.collection_rounds as round on round.id = collection_group.round_id
+        where collection_group.deletion_id is null
         order by round.status = 'active' desc, collection_group.created_at desc
         limit ${limits.groupLimit}
       `,
@@ -353,6 +355,7 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
           and membership.status = 'current'
         join public.collection_groups as collection_group
           on collection_group.id = membership.group_id
+          and collection_group.deletion_id is null
         join public.collection_rounds as round
           on round.id = collection_group.round_id and round.status = 'active'
         order by student.entry_year desc
@@ -389,6 +392,8 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
           else round.id = ${scope.roundId}::uuid end
         )
         and (${scope.groupId}::uuid is null or collection_group.id = ${scope.groupId}::uuid)
+        /* A live group always has a live round, so this hides a deleted round too. */
+        and collection_group.deletion_id is null
       ),
       scoped_memberships as (
         select membership.group_id, membership.student_account_id
@@ -412,7 +417,7 @@ export class PostgresCollectionOverviewRepository implements CollectionOverviewR
           scoped_groups.round_id, scoped_groups.round_name
         from public.collection_forms as form
         join scoped_groups on scoped_groups.id = form.group_id
-        where form.status <> 'draft'
+        where form.status <> 'draft' and form.deletion_id is null
       ),
       scoped_obligations as (
         select obligation.form_id, obligation.student_account_id,

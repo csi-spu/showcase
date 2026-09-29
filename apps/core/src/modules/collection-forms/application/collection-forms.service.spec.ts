@@ -10,6 +10,7 @@ import {
 } from './collection-exports';
 import { MAX_MATRIX_ROWS } from './collection-matrix';
 import type {
+  ClaimedCollectionExport,
   CollectionExportJob,
   CollectionFile,
   CollectionFileInspection,
@@ -86,6 +87,7 @@ class FakeRepository implements CollectionFormsRepository {
   savedForms: Parameters<CollectionFormsRepository['saveForm']>[0][] = [];
   createdTemplates: Parameters<CollectionFormsRepository['createTemplate']>[0][] = [];
   createdUploads: Parameters<CollectionFormsRepository['createUpload']>[0][] = [];
+  isFormDeletedBeforeUpload = false;
   fieldFiles: CollectionFile[] = [];
   claimable: Result<'claimFileForInspection'> = null;
   completedInspections: Parameters<CollectionFormsRepository['completeInspection']>[0][] = [];
@@ -157,6 +159,7 @@ class FakeRepository implements CollectionFormsRepository {
   }
   createUpload(input: Parameters<CollectionFormsRepository['createUpload']>[0]) {
     this.createdUploads.push(input);
+    if (this.isFormDeletedBeforeUpload) return Promise.resolve(null);
     return Promise.resolve<CollectionFile>({
       byteSize: input.byteSize,
       createdAt: input.now,
@@ -868,6 +871,40 @@ describe('CollectionFormsService', () => {
       ).rejects.toEqual(new CollectionFormsError('FILE_NOT_FOUND', 404));
     });
 
+    it('reports a form deleted after the upload was checked as not found', async () => {
+      const repository = new FakeRepository();
+      repository.form = fileForm;
+      repository.isFormDeletedBeforeUpload = true;
+
+      await expect(setup(repository).service.createUpload(request)).rejects.toEqual(
+        new CollectionFormsError('FORM_NOT_FOUND', 404),
+      );
+    });
+
+    it.each([
+      ['finalizing', 'finalizeResult'],
+      ['attaching', 'attachResult'],
+      ['detaching', 'detachResult'],
+    ] as const)('reports a deleted form when %s a file as not found', async (_action, result) => {
+      const repository = new FakeRepository();
+      repository[result] = 'form_not_found';
+      const service = setup(repository).service;
+      const input = {
+        fieldId: 'doc',
+        fileId: '70000000-0000-4000-8000-000000000001',
+        formId: FORM.id,
+        studentAccountId: STUDENT,
+      };
+      const call =
+        result === 'finalizeResult'
+          ? service.finalizeUpload(input)
+          : result === 'attachResult'
+            ? service.attachDraftFile(input)
+            : service.detachDraftFile(input);
+
+      await expect(call).rejects.toEqual(new CollectionFormsError('FORM_NOT_FOUND', 404));
+    });
+
     it('reissues a URL for the same pending upload slot', async () => {
       const repository = new FakeRepository();
       const { service, storage } = setup(repository);
@@ -947,6 +984,27 @@ describe('CollectionFormsService', () => {
           studentAccountId: STUDENT,
         }),
       ).rejects.toEqual(new CollectionFormsError('DRAFT_STALE', 409));
+    });
+
+    it('reports a draft saved to a form deleted after the read as not found', async () => {
+      const repository = new FakeRepository();
+      repository.saveResult = 'not_found';
+      await expect(
+        setup(repository).service.saveDraft({
+          answers: {},
+          expectedVersion: 1,
+          formId: FORM.id,
+          studentAccountId: STUDENT,
+        }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_NOT_FOUND', 404));
+    });
+
+    it('reports a submission to a deleted form as not found', async () => {
+      const repository = new FakeRepository();
+      repository.submitResult = 'not_found';
+      await expect(setup(repository).service.submit(FORM.id, STUDENT, 'key')).rejects.toEqual(
+        new CollectionFormsError('FORM_NOT_FOUND', 404),
+      );
     });
 
     it('surfaces the offending field when submission validation fails', async () => {
@@ -1799,11 +1857,7 @@ describe('CollectionFormsService', () => {
     });
 
     describe('building', () => {
-      function claim(
-        overrides: Partial<
-          NonNullable<Awaited<ReturnType<FakeRepository['claimExportForBuilding']>>>
-        > = {},
-      ) {
+      function claim(overrides: Partial<ClaimedCollectionExport> = {}) {
         return {
           attemptCount: 1,
           entries: [
@@ -1844,6 +1898,17 @@ describe('CollectionFormsService', () => {
         const { service, storage } = setup();
         await expect(service.buildNextExport()).resolves.toBe(false);
         expect(storage.storedObjects.size).toBe(0);
+      });
+
+      it('keeps draining after failing an export whose group was deleted', async () => {
+        const repository = new FakeRepository();
+        repository.claimedExport = 'group_deleted';
+        const { service, storage } = setup(repository);
+
+        await expect(service.buildNextExport()).resolves.toBe(true);
+        expect(storage.storedObjects.size).toBe(0);
+        expect(repository.completedExports).toEqual([]);
+        expect(repository.failedExports).toEqual([]);
       });
 
       it('streams a workbook into storage and marks the export ready', async () => {

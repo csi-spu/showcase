@@ -80,6 +80,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     const rows = await this.database.sql<RoundRow[]>`
       select id, name, status, created_at
       from public.collection_rounds
+      where deletion_id is null
       order by created_at desc
       limit 200
     `;
@@ -90,7 +91,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     const rows = await this.database.sql<RoundRow[]>`
       select id, name, status, created_at
       from public.collection_rounds
-      where id = ${roundId}
+      where id = ${roundId} and deletion_id is null
       limit 1
     `;
     const row = rows[0];
@@ -101,7 +102,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     const rows = await this.database.sql<GroupRow[]>`
       select id, round_id, name, created_at
       from public.collection_groups
-      where id = ${groupId}
+      where id = ${groupId} and deletion_id is null
       limit 1
     `;
     const row = rows[0];
@@ -112,7 +113,7 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     const rows = await this.database.sql<GroupRow[]>`
       select id, round_id, name, created_at
       from public.collection_groups
-      where round_id = ${roundId}
+      where round_id = ${roundId} and deletion_id is null
       order by created_at desc
       limit 200
     `;
@@ -351,6 +352,9 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     now: Date;
   }): Promise<AddMembersResult> {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveGroup(transaction, input.groupId))) {
+        return { outcome: 'group_not_found' };
+      }
       const roundStatus = await this.lockRound(
         transaction,
         transaction`where round.id = (select round_id from public.collection_groups where id = ${input.groupId})`,
@@ -373,7 +377,9 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
         now: input.now,
       });
       if (inserted.length > 0) {
-        // New members owe every form that is open when they join.
+        // New members owe every form that is open when they join. A deleted
+        // form in this live Group is included so its obligations match the
+        // membership again when that form is restored.
         await transaction`
           insert into public.collection_obligations (form_id, student_account_id, assigned_at)
           select form.id, inserted.account_id, ${input.now}
@@ -399,6 +405,9 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     studentAccountId: string;
   }): Promise<WithdrawMemberResult> {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveGroup(transaction, input.groupId))) {
+        return { outcome: 'group_not_found' };
+      }
       const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
         select round.status
         from public.collection_rounds as round
@@ -478,6 +487,9 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     studentAccountId: string;
   }): Promise<ReinstateMemberResult> {
     return this.database.sql.begin(async (transaction) => {
+      if (!(await this.lockLiveGroup(transaction, input.groupId))) {
+        return { outcome: 'group_not_found' };
+      }
       const rounds = await transaction<{ status: 'active' | 'closed' }[]>`
         select round.status
         from public.collection_rounds as round
@@ -583,13 +595,29 @@ export class PostgresCollectionGroupsRepository implements CollectionGroupsRepos
     return row === undefined ? null : this.mapGroup(row);
   }
 
-  /* Holds the Round open for the rest of the transaction; closing it waits. */
+  /*
+   * Holds a live Group for the rest of the transaction so a concurrent
+   * Collection Deletion waits. Taken before the Round lock (form, group,
+   * round order). A live Group always has a live Round.
+   */
+  private async lockLiveGroup(transaction: PrismaSql, groupId: string): Promise<boolean> {
+    const rows = await transaction<{ id: string }[]>`
+      select id from public.collection_groups
+      where id = ${groupId} and deletion_id is null
+      for share
+    `;
+    return rows.length > 0;
+  }
+
+  /* Holds a live Round open for the rest of the transaction; closing or deleting it waits. */
   private async lockRound(
     transaction: PrismaSql,
     where: PrismaQuery<unknown[]>,
   ): Promise<'active' | 'closed' | null> {
     const rows = await transaction<RoundStatusRow[]>`
-      select round.status from public.collection_rounds as round ${where} for share
+      select round.status from public.collection_rounds as round
+      ${where} and round.deletion_id is null
+      for share
     `;
     return rows[0]?.status ?? null;
   }

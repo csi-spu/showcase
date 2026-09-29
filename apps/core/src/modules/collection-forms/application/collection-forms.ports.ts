@@ -378,7 +378,7 @@ export interface CollectionFormsRepository {
     fileId: string;
     formId: string;
     studentAccountId: string;
-  }): Promise<'attached' | 'forbidden' | 'not_found' | 'too_many'>;
+  }): Promise<'attached' | 'forbidden' | 'form_not_found' | 'not_found' | 'too_many'>;
   checkSubmission(input: {
     actorAccountId: string;
     decision: 'changes_required' | 'passed';
@@ -412,12 +412,12 @@ export interface CollectionFormsRepository {
     now: Date;
     storageKey: string;
     studentAccountId: string;
-  }): Promise<CollectionFile>;
+  }): Promise<CollectionFile | null>;
   finalizeUpload(input: {
     fileId: string;
     formId: string;
     studentAccountId: string;
-  }): Promise<'finalized' | 'not_found'>;
+  }): Promise<'finalized' | 'form_not_found' | 'not_found'>;
   findPendingUploadForRetry(input: {
     fileId: string;
     formId: string;
@@ -427,7 +427,7 @@ export interface CollectionFormsRepository {
     fileId: string;
     formId: string;
     studentAccountId: string;
-  }): Promise<'detached' | 'not_found'>;
+  }): Promise<'detached' | 'form_not_found' | 'not_found'>;
   /**
    * Moves one quarantined file to `inspecting`, claiming it for this worker.
    * Returns null when another worker got there first, which is what keeps two
@@ -600,13 +600,14 @@ export interface CollectionFormsRepository {
    * Leased the same way file inspection is, so a worker that dies mid-archive
    * releases the job by letting the lease lapse rather than stranding it.
    * Returns the frozen snapshot with the claim, because the worker must never
-   * re-read live data to build the artifact.
+   * re-read live data to build the artifact. An export whose group was deleted
+   * is failed instead and reported as `group_deleted`.
    */
   claimExportForBuilding(input: {
     leaseSeconds: number;
     maxAttempts: number;
     now: Date;
-  }): Promise<ClaimedCollectionExport | null>;
+  }): Promise<ClaimedCollectionExport | 'group_deleted' | null>;
   /**
    * Documents belonging to one frozen submission, in stable field order.
    *
@@ -685,7 +686,7 @@ export interface CollectionFormsRepository {
     formId: string;
     now: Date;
     studentAccountId: string;
-  }): Promise<{ version: number } | 'forbidden' | 'stale'>;
+  }): Promise<{ version: number } | 'forbidden' | 'not_found' | 'stale'>;
   submit(input: {
     formId: string;
     idempotencyKey: string;
@@ -696,6 +697,7 @@ export interface CollectionFormsRepository {
     | { outcome: 'invalid'; code: string; fieldId: string | null }
     | 'forbidden'
     | 'missing_draft'
+    | 'not_found'
   >;
   updateFormStructure(input: {
     actorAccountId: string;
