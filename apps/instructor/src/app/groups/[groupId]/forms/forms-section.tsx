@@ -32,6 +32,7 @@ import type {
   InstructorCollectionForm,
   InstructorCollectionTemplate,
 } from '@/lib/instructor-collection-forms-contract';
+import { DeleteItemMenu } from '@/app/deletions/delete-item-menu';
 
 type FormsAction = (
   state: CollectionFormActionState,
@@ -43,12 +44,14 @@ export function FormsSection({
   createFromTemplateAction,
   forms,
   groupId,
+  isRoundClosed,
   templates,
 }: {
   createAction: FormsAction;
   createFromTemplateAction: FormsAction;
   forms: InstructorCollectionForm[];
   groupId: string;
+  isRoundClosed: boolean;
   templates: InstructorCollectionTemplate[];
 }) {
   const t = useTranslations('Forms');
@@ -74,9 +77,9 @@ export function FormsSection({
       ) : (
         <ul className="flex list-none flex-col gap-2 p-0">
           {forms.map((form) => (
-            <li key={form.id}>
+            <li className="flex items-center gap-2" key={form.id}>
               <Link
-                className="flex items-center justify-between gap-3 rounded-surface border border-input bg-card p-4 transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-surface border border-input bg-card p-4 transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
                 href={`/groups/${groupId}/forms/${form.id}`}
               >
                 <span className="flex min-w-0 flex-col gap-1">
@@ -89,6 +92,12 @@ export function FormsSection({
                   {t(`status.${form.status}`)}
                 </StatusBadge>
               </Link>
+              <DeleteItemMenu
+                id={form.id}
+                isRoundClosed={isRoundClosed}
+                kind="form"
+                name={form.title}
+              />
             </li>
           ))}
         </ul>

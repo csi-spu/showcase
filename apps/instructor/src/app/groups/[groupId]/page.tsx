@@ -36,6 +36,7 @@ import {
   createCollectionFormAction,
   createCollectionFormFromTemplateAction,
 } from '../../collection-forms.actions';
+import { DeleteItemMenu } from '../../deletions/delete-item-menu';
 import { FormsSection } from './forms/forms-section';
 
 interface GroupPageProps {
@@ -66,6 +67,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
     throw error;
   }
   const round = rounds.find((r) => r.id === detail.group.roundId);
+  const isRoundClosed = round?.status === 'closed';
   const formsClient = new InstructorCollectionFormsCoreClient(getInstructorServerEnvironment());
   const [forms, templates] = await Promise.all([
     formsClient.list(sessionToken, groupId),
@@ -96,7 +98,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
        */}
       <PageHeader
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               className={buttonVariants({ variant: 'outline' })}
               href={`/groups/${groupId}/matrix`}
@@ -111,6 +113,13 @@ export default async function GroupPage({ params }: GroupPageProps) {
               <DownloadIcon aria-hidden="true" data-icon="inline-start" />
               {tForms('exports.openAction')}
             </Link>
+            <DeleteItemMenu
+              id={groupId}
+              isRoundClosed={isRoundClosed}
+              kind="group"
+              name={detail.group.name}
+              redirectTo={`/rounds/${detail.group.roundId}`}
+            />
           </div>
         }
         description={t('members.pageDescription')}
@@ -127,6 +136,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         createFromTemplateAction={createCollectionFormFromTemplateAction.bind(null, groupId)}
         forms={forms}
         groupId={groupId}
+        isRoundClosed={isRoundClosed}
         templates={templates}
       />
 

@@ -6,9 +6,11 @@ import type { InstructorCollectionForm } from '@/lib/instructor-collection-forms
 const services = vi.hoisted(() => ({
   getGroup: vi.fn(),
   list: vi.fn(),
+  listRounds: vi.fn(),
   previewReopen: vi.fn(),
 }));
 const shareDialog = vi.hoisted(() => vi.fn());
+const deleteMenu = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({ notFound: vi.fn(), redirect: vi.fn() }));
 vi.mock('next-intl/server', () => ({
@@ -23,6 +25,7 @@ vi.mock('@/lib/instructor-auth-session', () => ({
 vi.mock('@/lib/instructor-collection-groups-core', () => ({
   InstructorCollectionGroupsCoreClient: class {
     getGroup = services.getGroup;
+    listRounds = services.listRounds;
   },
 }));
 vi.mock('@/lib/instructor-collection-forms-core', () => ({
@@ -46,6 +49,12 @@ vi.mock('@/app/collection-forms.actions', () => ({
   reopenCollectionFormAction: vi.fn(),
   saveCollectionFormAction: vi.fn(),
   saveCollectionFormAsTemplateAction: vi.fn(),
+}));
+vi.mock('@/app/deletions/delete-item-menu', () => ({
+  DeleteItemMenu: (props: { isRoundClosed: boolean; redirectTo: string }) => {
+    deleteMenu(props);
+    return <button type="button">delete</button>;
+  },
 }));
 vi.mock('../form-builder', () => ({ FormBuilder: () => null }));
 vi.mock('./form-edit-history', () => ({
@@ -85,6 +94,8 @@ async function renderPage(status: InstructorCollectionForm['status']): Promise<v
 describe('Form page header', () => {
   beforeEach(() => {
     shareDialog.mockReset();
+    deleteMenu.mockReset();
+    services.listRounds.mockResolvedValue([{ id: 'round-1', status: 'active' }]);
     services.getGroup.mockResolvedValue({ group: { name: 'CS67-1', roundId: 'round-1' } });
     services.previewReopen.mockResolvedValue({ newlyAssignedCount: 0 });
   });
@@ -123,4 +134,20 @@ describe('Form page header', () => {
       );
     },
   );
+
+  it('offers deletion that returns to the group', async () => {
+    await renderPage('open');
+
+    expect(screen.getByRole('button', { name: 'delete' })).toBeDefined();
+    expect(deleteMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ isRoundClosed: false, redirectTo: `/groups/${GROUP_ID}` }),
+    );
+  });
+
+  it('marks deletion blocked when the round is closed', async () => {
+    services.listRounds.mockResolvedValue([{ id: 'round-1', status: 'closed' }]);
+    await renderPage('closed');
+
+    expect(deleteMenu).toHaveBeenCalledWith(expect.objectContaining({ isRoundClosed: true }));
+  });
 });
