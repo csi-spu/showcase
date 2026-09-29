@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { PageNav } from '@/components/ui/page-nav';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ENTRANCE_CLASS, staggerDelay } from '@/lib/motion';
+import { DeleteItemMenu } from '../deletions/delete-item-menu';
 import {
   ROUND_PAGE_SIZE,
   ROUND_SORTS,
@@ -239,42 +240,51 @@ function RoundCard({ round }: { round: RoundListItem }) {
   const t = useTranslations('Groups');
   const isActive = round.status === 'active';
 
+  /*
+   * The menu sits beside the link, not inside it, so opening it never
+   * navigates; it follows the card's hover lift.
+   */
   return (
-    <Link
-      className="group relative flex h-full min-h-24 items-center gap-4 overflow-hidden rounded-surface border border-border/80 bg-card px-5 py-4 outline-none transition-[translate,scale,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 focus-visible:ring-2 focus-visible:ring-ring/50 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-      href={`/rounds/${round.id}`}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute inset-y-0 left-0 w-1 transition-[width] duration-200 group-hover:w-1.5 motion-reduce:transition-none',
-          isActive ? 'bg-success' : 'bg-muted-foreground/40',
-        )}
-      />
-      <span
-        className={cn(
-          'flex size-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover:transform-none',
-          isActive ? 'bg-success-background text-success' : 'bg-muted text-muted-foreground',
-        )}
+    <div className="group/card relative h-full">
+      <Link
+        className="group relative flex h-full min-h-24 items-center gap-4 overflow-hidden rounded-surface border border-border/80 bg-card py-4 pr-14 pl-5 outline-none transition-[translate,scale,box-shadow,border-color] duration-200 group-hover/card:-translate-y-1 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 focus-visible:ring-2 focus-visible:ring-ring/50 active:translate-y-0 active:scale-[0.98] motion-reduce:transition-none motion-reduce:group-hover/card:translate-y-0"
+        href={`/rounds/${round.id}`}
       >
-        <CalendarRangeIcon aria-hidden="true" className="size-5" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="line-clamp-2 font-medium text-foreground">{round.name}</span>
-        <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <StatusBadge
-            icon={isActive ? CircleDotIcon : CheckCircle2Icon}
-            tone={isActive ? 'success' : 'muted'}
-          >
-            {isActive ? t('round.statusActive') : t('round.statusClosed')}
-          </StatusBadge>
-          <span>{round.createdAtLabel}</span>
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute inset-y-0 left-0 w-1 transition-[width] duration-200 group-hover:w-1.5 motion-reduce:transition-none',
+            isActive ? 'bg-success' : 'bg-muted-foreground/40',
+          )}
+        />
+        <span
+          className={cn(
+            'flex size-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6 motion-reduce:transition-none motion-reduce:group-hover:transform-none',
+            isActive ? 'bg-success-background text-success' : 'bg-muted text-muted-foreground',
+          )}
+        >
+          <CalendarRangeIcon aria-hidden="true" className="size-5" />
         </span>
-      </span>
-      <ChevronRightIcon
-        aria-hidden="true"
-        className="size-5 shrink-0 text-muted-foreground transition-[translate,color] duration-200 group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none"
-      />
-    </Link>
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="line-clamp-2 font-medium text-foreground">{round.name}</span>
+          <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <StatusBadge
+              icon={isActive ? CircleDotIcon : CheckCircle2Icon}
+              tone={isActive ? 'success' : 'muted'}
+            >
+              {isActive ? t('round.statusActive') : t('round.statusClosed')}
+            </StatusBadge>
+            <span>{round.createdAtLabel}</span>
+          </span>
+        </span>
+        <ChevronRightIcon
+          aria-hidden="true"
+          className="size-5 shrink-0 text-muted-foreground transition-[translate,color] duration-200 group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none"
+        />
+      </Link>
+      <div className="absolute top-2 right-2 transition-[translate] duration-200 group-hover/card:-translate-y-1 motion-reduce:transition-none motion-reduce:group-hover/card:translate-y-0">
+        <DeleteItemMenu id={round.id} isRoundClosed={!isActive} kind="round" name={round.name} />
+      </div>
+    </div>
   );
 }

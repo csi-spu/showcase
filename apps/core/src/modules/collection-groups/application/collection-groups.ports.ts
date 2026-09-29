@@ -89,16 +89,19 @@ export type CreateRoundWithGroupAndMembersResult =
 
 export type AddMembersResult =
   | { added: number; alreadyMember: number; outcome: 'added' }
+  | { outcome: 'group_not_found' }
   | { outcome: 'round_closed' }
   | { accountIds: string[]; outcome: 'members_not_selectable' };
 
 export type WithdrawMemberResult =
+  | { outcome: 'group_not_found' }
   | { outcome: 'not_found' }
   | { outcome: 'round_closed' }
   | { member: GroupMember; outcome: 'already_withdrawn' }
   | { member: GroupMember; outcome: 'withdrawn' };
 
 export type ReinstateMemberResult =
+  | { outcome: 'group_not_found' }
   | { outcome: 'not_found' }
   | { outcome: 'round_closed' }
   | { outcome: 'student_inactive' }

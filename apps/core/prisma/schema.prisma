@@ -1145,12 +1145,43 @@ model collection_rounds {
   status                            String                              @default("active")
   created_by_account_id             String                              @db.Uuid
   created_at                        DateTime                            @default(now()) @db.Timestamptz(6)
+  deletion_id                       String?                             @db.Uuid
   collection_round_lifecycle_events collection_round_lifecycle_events[]
   collection_groups                 collection_groups[]
   accounts                          accounts                            @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deletion                          collection_deletions?               @relation("collection_round_deletion", fields: [deletion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_rounds_deletion_fkey")
+  collection_deletions              collection_deletions[]              @relation("collection_deletion_round")
 
-  @@index([created_at(sort: Desc)])
   @@schema("public")
+}
+
+/// This table contains check constraints and requires additional setup for migrations.
+model collection_deletions {
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  target_kind             String
+  round_id                String              @db.Uuid
+  group_id                String?             @db.Uuid
+  form_id                 String?             @db.Uuid
+  group_count             Int
+  form_count              Int
+  assigned_student_count  Int
+  submitted_student_count Int
+  deleted_by_account_id   String              @db.Uuid
+  deleted_at              DateTime            @db.Timestamptz(6)
+  restored_by_account_id  String?             @db.Uuid
+  restored_at             DateTime?           @db.Timestamptz(6)
+  restore_reason          String?
+  collection_rounds       collection_rounds   @relation("collection_deletion_round", fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_deletions_round_fkey")
+  collection_groups       collection_groups?  @relation("collection_deletion_group", fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_deletions_group_fkey")
+  collection_forms        collection_forms?   @relation("collection_deletion_form", fields: [form_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_deletions_form_fkey")
+  accounts_deleted_by     accounts            @relation("collection_deletion_actor", fields: [deleted_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_deletions_deleted_by_fkey")
+  accounts_restored_by    accounts?           @relation("collection_restore_actor", fields: [restored_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_deletions_restored_by_fkey")
+  deleted_rounds          collection_rounds[] @relation("collection_round_deletion")
+  deleted_groups          collection_groups[] @relation("collection_group_deletion")
+  deleted_forms           collection_forms[]  @relation("collection_form_deletion")
+
+  @@index([deleted_at(sort: Desc), id(sort: Desc)], map: "collection_deletions_time_idx")
+  @@schema("private")
 }
 
 /// This table contains check constraints and requires additional setup for migrations.
@@ -1196,45 +1227,49 @@ model collection_groups {
   created_by_account_id              String                               @db.Uuid
   created_at                         DateTime                             @default(now()) @db.Timestamptz(6)
   creation_idempotency_key           String?                              @db.Uuid
+  deletion_id                        String?                              @db.Uuid
   collection_exports                 collection_exports[]
   collection_membership_audit_events collection_membership_audit_events[]
   collection_forms                   collection_forms[]
   collection_group_memberships       collection_group_memberships[]
   accounts                           accounts                             @relation(fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   collection_rounds                  collection_rounds                    @relation(fields: [round_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deletion                           collection_deletions?                @relation("collection_group_deletion", fields: [deletion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_groups_deletion_fkey")
+  collection_deletions               collection_deletions[]               @relation("collection_deletion_group")
 
   @@unique([created_by_account_id, creation_idempotency_key], map: "collection_groups_creation_idempotency_idx")
-  @@index([round_id, created_at(sort: Desc)], map: "collection_groups_round_id_idx")
   @@schema("public")
 }
 
 /// This table contains check constraints and requires additional setup for migrations.
 model collection_forms {
-  id                              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  group_id                        String                            @db.Uuid
-  title                           String
-  description                     String                            @default("")
-  status                          String                            @default("draft")
-  fields                          Json                              @default("[]")
-  deadline_at                     DateTime?                         @db.Timestamptz(6)
-  created_by_account_id           String                            @db.Uuid
-  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
-  opened_at                       DateTime?                         @db.Timestamptz(6)
-  closed_at                       DateTime?                         @db.Timestamptz(6)
-  version                         Int                               @default(1)
-  created_from_template_id        String?                           @db.Uuid
-  collection_export_forms         collection_export_forms[]
-  collection_files                collection_files[]
-  collection_form_metadata_events collection_form_metadata_events[]
+  id                               String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  group_id                         String                             @db.Uuid
+  title                            String
+  description                      String                             @default("")
+  status                           String                             @default("draft")
+  fields                           Json                               @default("[]")
+  deadline_at                      DateTime?                          @db.Timestamptz(6)
+  created_by_account_id            String                             @db.Uuid
+  created_at                       DateTime                           @default(now()) @db.Timestamptz(6)
+  opened_at                        DateTime?                          @db.Timestamptz(6)
+  closed_at                        DateTime?                          @db.Timestamptz(6)
+  version                          Int                                @default(1)
+  created_from_template_id         String?                            @db.Uuid
+  deletion_id                      String?                            @db.Uuid
+  collection_export_forms          collection_export_forms[]
+  collection_files                 collection_files[]
+  collection_form_metadata_events  collection_form_metadata_events[]
   collection_form_structure_events collection_form_structure_events[]
-  collection_notifications        collection_notifications[]
-  collection_response_drafts      collection_response_drafts[]
-  accounts                        accounts                          @relation("collection_form_creator", fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_form_templates       collection_form_templates?        @relation(fields: [created_from_template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_groups               collection_groups                 @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  collection_obligations          collection_obligations[]
+  collection_notifications         collection_notifications[]
+  collection_response_drafts       collection_response_drafts[]
+  accounts                         accounts                           @relation("collection_form_creator", fields: [created_by_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_form_templates        collection_form_templates?         @relation(fields: [created_from_template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_groups                collection_groups                  @relation(fields: [group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collection_obligations           collection_obligations[]
+  deletion                         collection_deletions?              @relation("collection_form_deletion", fields: [deletion_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "collection_forms_deletion_fkey")
+  collection_deletions             collection_deletions[]             @relation("collection_deletion_form")
 
-  @@index([group_id, status, created_at(sort: Desc)], map: "collection_forms_group_status_idx")
   @@schema("public")
 }
 
@@ -1539,6 +1574,8 @@ model accounts {
   collection_groups                                                                                        collection_groups[]
   collection_obligations_student                                                                           collection_obligations[]                  @relation("collection_obligation_student")
   collection_rounds                                                                                        collection_rounds[]
+  collection_deletions_deleted                                                                             collection_deletions[]                    @relation("collection_deletion_actor")
+  collection_deletions_restored                                                                            collection_deletions[]                    @relation("collection_restore_actor")
 
   @@schema("public")
 }

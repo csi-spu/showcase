@@ -108,6 +108,12 @@ export function CollectionForm({
 
   /* The server's answers when a save was refused, shown so the Student can choose. */
   const [conflict, setConflict] = useState<CollectionAnswers | null>(null);
+  /*
+   * Core no longer has this form for the Student, usually because an
+   * Instructor deleted it. It stays set: no later edit can be saved, so the
+   * page stops writing and stops offering retries.
+   */
+  const [isFormGone, setIsFormGone] = useState(false);
 
   /*
    * What a draft write reads when it starts rather than when it was scheduled:
@@ -158,6 +164,7 @@ export function CollectionForm({
         return null;
       }
       if (result.error !== null) {
+        if (result.error === 'formNotFound') setIsFormGone(true);
         setSaveState({ kind: 'error', message: result.error });
         return null;
       }
@@ -199,13 +206,13 @@ export function CollectionForm({
    * itself, and a write behind an accepted submission would only be refused.
    */
   useEffect(() => {
-    if (isReadOnly || isSubmitting || saveState.kind !== 'unsaved') return;
+    if (isFormGone || isReadOnly || isSubmitting || saveState.kind !== 'unsaved') return;
     const timer = setTimeout(() => {
       void save(answers);
     }, AUTOSAVE_DELAY_MS);
     autosaveTimerRef.current = timer;
     return () => clearTimeout(timer);
-  }, [answers, isReadOnly, isSubmitting, save, saveState.kind]);
+  }, [answers, isFormGone, isReadOnly, isSubmitting, save, saveState.kind]);
 
   const handleFileBusyChange = useCallback((fieldId: string, isBusy: boolean) => {
     setBusyFileFieldIds((current) => {
@@ -280,6 +287,7 @@ export function CollectionForm({
     if (result.error !== null) {
       /* A definite refusal was no lost response, so the next attempt saves first. */
       if (result.error !== 'unavailable') submittedAnswersRef.current = null;
+      if (result.error === 'formNotFound') setIsFormGone(true);
       setIsSubmitting(false);
       setSubmitError(result.error);
       return;
@@ -452,26 +460,33 @@ export function CollectionForm({
                 </Alert>
               ) : null}
 
-              <SaveStatus
-                canAdoptServerAnswers={conflict !== null}
-                onAdoptServerAnswers={() => {
-                  /*
-                   * The Student chose the other version. It replaces what is on
-                   * screen only because they asked for it, and is then saved so
-                   * both sides agree.
-                   */
-                  if (conflict === null) return;
-                  answersRef.current = conflict;
-                  setAnswers(conflict);
-                  setPrefilledFieldIds([]);
-                  setConflict(null);
-                  void save(conflict);
-                }}
-                onRetry={() => void save(answersRef.current)}
-                state={saveState}
-              />
+              {isFormGone ? (
+                <Alert variant="destructive">
+                  <AlertCircleIcon aria-hidden="true" />
+                  <AlertDescription>{errorT('formNotFound')}</AlertDescription>
+                </Alert>
+              ) : (
+                <SaveStatus
+                  canAdoptServerAnswers={conflict !== null}
+                  onAdoptServerAnswers={() => {
+                    /*
+                     * The Student chose the other version. It replaces what is on
+                     * screen only because they asked for it, and is then saved so
+                     * both sides agree.
+                     */
+                    if (conflict === null) return;
+                    answersRef.current = conflict;
+                    setAnswers(conflict);
+                    setPrefilledFieldIds([]);
+                    setConflict(null);
+                    void save(conflict);
+                  }}
+                  onRetry={() => void save(answersRef.current)}
+                  state={saveState}
+                />
+              )}
 
-              {submitError !== null ? (
+              {submitError !== null && !isFormGone ? (
                 <Alert variant="destructive">
                   <AlertDescription>{errorT(submitError)}</AlertDescription>
                 </Alert>
@@ -479,7 +494,7 @@ export function CollectionForm({
 
               <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  disabled={isSubmitting || isWaitingForFiles}
+                  disabled={isFormGone || isSubmitting || isWaitingForFiles}
                   onClick={() => void handleSubmit()}
                   type="button"
                 >
@@ -491,7 +506,7 @@ export function CollectionForm({
                   {submitLabel}
                 </Button>
                 <Button
-                  disabled={isSubmitting || saveState.kind === 'saving'}
+                  disabled={isFormGone || isSubmitting || saveState.kind === 'saving'}
                   onClick={() => void save(answersRef.current)}
                   type="button"
                   variant="outline"

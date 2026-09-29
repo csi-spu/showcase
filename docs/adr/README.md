@@ -26,5 +26,6 @@ ADRs record decisions that constrain multiple applications, infrastructure, secu
 | [0020](0020-show-student-ids-to-instructors.md)                              | Show Student IDs to Instructors                              |
 | [0021](0021-require-character-classes-in-chosen-passwords.md)                | Require character classes in chosen passwords                |
 | [0022](0022-build-missing-images-on-explicit-manual-deployment.md)           | Build missing images on explicit manual deployment           |
+| [0023](0023-soft-delete-collection-items-as-one-recoverable-action.md)       | Soft-delete collection items as one recoverable action       |
 
 Write one decision per file. State the chosen boundary, rejected alternative, primary reason, and accepted cost. Do not use ADRs as implementation logs.

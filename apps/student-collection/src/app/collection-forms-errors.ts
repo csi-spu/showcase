@@ -14,6 +14,7 @@ export type StudentFormsErrorMessage =
   | 'fileRequired'
   | 'fileTooLarge'
   | 'fileTypeNotAllowed'
+  | 'formNotFound'
   | 'formNotOpen'
   | 'notFound'
   | 'sessionExpired'
@@ -53,9 +54,15 @@ export function toErrorMessage(code: string): StudentFormsErrorMessage {
     case 'FORM_NOT_SUBMITTABLE':
     case 'ROUND_CLOSED':
       return 'formNotOpen';
+    /*
+     * The form was deleted, or never reached this Student. Unlike a missing
+     * field or file, nothing on this page can be written again, so it has its
+     * own sentence and the page stops offering retries.
+     */
+    case 'FORM_NOT_FOUND':
+      return 'formNotFound';
     case 'FIELD_NOT_FOUND':
     case 'FILE_NOT_ACCESSIBLE':
-    case 'FORM_NOT_FOUND':
       return 'notFound';
     case 'SUBMISSION_TOO_LARGE':
       return 'submissionTooLarge';

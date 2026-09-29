@@ -201,3 +201,21 @@ _Avoid_: Like, favorite
 **Comment**:
 An External Member's moderated discussion entry attached to a Work and retained across its Revisions.
 _Avoid_: Review feedback, annotation
+
+## Document Collection
+
+**Collection Round**:
+A bounded document collection effort, such as one cooperative education intake, that contains Collection Groups and can be closed and reopened as a whole. Instructor and Student interfaces call it `ชุดงาน`.
+_Avoid_: Round (in user-facing copy), batch, semester
+
+**Collection Group**:
+The set of expected Students within one Collection Round, established once and used by several Collection Forms.
+_Avoid_: Class, section, cohort
+
+**Collection Form**:
+An Instructor-defined set of questions and upload fields that a Collection Group's Students answer, from draft through open to closed.
+_Avoid_: Survey, assignment, template
+
+**Collection Deletion**:
+An audited, recoverable Instructor action that removes a Collection Round, Collection Group, or Collection Form and everything beneath it from every Instructor and Student view while retaining its records. Restoring a Collection Deletion returns exactly what that one action removed, in its prior state.
+_Avoid_: Archive, hard delete, purge

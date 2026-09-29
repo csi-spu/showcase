@@ -20,6 +20,7 @@ import {
   saveCollectionFormAction,
   saveCollectionFormAsTemplateAction,
 } from '@/app/collection-forms.actions';
+import { DeleteItemMenu } from '@/app/deletions/delete-item-menu';
 import { FormBuilder } from '../form-builder';
 import { FormEditHistory } from './form-edit-history';
 import { ShareFormDialog } from './share-form-dialog';
@@ -39,12 +40,15 @@ export default async function FormPage({ params }: FormPageProps) {
   const groupsT = await getTranslations('Groups');
   const environment = getInstructorServerEnvironment();
 
+  const groupsClient = new InstructorCollectionGroupsCoreClient(environment);
   let detail;
   let forms;
+  let rounds;
   try {
-    [detail, forms] = await Promise.all([
-      new InstructorCollectionGroupsCoreClient(environment).getGroup(sessionToken, groupId),
+    [detail, forms, rounds] = await Promise.all([
+      groupsClient.getGroup(sessionToken, groupId),
       new InstructorCollectionFormsCoreClient(environment).list(sessionToken, groupId),
+      groupsClient.listRounds(sessionToken),
     ]);
   } catch (error: unknown) {
     if (error instanceof CoreClientError && error.code === 'GROUP_NOT_FOUND') notFound();
@@ -53,6 +57,8 @@ export default async function FormPage({ params }: FormPageProps) {
 
   const form = forms.find((candidate) => candidate.id === formId);
   if (form === undefined) notFound();
+  const isRoundClosed =
+    rounds.find((round) => round.id === detail.group.roundId)?.status === 'closed';
 
   /*
    * Only a closed form can be reopened, so the preview is fetched only then.
@@ -106,6 +112,13 @@ export default async function FormPage({ params }: FormPageProps) {
                 </Link>
               </>
             )}
+            <DeleteItemMenu
+              id={formId}
+              isRoundClosed={isRoundClosed}
+              kind="form"
+              name={form.title}
+              redirectTo={`/groups/${groupId}`}
+            />
           </div>
         }
         description={t('builder.pageDescription')}

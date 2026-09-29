@@ -23,6 +23,7 @@ import {
   reopenCollectionRoundAction,
 } from '../../collection-forms.actions';
 import { createGroupAction } from '../../collection-groups.actions';
+import { DeleteItemMenu } from '../../deletions/delete-item-menu';
 import { MEMBER_SELECTION_READS } from '../../member-selection/member-selection-reads';
 import { CreateGroupPanel } from './create-group-form';
 import { RoundLifecyclePanel } from './round-lifecycle-panel';
@@ -77,6 +78,15 @@ export default async function RoundPage({ params }: RoundPageProps) {
       trail={[{ href: '/rounds', label: t('round.pageTitle') }, { label: round.name }]}
     >
       <PageHeader
+        action={
+          <DeleteItemMenu
+            id={roundId}
+            isRoundClosed={!isActive}
+            kind="round"
+            name={round.name}
+            redirectTo="/rounds"
+          />
+        }
         description={t('group.pageDescription')}
         eyebrow={
           <StatusBadge
@@ -109,9 +119,9 @@ export default async function RoundPage({ params }: RoundPageProps) {
       ) : (
         <ul className="flex flex-col gap-2">
           {groups.map((group) => (
-            <li key={group.id}>
+            <li className="flex items-center gap-2" key={group.id}>
               <Link
-                className="group flex items-center gap-4 rounded-surface border border-border/80 bg-card px-4 py-3.5 transition-colors hover:border-primary/40 hover:bg-primary-soft/40 motion-reduce:transition-none"
+                className="group flex min-w-0 flex-1 items-center gap-4 rounded-surface border border-border/80 bg-card px-4 py-3.5 transition-colors hover:border-primary/40 hover:bg-primary-soft/40 motion-reduce:transition-none"
                 href={`/groups/${group.id}`}
               >
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-accent-foreground">
@@ -125,6 +135,12 @@ export default async function RoundPage({ params }: RoundPageProps) {
                   className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary motion-reduce:transition-none"
                 />
               </Link>
+              <DeleteItemMenu
+                id={group.id}
+                isRoundClosed={!isActive}
+                kind="group"
+                name={group.name}
+              />
             </li>
           ))}
         </ul>

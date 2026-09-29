@@ -44,4 +44,11 @@ describe('Thai Instructor messages', () => {
     expect(messages.Groups.round.statClosed).toBe('ชุดงานที่ปิดแล้ว');
     expect(messages.Groups.round.filterAll).toBe('ทั้งหมด');
   });
+
+  it('names deletion, its confirmation and its log in the agreed words', () => {
+    expect(messages.Deletions.log.pageTitle).toBe('ประวัติการลบ');
+    expect(messages.Deletions.dialog.cancel).toBe('ยกเลิก');
+    expect(messages.Deletions.dialog.viewLog).toBe('ดูประวัติ');
+    expect(messages.Deletions.log.loadMore).toBe('ดูเพิ่มเติม');
+  });
 });

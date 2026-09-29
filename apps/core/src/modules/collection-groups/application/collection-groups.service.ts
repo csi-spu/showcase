@@ -259,6 +259,8 @@ export class CollectionGroupsService {
           groupId: input.groupId,
         });
         return { added: result.added, alreadyMember: result.alreadyMember };
+      case 'group_not_found':
+        throw new CollectionGroupsError('GROUP_NOT_FOUND', 404);
       case 'round_closed':
         throw this.rejectMembers('collection_group_members_added', input, 'ROUND_CLOSED');
       case 'members_not_selectable':
@@ -289,6 +291,9 @@ export class CollectionGroupsService {
       reason,
       studentAccountId: input.studentAccountId,
     });
+    if (result.outcome === 'group_not_found') {
+      throw new CollectionGroupsError('GROUP_NOT_FOUND', 404);
+    }
     if (result.outcome === 'not_found') {
       throw new CollectionGroupsError('GROUP_MEMBER_NOT_FOUND', 404);
     }
@@ -319,6 +324,9 @@ export class CollectionGroupsService {
       reason,
       studentAccountId: input.studentAccountId,
     });
+    if (result.outcome === 'group_not_found') {
+      throw new CollectionGroupsError('GROUP_NOT_FOUND', 404);
+    }
     if (result.outcome === 'not_found') {
       throw new CollectionGroupsError('GROUP_MEMBER_NOT_FOUND', 404);
     }

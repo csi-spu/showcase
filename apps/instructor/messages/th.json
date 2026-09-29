@@ -806,5 +806,83 @@
     "unitSubmissions": "ฉบับ",
     "unitStudents": "คน",
     "legendLabel": "ความหมายของแถบสีหน้าแต่ละรายการ"
+  },
+  "Deletions": {
+    "menu": {
+      "label": "ตัวเลือกสำหรับ “{name}”",
+      "delete": "ลบ",
+      "roundClosedHint": "ชุดงานปิดแล้ว เปิดชุดงานอีกครั้งก่อนจึงจะลบได้"
+    },
+    "dialog": {
+      "title": "ลบ “{name}”?",
+      "loading": "กำลังตรวจสอบสิ่งที่จะถูกลบ",
+      "loadFailed": "ตรวจสอบสิ่งที่จะถูกลบไม่ได้ในขณะนี้",
+      "retry": "ลองอีกครั้ง",
+      "inRound": "ในชุดงาน “{round}”",
+      "inGroup": "ในกลุ่ม “{group}” · ชุดงาน “{round}”",
+      "impactRound": "จะลบ {groupCount} กลุ่ม {formCount} แบบฟอร์ม",
+      "impactGroup": "จะลบกลุ่มนี้และ {formCount} แบบฟอร์ม",
+      "impactForm": "จะลบแบบฟอร์มนี้",
+      "impactStudents": "นักศึกษาที่ได้รับมอบหมาย {assigned} คน ส่งแล้ว {submitted} คน",
+      "impactHidden": "นักศึกษาจะไม่เห็นรายการนี้อีก คำตอบและไฟล์ยังเก็บไว้ และกู้คืนได้จากประวัติการลบ",
+      "confirmLabel": "พิมพ์ “{name}” เพื่อยืนยัน",
+      "confirmHint": "พิมพ์ให้ตรงกับชื่อทุกตัวอักษร",
+      "cancel": "ยกเลิก",
+      "confirm": "ลบ",
+      "deleting": "กำลังลบ",
+      "success": "ลบ “{name}” แล้ว",
+      "viewLog": "ดูประวัติ"
+    },
+    "log": {
+      "link": "ประวัติการลบ",
+      "pageTitle": "ประวัติการลบ",
+      "pageDescription": "ชุดงาน กลุ่ม และแบบฟอร์มที่ถูกลบ ผู้สอนทุกคนกู้คืนได้",
+      "listLabel": "รายการที่ถูกลบ ใหม่สุดก่อน",
+      "entryRound": "ลบชุดงาน “{name}”",
+      "entryGroup": "ลบกลุ่ม “{name}” · ชุดงาน “{round}”",
+      "entryForm": "ลบแบบฟอร์ม “{name}” ในกลุ่ม “{group}” · ชุดงาน “{round}”",
+      "deletedBy": "โดย {name} เมื่อ {time}",
+      "countsRound": "{groupCount} กลุ่ม {formCount} แบบฟอร์ม นักศึกษาที่ได้รับมอบหมาย {assigned} คน ส่งแล้ว {submitted} คน",
+      "countsGroup": "{formCount} แบบฟอร์ม นักศึกษาที่ได้รับมอบหมาย {assigned} คน ส่งแล้ว {submitted} คน",
+      "countsForm": "นักศึกษาที่ได้รับมอบหมาย {assigned} คน ส่งแล้ว {submitted} คน",
+      "restoredBy": "กู้คืนโดย {name} เมื่อ {time}",
+      "restoreReason": "เหตุผล: {reason}",
+      "restored": "กู้คืนแล้ว",
+      "unknownActor": "ไม่ทราบชื่อผู้สอน",
+      "empty": "ยังไม่มีรายการที่ถูกลบ",
+      "emptyDescription": "เมื่อมีการลบชุดงาน กลุ่ม หรือแบบฟอร์ม รายการจะแสดงที่นี่พร้อมผู้ลบและเวลา",
+      "loadFailed": "โหลดประวัติการลบไม่ได้ในขณะนี้",
+      "loadMore": "ดูเพิ่มเติม",
+      "loadMoreFailed": "โหลดรายการเพิ่มไม่ได้",
+      "loading": "กำลังโหลดประวัติการลบ",
+      "retry": "ลองอีกครั้ง"
+    },
+    "restore": {
+      "action": "กู้คืน",
+      "actionLabel": "กู้คืน “{name}”",
+      "title": "กู้คืน “{name}”?",
+      "description": "รายการจะกลับสู่สถานะก่อนถูกลบ แบบฟอร์มที่เปิดอยู่จะรับคำตอบต่อ และกำหนดส่งจะไม่ถูกขยาย",
+      "reasonLabel": "เหตุผลที่กู้คืน",
+      "reasonHint": "ผู้สอนคนอื่นจะเห็นเหตุผลนี้ในประวัติการลบ",
+      "cancel": "ยกเลิก",
+      "confirm": "กู้คืน",
+      "restoring": "กำลังกู้คืน",
+      "success": "กู้คืน “{name}” แล้ว",
+      "unavailableRound": "กู้คืนชุดงาน “{name}” ก่อน",
+      "unavailableGroup": "กู้คืนกลุ่ม “{name}” ก่อน",
+      "unavailableRoundClosed": "ชุดงานปิดแล้ว เปิดชุดงานอีกครั้งก่อนจึงจะกู้คืนได้"
+    },
+    "errors": {
+      "alreadyRestored": "รายการนี้ถูกกู้คืนไปแล้ว",
+      "ancestorDeleted": "ต้องกู้คืนรายการที่อยู่เหนือขึ้นไปก่อน",
+      "confirmationMismatch": "ชื่อที่พิมพ์ไม่ตรงกับชื่อรายการ",
+      "deletionNotFound": "ไม่พบรายการนี้ในประวัติการลบ",
+      "invalid": "ข้อมูลไม่ถูกต้อง ตรวจสอบแล้วลองอีกครั้ง",
+      "notFound": "ไม่พบรายการนี้ หรือรายการถูกลบไปแล้ว",
+      "restoreReasonInvalid": "ระบุเหตุผลที่กู้คืน ไม่เกิน 2,000 ตัวอักษร",
+      "roundClosed": "ชุดงานปิดแล้ว เปิดชุดงานอีกครั้งก่อนจึงจะลบได้",
+      "sessionExpired": "หมดเวลาใช้งาน เข้าสู่ระบบอีกครั้ง",
+      "unavailable": "ทำรายการไม่ได้ในขณะนี้ ลองอีกครั้งภายหลัง"
+    }
   }
 }

@@ -515,6 +515,8 @@ export class CollectionFormsService {
       now,
     });
     if (claimed === null) return false;
+    /* Failed in the claim itself; the queue moved, so the worker keeps going. */
+    if (claimed === 'group_deleted') return true;
 
     const sources = {
       listDocuments: (submissionId: string) => this.repository.listExportDocuments(submissionId),
@@ -755,6 +757,7 @@ export class CollectionFormsService {
       ...input,
       now: this.clock.now(),
     });
+    if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'forbidden') throw new CollectionFormsError('FORM_NOT_EDITABLE', 409);
     if (result === 'stale') throw new CollectionFormsError('DRAFT_STALE', 409);
     return result;
@@ -817,6 +820,8 @@ export class CollectionFormsService {
       storageKey,
       studentAccountId: input.studentAccountId,
     });
+    /* Deleted after the read above; the signed URL expires unused. */
+    if (file === null) throw new CollectionFormsError('FORM_NOT_FOUND', 404);
 
     /*
      * The browser sends bytes straight to storage with this URL, so Core never
@@ -829,6 +834,7 @@ export class CollectionFormsService {
 
   async finalizeUpload(input: { fileId: string; formId: string; studentAccountId: string }) {
     const result = await this.repository.finalizeUpload(input);
+    if (result === 'form_not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'not_found') throw new CollectionFormsError('FILE_NOT_FOUND', 404);
   }
 
@@ -918,6 +924,7 @@ export class CollectionFormsService {
     studentAccountId: string;
   }) {
     const result = await this.repository.attachDraftFile(input);
+    if (result === 'form_not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'not_found') throw new CollectionFormsError('FILE_NOT_FOUND', 404);
     if (result === 'forbidden') throw new CollectionFormsError('FILE_NOT_ACCESSIBLE', 403);
     if (result === 'too_many') {
@@ -927,6 +934,7 @@ export class CollectionFormsService {
 
   async detachDraftFile(input: { fileId: string; formId: string; studentAccountId: string }) {
     const result = await this.repository.detachDraftFile(input);
+    if (result === 'form_not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'not_found') throw new CollectionFormsError('FILE_NOT_FOUND', 404);
   }
 
@@ -937,6 +945,7 @@ export class CollectionFormsService {
       now: this.clock.now(),
       studentAccountId,
     });
+    if (result === 'not_found') throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     if (result === 'forbidden') throw new CollectionFormsError('FORM_NOT_SUBMITTABLE', 409);
     if (result === 'missing_draft') throw new CollectionFormsError('DRAFT_REQUIRED', 422);
     if ('outcome' in result) {

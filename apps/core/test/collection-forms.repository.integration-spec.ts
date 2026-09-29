@@ -666,7 +666,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
     it('stops counting an abandoned ticket after its upload URL expires', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [fileField]);
-      const file = await repository.createUpload({
+      const file = await createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
         fieldId: fileFieldId,
@@ -709,7 +709,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
           now: NOW,
           studentAccountId: STUDENT,
         });
-        const file = await repository.createUpload({
+        const file = await createUpload({
           byteSize: 1_000,
           declaredContentType: 'application/pdf',
           fieldId: fileFieldId,
@@ -778,7 +778,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         studentAccountId: STUDENT,
       });
 
-      const file = await repository.createUpload({
+      const file = await createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
         fieldId: fileFieldId,
@@ -830,7 +830,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         now: NOW,
         studentAccountId: STUDENT,
       });
-      const file = await repository.createUpload({
+      const file = await createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
         fieldId: fileFieldId,
@@ -888,7 +888,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
           studentAccountId: STUDENT,
         });
       }
-      const file = await repository.createUpload({
+      const file = await createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
         fieldId: fileFieldId,
@@ -1018,7 +1018,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         now: NOW,
         studentAccountId: STUDENT,
       });
-      const file = await repository.createUpload({
+      const file = await createUpload({
         byteSize: 1_000,
         declaredContentType: 'application/pdf',
         fieldId: 'doc',
@@ -2079,6 +2079,12 @@ describe('PostgresCollectionFormsRepository integration', () => {
   describe('exports', () => {
     const LEASE = { leaseSeconds: 600, maxAttempts: 3, now: NOW };
 
+    async function claimExport() {
+      const claimed = await repository.claimExportForBuilding(LEASE);
+      if (claimed === 'group_deleted') throw new Error('expected a live group');
+      return claimed;
+    }
+
     /*
      * The freeze is the whole point of snapshotting at creation: an Instructor
      * who exports on Friday must get Friday's picture even if the worker runs
@@ -2129,7 +2135,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       });
       if (typeof later === 'string' || 'outcome' in later) throw new Error('expected submission');
 
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       expect(claimed?.id).toBe(job.id);
       const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
       expect(entry?.studentId).toBe(STUDENT_ID);
@@ -2167,7 +2173,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         title: 'ชื่อใหม่',
       });
 
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       expect(claimed?.forms[0]?.title).toBe('ชื่อเดิม');
     });
 
@@ -2198,7 +2204,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       });
       if (job === null) throw new Error('expected export');
 
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       const entry = claimed?.entries.find((row) => row.studentAccountId === STUDENT);
       expect(entry?.submissionId).toBeNull();
       expect(entry?.submittedAt).toBeNull();
@@ -2219,8 +2225,8 @@ describe('PostgresCollectionFormsRepository integration', () => {
         requestedByAccountId: INSTRUCTOR,
       });
 
-      const first = await repository.claimExportForBuilding(LEASE);
-      const second = await repository.claimExportForBuilding(LEASE);
+      const first = await claimExport();
+      const second = await claimExport();
 
       expect(first).not.toBeNull();
       expect(second).toBeNull();
@@ -2244,7 +2250,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         requestedByAccountId: INSTRUCTOR,
       });
       if (job === null) throw new Error('expected export');
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       if (claimed === null) throw new Error('expected claim');
 
       await expect(
@@ -2291,7 +2297,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       if (job === null) throw new Error('expected export');
 
       for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const claimed = await repository.claimExportForBuilding(LEASE);
+        const claimed = await claimExport();
         if (claimed === null) throw new Error(`expected claim on attempt ${attempt}`);
         expect(claimed.entries.find((row) => row.studentAccountId === STUDENT)?.submissionId).toBe(
           submitted.submissionId,
@@ -2341,7 +2347,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
       });
       if (job === null) throw new Error('expected export');
 
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       expect(claimed?.entries.map((row) => row.studentAccountId)).toEqual([STUDENT]);
     });
 
@@ -2399,7 +2405,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         requestedByAccountId: INSTRUCTOR,
       });
       if (job === null) throw new Error('expected export');
-      const claimed = await repository.claimExportForBuilding(LEASE);
+      const claimed = await claimExport();
       if (claimed === null) throw new Error('expected claim');
       const expiresAt = new Date(NOW.getTime() + 86_400_000);
       const storageKey = `collection-exports/${job.id}.xlsx`;
@@ -2476,6 +2482,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
     });
     if (form === null) throw new Error('expected form');
     return form;
+  }
+
+  async function createUpload(
+    input: Parameters<PostgresCollectionFormsRepository['createUpload']>[0],
+  ) {
+    const file = await repository.createUpload(input);
+    if (file === null) throw new Error('expected a live form');
+    return file;
   }
 
   async function cleanupCollectionData() {

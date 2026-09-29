@@ -1,5 +1,7 @@
 import { cn } from '@showcase/ui/cn';
-import { ArchiveIcon, ClockIcon, FolderClockIcon, LayersIcon } from 'lucide-react';
+import { buttonVariants } from '@showcase/ui/button';
+import { ArchiveIcon, ClockIcon, FolderClockIcon, HistoryIcon, LayersIcon } from 'lucide-react';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -53,7 +55,11 @@ export default async function RoundsPage({
   const sessionToken = await readInstructorSessionToken();
   if (sessionToken === null) redirect('/?expired=1');
 
-  const [t, query] = await Promise.all([getTranslations('Groups'), searchParams]);
+  const [t, tDeletions, query] = await Promise.all([
+    getTranslations('Groups'),
+    getTranslations('Deletions.log'),
+    searchParams,
+  ]);
   const environment = getInstructorServerEnvironment();
   const client = new InstructorCollectionGroupsCoreClient(environment);
   const overviewClient = new InstructorCollectionOverviewCoreClient(environment);
@@ -75,6 +81,10 @@ export default async function RoundsPage({
       <PageHeader
         action={
           <div className="flex flex-wrap justify-end gap-2">
+            <Link className={buttonVariants({ variant: 'ghost' })} href="/deletions">
+              <HistoryIcon aria-hidden="true" data-icon="inline-start" />
+              {tDeletions('link')}
+            </Link>
             <CreateRoundPanel action={createRoundAction} />
             <CreateFormFlow
               createFormAction={createCollectionFormAction}

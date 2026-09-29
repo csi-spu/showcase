@@ -520,6 +520,14 @@ describe('CollectionGroupsService add members', () => {
     );
   });
 
+  it('reports a Group deleted after the existence check as not found', async () => {
+    const repository = new FakeRepository();
+    repository.addMembersResult = { outcome: 'group_not_found' };
+    await expect(setup(repository).service.addMembers(addInput)).rejects.toEqual(
+      new CollectionGroupsError('GROUP_NOT_FOUND', 404),
+    );
+  });
+
   it('rejects a duplicated member list', async () => {
     await expect(
       setup().service.addMembers({
@@ -572,6 +580,19 @@ describe('CollectionGroupsService withdrawal', () => {
         studentAccountId: MEMBER.studentAccountId,
       }),
     ).rejects.toEqual(new CollectionGroupsError('GROUP_MEMBER_ALREADY_WITHDRAWN', 409));
+  });
+
+  it('reports a Group deleted after the existence check as not found', async () => {
+    const repository = new FakeRepository();
+    repository.withdrawMemberResult = { outcome: 'group_not_found' };
+    await expect(
+      setup(repository).service.withdrawMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: GROUP_ID,
+        reason: 'เหตุผลที่ตรวจสอบได้',
+        studentAccountId: MEMBER.studentAccountId,
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_NOT_FOUND', 404));
   });
 
   it('withdraws a member with a trimmed reason', async () => {
@@ -629,5 +650,18 @@ describe('CollectionGroupsService reinstatement', () => {
         studentAccountId: MEMBER.studentAccountId,
       }),
     ).rejects.toEqual(new CollectionGroupsError('GROUP_MEMBER_ALREADY_CURRENT', 409));
+  });
+
+  it('reports a Group deleted after the existence check as not found', async () => {
+    const repository = new FakeRepository();
+    repository.reinstateMemberResult = { outcome: 'group_not_found' };
+    await expect(
+      setup(repository).service.reinstateMember({
+        actorAccountId: ACTOR_ACCOUNT_ID,
+        groupId: GROUP_ID,
+        reason: 'กลับเข้าร่วม',
+        studentAccountId: MEMBER.studentAccountId,
+      }),
+    ).rejects.toEqual(new CollectionGroupsError('GROUP_NOT_FOUND', 404));
   });
 });

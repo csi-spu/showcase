@@ -8,6 +8,11 @@ vi.mock('next-intl', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>) =>
     values === undefined ? key : `${key} ${Object.values(values).map(String).join(' ')}`,
 }));
+vi.mock('../deletions/delete-item-menu', () => ({
+  DeleteItemMenu: ({ isRoundClosed, name }: { isRoundClosed: boolean; name: string }) => (
+    <button type="button">{`delete ${name} ${isRoundClosed ? 'closed' : 'active'}`}</button>
+  ),
+}));
 
 function round(index: number, status: RoundListItem['status'], name: string): RoundListItem {
   const createdAt = new Date(Date.UTC(2026, 8, index)).toISOString();
@@ -28,6 +33,14 @@ const ROUNDS = [
 
 describe('RoundList', () => {
   afterEach(cleanup);
+
+  it('offers deletion beside each card, outside its link', () => {
+    render(<RoundList rounds={ROUNDS} />);
+
+    const menu = screen.getByRole('button', { name: 'delete ชุดงานที่สิ้นสุดแล้ว closed' });
+    expect(menu.closest('a')).toBeNull();
+    expect(screen.getByRole('button', { name: 'delete ชุดงานฝึกงาน active' })).toBeDefined();
+  });
 
   it('filters rounds by status with accessible pressed controls', async () => {
     const user = userEvent.setup();

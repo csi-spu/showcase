@@ -314,7 +314,8 @@ export function FormFileField({
               <span className="text-xs tabular-nums text-muted-foreground">
                 {t('file.uploading', { percent: Math.round(transfer.progress * 100) })}
               </span>
-            ) : (
+            ) : error === 'formNotFound' ? null : (
+              /* A deleted form takes no upload, so there is nothing to retry. */
               <Button
                 onClick={() => void send(transfer.file, transfer.ticket)}
                 size="sm"
