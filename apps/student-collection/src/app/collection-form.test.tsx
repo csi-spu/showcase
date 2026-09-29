@@ -396,3 +396,65 @@ describe('CollectionForm confirmation', () => {
     expect(screen.getByText(messages.Forms.errors.deadlinePassed)).toBeTruthy();
   });
 });
+
+describe('CollectionForm on a deleted form', () => {
+  const FORM_GONE = messages.Forms.errors.formNotFound;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('says the form is gone and stops saving, even after another edit', async () => {
+    actions.save.mockResolvedValue({
+      error: 'formNotFound',
+      fieldId: null,
+      serverAnswers: null,
+      version: null,
+    } satisfies SaveDraftResult);
+    renderForm(buildObligation());
+
+    typeAnswer('ACME');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+
+    expect(FORM_GONE).toBe('ไม่พบแบบฟอร์มนี้ หรือแบบฟอร์มถูกลบแล้ว');
+    expect(screen.getByText(FORM_GONE)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'ลองบันทึกอีกครั้ง' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'ส่งคำตอบ' }).hasAttribute('disabled')).toBe(true);
+
+    typeAnswer('ACME Co.');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(actions.save).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(FORM_GONE)).toBeTruthy();
+  });
+
+  it('says the form is gone when the submit finds it deleted, without a retry', async () => {
+    actions.save.mockResolvedValue(saved(4));
+    actions.submit.mockResolvedValue({
+      blockedFieldId: null,
+      error: 'formNotFound',
+      submissionId: null,
+    } satisfies SubmitResult);
+    renderForm(buildObligation());
+
+    typeAnswer('ACME');
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งคำตอบ' }));
+    await flush();
+    await flush();
+
+    expect(screen.getAllByText(FORM_GONE)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'ส่งคำตอบ' }).hasAttribute('disabled')).toBe(true);
+    expect(actions.submit).toHaveBeenCalledTimes(1);
+    expect(actions.refresh).not.toHaveBeenCalled();
+  });
+});

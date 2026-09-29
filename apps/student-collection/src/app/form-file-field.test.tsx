@@ -34,6 +34,42 @@ const FIELD: StudentCollectionField = {
   type: 'file_upload',
 };
 
+const CREATED = {
+  error: null,
+  file: {
+    byteSize: 3,
+    createdAt: '2026-09-25T00:00:00.000Z',
+    declaredContentType: 'application/pdf',
+    detectedContentType: null,
+    fieldId: FIELD.id,
+    formId: 'form-id',
+    id: 'file-id',
+    inspectionErrorCode: null,
+    originalFilename: 'resume.pdf',
+    status: 'pending_upload',
+  },
+  uploadUrl: 'https://media.example.test/upload',
+};
+
+/** Renders the field and returns its file input. */
+function renderField(): HTMLInputElement {
+  const { container } = render(
+    <NextIntlClientProvider locale="th" messages={messages}>
+      <FormFileField
+        field={FIELD}
+        files={[]}
+        formId="form-id"
+        isReadOnly={false}
+        onBusyChange={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    </NextIntlClientProvider>,
+  );
+  const input = container.querySelector('input[type="file"]');
+  if (!(input instanceof HTMLInputElement)) throw new Error('FILE_INPUT_MISSING');
+  return input;
+}
+
 describe('FormFileField', () => {
   afterEach(() => {
     cleanup();
@@ -42,22 +78,7 @@ describe('FormFileField', () => {
 
   it('retries byte transfer with the existing ticket instead of consuming another slot', async () => {
     const user = userEvent.setup();
-    actions.create.mockResolvedValue({
-      error: null,
-      file: {
-        byteSize: 3,
-        createdAt: '2026-09-25T00:00:00.000Z',
-        declaredContentType: 'application/pdf',
-        detectedContentType: null,
-        fieldId: FIELD.id,
-        formId: 'form-id',
-        id: 'file-id',
-        inspectionErrorCode: null,
-        originalFilename: 'resume.pdf',
-        status: 'pending_upload',
-      },
-      uploadUrl: 'https://media.example.test/upload',
-    });
+    actions.create.mockResolvedValue(CREATED);
     actions.upload.mockResolvedValueOnce('failed').mockResolvedValueOnce('sent');
     actions.retry.mockResolvedValue({
       error: null,
@@ -66,22 +87,7 @@ describe('FormFileField', () => {
     actions.finalize.mockResolvedValue({ error: null });
     actions.attach.mockResolvedValue({ error: null });
 
-    const { container } = render(
-      <NextIntlClientProvider locale="th" messages={messages}>
-        <FormFileField
-          field={FIELD}
-          files={[]}
-          formId="form-id"
-          isReadOnly={false}
-          onBusyChange={vi.fn()}
-          onChanged={vi.fn()}
-        />
-      </NextIntlClientProvider>,
-    );
-
-    const input = container.querySelector('input[type="file"]');
-    if (!(input instanceof HTMLInputElement)) throw new Error('FILE_INPUT_MISSING');
-    await user.upload(input, new File(['pdf'], 'resume.pdf', { type: 'application/pdf' }));
+    await user.upload(renderField(), new File(['pdf'], 'resume.pdf', { type: 'application/pdf' }));
     await user.click(await screen.findByRole('button', { name: 'ลองส่งไฟล์อีกครั้ง' }));
 
     await waitFor(() => expect(actions.attach).toHaveBeenCalledTimes(1));
@@ -93,5 +99,18 @@ describe('FormFileField', () => {
     });
     expect(actions.finalize).toHaveBeenCalledTimes(1);
     expect(actions.attach).toHaveBeenCalledWith('form-id', FIELD.id, 'file-id');
+  });
+
+  it('says the form is gone and offers no retry when it was deleted mid-upload', async () => {
+    const user = userEvent.setup();
+    actions.create.mockResolvedValue(CREATED);
+    actions.upload.mockResolvedValue('sent');
+    actions.finalize.mockResolvedValue({ error: 'formNotFound' });
+
+    await user.upload(renderField(), new File(['pdf'], 'resume.pdf', { type: 'application/pdf' }));
+
+    expect(await screen.findByText(messages.Forms.errors.formNotFound)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'ลองส่งไฟล์อีกครั้ง' })).toBeNull();
+    expect(actions.attach).not.toHaveBeenCalled();
   });
 });
