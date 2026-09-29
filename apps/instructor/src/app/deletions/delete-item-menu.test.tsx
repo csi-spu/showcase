@@ -153,10 +153,11 @@ describe('DeleteItemMenu', () => {
     ]);
     const [message, options] = toast.success.mock.calls[0] as [
       string,
-      { action: { label: string; onClick: () => void } },
+      { action: { label: string; onClick: () => void }; duration: number },
     ];
     expect(message).toBe(`Deletions.dialog.success:{"name":"${NAME}"}`);
     expect(options.action.label).toBe('Deletions.dialog.viewLog');
+    expect(options.duration).toBe(10_000);
     options.action.onClick();
     expect(router.push).toHaveBeenCalledWith('/deletions');
   });

@@ -39,6 +39,9 @@ import {
   type DeleteCollectionItemActionState,
 } from '../collection-deletions-state';
 
+/* Longer than the default, so there is time to reach "ดูประวัติ" while the page changes. */
+const SUCCESS_TOAST_DURATION_MS = 10_000;
+
 type PreviewState =
   | { status: 'loading' }
   | { error: 'notFound' | 'unavailable'; status: 'failed' }
@@ -196,6 +199,7 @@ function DeleteDialogBody({
         t('dialog.success', { name: preview.status === 'loaded' ? preview.preview.name : name }),
         {
           action: { label: t('dialog.viewLog'), onClick: () => router.push('/deletions') },
+          duration: SUCCESS_TOAST_DURATION_MS,
         },
       );
       onDeleted();

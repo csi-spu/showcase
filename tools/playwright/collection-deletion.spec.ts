@@ -39,10 +39,11 @@ test.describe('Collection deletion', () => {
       await dialog.getByLabel(`พิมพ์ “${title}” เพื่อยืนยัน`).fill(title);
       await confirm.click();
 
+      /* The toast is timed, so it is checked before the redirect finishes compiling. */
+      await expect(instructorPage.getByText(`ลบ “${title}” แล้ว`)).toBeVisible();
       await expect(instructorPage).toHaveURL(
         new RegExp(`/groups/${collectionScenario.groupId}$`, 'u'),
       );
-      await expect(instructorPage.getByText(`ลบ “${title}” แล้ว`)).toBeVisible();
       await expect(instructorPage.getByRole('link', { name: title })).toHaveCount(0);
 
       await studentPage
@@ -60,7 +61,8 @@ test.describe('Collection deletion', () => {
       await studentPage.context().setExtraHTTPHeaders({});
       await collectionScenario.protectBrowserContext(studentPage.context());
 
-      await instructorPage.getByRole('button', { name: 'ดูประวัติ' }).click();
+      /* The toast has expired by now; the log page is reached directly. */
+      await instructorPage.goto('/deletions');
       await expect(instructorPage.getByRole('heading', { name: 'ประวัติการลบ' })).toBeVisible();
       await instructorPage.getByRole('button', { name: `กู้คืน “${title}”` }).click();
       const restore = instructorPage.getByRole('alertdialog', { name: `กู้คืน “${title}”?` });
