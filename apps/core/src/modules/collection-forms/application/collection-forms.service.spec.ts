@@ -1,4 +1,4 @@
-import type { Clock } from '../../auth/application/auth.ports';
+import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import type { CollectionField } from './collection-field';
 import { CollectionFormsService } from './collection-forms.service';
 import { CollectionFormsError } from './collection-forms.ports';
@@ -9,6 +9,12 @@ import {
   MAX_EXPORT_FORMS,
 } from './collection-exports';
 import { MAX_MATRIX_ROWS } from './collection-matrix';
+import {
+  RESPONSE_ANSWER_PAGE_SIZE,
+  RESPONSE_SUMMARY_PAGE_SIZE,
+  encodeAnswerCursor,
+  encodeOffsetCursor,
+} from './collection-responses';
 import type {
   ClaimedCollectionExport,
   CollectionExportJob,
@@ -20,8 +26,10 @@ import type {
   CollectionFormTemplate,
   CollectionFormsRepository,
   CollectionReviewEntry,
+  CollectionStudentAnswer,
 } from './collection-forms.ports';
 import type { ReusableValueCandidate } from './reusable-values';
+import type { CollectionReviewPage, CollectionReviewPosition } from './collection-review-queue';
 
 const NOW = new Date('2026-09-22T10:00:00.000Z');
 const ACTOR = '10000000-0000-4000-8000-000000000001';
@@ -67,10 +75,21 @@ class FakeRepository implements CollectionFormsRepository {
   detachResult: Result<'detachDraftFile'> = 'detached';
   finalizeResult: Result<'finalizeUpload'> = 'finalized';
   form: CollectionForm | null = FORM;
-  formSubmissions: { form: CollectionForm; entries: CollectionReviewEntry[] } | null = {
+  formSubmissions: (CollectionReviewPage & { form: CollectionForm }) | null = {
     entries: [],
     form: FORM,
+    page: 1,
+    statusCounts: {
+      awaiting_checking: 0,
+      changes_required: 0,
+      not_submitted: 0,
+      passed: 0,
+      withdrawn: 0,
+    },
+    total: 0,
   };
+  queueReads: Parameters<CollectionFormsRepository['listFormSubmissions']>[0][] = [];
+  reviewPosition: CollectionReviewPosition | null = null;
   metadataResult: Result<'updateFormMetadata'> = { ...FORM, title: 'ชื่อใหม่' };
   openResult: Result<'openForm'> = { ...FORM, status: 'open' };
   reusableValues: ReusableValueCandidate[] = [];
@@ -133,7 +152,37 @@ class FakeRepository implements CollectionFormsRepository {
   history: Result<'getSubmissionHistory'> = null;
   formHistory: Result<'readFormHistory'> = { entries: [], hasMore: false };
   formHistoryReads: Parameters<CollectionFormsRepository['readFormHistory']>[0][] = [];
+  responseSummary: Result<'readResponseSummary'> = {
+    answeredCounts: new Map(),
+    files: new Map(),
+    textAnswers: new Map(),
+    textGroups: new Map(),
+    totals: { assigned: 0, awaitingChecking: 0, changesRequired: 0, notSubmitted: 0, passed: 0 },
+    valueCounts: new Map(),
+  };
+  responseSummaryReads: Parameters<CollectionFormsRepository['readResponseSummary']>[0][] = [];
+  textGroups: Result<'readTextAnswerGroups'> = [];
+  textAnswers: Result<'readTextAnswers'> = [];
+  textPageReads: Parameters<CollectionFormsRepository['readTextAnswers']>[0][] = [];
+  studentAnswers: Result<'readStudentAnswers'> = [];
+  studentAnswerReads: Parameters<CollectionFormsRepository['readStudentAnswers']>[0][] = [];
 
+  readResponseSummary(input: Parameters<CollectionFormsRepository['readResponseSummary']>[0]) {
+    this.responseSummaryReads.push(input);
+    return Promise.resolve(this.responseSummary);
+  }
+  readTextAnswerGroups(input: Parameters<CollectionFormsRepository['readTextAnswerGroups']>[0]) {
+    this.textPageReads.push(input);
+    return Promise.resolve(this.textGroups);
+  }
+  readTextAnswers(input: Parameters<CollectionFormsRepository['readTextAnswers']>[0]) {
+    this.textPageReads.push(input);
+    return Promise.resolve(this.textAnswers);
+  }
+  readStudentAnswers(input: Parameters<CollectionFormsRepository['readStudentAnswers']>[0]) {
+    this.studentAnswerReads.push(input);
+    return Promise.resolve(this.studentAnswers);
+  }
   attachDraftFile(): Promise<Result<'attachDraftFile'>> {
     return Promise.resolve(this.attachResult);
   }
@@ -217,11 +266,14 @@ class FakeRepository implements CollectionFormsRepository {
   listReusableValues(): Promise<ReusableValueCandidate[]> {
     return Promise.resolve(this.reusableValues);
   }
-  listFormSubmissions(): Promise<{
-    form: CollectionForm;
-    entries: CollectionReviewEntry[];
-  } | null> {
+  listFormSubmissions(
+    input: Parameters<CollectionFormsRepository['listFormSubmissions']>[0],
+  ): Promise<(CollectionReviewPage & { form: CollectionForm }) | null> {
+    this.queueReads.push(input);
     return Promise.resolve(this.formSubmissions);
+  }
+  readReviewPosition(): Promise<CollectionReviewPosition | null> {
+    return Promise.resolve(this.reviewPosition);
   }
   listStudentObligations(): Promise<[]> {
     return Promise.resolve([]);
@@ -414,6 +466,15 @@ class FakeInspector implements CollectionFileInspector {
   }
 }
 
+const IDENTITY_PROTECTOR: IdentityProtector = {
+  hashAdminLogin: (value) => `admin-${value}`,
+  hashSessionToken: (value) => `session-${value}`,
+  hashSourceAddress: (value) => `source-${value}`,
+  hashStudentId: (value) => `student-id-hash:${value}`,
+  toAdminSyntheticIdentity: (value) => `admin-${value}@admin.auth.invalid`,
+  toSyntheticIdentity: (value) => `student-${value}@auth.invalid`,
+};
+
 function setup(
   repository = new FakeRepository(),
   storage = new FakeStorage(),
@@ -423,7 +484,7 @@ function setup(
   return {
     inspector,
     repository,
-    service: new CollectionFormsService(repository, clock, storage, inspector),
+    service: new CollectionFormsService(repository, clock, storage, inspector, IDENTITY_PROTECTOR),
     storage,
   };
 }
@@ -1126,6 +1187,7 @@ describe('CollectionFormsService', () => {
 
   describe('createDownload', () => {
     const READABLE = {
+      detectedContentType: 'application/pdf',
       originalFilename: 'report.pdf',
       status: 'ready' as const,
       storageKey: 'collection-files/00000000-0000-4000-8000-00000000000b',
@@ -1184,38 +1246,347 @@ describe('CollectionFormsService', () => {
     });
   });
 
-  describe('review queue', () => {
-    it('returns the form and its entries', async () => {
+  describe('createPreview', () => {
+    const IMAGE = {
+      detectedContentType: 'image/png',
+      originalFilename: 'poster.png',
+      status: 'ready' as const,
+      storageKey: 'collection-files/00000000-0000-4000-8000-00000000000c',
+    };
+    const request = { actorAccountId: ACTOR, fileId: '70000000-0000-4000-8000-00000000000a' };
+
+    it('signs a ready image and reports the type inspection detected', async () => {
       const repository = new FakeRepository();
-      repository.formSubmissions = {
-        entries: [
-          {
-            firstSubmittedAt: NOW,
-            isLate: false,
-            latestCheckingReason: null,
-            latestSubmission: {
-              answers: { company: 'บริษัท ก' },
-              fields: FORM.fields,
-              files: {},
-              formVersion: 1,
-              id: '50000000-0000-4000-8000-000000000009',
-              submittedAt: NOW,
-              version: 1,
-            },
-            rosterName: { firstNameTh: 'นักศึกษา', lastNameTh: 'ทดสอบ' },
-            status: 'awaiting_checking',
-            studentAccountId: STUDENT,
-            studentId: '69000001',
-          },
-        ],
-        form: FORM,
+      repository.readableFile = IMAGE;
+      const { service, storage } = setup(repository);
+
+      const result = await service.createPreview(request);
+
+      expect(result).toEqual({
+        contentType: 'image/png',
+        previewUrl: `https://storage.example/get/${IMAGE.storageKey}`,
+      });
+      expect(storage.presignedGets[0]!.expiresInSeconds).toBeGreaterThan(0);
+    });
+
+    it('refuses a file the Instructor may not read', async () => {
+      const repository = new FakeRepository();
+      const { service, storage } = setup(repository);
+
+      await expect(service.createPreview(request)).rejects.toEqual(
+        new CollectionFormsError('FILE_NOT_FOUND', 404),
+      );
+      expect(storage.presignedGets).toEqual([]);
+    });
+
+    it('refuses an image that has not passed inspection', async () => {
+      const repository = new FakeRepository();
+      repository.readableFile = { ...IMAGE, status: 'quarantined' };
+      const { service, storage } = setup(repository);
+
+      await expect(service.createPreview(request)).rejects.toEqual(
+        new CollectionFormsError('FILE_NOT_READY', 409),
+      );
+      expect(storage.presignedGets).toEqual([]);
+    });
+
+    it.each(['application/pdf', null])(
+      'refuses a ready file detected as %s, even if it was declared an image',
+      async (detectedContentType) => {
+        const repository = new FakeRepository();
+        repository.readableFile = { ...IMAGE, detectedContentType };
+        const { service, storage } = setup(repository);
+
+        await expect(service.createPreview(request)).rejects.toEqual(
+          new CollectionFormsError('FILE_NOT_PREVIEWABLE', 409),
+        );
+        expect(storage.presignedGets).toEqual([]);
+      },
+    );
+  });
+
+  describe('responses', () => {
+    const CHOICE_FIELD: CollectionField = {
+      description: '',
+      id: 'track',
+      label: 'สาย',
+      options: ['ก', 'ข'],
+      required: true,
+      type: 'single_choice',
+    };
+    const LONG_FIELD: CollectionField = {
+      description: '',
+      id: 'reflection',
+      label: 'สะท้อนคิด',
+      required: false,
+      type: 'long_text',
+    };
+    const RESPONSE_FORM: CollectionForm = {
+      ...FORM,
+      fields: [TEXT_FIELD, CHOICE_FIELD, LONG_FIELD],
+      status: 'open',
+    };
+    const answer = (index: number): CollectionStudentAnswer => ({
+      files: [],
+      position: {
+        accountId: `58000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        number: '0',
+        rank: 1,
+        text: 'ก',
+      },
+      rosterName: { firstNameTh: `ชื่อ${index}`, lastNameTh: 'สกุล' },
+      studentAccountId: `58000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      studentId: `6900000${index}`,
+      value: 'ก',
+    });
+
+    it('summarizes every current field with the obligation totals', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      repository.responseSummary = {
+        ...repository.responseSummary,
+        answeredCounts: new Map([['track', 3]]),
+        totals: {
+          assigned: 5,
+          awaitingChecking: 1,
+          changesRequired: 1,
+          notSubmitted: 2,
+          passed: 1,
+        },
+        valueCounts: new Map([['track', [{ count: 3, value: 'ข' }]]]),
       };
       const { service } = setup(repository);
 
-      const result = await service.listFormSubmissions(FORM.id);
+      const summary = await service.readResponseSummary(FORM.id);
+
+      expect(repository.responseSummaryReads[0]).toEqual({
+        fields: RESPONSE_FORM.fields,
+        formId: FORM.id,
+        pageSize: RESPONSE_SUMMARY_PAGE_SIZE,
+      });
+      expect(summary.totals.notSubmitted).toBe(2);
+      expect(summary.fields.map((field) => field.fieldId)).toEqual([
+        'company',
+        'track',
+        'reflection',
+      ]);
+      expect(summary.fields[1]).toMatchObject({
+        answeredCount: 3,
+        options: [
+          { count: 0, value: 'ก' },
+          { count: 3, value: 'ข' },
+        ],
+      });
+    });
+
+    it('reports a missing form as 404 in both reads', async () => {
+      const repository = new FakeRepository();
+      repository.form = null;
+      const { service } = setup(repository);
+
+      await expect(service.readResponseSummary(FORM.id)).rejects.toEqual(
+        new CollectionFormsError('FORM_NOT_FOUND', 404),
+      );
+      await expect(
+        service.readFieldAnswers({
+          cursor: undefined,
+          fieldId: 'company',
+          formId: FORM.id,
+          mode: 'question',
+        }),
+      ).rejects.toEqual(new CollectionFormsError('FORM_NOT_FOUND', 404));
+    });
+
+    it('does not read answers for a question the current form no longer has', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      const { service } = setup(repository);
+
+      await expect(
+        service.readFieldAnswers({
+          cursor: undefined,
+          fieldId: 'removed',
+          formId: FORM.id,
+          mode: 'question',
+        }),
+      ).rejects.toEqual(new CollectionFormsError('FIELD_NOT_FOUND', 404));
+      expect(repository.studentAnswerReads).toEqual([]);
+    });
+
+    it('pages the Question view by the last row it returned', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      repository.studentAnswers = Array.from(
+        { length: RESPONSE_ANSWER_PAGE_SIZE + 1 },
+        (_, index) => answer(index + 1),
+      );
+      const { service } = setup(repository);
+
+      const page = await service.readFieldAnswers({
+        cursor: undefined,
+        fieldId: 'track',
+        formId: FORM.id,
+        mode: 'question',
+      });
+
+      expect(page.kind).toBe('students');
+      expect(page.items).toHaveLength(RESPONSE_ANSWER_PAGE_SIZE);
+      expect(page.nextCursor).toBe(encodeAnswerCursor(answer(RESPONSE_ANSWER_PAGE_SIZE).position));
+      expect(repository.studentAnswerReads[0]).toMatchObject({
+        after: null,
+        field: CHOICE_FIELD,
+        limit: RESPONSE_ANSWER_PAGE_SIZE + 1,
+      });
+    });
+
+    it('continues the Question view after the cursor position and ends without a cursor', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      repository.studentAnswers = [answer(1)];
+      const { service } = setup(repository);
+      const position = answer(9).position;
+
+      const page = await service.readFieldAnswers({
+        cursor: encodeAnswerCursor(position),
+        fieldId: 'track',
+        formId: FORM.id,
+        mode: 'question',
+      });
+
+      expect(repository.studentAnswerReads[0]!.after).toEqual(position);
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it('continues grouped short answers from an offset', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      repository.textGroups = Array.from(
+        { length: RESPONSE_SUMMARY_PAGE_SIZE + 1 },
+        (_, index) => ({
+          count: 1,
+          value: `ค่า ${index}`,
+        }),
+      );
+      const { service } = setup(repository);
+
+      const page = await service.readFieldAnswers({
+        cursor: encodeOffsetCursor(RESPONSE_SUMMARY_PAGE_SIZE),
+        fieldId: 'company',
+        formId: FORM.id,
+        mode: 'summary',
+      });
+
+      expect(repository.textPageReads[0]).toMatchObject({
+        limit: RESPONSE_SUMMARY_PAGE_SIZE + 1,
+        offset: RESPONSE_SUMMARY_PAGE_SIZE,
+      });
+      expect(page.kind).toBe('groups');
+      expect(page.items).toHaveLength(RESPONSE_SUMMARY_PAGE_SIZE);
+      expect(page.nextCursor).toBe(encodeOffsetCursor(RESPONSE_SUMMARY_PAGE_SIZE * 2));
+    });
+
+    it('lists long answers without their authors', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      repository.textAnswers = ['ข้อความ'];
+      const { service } = setup(repository);
+
+      const page = await service.readFieldAnswers({
+        cursor: undefined,
+        fieldId: 'reflection',
+        formId: FORM.id,
+        mode: 'summary',
+      });
+
+      expect(page).toEqual({ items: ['ข้อความ'], kind: 'texts', nextCursor: null });
+      expect(repository.textPageReads[0]!.offset).toBe(0);
+    });
+
+    it('has no Summary page for a question whose Summary is not a list', async () => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      const { service } = setup(repository);
+
+      await expect(
+        service.readFieldAnswers({
+          cursor: undefined,
+          fieldId: 'track',
+          formId: FORM.id,
+          mode: 'summary',
+        }),
+      ).rejects.toEqual(new CollectionFormsError('RESPONSE_MODE_UNSUPPORTED', 400));
+    });
+
+    it.each([
+      ['question', 'company', encodeOffsetCursor(20)],
+      ['summary', 'company', encodeAnswerCursor(answer(1).position)],
+      ['summary', 'reflection', 'garbage'],
+    ] as const)('rejects a %s cursor it did not issue', async (mode, fieldId, cursor) => {
+      const repository = new FakeRepository();
+      repository.form = RESPONSE_FORM;
+      const { service } = setup(repository);
+
+      await expect(
+        service.readFieldAnswers({ cursor, fieldId, formId: FORM.id, mode }),
+      ).rejects.toEqual(new CollectionFormsError('RESPONSE_CURSOR_INVALID', 400));
+      expect(repository.studentAnswerReads).toEqual([]);
+      expect(repository.textPageReads).toEqual([]);
+    });
+  });
+
+  describe('review queue', () => {
+    const REVIEW_ENTRY: CollectionReviewEntry = {
+      firstSubmittedAt: NOW,
+      isLate: false,
+      latestCheckingReason: null,
+      latestSubmission: {
+        formVersion: 1,
+        id: '50000000-0000-4000-8000-000000000009',
+        submittedAt: NOW,
+        version: 1,
+      },
+      rosterName: { firstNameTh: 'นักศึกษา', lastNameTh: 'ทดสอบ' },
+      status: 'awaiting_checking',
+      studentAccountId: STUDENT,
+      studentId: '69000001',
+    };
+    const QUERY = {
+      formId: FORM.id,
+      page: 2,
+      pageSize: 25,
+      search: null,
+      sort: 'status',
+      status: 'awaiting_checking',
+    } as const;
+
+    it('returns one page of the form with its counts', async () => {
+      const repository = new FakeRepository();
+      repository.formSubmissions = {
+        ...repository.formSubmissions!,
+        entries: [REVIEW_ENTRY],
+        total: 1,
+      };
+      const { service } = setup(repository);
+
+      const result = await service.listFormSubmissions(QUERY);
 
       expect(result.form.id).toBe(FORM.id);
-      expect(result.entries[0]?.status).toBe('awaiting_checking');
+      expect(result.entries).toEqual([REVIEW_ENTRY]);
+      expect(repository.queueReads).toEqual([{ ...QUERY, search: null }]);
+    });
+
+    it('searches a Student ID prefix by its hash so the raw value never reaches a query', async () => {
+      const repository = new FakeRepository();
+      const { service } = setup(repository);
+
+      await service.listFormSubmissions({ ...QUERY, search: ' 690 ' });
+      await service.listFormSubmissions({ ...QUERY, search: 'นักศึกษา  ทดสอบ' });
+
+      expect(repository.queueReads.map((read) => read.search)).toEqual([
+        { kind: 'student_id_prefix', prefixHash: 'student-id-hash:690', prefixLength: 3 },
+        { kind: 'name', name: 'นักศึกษา ทดสอบ' },
+      ]);
+      expect(JSON.stringify(repository.queueReads)).not.toContain('"690"');
     });
 
     it('reports a missing form as 404 rather than an empty queue', async () => {
@@ -1223,9 +1594,47 @@ describe('CollectionFormsService', () => {
       repository.formSubmissions = null;
       const { service } = setup(repository);
 
-      await expect(service.listFormSubmissions(FORM.id)).rejects.toEqual(
+      await expect(service.listFormSubmissions(QUERY)).rejects.toEqual(
         new CollectionFormsError('FORM_NOT_FOUND', 404),
       );
+    });
+
+    it("returns a Student's place in the queue", async () => {
+      const repository = new FakeRepository();
+      repository.reviewPosition = {
+        entry: REVIEW_ENTRY,
+        next: null,
+        page: 1,
+        pageStudents: [{ rosterName: REVIEW_ENTRY.rosterName, studentAccountId: STUDENT }],
+        position: 1,
+        previous: null,
+        total: 1,
+      };
+      const { service } = setup(repository);
+
+      await expect(
+        service.readReviewPosition({
+          formId: FORM.id,
+          pageSize: 10,
+          sort: 'name',
+          status: null,
+          studentAccountId: STUDENT,
+        }),
+      ).resolves.toEqual(repository.reviewPosition);
+    });
+
+    it('answers a Student the form never assigned as a missing obligation', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.readReviewPosition({
+          formId: FORM.id,
+          pageSize: 10,
+          sort: 'name',
+          status: null,
+          studentAccountId: STUDENT,
+        }),
+      ).rejects.toEqual(new CollectionFormsError('OBLIGATION_NOT_FOUND', 404));
     });
   });
 

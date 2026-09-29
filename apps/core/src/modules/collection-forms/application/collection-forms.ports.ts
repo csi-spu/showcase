@@ -5,8 +5,20 @@ import type {
 } from './collection-form-history';
 import type { CollectionFile, CollectionFileStatus } from './collection-files';
 import type { CollectionMatrixRow, CollectionMatrixSummary } from './collection-matrix';
+import type {
+  CollectionAnswerPosition,
+  CollectionResponseSummaryRecord,
+  CollectionValueCount,
+} from './collection-responses';
 import type { CollectionExportKind, CollectionExportStatus } from './collection-exports';
 import type { CollectionNotificationKind } from './collection-notifications';
+import type {
+  CollectionReviewFilter,
+  CollectionReviewPage,
+  CollectionReviewPosition,
+  CollectionReviewSort,
+  CollectionReviewStatus,
+} from './collection-review-queue';
 import type { ReusableValueCandidate } from './reusable-values';
 
 export const COLLECTION_FORMS_REPOSITORY = Symbol('COLLECTION_FORMS_REPOSITORY');
@@ -167,11 +179,13 @@ export interface CollectionReviewEntry {
   /** Derived against the form's current deadline, so an extension recalculates it. */
   isLate: boolean;
   latestCheckingReason: string | null;
-  /** Null until the Student submits, which is what `not_submitted` means. */
+  /**
+   * Null until the Student submits, which is what `not_submitted` means.
+   *
+   * Identity only: the answers are read per Student or per question, so the
+   * queue never loads every Student's content at once.
+   */
   latestSubmission: {
-    answers: CollectionAnswers;
-    fields: CollectionField[];
-    files: DraftFileSelection;
     formVersion: number;
     id: string;
     submittedAt: Date;
@@ -183,6 +197,19 @@ export interface CollectionReviewEntry {
   studentAccountId: string;
   /** Instructor-only (ADR 0020); null until a Roster import records it. */
   studentId: string | null;
+}
+
+/** One answer to one question, as the Question view lists it. */
+export interface CollectionStudentAnswer {
+  /** Submitted files, for a file question; empty otherwise. */
+  files: CollectionFile[];
+  position: CollectionAnswerPosition;
+  rosterName: { firstNameTh: string; lastNameTh: string };
+  studentAccountId: string;
+  /** Instructor-only (ADR 0020). */
+  studentId: string | null;
+  /** One option for a choice question, so a multiple-choice answer is one row per option. */
+  value: number | string | null;
 }
 
 /**
@@ -458,6 +485,7 @@ export interface CollectionFormsRepository {
     fileId: string;
     isInstructor: boolean;
   }): Promise<{
+    detectedContentType: string | null;
     originalFilename: string;
     status: CollectionFileStatus;
     storageKey: string;
@@ -483,14 +511,55 @@ export interface CollectionFormsRepository {
     studentAccountId: string;
   }): Promise<ReusableValueCandidate[]>;
   /**
-   * The review queue for one form: every assigned Student and what they
-   * submitted. Returns null when the form does not exist.
+   * One page of a form's review queue: the assigned Students the filter keeps
+   * and what they submitted, with counts over the whole form. Returns null
+   * when the form does not exist.
    */
-  listFormSubmissions(formId: string): Promise<{
-    form: CollectionForm;
-    entries: CollectionReviewEntry[];
-  } | null>;
+  listFormSubmissions(
+    input: CollectionReviewFilter & { formId: string; page: number; pageSize: number },
+  ): Promise<(CollectionReviewPage & { form: CollectionForm }) | null>;
+  /**
+   * One Student's place in a form's review queue under a status filter and
+   * order. Returns null when the form does not exist or never assigned them.
+   */
+  readReviewPosition(input: {
+    formId: string;
+    pageSize: number;
+    sort: CollectionReviewSort;
+    status: CollectionReviewStatus | null;
+    studentAccountId: string;
+  }): Promise<CollectionReviewPosition | null>;
   listStudentObligations(studentAccountId: string, now: Date): Promise<StudentObligation[]>;
+  /**
+   * Aggregates for the Summary view over the given current fields, with text
+   * pages of up to `pageSize + 1` rows each.
+   */
+  readResponseSummary(input: {
+    fields: CollectionField[];
+    formId: string;
+    pageSize: number;
+  }): Promise<CollectionResponseSummaryRecord>;
+  /** Short answers grouped after trimming and collapsing whitespace, most frequent first. */
+  readTextAnswerGroups(input: {
+    field: CollectionField;
+    formId: string;
+    limit: number;
+    offset: number;
+  }): Promise<CollectionValueCount[]>;
+  /** Long answers without their authors, newest submission first. */
+  readTextAnswers(input: {
+    field: CollectionField;
+    formId: string;
+    limit: number;
+    offset: number;
+  }): Promise<string[]>;
+  /** One question's answers with who gave them, in the Question view's order. */
+  readStudentAnswers(input: {
+    after: CollectionAnswerPosition | null;
+    field: CollectionField;
+    formId: string;
+    limit: number;
+  }): Promise<CollectionStudentAnswer[]>;
   listTemplates(): Promise<CollectionFormTemplate[]>;
   openForm(input: {
     actorAccountId: string;

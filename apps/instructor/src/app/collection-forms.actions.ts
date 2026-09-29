@@ -16,8 +16,16 @@ import {
 } from '@/lib/instructor-auth-session';
 import {
   InstructorCollectionFormsCoreClient,
+  type FieldAnswersReadResult,
   type FormHistoryReadResult,
+  type InstructorReviewOrder,
+  type ReviewQueueReadResult,
 } from '@/lib/instructor-collection-forms-core';
+import {
+  MAX_REVIEW_PAGE,
+  REVIEW_SORTS,
+  obligationStatusSchema,
+} from '@/lib/instructor-collection-forms-contract';
 import { getInstructorServerEnvironment } from '@/lib/server-environment';
 import {
   validateCheckSubmission,
@@ -70,6 +78,85 @@ export async function readCollectionFormHistoryAction(
   const sessionToken = await requireSessionToken();
   try {
     return { ok: true, page: await coreClient().formHistory(sessionToken, formId, cursor) };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { ok: false };
+  }
+}
+
+/* Ids and an answers cursor as Core issues them; anything else is not sent on. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const FIELD_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const FIELD_ANSWERS_CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,4096}$/;
+
+/**
+ * Reads the next page of one question's answers for "show more".
+ *
+ * `summary` continues an anonymous Summary text list; `question` continues the
+ * Question view. A failure is returned rather than thrown, so the list keeps
+ * what it already loaded and offers a retry.
+ */
+export async function readFieldAnswersAction(
+  formId: string,
+  fieldId: string,
+  mode: 'question' | 'summary',
+  cursor: string,
+): Promise<FieldAnswersReadResult> {
+  if (
+    typeof formId !== 'string' ||
+    !UUID_PATTERN.test(formId) ||
+    typeof fieldId !== 'string' ||
+    !FIELD_ID_PATTERN.test(fieldId) ||
+    (mode !== 'question' && mode !== 'summary') ||
+    typeof cursor !== 'string' ||
+    !FIELD_ANSWERS_CURSOR_PATTERN.test(cursor)
+  ) {
+    return { ok: false };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    return {
+      ok: true,
+      page: await coreClient().fieldAnswers(sessionToken, formId, fieldId, { cursor, mode }),
+    };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return { ok: false };
+  }
+}
+
+/* The bounds Core accepts; anything else is not sent on. */
+const MAX_REVIEW_PAGE_SIZE = 100;
+const MAX_REVIEW_SEARCH_LENGTH = 100;
+
+/**
+ * Reads one page of the Individual table for a new page, order, filter or search.
+ *
+ * A search goes to Core in a request body, never a URL, since it may be a
+ * Student ID prefix (ADR 0020). A failure is returned rather than thrown, so
+ * the table keeps what it shows and offers a retry.
+ */
+export async function readReviewQueueAction(
+  formId: string,
+  query: InstructorReviewOrder & { page: number; search: string },
+): Promise<ReviewQueueReadResult> {
+  if (typeof formId !== 'string' || !UUID_PATTERN.test(formId) || !isReviewQueueQuery(query)) {
+    return { ok: false };
+  }
+  const order = {
+    page: query.page,
+    pageSize: query.pageSize,
+    sort: query.sort,
+    status: query.status,
+  };
+  const search = query.search.trim();
+  const sessionToken = await requireSessionToken();
+  try {
+    const { entries, page, statusCounts, total } =
+      search === ''
+        ? await coreClient().listSubmissions(sessionToken, formId, order)
+        : await coreClient().searchSubmissions(sessionToken, formId, { ...order, search });
+    return { ok: true, queue: { entries, page, statusCounts, total } };
   } catch (error: unknown) {
     await expireSessionIfRequired(error);
     return { ok: false };
@@ -252,6 +339,7 @@ export async function updateCollectionTemplateAction(
 export async function checkCollectionSubmissionAction(
   groupId: string,
   formId: string,
+  studentAccountId: string,
   _previousState: CollectionFormActionState,
   formData: FormData,
 ): Promise<CollectionFormActionState> {
@@ -267,6 +355,7 @@ export async function checkCollectionSubmissionAction(
     return await toFailure(error);
   }
   revalidatePath(`/groups/${groupId}/forms/${formId}/submissions`);
+  revalidatePath(`/groups/${groupId}/forms/${formId}/students/${studentAccountId}`);
   return { ...INITIAL_FORM_ACTION_STATE, submitted: true };
 }
 
@@ -360,6 +449,25 @@ async function toFailure(error: unknown): Promise<CollectionFormActionState> {
 function isFormHistoryCursor(cursor: unknown): boolean {
   return (
     cursor === null || (typeof cursor === 'string' && FORM_HISTORY_CURSOR_PATTERN.test(cursor))
+  );
+}
+
+function isReviewQueueQuery(
+  query: unknown,
+): query is InstructorReviewOrder & { page: number; search: string } {
+  if (typeof query !== 'object' || query === null) return false;
+  const { page, pageSize, search, sort, status } = query as Record<string, unknown>;
+  return (
+    Number.isInteger(page) &&
+    (page as number) >= 1 &&
+    (page as number) <= MAX_REVIEW_PAGE &&
+    Number.isInteger(pageSize) &&
+    (pageSize as number) >= 1 &&
+    (pageSize as number) <= MAX_REVIEW_PAGE_SIZE &&
+    typeof search === 'string' &&
+    search.length <= MAX_REVIEW_SEARCH_LENGTH &&
+    REVIEW_SORTS.some((candidate) => candidate === sort) &&
+    (status === null || obligationStatusSchema.safeParse(status).success)
   );
 }
 

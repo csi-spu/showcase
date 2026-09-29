@@ -28,6 +28,14 @@ import {
 } from '../application/collection-field';
 import { MAX_MATRIX_ROWS } from '../application/collection-matrix';
 import { MAX_EXPORT_FORMS } from '../application/collection-exports';
+import {
+  MAX_REVIEW_PAGE,
+  MAX_REVIEW_PAGE_SIZE,
+  REVIEW_SORTS,
+  REVIEW_STATUS_ORDER,
+  type CollectionReviewSort,
+  type CollectionReviewStatus,
+} from '../application/collection-review-queue';
 import { MAX_NOTIFICATION_FEED } from '../application/collection-notifications';
 import type {
   CollectionAnswers,
@@ -302,6 +310,47 @@ export class CollectionMatrixQueryDto {
   limit?: number;
 }
 
+/** Which Students a review queue read keeps, and in what order. */
+class CollectionReviewOrderDto {
+  @IsOptional()
+  @IsIn(REVIEW_STATUS_ORDER)
+  status?: CollectionReviewStatus;
+
+  @IsOptional()
+  @IsIn(REVIEW_SORTS)
+  sort?: CollectionReviewSort;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_REVIEW_PAGE_SIZE)
+  pageSize?: number;
+}
+
+/** One Student's place in the review queue. The search term never reaches this read. */
+export class CollectionReviewPositionQueryDto extends CollectionReviewOrderDto {}
+
+/** One page of the review queue, without a search term. */
+export class CollectionReviewQueueQueryDto extends CollectionReviewOrderDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_REVIEW_PAGE)
+  page?: number;
+}
+
+/*
+ * Sent as a request body: `search` may be a Student ID prefix, which must never
+ * appear in a URL (ADR 0020).
+ */
+export class SearchCollectionReviewQueueDto extends CollectionReviewQueueQueryDto {
+  @IsString()
+  @MaxLength(100)
+  search!: string;
+}
+
 /**
  * One page of a form's edit history.
  *
@@ -311,6 +360,32 @@ export class CollectionMatrixQueryDto {
 export class CollectionFormHistoryQueryDto {
   @IsOptional()
   @IsString()
+  cursor?: string;
+}
+
+/**
+ * One page of one question's answers.
+ *
+ * `summary` continues an anonymous Summary text list; `question` lists answers
+ * with their Students. The cursor is only shape-checked here; Core decodes it
+ * and rejects one it did not issue with a stable error code.
+ */
+export class CollectionFieldAnswersParamsDto {
+  @IsUUID('4')
+  formId!: string;
+
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_-]{1,64}$/)
+  fieldId!: string;
+}
+
+export class CollectionFieldAnswersQueryDto {
+  @IsIn(['question', 'summary'])
+  mode!: 'question' | 'summary';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4_096)
   cursor?: string;
 }
 

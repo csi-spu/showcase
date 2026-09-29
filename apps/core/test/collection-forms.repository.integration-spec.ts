@@ -2,10 +2,12 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseClient } from '../src/modules/auth/infrastructure/database.client';
 import type { CollectionFormHistoryPosition } from '../src/modules/collection-forms/application/collection-form-history';
 import type {
+  CollectionAnswers,
   CollectionField,
   CollectionForm,
   CollectionFormHistoryRecord,
 } from '../src/modules/collection-forms/application/collection-forms.ports';
+import type { CollectionAnswerPosition } from '../src/modules/collection-forms/application/collection-responses';
 import { PostgresCollectionFormsRepository } from '../src/modules/collection-forms/infrastructure/postgres-collection-forms.repository';
 
 const DATABASE_URL =
@@ -872,6 +874,21 @@ describe('PostgresCollectionFormsRepository integration', () => {
 
       const obligations = await repository.listStudentObligations(STUDENT, NOW);
       expect(obligations[0]?.latestSubmission?.files[fileFieldId]?.[0]?.id).toBe(file.id);
+
+      const summary = await repository.readResponseSummary({
+        fields: [fileField],
+        formId: form.id,
+        pageSize: 10,
+      });
+      expect(summary.answeredCounts.get(fileFieldId)).toBe(1);
+      expect(summary.files.get(fileFieldId)).toEqual({ fileCount: 1, notReadyCount: 0 });
+      const answers = await repository.readStudentAnswers({
+        after: null,
+        field: fileField,
+        formId: form.id,
+        limit: 10,
+      });
+      expect(answers[0]?.files.map((submitted) => submitted.id)).toEqual([file.id]);
     });
 
     it('refuses to attach a file that belongs to another form', async () => {
@@ -915,7 +932,199 @@ describe('PostgresCollectionFormsRepository integration', () => {
   });
 
   describe('review queue', () => {
-    it('lists assigned Students with their submitted answers, and nothing before they submit', async () => {
+    function queueOf(
+      formId: string,
+      filter: Partial<Parameters<PostgresCollectionFormsRepository['listFormSubmissions']>[0]> = {},
+    ) {
+      return {
+        formId,
+        page: 1,
+        pageSize: 100,
+        search: null,
+        sort: 'status',
+        status: null,
+        ...filter,
+      } as const;
+    }
+
+    /* STUDENT has submitted and PEER has not; by name, นักศึกษา sorts before เพื่อนร่วมกลุ่ม. */
+    async function formWithOneSubmission() {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await repository.saveDraft({
+        answers: { company: 'บริษัท ก' },
+        expectedVersion: 0,
+        formId: form.id,
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      await repository.submit({
+        formId: form.id,
+        idempotencyKey: '58000000-0000-4000-8000-000000000042',
+        now: NOW,
+        studentAccountId: STUDENT,
+      });
+      return form;
+    }
+
+    const ids = (entries: { studentAccountId: string }[] | undefined) =>
+      entries?.map((entry) => entry.studentAccountId);
+
+    it('pages, filters and counts the queue in the chosen order', async () => {
+      const form = await formWithOneSubmission();
+
+      const first = await repository.listFormSubmissions(queueOf(form.id, { pageSize: 1 }));
+      expect(ids(first?.entries)).toEqual([STUDENT]);
+      expect(first).toMatchObject({
+        page: 1,
+        statusCounts: {
+          awaiting_checking: 1,
+          changes_required: 0,
+          not_submitted: 1,
+          passed: 0,
+          withdrawn: 0,
+        },
+        total: 2,
+      });
+
+      const second = await repository.listFormSubmissions(
+        queueOf(form.id, { page: 2, pageSize: 1 }),
+      );
+      expect(ids(second?.entries)).toEqual([PEER]);
+
+      /* A page past the end returns the last page rather than nothing. */
+      const past = await repository.listFormSubmissions(queueOf(form.id, { page: 9, pageSize: 1 }));
+      expect(past?.page).toBe(2);
+      expect(ids(past?.entries)).toEqual([PEER]);
+
+      const waiting = await repository.listFormSubmissions(
+        queueOf(form.id, { status: 'not_submitted' }),
+      );
+      expect(ids(waiting?.entries)).toEqual([PEER]);
+      expect(waiting?.total).toBe(1);
+      expect(waiting?.statusCounts.awaiting_checking).toBe(1);
+
+      const byName = await repository.listFormSubmissions(queueOf(form.id, { sort: 'name' }));
+      expect(ids(byName?.entries)).toEqual([STUDENT, PEER]);
+      /* Nothing submitted sorts last in either date direction. */
+      for (const sort of ['submittedAsc', 'submittedDesc'] as const) {
+        const bySubmitted = await repository.listFormSubmissions(queueOf(form.id, { sort }));
+        expect(ids(bySubmitted?.entries)).toEqual([STUDENT, PEER]);
+      }
+    });
+
+    it('searches by Roster name or through a Student ID prefix hash', async () => {
+      const form = await formWithOneSubmission();
+      const prefixHash = 'ab'.repeat(32);
+      await database.sql`
+        insert into private.student_id_search_prefixes (account_id, prefix_length, prefix_hash, created_at)
+        values (${STUDENT}, 4, ${prefixHash}, ${NOW})
+        on conflict do nothing
+      `;
+
+      const byName = await repository.listFormSubmissions(
+        queueOf(form.id, { search: { kind: 'name', name: 'เพื่อนร่วม' } }),
+      );
+      expect(ids(byName?.entries)).toEqual([PEER]);
+      /* Counts follow the search, so the status tabs describe what it found. */
+      expect(byName?.statusCounts).toMatchObject({ awaiting_checking: 0, not_submitted: 1 });
+
+      const byPrefix = await repository.listFormSubmissions(
+        queueOf(form.id, { search: { kind: 'student_id_prefix', prefixHash, prefixLength: 4 } }),
+      );
+      expect(ids(byPrefix?.entries)).toEqual([STUDENT]);
+
+      const byFullId = await repository.listFormSubmissions(
+        queueOf(form.id, {
+          search: { kind: 'student_id_prefix', prefixHash: STUDENT_ID_HASH, prefixLength: 8 },
+        }),
+      );
+      expect(ids(byFullId?.entries)).toEqual([STUDENT]);
+
+      /* LIKE wildcards in a term are literal text. */
+      const wildcard = await repository.listFormSubmissions(
+        queueOf(form.id, { search: { kind: 'name', name: '%' } }),
+      );
+      expect(wildcard?.entries).toEqual([]);
+      expect(wildcard?.total).toBe(0);
+    });
+
+    it("reads a Student's place, neighbours and table page under a filter and order", async () => {
+      const form = await formWithOneSubmission();
+      const position = (
+        studentAccountId: string,
+        filter: { pageSize?: number; status?: 'awaiting_checking' | null } = {},
+      ) =>
+        repository.readReviewPosition({
+          formId: form.id,
+          pageSize: filter.pageSize ?? 10,
+          sort: 'name',
+          status: filter.status ?? null,
+          studentAccountId,
+        });
+      const student = {
+        rosterName: { firstNameTh: 'นักศึกษา', lastNameTh: 'ทดสอบ' },
+        studentAccountId: STUDENT,
+      };
+      const peer = {
+        rosterName: { firstNameTh: 'เพื่อนร่วมกลุ่ม', lastNameTh: 'ทดสอบ' },
+        studentAccountId: PEER,
+      };
+
+      await expect(position(STUDENT)).resolves.toMatchObject({
+        entry: {
+          latestSubmission: { version: 1 },
+          status: 'awaiting_checking',
+          studentId: STUDENT_ID,
+        },
+        next: peer,
+        page: 1,
+        pageStudents: [student, peer],
+        position: 1,
+        previous: null,
+        total: 2,
+      });
+      await expect(position(PEER, { pageSize: 1 })).resolves.toMatchObject({
+        next: null,
+        page: 2,
+        pageStudents: [peer],
+        position: 2,
+        previous: student,
+        total: 2,
+      });
+
+      /* Outside the filter, the neighbours are where the Student would sort. */
+      await expect(position(PEER, { status: 'awaiting_checking' })).resolves.toMatchObject({
+        entry: { status: 'not_submitted', studentAccountId: PEER },
+        next: null,
+        page: 1,
+        pageStudents: [student],
+        position: null,
+        previous: student,
+        total: 1,
+      });
+    });
+
+    it('reads no place for a Student the form never assigned, or a missing form', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      const read = (formId: string, studentAccountId: string) =>
+        repository.readReviewPosition({
+          formId,
+          pageSize: 10,
+          sort: 'status',
+          status: null,
+          studentAccountId,
+        });
+
+      await expect(read(form.id, PEER)).resolves.toBeNull();
+      await expect(read('58000000-0000-4000-8000-0000000000ff', STUDENT)).resolves.toBeNull();
+    });
+
+    it('lists assigned Students and their latest version, and nothing before they submit', async () => {
       const groupId = await createGroup();
       const form = await createForm(groupId, [TEXT_FIELD]);
       await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
@@ -929,7 +1138,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
 
       /* The Student has a draft but has not submitted: the queue shows the
        * obligation, and none of what they typed. */
-      const before = await repository.listFormSubmissions(form.id);
+      const before = await repository.listFormSubmissions(queueOf(form.id));
       expect(before?.entries).toEqual([
         expect.objectContaining({
           latestSubmission: null,
@@ -947,12 +1156,14 @@ describe('PostgresCollectionFormsRepository integration', () => {
         studentAccountId: STUDENT,
       });
 
-      const after = await repository.listFormSubmissions(form.id);
+      const after = await repository.listFormSubmissions(queueOf(form.id));
       expect(after?.form.id).toBe(form.id);
       expect(after?.entries[0]).toMatchObject({
-        latestSubmission: { answers: { company: 'ยังไม่ส่ง' }, version: 1 },
+        latestSubmission: { version: 1 },
         status: 'awaiting_checking',
       });
+      /* An index row: answers are read per Student or per question. */
+      expect(after?.entries[0]?.latestSubmission).not.toHaveProperty('answers');
     });
 
     it('carries the change-request reason so an Instructor sees why it was returned', async () => {
@@ -983,7 +1194,7 @@ describe('PostgresCollectionFormsRepository integration', () => {
         reason: 'กรุณาแนบเอกสารเพิ่ม',
       });
 
-      const queue = await repository.listFormSubmissions(form.id);
+      const queue = await repository.listFormSubmissions(queueOf(form.id));
       expect(queue?.entries[0]).toMatchObject({
         latestCheckingReason: 'กรุณาแนบเอกสารเพิ่ม',
         status: 'changes_required',
@@ -992,8 +1203,186 @@ describe('PostgresCollectionFormsRepository integration', () => {
 
     it('returns null for a form that does not exist', async () => {
       await expect(
-        repository.listFormSubmissions('58000000-0000-4000-8000-0000000000ff'),
+        repository.listFormSubmissions(queueOf('58000000-0000-4000-8000-0000000000ff')),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('responses', () => {
+    const trackField: CollectionField = {
+      description: '',
+      id: 'track',
+      label: 'สาย',
+      options: ['ก', 'ข'],
+      required: true,
+      type: 'single_choice',
+    };
+    const scoreField: CollectionField = {
+      description: '',
+      id: 'score',
+      label: 'คะแนน',
+      required: false,
+      type: 'number',
+    };
+    const reflectionField: CollectionField = {
+      description: '',
+      id: 'reflection',
+      label: 'สะท้อนคิด',
+      required: false,
+      type: 'long_text',
+    };
+    const fields = [TEXT_FIELD, trackField, scoreField, reflectionField];
+
+    async function saveDraftAs(
+      formId: string,
+      studentAccountId: string,
+      answers: CollectionAnswers,
+    ) {
+      await repository.saveDraft({
+        answers,
+        expectedVersion: 0,
+        formId,
+        now: NOW,
+        studentAccountId,
+      });
+    }
+
+    async function submitAs(formId: string, studentAccountId: string, idempotencyKey: string) {
+      const submitted = await repository.submit({
+        formId,
+        idempotencyKey,
+        now: NOW,
+        studentAccountId,
+      });
+      if (typeof submitted === 'string' || 'outcome' in submitted) {
+        throw new Error('expected submission');
+      }
+    }
+
+    it('summarizes only submitted answers, grouping short answers after whitespace cleanup', async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, fields);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await saveDraftAs(form.id, STUDENT, {
+        company: '  บริษัท   ก ',
+        reflection: 'ยาว',
+        score: 7,
+        track: 'ข',
+      });
+      await submitAs(form.id, STUDENT, '58000000-0000-4000-8000-000000000060');
+      await saveDraftAs(form.id, PEER, { company: 'บริษัท ก', score: 3, track: 'ก' });
+
+      /* The peer has only a draft: counted as not submitted, and none of it is read. */
+      const before = await repository.readResponseSummary({
+        fields,
+        formId: form.id,
+        pageSize: 10,
+      });
+      expect(before.totals).toEqual({
+        assigned: 2,
+        awaitingChecking: 1,
+        changesRequired: 0,
+        notSubmitted: 1,
+        passed: 0,
+      });
+      expect(Object.fromEntries(before.answeredCounts)).toEqual({
+        company: 1,
+        reflection: 1,
+        score: 1,
+        track: 1,
+      });
+      expect(before.valueCounts.get('track')).toEqual([{ count: 1, value: 'ข' }]);
+      expect(before.valueCounts.get('score')).toEqual([{ count: 1, value: '7' }]);
+      expect(before.textGroups.get('company')).toEqual([{ count: 1, value: 'บริษัท ก' }]);
+      expect(before.textAnswers.get('reflection')).toEqual(['ยาว']);
+
+      await submitAs(form.id, PEER, '58000000-0000-4000-8000-000000000061');
+
+      const after = await repository.readResponseSummary({ fields, formId: form.id, pageSize: 10 });
+      expect(after.totals.notSubmitted).toBe(0);
+      expect(after.textGroups.get('company')).toEqual([{ count: 2, value: 'บริษัท ก' }]);
+      await expect(
+        repository.readTextAnswerGroups({
+          field: TEXT_FIELD,
+          formId: form.id,
+          limit: 10,
+          offset: 1,
+        }),
+      ).resolves.toEqual([]);
+      await expect(
+        repository.readTextAnswers({
+          field: reflectionField,
+          formId: form.id,
+          limit: 10,
+          offset: 0,
+        }),
+      ).resolves.toEqual(['ยาว']);
+    });
+
+    it("pages one question's answers in option order with each Student's roster name", async () => {
+      const groupId = await createGroup();
+      await addMember(groupId, PEER);
+      const form = await createForm(groupId, fields);
+      await repository.openForm({ actorAccountId: INSTRUCTOR, formId: form.id, now: NOW });
+      await saveDraftAs(form.id, STUDENT, { company: 'ก', track: 'ข' });
+      await submitAs(form.id, STUDENT, '58000000-0000-4000-8000-000000000062');
+      await saveDraftAs(form.id, PEER, { company: 'ข', track: 'ก' });
+      await submitAs(form.id, PEER, '58000000-0000-4000-8000-000000000063');
+      const page = (after: CollectionAnswerPosition | null) =>
+        repository.readStudentAnswers({ after, field: trackField, formId: form.id, limit: 1 });
+
+      const first = await page(null);
+      expect(first).toEqual([
+        expect.objectContaining({
+          rosterName: { firstNameTh: 'เพื่อนร่วมกลุ่ม', lastNameTh: 'ทดสอบ' },
+          studentAccountId: PEER,
+          studentId: null,
+          value: 'ก',
+        }),
+      ]);
+      const second = await page(first[0]!.position);
+      expect(second).toEqual([
+        expect.objectContaining({ studentAccountId: STUDENT, studentId: STUDENT_ID, value: 'ข' }),
+      ]);
+      await expect(page(second[0]!.position)).resolves.toEqual([]);
+    });
+
+    it('never reads an answer given under another type or before a question existed', async () => {
+      const groupId = await createGroup();
+      const form = await createForm(groupId, [TEXT_FIELD]);
+      const opened = await repository.openForm({
+        actorAccountId: INSTRUCTOR,
+        formId: form.id,
+        now: NOW,
+      });
+      if (typeof opened === 'string') throw new Error('expected opened form');
+      await saveDraftAs(form.id, STUDENT, { company: 'CSI' });
+      await submitAs(form.id, STUDENT, '58000000-0000-4000-8000-000000000064');
+      const added: CollectionField = { ...TEXT_FIELD, id: 'added', required: false };
+      await repository.updateFormStructure({
+        actorAccountId: INSTRUCTOR,
+        expectedVersion: opened.version,
+        fields: [TEXT_FIELD, added],
+        formId: form.id,
+        now: new Date(NOW.getTime() + 1_000),
+      });
+
+      const summary = await repository.readResponseSummary({
+        fields: [TEXT_FIELD, added],
+        formId: form.id,
+        pageSize: 10,
+      });
+      expect(Object.fromEntries(summary.answeredCounts)).toEqual({ company: 1 });
+
+      /* The submission snapshot says short_text, so a long_text reading of the same id is empty. */
+      const retyped = await repository.readResponseSummary({
+        fields: [{ ...TEXT_FIELD, type: 'long_text' }],
+        formId: form.id,
+        pageSize: 10,
+      });
+      expect(retyped.answeredCounts.size).toBe(0);
+      expect(retyped.textAnswers.size).toBe(0);
     });
   });
 
@@ -1240,7 +1629,11 @@ describe('PostgresCollectionFormsRepository integration', () => {
           fileId: file.id,
           isInstructor: true,
         }),
-      ).resolves.toMatchObject({ originalFilename: 'report.pdf', status: 'ready' });
+      ).resolves.toMatchObject({
+        detectedContentType: 'application/pdf',
+        originalFilename: 'report.pdf',
+        status: 'ready',
+      });
     });
   });
 
@@ -2514,9 +2907,9 @@ describe('PostgresCollectionFormsRepository integration', () => {
         where file_id in (select id from private.collection_files where student_account_id = ${STUDENT})
       `;
       await transaction`delete from private.collection_files where student_account_id = ${STUDENT}`;
-      await transaction`delete from private.collection_response_drafts where student_account_id = ${STUDENT}`;
+      await transaction`delete from private.collection_response_drafts where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`update public.collection_obligations set latest_submission_id = null where student_account_id in (${STUDENT}, ${PEER})`;
-      await transaction`delete from private.collection_submissions where student_account_id = ${STUDENT}`;
+      await transaction`delete from private.collection_submissions where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from public.collection_obligations where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from private.collection_notifications where student_account_id in (${STUDENT}, ${PEER})`;
       await transaction`delete from private.collection_form_structure_events where actor_account_id = ${INSTRUCTOR}`;

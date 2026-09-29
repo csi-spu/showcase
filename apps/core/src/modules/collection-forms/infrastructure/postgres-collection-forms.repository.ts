@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseClient } from '../../auth/infrastructure/database.client';
+import type { PrismaQuery, PrismaSql } from '../../auth/infrastructure/prisma-sql';
 import {
   findAnswerError,
   findFieldTransitionError,
@@ -20,6 +21,11 @@ import type {
 } from '../application/collection-form-history';
 import { REMINDER_LEAD_DAYS } from '../application/collection-notifications';
 import type {
+  CollectionAnswerPosition,
+  CollectionResponseSummaryRecord,
+  CollectionValueCount,
+} from '../application/collection-responses';
+import type {
   CollectionAnswers,
   CollectionExportJob,
   CollectionExportKind,
@@ -35,6 +41,7 @@ import type {
   CollectionNotificationFeed,
   CollectionNotificationKind,
   CollectionReviewEntry,
+  CollectionStudentAnswer,
   CollectionSubmissionHistory,
   CollectionSubmissionHistoryEntry,
   DraftFileSelection,
@@ -43,6 +50,16 @@ import type {
   StudentObligation,
 } from '../application/collection-forms.ports';
 import type { ReusableValueCandidate } from '../application/reusable-values';
+import {
+  clampReviewPage,
+  type CollectionReviewFilter,
+  type CollectionReviewPage,
+  type CollectionReviewPosition,
+  type CollectionReviewSearch,
+  type CollectionReviewSort,
+  type CollectionReviewStatus,
+  type CollectionReviewStudent,
+} from '../application/collection-review-queue';
 
 const MAX_FILES_PER_FIELD = 5;
 
@@ -125,7 +142,6 @@ interface FileRow {
 }
 
 interface ReviewRow {
-  answers: unknown;
   checking_reason: string | null;
   first_submitted_at: Date | null;
   first_name_th: string;
@@ -134,10 +150,17 @@ interface ReviewRow {
   student_account_id: string;
   student_id: string | null;
   submission_id: string | null;
-  submission_fields: unknown;
   submission_form_version: number | null;
   submission_version: number | null;
   submitted_at: Date | null;
+}
+
+/* A queue row ranked under a filter and order, for one Student's neighbours and page. */
+interface ReviewPositionRow extends ReviewRow {
+  is_listed: boolean;
+  listed_rank: number;
+  rank: number;
+  total: number;
 }
 
 interface ObligationRow extends FormRow {
@@ -1625,87 +1648,505 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
   }
 
   /**
-   * The review queue for one form.
+   * One page of the review queue for one form.
    *
    * Reads only submitted content. Response drafts are never joined here, so an
-   * Instructor cannot see what a Student is still working on.
+   * Instructor cannot see what a Student is still working on. Answers and
+   * files are not read at all: the queue is an index, and content is read one
+   * Student or one question at a time. Every statement is bounded by the
+   * form's primary-key prefix, and only one page of rows is returned.
    */
   async listFormSubmissions(
-    formId: string,
-  ): Promise<{ form: CollectionForm; entries: CollectionReviewEntry[] } | null> {
+    input: CollectionReviewFilter & { formId: string; page: number; pageSize: number },
+  ): Promise<(CollectionReviewPage & { form: CollectionForm }) | null> {
+    const form = await this.findReviewForm(input.formId);
+    if (form === undefined) return null;
+
+    const sql = this.database.sql;
+    const queue = this.reviewQueue(sql, input.formId, input.search);
+    const counts = await sql<{ count: number; obligation_status: CollectionReviewStatus }[]>`
+      with queue as (${queue})
+      select obligation_status, count(*)::int as count
+      from queue
+      group by obligation_status
+    `;
+    const statusCounts: Record<CollectionReviewStatus, number> = {
+      awaiting_checking: 0,
+      changes_required: 0,
+      not_submitted: 0,
+      passed: 0,
+      withdrawn: 0,
+    };
+    for (const row of counts) statusCounts[row.obligation_status] = row.count;
+    const total =
+      input.status === null
+        ? Object.values(statusCounts).reduce((sum, count) => sum + count, 0)
+        : statusCounts[input.status];
+    const page = clampReviewPage(input.page, input.pageSize, total);
+
+    const order = reviewOrder(sql, input.sort);
+    const rows =
+      total === 0
+        ? []
+        : await sql<ReviewRow[]>`
+            with queue as (${queue}),
+            listed as (
+              select *
+              from queue
+              where ${reviewStatusPredicate(sql, input.status)}
+              order by ${order}
+              limit ${input.pageSize} offset ${(page - 1) * input.pageSize}
+            )
+            select listed.*, checking.reason as checking_reason
+            from listed
+            left join lateral (${latestChangesReason(sql, 'listed')}) as checking on true
+            order by ${order}
+          `;
+
+    return {
+      entries: rows.map((row) => mapReviewEntry(row, form.deadline_at)),
+      form: this.mapForm(form),
+      page,
+      statusCounts,
+      total,
+    };
+  }
+
+  /**
+   * One Student's place in the review queue under a status filter and order.
+   *
+   * The Student is ranked with the listed Students even when the filter
+   * excludes them, so their neighbours are where they would sort. One
+   * statement returns that Student, both neighbours, and the listed Students
+   * on the table page that holds them -- never more than a page plus two rows.
+   */
+  async readReviewPosition(input: {
+    formId: string;
+    pageSize: number;
+    sort: CollectionReviewSort;
+    status: CollectionReviewStatus | null;
+    studentAccountId: string;
+  }): Promise<CollectionReviewPosition | null> {
+    const form = await this.findReviewForm(input.formId);
+    if (form === undefined) return null;
+
+    const sql = this.database.sql;
+    const isListed = reviewStatusPredicate(sql, input.status);
+    const pageSize = input.pageSize;
+    const rows = await sql<ReviewPositionRow[]>`
+      with queue as (${this.reviewQueue(sql, input.formId, null)}),
+      ranked as (
+        select queue.*, (${isListed}) as is_listed,
+          row_number() over ordered as rank,
+          count(*) filter (where ${isListed}) over ordered as listed_rank,
+          count(*) filter (where ${isListed}) over () as total
+        from queue
+        where ${isListed} or student_account_id = ${input.studentAccountId}
+        window ordered as (order by ${reviewOrder(sql, input.sort)})
+      ),
+      current_student as (
+        select rank from ranked where student_account_id = ${input.studentAccountId}
+      )
+      select ranked.student_account_id, ranked.obligation_status, ranked.first_submitted_at,
+        ranked.submission_id, ranked.submission_form_version, ranked.submission_version,
+        ranked.submitted_at, ranked.first_name_th, ranked.last_name_th, ranked.student_id,
+        ranked.is_listed, ranked.rank::int as rank, ranked.listed_rank::int as listed_rank,
+        ranked.total::int as total, checking.reason as checking_reason
+      from ranked
+      cross join current_student
+      left join lateral (${latestChangesReason(sql, 'ranked')}) as checking on true
+      where ranked.rank between current_student.rank - 1 and current_student.rank + 1
+        or (
+          ranked.is_listed
+          and ranked.listed_rank
+            between (current_student.rank - 1) / ${pageSize}::int * ${pageSize}::int + 1
+            and ((current_student.rank - 1) / ${pageSize}::int + 1) * ${pageSize}::int
+        )
+      order by ranked.rank
+    `;
+
+    const current = rows.find((row) => row.student_account_id === input.studentAccountId);
+    if (current === undefined) return null;
+    /* Listed Students before this one are rank - 1 whether or not the filter keeps it. */
+    const page = Math.floor((current.rank - 1) / pageSize) + 1;
+    const pageStart = (page - 1) * pageSize + 1;
+    const neighbour = (rank: number) => {
+      const row = rows.find((candidate) => candidate.rank === rank);
+      return row === undefined ? null : toReviewStudent(row);
+    };
+
+    return {
+      entry: mapReviewEntry(current, form.deadline_at),
+      next: neighbour(current.rank + 1),
+      page,
+      pageStudents: rows
+        .filter(
+          (row) =>
+            row.is_listed && row.listed_rank >= pageStart && row.listed_rank < pageStart + pageSize,
+        )
+        .map(toReviewStudent),
+      position: current.is_listed ? current.listed_rank : null,
+      previous: neighbour(current.rank - 1),
+      total: current.total,
+    };
+  }
+
+  private async findReviewForm(formId: string): Promise<FormRow | undefined> {
     const forms = await this.database.sql<FormRow[]>`
       select id, group_id, title, description, status, fields, deadline_at, version,
         created_from_template_id
       from public.collection_forms
       where id = ${formId} and deletion_id is null
     `;
-    const form = forms[0];
-    if (form === undefined) return null;
+    return forms[0];
+  }
 
-    const rows = await this.database.sql<ReviewRow[]>`
+  /**
+   * Every assigned Student of one form with their latest submission's
+   * identity, optionally narrowed by a search. The columns are the ones
+   * `reviewOrder` sorts on, so the same order applies at every step.
+   */
+  private reviewQueue(
+    sql: PrismaSql,
+    formId: string,
+    search: CollectionReviewSearch | null,
+  ): PrismaQuery<unknown[]> {
+    return sql`
       select obligation.student_account_id, obligation.status as obligation_status,
         obligation.first_submitted_at,
-        submission.id as submission_id, submission.answers,
-        submission.form_fields as submission_fields,
+        submission.id as submission_id,
         submission.form_version as submission_form_version,
         submission.version as submission_version, submission.submitted_at,
-        checking.reason as checking_reason,
         person_name.first_name_th, person_name.last_name_th, identity.student_id
       from public.collection_obligations as obligation
       join public.accounts as account on account.id = obligation.student_account_id
       join private.person_names as person_name on person_name.person_id = account.person_id
       left join private.student_auth_identities as identity on identity.account_id = account.id
       left join private.collection_submissions as submission on submission.id = obligation.latest_submission_id
-      left join lateral (
-        select event.reason
-        from private.collection_checking_events as event
-        where event.submission_id = obligation.latest_submission_id
-          and event.decision = 'changes_required'
-        order by event.occurred_at desc
-        limit 1
-      ) as checking on true
       where obligation.form_id = ${formId}
-      order by person_name.first_name_th, person_name.last_name_th, obligation.student_account_id
-      limit 500
+      ${reviewSearchPredicate(sql, search)}
+    `;
+  }
+
+  /**
+   * Summary aggregates over the given current fields.
+   *
+   * Four bounded statements: obligation totals, per-field answered and value
+   * counts with the first text pages, and file counts. Each row is an
+   * aggregate or one text value, never a Student's identity.
+   */
+  async readResponseSummary(input: {
+    fields: CollectionField[];
+    formId: string;
+    pageSize: number;
+  }): Promise<CollectionResponseSummaryRecord> {
+    const [totals] = await this.database.sql<
+      {
+        assigned: number;
+        awaiting_checking: number;
+        changes_required: number;
+        not_submitted: number;
+        passed: number;
+      }[]
+    >`
+      select
+        count(*) filter (where status <> 'withdrawn')::int as assigned,
+        count(*) filter (where status = 'not_submitted')::int as not_submitted,
+        count(*) filter (where status = 'awaiting_checking')::int as awaiting_checking,
+        count(*) filter (where status = 'changes_required')::int as changes_required,
+        count(*) filter (where status = 'passed')::int as passed
+      from public.collection_obligations
+      where form_id = ${input.formId}
     `;
 
-    const files = await this.loadSubmittedFiles(
-      rows.flatMap((row) => (row.submission_id === null ? [] : [row.submission_id])),
-    );
-
-    return {
-      entries: rows.map((row) => ({
-        firstSubmittedAt: row.first_submitted_at,
-        /*
-         * Derived here against the form's current deadline rather than stored at
-         * submit: extending a deadline must recalculate timeliness, and the
-         * retained first_submitted_at is what it is measured against.
-         */
-        isLate: isFirstSubmissionLate({
-          deadlineAt: form.deadline_at,
-          firstSubmittedAt: row.first_submitted_at,
-        }),
-        latestCheckingReason:
-          row.obligation_status === 'changes_required' ? row.checking_reason : null,
-        latestSubmission:
-          row.submission_id === null || row.submission_version === null || row.submitted_at === null
-            ? null
-            : {
-                answers: this.answers(row.answers),
-                fields: this.fields(row.submission_fields),
-                files: files.get(row.submission_id) ?? {},
-                formVersion: row.submission_form_version!,
-                id: row.submission_id,
-                submittedAt: row.submitted_at,
-                version: row.submission_version,
-              },
-        rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
-        status: row.obligation_status,
-        studentAccountId: row.student_account_id,
-        studentId: row.student_id,
-      })),
-      form: this.mapForm(form),
+    const record = {
+      answeredCounts: new Map<string, number>(),
+      files: new Map<string, { fileCount: number; notReadyCount: number }>(),
+      textAnswers: new Map<string, string[]>(),
+      textGroups: new Map<string, CollectionValueCount[]>(),
+      totals: {
+        assigned: totals?.assigned ?? 0,
+        awaitingChecking: totals?.awaiting_checking ?? 0,
+        changesRequired: totals?.changes_required ?? 0,
+        notSubmitted: totals?.not_submitted ?? 0,
+        passed: totals?.passed ?? 0,
+      },
+      valueCounts: new Map<string, CollectionValueCount[]>(),
     };
+    if (input.fields.length === 0) return record;
+
+    const rows = await this.database.sql<
+      {
+        count: number;
+        field_id: string;
+        kind: 'answered' | 'group' | 'text' | 'value';
+        value: string | null;
+      }[]
+    >`
+      with answer as (${this.responseAnswers(input.formId, input.fields)})
+      select 'answered' as kind, field_id, null::text as value,
+        count(distinct submission_id)::int as count, 0::bigint as position
+      from answer
+      group by field_id
+      union all
+      select 'value', field_id, value, count(*)::int, 0
+      from answer
+      where field_type in ('single_choice', 'multiple_choice', 'number', 'date')
+      group by field_id, value
+      union all
+      select 'group', field_id, value, count, position
+      from (
+        select field_id, normalized as value, count(*)::int as count,
+          row_number() over (partition by field_id order by count(*) desc, normalized) as position
+        from (
+          select field_id, btrim(regexp_replace(value, '[[:space:]]+', ' ', 'g')) as normalized
+          from answer
+          where field_type = 'short_text'
+        ) as normalized_answer
+        group by field_id, normalized
+      ) as grouped
+      where position <= ${input.pageSize + 1}
+      union all
+      select 'text', field_id, value, 0, position
+      from (
+        select field_id, value,
+          row_number() over (partition by field_id order by submitted_at desc, submission_id) as position
+        from answer
+        where field_type = 'long_text'
+      ) as listed
+      where position <= ${input.pageSize + 1}
+      order by kind, field_id, position
+    `;
+    for (const row of rows) {
+      if (row.kind === 'answered') {
+        record.answeredCounts.set(row.field_id, row.count);
+      } else if (row.kind === 'text') {
+        record.textAnswers.set(row.field_id, [
+          ...(record.textAnswers.get(row.field_id) ?? []),
+          row.value!,
+        ]);
+      } else {
+        const target = row.kind === 'group' ? record.textGroups : record.valueCounts;
+        target.set(row.field_id, [
+          ...(target.get(row.field_id) ?? []),
+          { count: row.count, value: row.value! },
+        ]);
+      }
+    }
+
+    const fileFieldIds = input.fields
+      .filter((field) => field.type === 'file_upload')
+      .map((field) => field.id);
+    if (fileFieldIds.length > 0) {
+      const fileRows = await this.database.sql<
+        { field_id: string; file_count: number; not_ready_count: number }[]
+      >`
+        select submitted.field_id, count(*)::int as file_count,
+          count(*) filter (where file.status <> 'ready')::int as not_ready_count
+        from public.collection_obligations as obligation
+        join private.collection_submissions as submission
+          on submission.id = obligation.latest_submission_id
+        join private.collection_submission_files as submitted
+          on submitted.submission_id = submission.id
+        join private.collection_files as file on file.id = submitted.file_id
+        where obligation.form_id = ${input.formId}
+          and obligation.status in ('awaiting_checking', 'changes_required', 'passed')
+          and submitted.field_id = any(${fileFieldIds}::text[])
+          and submission.form_fields @> jsonb_build_array(
+            jsonb_build_object('id', submitted.field_id, 'type', 'file_upload')
+          )
+        group by submitted.field_id
+      `;
+      for (const row of fileRows) {
+        record.files.set(row.field_id, {
+          fileCount: row.file_count,
+          notReadyCount: row.not_ready_count,
+        });
+      }
+    }
+    return record;
+  }
+
+  async readTextAnswerGroups(input: {
+    field: CollectionField;
+    formId: string;
+    limit: number;
+    offset: number;
+  }): Promise<CollectionValueCount[]> {
+    return this.database.sql<CollectionValueCount[]>`
+      with answer as (${this.responseAnswers(input.formId, [input.field])})
+      select normalized as value, count(*)::int as count
+      from (
+        select btrim(regexp_replace(value, '[[:space:]]+', ' ', 'g')) as normalized
+        from answer
+      ) as normalized_answer
+      group by normalized
+      order by count(*) desc, normalized
+      offset ${input.offset}
+      limit ${input.limit}
+    `;
+  }
+
+  async readTextAnswers(input: {
+    field: CollectionField;
+    formId: string;
+    limit: number;
+    offset: number;
+  }): Promise<string[]> {
+    const rows = await this.database.sql<{ value: string }[]>`
+      with answer as (${this.responseAnswers(input.formId, [input.field])})
+      select value
+      from answer
+      order by submitted_at desc, submission_id
+      offset ${input.offset}
+      limit ${input.limit}
+    `;
+    return rows.map((row) => row.value);
+  }
+
+  /**
+   * One question's answers with their Students, keyset-paged.
+   *
+   * Sorted by option position for choices (a value no longer offered sorts
+   * after every option), by value for numbers and dates, and by roster name
+   * within each. The cursor names the last row's sort values and account id;
+   * the name part of the key is read back from that account, so a name never
+   * travels in the cursor.
+   */
+  async readStudentAnswers(input: {
+    after: CollectionAnswerPosition | null;
+    field: CollectionField;
+    formId: string;
+    limit: number;
+  }): Promise<CollectionStudentAnswer[]> {
+    const options = input.field.options ?? [];
+    const after = input.after ?? { accountId: null, number: '0', rank: 0, text: '' };
+    const rows = await this.database.sql<
+      {
+        first_name_th: string;
+        last_name_th: string;
+        number_text: string;
+        rank: number;
+        sort_text: string;
+        student_account_id: string;
+        student_id: string | null;
+        submission_id: string;
+        value: string | null;
+      }[]
+    >`
+      with answer as (${this.responseAnswers(input.formId, [input.field])}),
+      ranked as (
+        select answer.student_account_id, answer.submission_id, answer.value,
+          coalesce(answer.number, 0) as number,
+          case when answer.field_type in ('single_choice', 'multiple_choice')
+            then coalesce(array_position(${options}::text[], answer.value), ${options.length + 1})
+            else 0
+          end as rank,
+          case when answer.field_type in ('single_choice', 'multiple_choice', 'date')
+            then answer.value
+            else ''
+          end as sort_text
+        from answer
+      )
+      select ranked.student_account_id, ranked.submission_id, ranked.value,
+        ranked.number::text as number_text, ranked.rank::int as rank, ranked.sort_text,
+        person_name.first_name_th, person_name.last_name_th, identity.student_id
+      from ranked
+      join public.accounts as account on account.id = ranked.student_account_id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      left join private.student_auth_identities as identity on identity.account_id = account.id
+      where ${input.after === null}
+        or (ranked.rank, ranked.number, ranked.sort_text, person_name.first_name_th,
+          person_name.last_name_th, ranked.student_account_id) > (
+          select ${after.rank}::int, ${after.number}::numeric,
+            ${this.database.sql.text(after.text)}, cursor_name.first_name_th,
+            cursor_name.last_name_th, cursor_account.id
+          from public.accounts as cursor_account
+          join private.person_names as cursor_name on cursor_name.person_id = cursor_account.person_id
+          where cursor_account.id = ${after.accountId}::uuid
+        )
+      order by ranked.rank, ranked.number, ranked.sort_text, person_name.first_name_th,
+        person_name.last_name_th, ranked.student_account_id
+      limit ${input.limit}
+    `;
+
+    const files =
+      input.field.type === 'file_upload'
+        ? await this.loadSubmittedFiles(rows.map((row) => row.submission_id))
+        : new Map<string, DraftFileSelection>();
+    return rows.map((row) => ({
+      files: files.get(row.submission_id)?.[input.field.id] ?? [],
+      position: {
+        accountId: row.student_account_id,
+        number: row.number_text,
+        rank: row.rank,
+        text: row.sort_text,
+      },
+      rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
+      studentAccountId: row.student_account_id,
+      studentId: row.student_id,
+      value: input.field.type === 'number' && row.value !== null ? Number(row.value) : row.value,
+    }));
+  }
+
+  /**
+   * Every answered value of the given fields in the Summary population.
+   *
+   * The population is the latest submission of each Student whose response is
+   * awaiting checking, returned, or passed; withdrawn and unsubmitted Students
+   * are not in it. A value is read only when the submission's own field
+   * snapshot had the field with the same type, so an answer given under an
+   * older type is never read as the new one.
+   *
+   * One row per answered value: a multiple-choice answer yields a row per
+   * chosen option, and a file answer one row with a null value.
+   */
+  private responseAnswers(formId: string, fields: readonly CollectionField[]) {
+    return this.database.sql`
+      select field.id as field_id, field.type as field_type,
+        submission.id as submission_id, submission.student_account_id, submission.submitted_at,
+        answer.value, answer.number
+      from public.collection_obligations as obligation
+      join private.collection_submissions as submission
+        on submission.id = obligation.latest_submission_id
+      cross join unnest(
+        ${fields.map((field) => field.id)}::text[], ${fields.map((field) => field.type)}::text[]
+      ) as field(id, type)
+      cross join lateral (
+        select option.value, null::numeric
+        from jsonb_array_elements_text(
+          case
+            when field.type = 'multiple_choice'
+              and jsonb_typeof(submission.answers -> field.id) = 'array'
+            then submission.answers -> field.id
+            else '[]'::jsonb
+          end
+        ) as option(value)
+        union all
+        select submission.answers ->> field.id, null::numeric
+        where field.type in ('single_choice', 'date', 'short_text', 'long_text')
+          and jsonb_typeof(submission.answers -> field.id) = 'string'
+          and btrim(submission.answers ->> field.id) <> ''
+        union all
+        select submission.answers ->> field.id,
+          case
+            when jsonb_typeof(submission.answers -> field.id) = 'number'
+            then (submission.answers ->> field.id)::numeric
+          end
+        where field.type = 'number' and jsonb_typeof(submission.answers -> field.id) = 'number'
+        union all
+        select null, null::numeric
+        where field.type = 'file_upload' and exists (
+          select 1 from private.collection_submission_files as submitted
+          where submitted.submission_id = submission.id and submitted.field_id = field.id
+        )
+      ) as answer(value, number)
+      where obligation.form_id = ${formId}
+        and obligation.status in ('awaiting_checking', 'changes_required', 'passed')
+        and submission.form_fields @> jsonb_build_array(
+          jsonb_build_object('id', field.id, 'type', field.type)
+        )
+    `;
   }
 
   async listStudentObligations(studentAccountId: string, now: Date): Promise<StudentObligation[]> {
@@ -2144,9 +2585,14 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
    */
   async findReadableFile(input: { actorAccountId: string; fileId: string; isInstructor: boolean }) {
     const rows = await this.database.sql<
-      { original_filename: string; status: CollectionFileStatus; storage_key: string }[]
+      {
+        detected_content_type: string | null;
+        original_filename: string;
+        status: CollectionFileStatus;
+        storage_key: string;
+      }[]
     >`
-      select file.storage_key, file.original_filename, file.status
+      select file.storage_key, file.original_filename, file.status, file.detected_content_type
       from private.collection_files as file
       join public.collection_forms as form on form.id = file.form_id
       where file.id = ${input.fileId}
@@ -2162,6 +2608,7 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     const row = rows[0];
     if (row === undefined) return null;
     return {
+      detectedContentType: row.detected_content_type,
       originalFilename: row.original_filename,
       status: row.status,
       storageKey: row.storage_key,
@@ -2658,4 +3105,118 @@ export class PostgresCollectionFormsRepository implements CollectionFormsReposit
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
     return value as CollectionAnswers;
   }
+}
+
+/*
+ * The queue's orders, over the columns `reviewQueue` selects. Every order ends
+ * on the name and then the Account ID, so it is total and a page boundary
+ * never splits Students who tie.
+ */
+function reviewOrder(sql: PrismaSql, sort: CollectionReviewSort): PrismaQuery<unknown[]> {
+  const byName = sql`first_name_th, last_name_th, student_account_id`;
+  switch (sort) {
+    case 'name':
+      return byName;
+    case 'status':
+      /* The order of REVIEW_STATUS_ORDER: work waiting on the Instructor first. */
+      return sql`
+        case obligation_status
+          when 'awaiting_checking' then 0
+          when 'changes_required' then 1
+          when 'not_submitted' then 2
+          when 'passed' then 3
+          else 4
+        end, ${byName}
+      `;
+    case 'submittedAsc':
+      return sql`submitted_at asc nulls last, ${byName}`;
+    case 'submittedDesc':
+      return sql`submitted_at desc nulls last, ${byName}`;
+  }
+}
+
+function reviewStatusPredicate(
+  sql: PrismaSql,
+  status: CollectionReviewStatus | null,
+): PrismaQuery<unknown[]> {
+  return status === null ? sql`true` : sql`obligation_status = ${status}`;
+}
+
+/*
+ * A Student ID prefix is matched through its keyed hash, the same lookup the
+ * Student search uses, so Students without a recorded raw value are found and
+ * the raw value never reaches the database (ADR 0020).
+ */
+function reviewSearchPredicate(
+  sql: PrismaSql,
+  search: CollectionReviewSearch | null,
+): PrismaQuery<unknown[]> {
+  if (search === null) return sql``;
+  if (search.kind === 'name') {
+    return sql`
+      and lower(person_name.first_name_th || ' ' || person_name.last_name_th)
+        like ${`%${escapeLike(search.name.toLowerCase())}%`} escape '\\'
+    `;
+  }
+  if (search.prefixLength === 8) {
+    return sql`and identity.student_id_hash = ${search.prefixHash}`;
+  }
+  return sql`
+    and exists (
+      select 1 from private.student_id_search_prefixes as prefix
+      where prefix.account_id = obligation.student_account_id
+        and prefix.prefix_length = ${search.prefixLength}
+        and prefix.prefix_hash = ${search.prefixHash}
+    )
+  `;
+}
+
+/* Why the latest submission was last returned, for the rows of `source`. */
+function latestChangesReason(sql: PrismaSql, source: 'listed' | 'ranked'): PrismaQuery<unknown[]> {
+  const submissionId = source === 'listed' ? sql`listed.submission_id` : sql`ranked.submission_id`;
+  return sql`
+    select event.reason
+    from private.collection_checking_events as event
+    where event.submission_id = ${submissionId}
+      and event.decision = 'changes_required'
+    order by event.occurred_at desc
+    limit 1
+  `;
+}
+
+function mapReviewEntry(row: ReviewRow, deadlineAt: Date | null): CollectionReviewEntry {
+  return {
+    firstSubmittedAt: row.first_submitted_at,
+    /*
+     * Derived here against the form's current deadline rather than stored at
+     * submit: extending a deadline must recalculate timeliness, and the
+     * retained first_submitted_at is what it is measured against.
+     */
+    isLate: isFirstSubmissionLate({ deadlineAt, firstSubmittedAt: row.first_submitted_at }),
+    latestCheckingReason: row.obligation_status === 'changes_required' ? row.checking_reason : null,
+    latestSubmission:
+      row.submission_id === null || row.submission_version === null || row.submitted_at === null
+        ? null
+        : {
+            formVersion: row.submission_form_version!,
+            id: row.submission_id,
+            submittedAt: row.submitted_at,
+            version: row.submission_version,
+          },
+    rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
+    status: row.obligation_status,
+    studentAccountId: row.student_account_id,
+    studentId: row.student_id,
+  };
+}
+
+function toReviewStudent(row: ReviewRow): CollectionReviewStudent {
+  return {
+    rosterName: { firstNameTh: row.first_name_th, lastNameTh: row.last_name_th },
+    studentAccountId: row.student_account_id,
+  };
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/gu, (character) => `\\${character}`);
 }

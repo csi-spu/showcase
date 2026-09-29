@@ -4,12 +4,16 @@ import { z } from 'zod';
 import {
   exportJobSchema,
   exportListSchema,
+  fieldAnswersPageSchema,
   formHistoryPageSchema,
   formSchema,
   matrixPageSchema,
   pendingWorkSchema,
+  previewTicketSchema,
   reopenPreviewSchema,
   reopenResultSchema,
+  responseSummarySchema,
+  reviewPositionSchema,
   reviewQueueSchema,
   roundStatusChangeSchema,
   submissionHistorySchema,
@@ -20,11 +24,16 @@ import type {
   InstructorExportJob,
   InstructorExportKind,
   InstructorCollectionTemplate,
+  InstructorFieldAnswersPage,
   InstructorFormHistoryPage,
   InstructorMatrixPage,
   InstructorPendingWork,
+  InstructorPreviewTicket,
   InstructorReopenPreview,
   InstructorReopenResult,
+  InstructorResponseSummary,
+  InstructorReviewOrder,
+  InstructorReviewPosition,
   InstructorReviewQueue,
   InstructorRoundStatusChange,
   InstructorSubmissionHistory,
@@ -266,12 +275,92 @@ export class InstructorCollectionFormsCoreClient {
     });
   }
 
-  /** The review queue for one form: who was assigned it and what they submitted. */
-  listSubmissions(sessionToken: string, formId: string): Promise<InstructorReviewQueue> {
+  /** One page of a form's review queue: who was assigned it and what they submitted. */
+  listSubmissions(
+    sessionToken: string,
+    formId: string,
+    query: InstructorReviewOrder & { page: number },
+  ): Promise<InstructorReviewQueue> {
+    const params = new URLSearchParams({
+      page: String(query.page),
+      pageSize: String(query.pageSize),
+      sort: query.sort,
+    });
+    if (query.status !== null) params.set('status', query.status);
     return this.client.request({
       method: 'GET',
-      path: `${BASE}/forms/${formId}/submissions`,
+      path: `${BASE}/forms/${formId}/submissions?${params.toString()}`,
       responseSchema: reviewQueueSchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * One page of the review queue narrowed by a search.
+   *
+   * Sent as a POST body because the term may be a Student ID prefix, which
+   * never goes in a URL (ADR 0020).
+   */
+  searchSubmissions(
+    sessionToken: string,
+    formId: string,
+    query: InstructorReviewOrder & { page: number; search: string },
+  ): Promise<InstructorReviewQueue> {
+    const { status, ...rest } = query;
+    return this.client.request({
+      method: 'POST',
+      path: `${BASE}/forms/${formId}/submissions/search`,
+      body: status === null ? rest : { ...rest, status },
+      responseSchema: reviewQueueSchema,
+      sessionToken,
+    });
+  }
+
+  /** One Student's entry and place in the review queue, for moving to the previous or next. */
+  reviewPosition(
+    sessionToken: string,
+    formId: string,
+    studentAccountId: string,
+    order: InstructorReviewOrder,
+  ): Promise<InstructorReviewPosition> {
+    const params = new URLSearchParams({ pageSize: String(order.pageSize), sort: order.sort });
+    if (order.status !== null) params.set('status', order.status);
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/students/${studentAccountId}/review-position?${params.toString()}`,
+      responseSchema: reviewPositionSchema,
+      sessionToken,
+    });
+  }
+
+  /** The anonymous Summary of a form's current responses: totals and one entry per question. */
+  responseSummary(sessionToken: string, formId: string): Promise<InstructorResponseSummary> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/responses/summary`,
+      responseSchema: responseSummarySchema,
+      sessionToken,
+    });
+  }
+
+  /**
+   * One page of one question's answers.
+   *
+   * `summary` continues an anonymous Summary text list; `question` lists each
+   * answer with its Student. `cursor` is the previous page's `nextCursor`.
+   */
+  fieldAnswers(
+    sessionToken: string,
+    formId: string,
+    fieldId: string,
+    params: { cursor: string | null; mode: 'question' | 'summary' },
+  ): Promise<InstructorFieldAnswersPage> {
+    const query = new URLSearchParams({ mode: params.mode });
+    if (params.cursor !== null) query.set('cursor', params.cursor);
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/forms/${formId}/fields/${encodeURIComponent(fieldId)}/answers?${query.toString()}`,
+      responseSchema: fieldAnswersPageSchema,
       sessionToken,
     });
   }
@@ -305,6 +394,21 @@ export class InstructorCollectionFormsCoreClient {
       method: 'GET',
       path: `${BASE}/files/${fileId}/download`,
       responseSchema: z.object({ downloadUrl: z.url(), filename: z.string() }).strict(),
+      sessionToken,
+    });
+  }
+
+  /**
+   * A short-lived signed URL for one submitted JPEG or PNG image.
+   *
+   * Core refuses anything it did not detect as one of those, so the type here
+   * is the one this app serves the bytes as. The URL never reaches the browser.
+   */
+  createPreview(sessionToken: string, fileId: string): Promise<InstructorPreviewTicket> {
+    return this.client.request({
+      method: 'GET',
+      path: `${BASE}/files/${fileId}/preview`,
+      responseSchema: previewTicketSchema,
       sessionToken,
     });
   }

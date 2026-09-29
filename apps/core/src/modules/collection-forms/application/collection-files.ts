@@ -98,6 +98,26 @@ function hasMatchingExtension(filename: string, fileType: CollectionFileType): b
   return EXTENSIONS[fileType].some((extension) => lower.endsWith(extension));
 }
 
+/*
+ * Image types an Instructor may view inline. Judged by the type inspection
+ * detected from the bytes, never the type the Student's browser declared.
+ */
+const PREVIEWABLE_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  COLLECTION_FILE_CONTENT_TYPES.jpeg,
+  COLLECTION_FILE_CONTENT_TYPES.png,
+]);
+
+/** Whether a file has passed inspection as a JPEG or PNG image. */
+export function isPreviewableFile(
+  file: Pick<CollectionFile, 'detectedContentType' | 'status'>,
+): boolean {
+  return (
+    file.status === 'ready' &&
+    file.detectedContentType !== null &&
+    PREVIEWABLE_CONTENT_TYPES.has(file.detectedContentType)
+  );
+}
+
 /**
  * Strips directory components and control characters from a filename so it is
  * safe to place in a Content-Disposition header or a generated archive path.

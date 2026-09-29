@@ -4,6 +4,7 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -16,16 +17,22 @@ import { AuthError } from '../../auth/application/auth.error';
 import { InstructorAuthService } from '../../auth/application/instructor-auth.service';
 import { InstructorBffGuard } from '../../auth/transport/instructor-bff.guard';
 import { CollectionFormsService } from '../application/collection-forms.service';
+import { DEFAULT_REVIEW_PAGE_SIZE } from '../application/collection-review-queue';
 import {
   CheckCollectionSubmissionDto,
+  CollectionFieldAnswersParamsDto,
+  CollectionFieldAnswersQueryDto,
   CollectionFormHistoryQueryDto,
   CollectionLifecycleReasonDto,
   CollectionMatrixQueryDto,
+  CollectionReviewPositionQueryDto,
+  CollectionReviewQueueQueryDto,
   CreateCollectionExportDto,
   CreateCollectionFormDto,
   CreateCollectionTemplateDto,
   CreateFormFromTemplateDto,
   SaveFormAsTemplateDto,
+  SearchCollectionReviewQueueDto,
   UpdateCollectionFormDto,
   UpdateCollectionFormMetadataDto,
   UpdateCollectionTemplateDto,
@@ -33,7 +40,11 @@ import {
 import { CollectionFormsExceptionFilter } from './collection-forms-exception.filter';
 import {
   toExportView,
+  toFieldAnswersView,
   toFormHistoryView,
+  toInstructorFileView,
+  toResponseSummaryView,
+  toReviewPositionView,
   toReviewQueueView,
   toSubmissionHistoryView,
 } from './collection-forms.view';
@@ -262,7 +273,7 @@ export class InstructorCollectionFormsController {
       isInstructor: true,
       studentAccountId,
     });
-    return toSubmissionHistoryView(history);
+    return toSubmissionHistoryView(history, toInstructorFileView);
   }
 
   @Post('forms/:formId/save-as-template')
@@ -321,7 +332,7 @@ export class InstructorCollectionFormsController {
   }
 
   /**
-   * The review queue for one form.
+   * One page of the review queue for one form.
    *
    * Returns submitted content only, so a Student's unsubmitted draft stays
    * private even from the Instructor who set the form.
@@ -330,11 +341,104 @@ export class InstructorCollectionFormsController {
   @Header('Cache-Control', 'no-store')
   async listSubmissions(
     @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Query() query: CollectionReviewQueueQueryDto,
     @Headers('authorization') authorization: string | undefined,
   ) {
     await this.auth.authorizeInstructor(token(authorization));
-    const queue = await this.forms.listFormSubmissions(formId);
+    const queue = await this.forms.listFormSubmissions(toReviewQueueInput(formId, query, null));
     return toReviewQueueView(queue);
+  }
+
+  /**
+   * One page of the review queue narrowed by a search.
+   *
+   * A POST so the term travels in the body: it may be a Student ID prefix,
+   * which never appears in a URL or an access log (ADR 0020).
+   */
+  @Post('forms/:formId/submissions/search')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async searchSubmissions(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Body() body: SearchCollectionReviewQueueDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    const queue = await this.forms.listFormSubmissions(
+      toReviewQueueInput(formId, body, body.search),
+    );
+    return toReviewQueueView(queue);
+  }
+
+  /** One Student's place in the review queue, for moving to the previous or next Student. */
+  @Get('forms/:formId/students/:studentAccountId/review-position')
+  @Header('Cache-Control', 'no-store')
+  async readReviewPosition(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Param('studentAccountId', new ParseUUIDPipe({ version: '4' })) studentAccountId: string,
+    @Query() query: CollectionReviewPositionQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    const position = await this.forms.readReviewPosition({
+      formId,
+      pageSize: query.pageSize ?? DEFAULT_REVIEW_PAGE_SIZE,
+      sort: query.sort ?? 'status',
+      status: query.status ?? null,
+      studentAccountId,
+    });
+    return toReviewPositionView(position);
+  }
+
+  /**
+   * The Summary view: totals and one anonymous aggregate per current question.
+   *
+   * Aggregated in Core over bounded SQL, so the browser never receives every
+   * Student's answers to count them itself.
+   */
+  @Get('forms/:formId/responses/summary')
+  @Header('Cache-Control', 'no-store')
+  async responseSummary(
+    @Param('formId', new ParseUUIDPipe({ version: '4' })) formId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return toResponseSummaryView(await this.forms.readResponseSummary(formId));
+  }
+
+  /** One page of one current question's answers, for Summary or Question view. */
+  @Get('forms/:formId/fields/:fieldId/answers')
+  @Header('Cache-Control', 'no-store')
+  async fieldAnswers(
+    @Param() params: CollectionFieldAnswersParamsDto,
+    @Query() query: CollectionFieldAnswersQueryDto,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    await this.auth.authorizeInstructor(token(authorization));
+    return toFieldAnswersView(
+      await this.forms.readFieldAnswers({
+        cursor: query.cursor,
+        fieldId: params.fieldId,
+        formId: params.formId,
+        mode: query.mode,
+      }),
+    );
+  }
+
+  /**
+   * Issues a short-lived signed URL to show one submitted image inline.
+   *
+   * Refused unless inspection detected a JPEG or PNG; every other file is
+   * downloaded instead.
+   */
+  @Get('files/:fileId/preview')
+  @Header('Cache-Control', 'no-store')
+  async createPreview(
+    @Param('fileId', new ParseUUIDPipe({ version: '4' })) fileId: string,
+    @Headers('authorization') authorization: string | undefined,
+  ) {
+    const actor = await this.auth.authorizeInstructor(token(authorization));
+    return this.forms.createPreview({ actorAccountId: actor.accountId, fileId });
   }
 
   /**
@@ -427,4 +531,19 @@ function token(authorization: string | undefined): string {
   const value = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
   if (value.length === 0 || value.length > 512) throw new AuthError('UNAUTHENTICATED', 401);
   return value;
+}
+
+function toReviewQueueInput(
+  formId: string,
+  query: CollectionReviewQueueQueryDto,
+  search: string | null,
+) {
+  return {
+    formId,
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? DEFAULT_REVIEW_PAGE_SIZE,
+    search,
+    sort: query.sort ?? 'status',
+    status: query.status ?? null,
+  };
 }

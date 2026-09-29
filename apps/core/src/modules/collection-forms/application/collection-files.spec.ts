@@ -2,6 +2,7 @@ import type { CollectionField } from './collection-field';
 import {
   findSubmissionFileError,
   findUploadRequestError,
+  isPreviewableFile,
   sanitizeDownloadFilename,
   type CollectionFile,
 } from './collection-files';
@@ -81,6 +82,28 @@ describe('findUploadRequestError', () => {
 
   it('enforces the per-field file count', () => {
     expect(findUploadRequestError(uploadField, request, 2)).toBe('FILE_COUNT_EXCEEDED');
+  });
+});
+
+describe('isPreviewableFile', () => {
+  it('previews an inspected JPEG or PNG', () => {
+    expect(isPreviewableFile(file({ detectedContentType: 'image/jpeg' }))).toBe(true);
+    expect(isPreviewableFile(file({ detectedContentType: 'image/png' }))).toBe(true);
+  });
+
+  it('judges by the detected type, not the declared one', () => {
+    expect(
+      isPreviewableFile(
+        file({ declaredContentType: 'image/png', detectedContentType: 'application/pdf' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('never previews a file that has not passed inspection', () => {
+    expect(
+      isPreviewableFile(file({ detectedContentType: 'image/png', status: 'inspecting' })),
+    ).toBe(false);
+    expect(isPreviewableFile(file({ detectedContentType: null, status: 'ready' }))).toBe(false);
   });
 });
 
