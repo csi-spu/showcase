@@ -112,14 +112,28 @@ test.describe('Collection lifecycle', () => {
             ? 'student'
             : heading === '404'
               ? 'not-found'
-              : 'other',
+              : heading === 'ภาพรวมเอกสารนักศึกษา'
+                ? 'dashboard'
+                : heading === 'เข้าสู่ระบบ'
+                  ? 'login'
+                  : 'other',
         );
+        const pathname = new URL(instructorPage.url()).pathname;
+        const routeKind = pathname.includes('/students/')
+          ? 'student'
+          : pathname.includes('/submissions')
+            ? 'submissions'
+            : pathname === '/'
+              ? 'root'
+              : pathname === '/dashboard'
+                ? 'dashboard'
+                : 'other';
         console.error(
           'Safe Instructor page diagnostic',
           JSON.stringify({
             failedResponseStatuses,
             headingKinds,
-            isStudentRoute: new URL(instructorPage.url()).pathname.includes('/students/'),
+            routeKind,
           }),
         );
         throw error;
