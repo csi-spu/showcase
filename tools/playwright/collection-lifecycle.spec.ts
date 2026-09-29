@@ -99,45 +99,13 @@ test.describe('Collection lifecycle', () => {
       });
 
       failedResponseStatuses.length = 0;
-      await row.getByRole('link', { name: /ตรวจคำตอบ/u }).click();
-      const studentHeading = instructorPage.getByRole('heading', {
-        name: collectionScenario.studentName,
-      });
-      try {
-        await expect(studentHeading).toBeVisible();
-      } catch (error: unknown) {
-        const headings = await instructorPage.locator('h1, h2').allTextContents();
-        const headingKinds = headings.map((heading) =>
-          heading === collectionScenario.studentName
-            ? 'student'
-            : heading === '404'
-              ? 'not-found'
-              : heading === 'ภาพรวมเอกสารนักศึกษา'
-                ? 'dashboard'
-                : heading === 'เข้าสู่ระบบ'
-                  ? 'login'
-                  : 'other',
-        );
-        const pathname = new URL(instructorPage.url()).pathname;
-        const routeKind = pathname.includes('/students/')
-          ? 'student'
-          : pathname.includes('/submissions')
-            ? 'submissions'
-            : pathname === '/'
-              ? 'root'
-              : pathname === '/dashboard'
-                ? 'dashboard'
-                : 'other';
-        console.error(
-          'Safe Instructor page diagnostic',
-          JSON.stringify({
-            failedResponseStatuses,
-            headingKinds,
-            routeKind,
-          }),
-        );
-        throw error;
-      }
+      await Promise.all([
+        instructorPage.waitForURL((url) => url.pathname.includes('/students/')),
+        row.getByRole('link', { name: /ตรวจคำตอบ/u }).click(),
+      ]);
+      await expect(
+        instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
+      ).toBeVisible();
       await expect(instructorPage.getByText('1 จาก 1 คน', { exact: true })).toBeVisible();
       expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
       await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
