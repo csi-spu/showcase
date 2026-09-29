@@ -9,13 +9,6 @@ import type { PeopleCatalogCard } from '@/lib/public-catalog-core';
 export const CARD_SCRIM_CLASS =
   'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.92)_0%,rgba(0,0,0,0.55)_42%,rgba(0,0,0,0)_100%)]';
 
-// The photo scrim has to survive a bright photo behind the caption, so it
-// darkens most of the card. An initials tile is a flat, light colour we chose,
-// so it only needs a short scrim under the caption itself — the full-height one
-// washes the tile out to grey and throws away the per-Person colour.
-export const CARD_SCRIM_COMPACT_CLASS =
-  'pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.88)_0%,rgba(0,0,0,0.62)_18%,rgba(0,0,0,0.18)_34%,rgba(0,0,0,0)_52%)]';
-
 const FALLBACK_COMPOSITIONS = [
   {
     accent: 'right-8 top-20 rotate-6',
@@ -41,11 +34,16 @@ const FALLBACK_COMPOSITIONS = [
 // over a soft graphic backdrop. The palette and composition are derived from
 // the Public ID so a Person keeps the same tile across renders and surfaces,
 // while an adjacent grid of People without photos still reads as varied.
+// The tile is a flat, light colour we chose, so its caption scrim is short and
+// tinted with the tile's own ink: a black one turns the pastel to muddy grey
+// and throws away the per-Person colour.
 const PORTRAIT_FALLBACK_THEMES = [
   {
     dot: 'bg-[rgb(145_0_123_/_0.34)]',
     initials: 'text-[rgb(112_0_95_/_0.82)]',
     panel: 'bg-[rgb(145_0_123_/_0.12)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(112_0_95_/_0.95)_0%,rgb(112_0_95_/_0.85)_22%,rgb(112_0_95_/_0.35)_40%,rgb(112_0_95_/_0)_58%)]',
     ring: 'border-[rgb(145_0_123_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(250_238_248)_0%,rgb(240_222_237)_100%)]',
   },
@@ -53,6 +51,8 @@ const PORTRAIT_FALLBACK_THEMES = [
     dot: 'bg-[rgb(12_74_110_/_0.32)]',
     initials: 'text-[rgb(12_63_94_/_0.82)]',
     panel: 'bg-[rgb(12_74_110_/_0.12)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(12_63_94_/_0.95)_0%,rgb(12_63_94_/_0.85)_22%,rgb(12_63_94_/_0.35)_40%,rgb(12_63_94_/_0)_58%)]',
     ring: 'border-[rgb(12_74_110_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(236_245_251)_0%,rgb(218_233_244)_100%)]',
   },
@@ -60,6 +60,8 @@ const PORTRAIT_FALLBACK_THEMES = [
     dot: 'bg-[rgb(154_52_18_/_0.32)]',
     initials: 'text-[rgb(124_45_18_/_0.8)]',
     panel: 'bg-[rgb(154_52_18_/_0.12)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(124_45_18_/_0.95)_0%,rgb(124_45_18_/_0.85)_22%,rgb(124_45_18_/_0.35)_40%,rgb(124_45_18_/_0)_58%)]',
     ring: 'border-[rgb(154_52_18_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(253_243_235)_0%,rgb(246_228_213)_100%)]',
   },
@@ -67,6 +69,8 @@ const PORTRAIT_FALLBACK_THEMES = [
     dot: 'bg-[rgb(21_94_79_/_0.32)]',
     initials: 'text-[rgb(19_78_66_/_0.82)]',
     panel: 'bg-[rgb(21_94_79_/_0.12)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(19_78_66_/_0.95)_0%,rgb(19_78_66_/_0.85)_22%,rgb(19_78_66_/_0.35)_40%,rgb(19_78_66_/_0)_58%)]',
     ring: 'border-[rgb(21_94_79_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(236_248_243)_0%,rgb(215_236_228)_100%)]',
   },
@@ -74,6 +78,8 @@ const PORTRAIT_FALLBACK_THEMES = [
     dot: 'bg-[rgb(76_29_149_/_0.3)]',
     initials: 'text-[rgb(67_26_130_/_0.8)]',
     panel: 'bg-[rgb(76_29_149_/_0.11)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(67_26_130_/_0.95)_0%,rgb(67_26_130_/_0.85)_22%,rgb(67_26_130_/_0.35)_40%,rgb(67_26_130_/_0)_58%)]',
     ring: 'border-[rgb(76_29_149_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(243_240_252)_0%,rgb(227_221_246)_100%)]',
   },
@@ -81,6 +87,8 @@ const PORTRAIT_FALLBACK_THEMES = [
     dot: 'bg-[rgb(133_77_14_/_0.32)]',
     initials: 'text-[rgb(113_63_18_/_0.8)]',
     panel: 'bg-[rgb(133_77_14_/_0.12)]',
+    scrim:
+      'bg-[linear-gradient(to_top,rgb(113_63_18_/_0.95)_0%,rgb(113_63_18_/_0.85)_22%,rgb(113_63_18_/_0.35)_40%,rgb(113_63_18_/_0)_58%)]',
     ring: 'border-[rgb(133_77_14_/_0.09)]',
     surface: 'bg-[linear-gradient(150deg,rgb(252_247_233)_0%,rgb(245_234_206)_100%)]',
   },
@@ -115,8 +123,11 @@ export function personInitials(person: Pick<PeopleCatalogCard, 'firstName' | 'la
   return initials === '' ? '\u2014' : initials;
 }
 
-export function personScrimClass(person: Pick<PeopleCatalogCard, 'photo'>): string {
-  return person.photo === null ? CARD_SCRIM_COMPACT_CLASS : CARD_SCRIM_CLASS;
+export function personScrimClass(person: Pick<PeopleCatalogCard, 'photo' | 'publicId'>): string {
+  if (person.photo !== null) return CARD_SCRIM_CLASS;
+
+  const theme = PORTRAIT_FALLBACK_THEMES[portraitFallbackVariant(person.publicId)]!;
+  return cn('pointer-events-none absolute inset-0', theme.scrim);
 }
 
 export function portraitFallbackVariant(publicId: string): number {

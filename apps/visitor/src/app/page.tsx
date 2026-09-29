@@ -147,6 +147,7 @@ export default async function Home() {
               description: t('featured.combined.description'),
               eyebrow: t('featured.combined.eyebrow'),
               title: t('featured.combined.title'),
+              titleSecondLine: t('featured.combined.titleSecondLine'),
               viewAll: t('featured.combined.viewAll'),
             },
             competitionEntries: {
@@ -175,6 +176,7 @@ export default async function Home() {
             },
             emptyPeople: t('featured.emptyPeople'),
             emptyWorks: t('featured.emptyWorks'),
+            formatCount: (count) => t('featured.stats.count', { count }),
             personPhotoAlt: (name) => t('featured.personPhotoAlt', { name }),
             people: {
               artworkAlt: t('featured.people.artworkAlt'),
@@ -186,13 +188,26 @@ export default async function Home() {
               description: t('featured.people.description'),
               eyebrow: t('featured.people.eyebrow'),
               title: t('featured.people.title'),
+              titleSecondLine: t('featured.people.titleSecondLine'),
               viewAll: t('featured.people.viewAll'),
             },
             posterAlt: (title) => t('posterAlt', { title }),
             publishedWorks: (count) => t('featured.publishedWorks', { count }),
+            stats: {
+              competitionEntries: t('featured.stats.competitionEntries'),
+              label: t('featured.stats.label'),
+              people: t('featured.stats.people'),
+              works: t('featured.stats.works'),
+            },
             studentEntryYear: (year) => t('featured.studentEntryYear', { year }),
           }}
           people={people.items}
+          stats={{
+            competitionEntries: competitionEntries.totalCount,
+            people: people.totalCount,
+            works:
+              courseWorks.totalCount + competitionEntries.totalCount + academicArticles.totalCount,
+          }}
         />
       </div>
     </PublicShell>

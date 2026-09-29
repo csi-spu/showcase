@@ -1,6 +1,14 @@
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
-import { ArrowRightIcon, ArrowUpRightIcon, UsersRoundIcon } from 'lucide-react';
+import {
+  ArrowRightIcon,
+  ArrowUpRightIcon,
+  FileTextIcon,
+  type LucideIcon,
+  StarIcon,
+  TrophyIcon,
+  UsersRoundIcon,
+} from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +32,22 @@ interface SectionLabels {
   description: string;
   eyebrow: string;
   title: string;
+  /** Continues the title on its own line, for a denser two-line heading. */
+  titleSecondLine?: string | undefined;
   viewAll: string;
+}
+
+interface CatalogStats {
+  competitionEntries: number;
+  people: number;
+  works: number;
+}
+
+interface CatalogStatsLabels {
+  competitionEntries: string;
+  label: string;
+  people: string;
+  works: string;
 }
 
 interface HomepageFeaturedCollectionsLabels {
@@ -35,11 +58,19 @@ interface HomepageFeaturedCollectionsLabels {
   courseWorks: SectionLabels;
   emptyPeople: string;
   emptyWorks: string;
+  formatCount(count: number): string;
   people: SectionLabels;
   personPhotoAlt(name: string): string;
   posterAlt(title: string): string;
   publishedWorks(count: number): string;
+  stats: CatalogStatsLabels;
   studentEntryYear(year: number): string;
+}
+
+/** Catalogue totals shown once, in the header of the first work section. */
+interface CatalogStatsSummary {
+  labels: CatalogStatsLabels;
+  items: { icon: LucideIcon; label: string; tone: string; value: string }[];
 }
 
 /** Below this a category cannot carry its own section, so all works merge into one. */
@@ -65,15 +96,16 @@ const SECTION_ARTWORK: Record<WorkSectionKind | 'people', { shape: ArtworkShape;
 };
 
 /**
- * Fractional bases keep the next card partly visible so the rail reads as
- * scrollable without needing a permanent affordance.
+ * On narrow viewports fractional bases keep the next card partly visible so the
+ * rail reads as scrollable. Merged and people rails end on whole cards at wide
+ * widths, where a half-cut card reads as broken and hover arrows signal scroll.
  */
 const SECTION_CAROUSEL_ITEM_CLASSES: Record<WorkSectionKind | 'people', string> = {
   'academic-article': 'basis-4/5 sm:basis-2/5 lg:basis-[22%]',
   combined: 'basis-4/5 sm:basis-1/2 lg:basis-1/4',
   'competition-entry': 'basis-4/5 sm:basis-1/2 lg:basis-[38%]',
   'course-work': 'basis-4/5 sm:basis-[45%] lg:basis-[28%]',
-  people: 'basis-3/5 sm:basis-[38%] lg:basis-[18%]',
+  people: 'basis-3/5 sm:basis-1/3 lg:basis-1/5',
 };
 
 /**
@@ -112,19 +144,52 @@ const ARTWORK_LAYOUT_CLASSES: Record<
   },
 };
 
+/** Card chrome shared by the work poster and person portrait cards. */
+const CARD_LINK_CLASS =
+  'group relative block overflow-hidden rounded-media border border-border shadow-[0_1.25rem_2.5rem_-1.5rem_rgba(19,15,25,0.55)] transition-shadow duration-300 hover:shadow-[0_1.5rem_3rem_-1.25rem_rgba(19,15,25,0.6)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary motion-reduce:transition-none';
+/** An opaque tile stays visible over both dark photos and light initials tiles. */
+const CARD_ARROW_CLASS =
+  'absolute top-3 right-3 grid size-9 place-items-center rounded-control bg-white/90 text-foreground shadow-sm backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none';
+const CARD_LIGHT_PILL_CLASS = 'border-white/60 bg-white/85 text-foreground backdrop-blur-sm';
+
 export function HomepageFeaturedCollections({
   academicArticles,
   competitionEntries,
   courseWorks,
   labels,
   people,
+  stats,
 }: {
   academicArticles: WorkCatalogCard[];
   competitionEntries: WorkCatalogCard[];
   courseWorks: WorkCatalogCard[];
   labels: HomepageFeaturedCollectionsLabels;
   people: PeopleCatalogCard[];
+  stats: CatalogStats;
 }) {
+  const statsSummary: CatalogStatsSummary = {
+    items: [
+      {
+        icon: FileTextIcon,
+        label: labels.stats.works,
+        tone: 'bg-primary-soft text-primary',
+        value: labels.formatCount(stats.works),
+      },
+      {
+        icon: UsersRoundIcon,
+        label: labels.stats.people,
+        tone: 'bg-information-background text-information',
+        value: labels.formatCount(stats.people),
+      },
+      {
+        icon: TrophyIcon,
+        label: labels.stats.competitionEntries,
+        tone: 'bg-warning-background text-warning',
+        value: labels.formatCount(stats.competitionEntries),
+      },
+    ],
+    labels: labels.stats,
+  };
   const categories = [courseWorks, competitionEntries, academicArticles];
   // While any category is too thin to carry its own section, a per-category
   // layout reads as gaps in the catalogue rather than as a curated homepage.
@@ -143,11 +208,11 @@ export function HomepageFeaturedCollections({
           categoryBadge={labels.categoryBadge}
           empty={labels.emptyWorks}
           href="/works"
-          isHeaderReversed={false}
           labels={labels.combined}
           posterAlt={labels.posterAlt}
           sectionId="featured-combined-works"
           sectionKind="combined"
+          stats={statsSummary}
           works={combined}
         />
         <PeopleCollectionSection labels={labels} people={people} />
@@ -161,17 +226,16 @@ export function HomepageFeaturedCollections({
         empty={labels.emptyWorks}
         href="/works?category=course_work"
         labels={labels.courseWorks}
-        isHeaderReversed={false}
         posterAlt={labels.posterAlt}
         sectionId="featured-course-works"
         sectionKind="course-work"
+        stats={statsSummary}
         works={courseWorks}
       />
       <WorkCollectionSection
         empty={labels.emptyWorks}
         href="/works?category=competition_entry"
         labels={labels.competitionEntries}
-        isHeaderReversed
         posterAlt={labels.posterAlt}
         sectionId="featured-competition-entries"
         sectionKind="competition-entry"
@@ -181,7 +245,6 @@ export function HomepageFeaturedCollections({
         empty={labels.emptyWorks}
         href="/works?category=academic_article"
         labels={labels.academicArticles}
-        isHeaderReversed={false}
         posterAlt={labels.posterAlt}
         sectionId="featured-academic-articles"
         sectionKind="academic-article"
@@ -196,21 +259,21 @@ function WorkCollectionSection({
   categoryBadge,
   empty,
   href,
-  isHeaderReversed,
   labels,
   posterAlt,
   sectionId,
   sectionKind,
+  stats,
   works,
 }: {
   categoryBadge?: Record<WorkCatalogCard['category'], string> | undefined;
   empty: string;
   href: string;
-  isHeaderReversed: boolean;
   labels: SectionLabels;
   posterAlt(title: string): string;
   sectionId: string;
   sectionKind: WorkSectionKind;
+  stats?: CatalogStatsSummary | undefined;
   works: WorkCatalogCard[];
 }) {
   return (
@@ -224,8 +287,8 @@ function WorkCollectionSection({
           artwork={SECTION_ARTWORK[sectionKind]}
           href={href}
           id={sectionId}
-          isReversed={isHeaderReversed}
           labels={labels}
+          stats={stats}
         />
         {works.length === 0 ? (
           <CatalogEmptyState message={empty} />
@@ -262,73 +325,72 @@ function CollectionHeader({
   artwork,
   href,
   id,
-  isReversed,
   labels,
+  stats,
 }: {
   artwork: { shape: ArtworkShape; src: string };
   href: string;
   id: string;
-  isReversed: boolean;
   labels: SectionLabels;
+  stats?: CatalogStatsSummary | undefined;
 }) {
   const layout = ARTWORK_LAYOUT_CLASSES[artwork.shape];
 
   return (
-    // A contained, tinted panel echoes the hero surface, so the illustration reads
-    // as lit inside a frame rather than floating on the bare page background.
+    // The header sits on the page itself so the collection below reads as part of
+    // the same composition; a soft glow grounds the artwork instead of a panel.
     <header
-      className="relative isolate grid items-center overflow-hidden rounded-media bg-primary-soft px-6 py-8 md:min-h-[20rem] md:grid-cols-12 md:px-10 md:py-10"
-      data-header-direction={isReversed ? 'reverse' : 'normal'}
-      data-header-surface="panel"
+      className="relative isolate grid items-center gap-8 md:min-h-[20rem] md:grid-cols-12 md:gap-0"
+      data-header-surface="open"
     >
-      {/* Grounds the artwork in the panel: without it the illustration sits on flat
-          fill and detaches from the copy beside it. */}
       <div
         aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute -z-10 hidden aspect-square w-[42rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--primary),transparent_82%)_0%,transparent_70%)] md:block',
-          isReversed ? '-left-32' : '-right-32',
-        )}
+        className="pointer-events-none absolute top-1/2 -right-40 -z-10 hidden aspect-square w-[40rem] -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--primary),transparent_86%)_0%,transparent_68%)] md:block"
       />
-      <div
-        className={cn(
-          'relative z-10 grid content-center gap-4 py-2',
-          layout.copy,
-          isReversed ? 'md:order-2 md:pl-10' : 'md:pr-10',
-        )}
-      >
+      <div className={cn('relative z-10 grid content-center gap-5 md:pr-10', layout.copy)}>
         <Badge
-          className="w-fit border-primary/25 bg-white/70 text-primary backdrop-blur-sm"
+          className="border-primary/15 bg-primary-soft px-3 py-1 text-primary"
           variant="outline"
         >
+          <StarIcon aria-hidden="true" data-icon="inline-start" fill="currentColor" />
           {labels.eyebrow}
         </Badge>
         <h2
-          className="text-[clamp(2rem,3.4vw,3.25rem)] leading-[1.1] font-semibold tracking-[-0.05em] text-balance"
+          className="text-[clamp(2.5rem,4.6vw,4.5rem)] leading-[1.12] font-semibold tracking-[-0.04em] text-balance text-foreground"
           id={id}
         >
-          {labels.title}
+          {labels.titleSecondLine === undefined ? (
+            labels.title
+          ) : (
+            <>
+              <span className="block">{labels.title}</span>
+              <span className="block w-fit bg-[linear-gradient(90deg,var(--primary)_0%,color-mix(in_oklch,var(--primary),#6d28d9_60%)_100%)] bg-clip-text pb-[0.08em] text-transparent">
+                {labels.titleSecondLine}
+              </span>
+            </>
+          )}
         </h2>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
           {labels.description}
         </p>
-        <Link
-          className={cn(
-            buttonVariants({ variant: 'link' }),
-            'mt-1 h-auto w-fit px-0 transition-transform duration-200 hover:translate-x-1 motion-reduce:transform-none',
-          )}
-          href={href}
-        >
-          {labels.viewAll}
-          <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
-        </Link>
+        <div className="mt-1 flex flex-wrap items-center gap-x-6 gap-y-5">
+          <Link
+            className={buttonVariants({
+              className:
+                'transition-[transform,background-color] duration-200 hover:-translate-y-0.5 motion-reduce:transform-none',
+              size: 'lg',
+            })}
+            data-collection-cta="true"
+            href={href}
+          >
+            {labels.viewAll}
+            <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
+          </Link>
+          {stats === undefined ? null : <CatalogStatsList stats={stats} />}
+        </div>
       </div>
       <div
-        className={cn(
-          'relative min-h-56 md:min-h-[20rem]',
-          layout.artwork,
-          isReversed && 'md:order-1',
-        )}
+        className={cn('relative min-h-56 md:min-h-[20rem]', layout.artwork)}
         data-artwork-emphasis="balanced"
         data-artwork-shape={artwork.shape}
         data-artwork-shadow={layout.shadowName}
@@ -346,6 +408,31 @@ function CollectionHeader({
   );
 }
 
+function CatalogStatsList({ stats }: { stats: CatalogStatsSummary }) {
+  return (
+    <dl
+      aria-label={stats.labels.label}
+      className="flex flex-wrap items-center gap-x-6 gap-y-4 sm:border-l sm:border-border sm:pl-6"
+      data-catalog-stats="true"
+    >
+      {stats.items.map(({ icon: Icon, label, tone, value }) => (
+        <div className="flex items-center gap-3" key={label}>
+          <span
+            aria-hidden="true"
+            className={cn('grid size-11 shrink-0 place-items-center rounded-control', tone)}
+          >
+            <Icon className="size-5" />
+          </span>
+          <div className="flex flex-col">
+            <dt className="order-2 text-sm text-muted-foreground">{label}</dt>
+            <dd className="order-1 text-xl leading-tight font-semibold tabular-nums">{value}</dd>
+          </div>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function FeaturedWorkCard({
   categoryLabel,
   fallbackVariant,
@@ -359,54 +446,50 @@ function FeaturedWorkCard({
 }) {
   return (
     <article data-work-card-layout="poster">
-      <Link
-        className="group relative block aspect-[5/7] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-        href={`/works/${work.workPublicId}`}
-      >
+      <Link className={cn(CARD_LINK_CLASS, 'aspect-[7/8]')} href={`/works/${work.workPublicId}`}>
         {work.poster === null ? (
           <WorkPosterFallback title={work.title} variant={fallbackVariant} />
         ) : (
           <WorkPosterImage
             alt={posterAlt}
-            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transform-none"
+            // Posters are portrait and usually lead with their headline, so the
+            // shorter card keeps the top of the poster rather than its centre.
+            className="h-full w-full object-cover object-top transition-transform duration-500 ease-out group-hover:scale-[1.035] motion-reduce:transform-none"
             fallback={<WorkPosterFallback title={work.title} variant={fallbackVariant} />}
             loading="lazy"
             poster={work.poster}
-            sizes="(max-width: 639px) 80vw, (max-width: 1023px) 50vw, 30vw"
+            sizes="(max-width: 639px) 80vw, (max-width: 1023px) 50vw, 25vw"
             workPublicId={work.workPublicId}
           />
         )}
         <div aria-hidden="true" className={CARD_SCRIM_CLASS} />
-        {/* The shared scrim only darkens the foot of the card, so badges moved to
-            the head need their own gradient to stay legible over bright posters. */}
+        {/* The shared scrim only darkens the foot of the card, so badges at the
+            head need their own gradient to stay legible over bright posters. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.65)_0%,rgba(0,0,0,0.25)_55%,rgba(0,0,0,0)_100%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.45)_0%,rgba(0,0,0,0)_100%)]"
         />
-        <div className="absolute inset-x-3 top-3 flex flex-wrap items-start gap-1.5 pr-11">
+        <div className="absolute inset-x-3 top-3 flex flex-wrap items-start gap-1.5 pr-12">
           {categoryLabel === undefined ? null : (
-            <Badge
-              className="w-fit border-white/35 bg-white/25 text-white backdrop-blur-sm"
-              variant="outline"
-            >
+            <Badge className={CARD_LIGHT_PILL_CLASS} variant="outline">
               {categoryLabel}
             </Badge>
           )}
           <Badge
-            className="w-fit border-white/35 bg-white/15 text-white backdrop-blur-sm"
+            className="border-white/25 bg-black/40 text-white tabular-nums backdrop-blur-sm"
             variant="outline"
           >
             {work.academicPeriod.year} / {work.academicPeriod.semester}
           </Badge>
         </div>
-        <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+        <span className={CARD_ARROW_CLASS}>
           <ArrowUpRightIcon aria-hidden="true" className="size-4" />
         </span>
-        <div className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5">
+        <div className="absolute inset-x-0 bottom-0 grid gap-1.5 p-4 sm:p-5">
           <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white [text-shadow:0_1px_6px_rgb(0_0_0_/_60%)]">
             {work.title}
           </h3>
-          <p className="line-clamp-2 text-sm leading-relaxed text-white/85 text-pretty [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
+          <p className="line-clamp-2 text-sm leading-relaxed text-white/80 text-pretty [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
             {work.summary}
           </p>
         </div>
@@ -433,7 +516,6 @@ function PeopleCollectionSection({
           artwork={SECTION_ARTWORK.people}
           href="/people"
           id="featured-people"
-          isReversed
           labels={labels.people}
         />
         {people.length === 0 ? (
@@ -447,7 +529,7 @@ function PeopleCollectionSection({
                 <BlurFade blur="4px" delay={personIndex * 0.07} duration={0.4} inView>
                   <article data-person-card-layout="portrait">
                     <Link
-                      className="group relative block aspect-[4/5] overflow-hidden rounded-media border border-border focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                      className={cn(CARD_LINK_CLASS, 'aspect-[4/5]')}
                       href={`/people/${person.publicId}`}
                     >
                       <PersonPortrait
@@ -456,23 +538,23 @@ function PeopleCollectionSection({
                         sizes="(max-width: 639px) 60vw, (max-width: 1023px) 38vw, 20vw"
                       />
                       <div aria-hidden="true" className={personScrimClass(person)} />
-                      <span className="absolute top-3 right-3 grid size-10 place-items-center rounded-control bg-white/15 text-white backdrop-blur-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none">
+                      <Badge
+                        className={cn(CARD_LIGHT_PILL_CLASS, 'absolute top-3 left-3')}
+                        variant="outline"
+                      >
+                        {labels.studentEntryYear(person.entryYear)}
+                      </Badge>
+                      <span className={CARD_ARROW_CLASS}>
                         <ArrowUpRightIcon aria-hidden="true" className="size-4" />
                       </span>
                       <div
-                        className="absolute inset-x-0 bottom-0 grid gap-2 p-4 sm:p-5"
+                        className="absolute inset-x-0 bottom-0 grid gap-1.5 p-4 sm:p-5"
                         data-person-card-meta="true"
                       >
-                        <Badge
-                          className="w-fit border-white/35 bg-white/15 text-white backdrop-blur-sm"
-                          variant="outline"
-                        >
-                          {labels.studentEntryYear(person.entryYear)}
-                        </Badge>
                         <h3 className="line-clamp-2 text-lg leading-snug font-semibold text-balance text-white [text-shadow:0_1px_6px_rgb(0_0_0_/_60%)]">
                           {`${person.firstName} ${person.lastName}`}
                         </h3>
-                        <p className="text-sm font-medium text-white/85 tabular-nums [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
+                        <p className="text-sm font-medium text-white/80 tabular-nums [text-shadow:0_1px_4px_rgb(0_0_0_/_60%)]">
                           {labels.publishedWorks(person.publishedWorkCount)}
                         </p>
                       </div>
