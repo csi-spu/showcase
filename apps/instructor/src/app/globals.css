@@ -161,7 +161,31 @@ html:has([data-sticky-save-bar]) {
   }
 }
 
+/*
+ * Response charts grow by transform only, so drawing a long list of bars never
+ * triggers layout. A bar's origin is its baseline, set where it is drawn.
+ */
+@keyframes bar-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes bar-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  [data-animate='bar-grow-x'] {
+    animation: bar-grow-x 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  [data-animate='bar-grow-y'] {
+    animation: bar-grow-y 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   [data-animate='progress-fill'] {
     animation: progress-fill 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }

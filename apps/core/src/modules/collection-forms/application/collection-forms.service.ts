@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { AUTH_CLOCK } from '../../auth/application/auth.ports';
-import type { Clock } from '../../auth/application/auth.ports';
+import { AUTH_CLOCK, AUTH_IDENTITY_PROTECTOR } from '../../auth/application/auth.ports';
+import type { Clock, IdentityProtector } from '../../auth/application/auth.ports';
 import {
   MAX_FILE_BYTES,
   findAnswerError,
@@ -9,7 +9,11 @@ import {
   type CollectionAnswers,
   type CollectionField,
 } from './collection-field';
-import { findUploadRequestError, sanitizeDownloadFilename } from './collection-files';
+import {
+  findUploadRequestError,
+  isPreviewableFile,
+  sanitizeDownloadFilename,
+} from './collection-files';
 import {
   FORM_HISTORY_PAGE_SIZE,
   decodeFormHistoryCursor,
@@ -37,6 +41,17 @@ import {
 } from './collection-exports';
 import { MAX_NOTIFICATION_FEED, MAX_REMINDER_BATCH } from './collection-notifications';
 import {
+  PAGED_SUMMARY_FIELD_TYPES,
+  RESPONSE_ANSWER_PAGE_SIZE,
+  RESPONSE_SUMMARY_PAGE_SIZE,
+  buildFieldSummaries,
+  decodeAnswerCursor,
+  decodeOffsetCursor,
+  encodeAnswerCursor,
+  encodeOffsetCursor,
+  type CollectionValueCount,
+} from './collection-responses';
+import {
   COLLECTION_FILE_INSPECTOR,
   COLLECTION_FILE_STORAGE,
   COLLECTION_FORMS_REPOSITORY,
@@ -47,9 +62,15 @@ import type {
   CollectionFileInspector,
   CollectionFileStorage,
   CollectionFormsRepository,
+  CollectionStudentAnswer,
   PendingNotification,
 } from './collection-forms.ports';
 import { resolvePrefills, type ResolvedPrefill } from './reusable-values';
+import {
+  toReviewSearch,
+  type CollectionReviewSort,
+  type CollectionReviewStatus,
+} from './collection-review-queue';
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 5_000;
@@ -68,6 +89,7 @@ export class CollectionFormsService {
     @Inject(AUTH_CLOCK) private readonly clock: Clock,
     @Inject(COLLECTION_FILE_STORAGE) private readonly storage: CollectionFileStorage,
     @Inject(COLLECTION_FILE_INSPECTOR) private readonly inspector: CollectionFileInspector,
+    @Inject(AUTH_IDENTITY_PROTECTOR) private readonly identityProtector: IdentityProtector,
   ) {}
 
   async createForm(input: {
@@ -702,15 +724,149 @@ export class CollectionFormsService {
   }
 
   /**
-   * The review queue for one form: who was assigned it and what they submitted.
+   * One page of the review queue for one form: who was assigned it and what
+   * they submitted.
    *
    * Any Instructor may review any form, which is the same rule `checkSubmission`
-   * and `openForm` already apply. Draft answers are not part of this view.
+   * and `openForm` already apply. Draft answers are not part of this view. A
+   * search term may be a Student ID prefix, so it is matched through its hash
+   * and never reaches a query as raw text (ADR 0020).
    */
-  async listFormSubmissions(formId: string) {
-    const result = await this.repository.listFormSubmissions(formId);
+  async listFormSubmissions(input: {
+    formId: string;
+    page: number;
+    pageSize: number;
+    search: string | null;
+    sort: CollectionReviewSort;
+    status: CollectionReviewStatus | null;
+  }) {
+    const result = await this.repository.listFormSubmissions({
+      formId: input.formId,
+      page: input.page,
+      pageSize: input.pageSize,
+      search: toReviewSearch(input.search, (value) => this.identityProtector.hashStudentId(value)),
+      sort: input.sort,
+      status: input.status,
+    });
     if (result === null) throw new CollectionFormsError('FORM_NOT_FOUND', 404);
     return result;
+  }
+
+  /**
+   * One Student's place in the review queue, for moving between Students.
+   *
+   * Answers the same way for a form that does not exist and a Student it never
+   * assigned, as the history read does.
+   */
+  async readReviewPosition(input: {
+    formId: string;
+    pageSize: number;
+    sort: CollectionReviewSort;
+    status: CollectionReviewStatus | null;
+    studentAccountId: string;
+  }) {
+    const result = await this.repository.readReviewPosition(input);
+    if (result === null) throw new CollectionFormsError('OBLIGATION_NOT_FOUND', 404);
+    return result;
+  }
+
+  /**
+   * The Summary view: obligation totals and one aggregate per current field.
+   *
+   * Anonymous by construction. The repository returns counts and text values
+   * only, so nothing here can name the Student who gave an answer.
+   */
+  async readResponseSummary(formId: string) {
+    const form = await this.repository.getForm(formId);
+    if (form === null) throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    const record = await this.repository.readResponseSummary({
+      fields: form.fields,
+      formId,
+      pageSize: RESPONSE_SUMMARY_PAGE_SIZE,
+    });
+    return { fields: buildFieldSummaries(form.fields, record), form, totals: record.totals };
+  }
+
+  /**
+   * One page of one current question's answers.
+   *
+   * `summary` continues a Summary text list: grouped short answers or long
+   * answers, without their authors. `question` lists every answer with the
+   * Student who gave it, for the Question view. A removed question is not
+   * found here, because both views show only the current form.
+   */
+  async readFieldAnswers(input: {
+    cursor: string | undefined;
+    fieldId: string;
+    formId: string;
+    mode: 'question' | 'summary';
+  }): Promise<
+    | { items: CollectionStudentAnswer[]; kind: 'students'; nextCursor: string | null }
+    | { items: CollectionValueCount[]; kind: 'groups'; nextCursor: string | null }
+    | { items: string[]; kind: 'texts'; nextCursor: string | null }
+  > {
+    const form = await this.repository.getForm(input.formId);
+    if (form === null) throw new CollectionFormsError('FORM_NOT_FOUND', 404);
+    const field = form.fields.find((candidate) => candidate.id === input.fieldId);
+    if (field === undefined) throw new CollectionFormsError('FIELD_NOT_FOUND', 404);
+
+    if (input.mode === 'question') {
+      const after = input.cursor === undefined ? null : decodeAnswerCursor(input.cursor);
+      if (input.cursor !== undefined && after === null) this.rejectResponseCursor();
+      const rows = await this.repository.readStudentAnswers({
+        after,
+        field,
+        formId: input.formId,
+        limit: RESPONSE_ANSWER_PAGE_SIZE + 1,
+      });
+      const items = rows.slice(0, RESPONSE_ANSWER_PAGE_SIZE);
+      const last = items.at(-1);
+      return {
+        items,
+        kind: 'students',
+        nextCursor:
+          rows.length > RESPONSE_ANSWER_PAGE_SIZE && last !== undefined
+            ? encodeAnswerCursor(last.position)
+            : null,
+      };
+    }
+
+    if (!PAGED_SUMMARY_FIELD_TYPES.includes(field.type)) {
+      throw new CollectionFormsError('RESPONSE_MODE_UNSUPPORTED', 400);
+    }
+    const offset = input.cursor === undefined ? 0 : decodeOffsetCursor(input.cursor);
+    if (offset === null) this.rejectResponseCursor();
+    const page = {
+      field,
+      formId: input.formId,
+      limit: RESPONSE_SUMMARY_PAGE_SIZE + 1,
+      offset,
+    };
+    const nextCursor = (count: number) =>
+      count > RESPONSE_SUMMARY_PAGE_SIZE
+        ? encodeOffsetCursor(offset + RESPONSE_SUMMARY_PAGE_SIZE)
+        : null;
+    if (field.type === 'short_text') {
+      const groups = await this.repository.readTextAnswerGroups(page);
+      return {
+        items: groups.slice(0, RESPONSE_SUMMARY_PAGE_SIZE),
+        kind: 'groups',
+        nextCursor: nextCursor(groups.length),
+      };
+    }
+    const texts = await this.repository.readTextAnswers(page);
+    return {
+      items: texts.slice(0, RESPONSE_SUMMARY_PAGE_SIZE),
+      kind: 'texts',
+      nextCursor: nextCursor(texts.length),
+    };
+  }
+
+  /* Logged without the cursor or form: an answer cursor can hold an answered value. */
+  private rejectResponseCursor(): never {
+    const errorCode = 'RESPONSE_CURSOR_INVALID';
+    this.logger.warn({ errorCode, operation: 'collection_response_answers_read' });
+    throw new CollectionFormsError(errorCode, 400);
   }
 
   /**
@@ -915,6 +1071,29 @@ export class CollectionFormsService {
       key: file.storageKey,
     });
     return { downloadUrl, filename: sanitizeDownloadFilename(file.originalFilename) };
+  }
+
+  /**
+   * Issues a short-lived signed URL to show one submitted image inline.
+   *
+   * Only a file inspection found to be a JPEG or PNG qualifies: the Instructor
+   * app serves these bytes with the detected type, so anything else would be
+   * rendered as whatever the Student claimed it was.
+   */
+  async createPreview(input: { actorAccountId: string; fileId: string }) {
+    const file = await this.repository.findReadableFile({ ...input, isInstructor: true });
+    if (file === null) throw new CollectionFormsError('FILE_NOT_FOUND', 404);
+    if (file.status !== 'ready') throw new CollectionFormsError('FILE_NOT_READY', 409);
+    const contentType = file.detectedContentType;
+    if (contentType === null || !isPreviewableFile(file)) {
+      throw new CollectionFormsError('FILE_NOT_PREVIEWABLE', 409);
+    }
+
+    const previewUrl = await this.storage.createPresignedGet({
+      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+      key: file.storageKey,
+    });
+    return { contentType, previewUrl };
   }
 
   async attachDraftFile(input: {

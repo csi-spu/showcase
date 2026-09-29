@@ -1,7 +1,9 @@
 'use client';
 
 import { cn } from '@showcase/ui/cn';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState, type ReactNode } from 'react';
 
 const DONUT_TONE_CLASSES = {
   information: 'text-information',
@@ -13,6 +15,8 @@ const DONUT_TONE_CLASSES = {
 export type DonutTone = keyof typeof DONUT_TONE_CLASSES;
 
 export interface DonutSegment {
+  /** Where choosing the segment leads, e.g. the list of the Students it counts. */
+  href?: string;
   label: string;
   tone: DonutTone;
   value: number;
@@ -43,7 +47,9 @@ function percentOf(value: number, total: number): string {
  * twice.
  *
  * Pointing at a segment or its legend entry highlights it and puts its count
- * in the middle; pressing the legend entry keeps it highlighted.
+ * in the middle; pressing the legend entry keeps it highlighted. A segment
+ * with an `href` is a link instead: its legend entry navigates, and so does
+ * the ring for pointer users.
  */
 export function DonutChart({
   centerLabel,
@@ -59,6 +65,7 @@ export function DonutChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+  const router = useRouter();
   const activeIndex = hoveredIndex ?? pinnedIndex;
   const active = activeIndex === null ? undefined : segments[activeIndex];
   let offset = 0;
@@ -88,6 +95,7 @@ export function DonutChart({
                   const length = (segment.value / total) * CIRCUMFERENCE;
                   const dash = `${length} ${CIRCUMFERENCE - length}`;
                   const segmentOffset = offset;
+                  const { href } = segment;
                   offset += length;
                   return (
                     <circle
@@ -101,6 +109,7 @@ export function DonutChart({
                       data-animate="ring-draw"
                       fill="none"
                       key={segment.label}
+                      onClick={href === undefined ? undefined : () => router.push(href)}
                       onMouseEnter={() => setHoveredIndex(index)}
                       onMouseLeave={() => setHoveredIndex(null)}
                       r={RADIUS}
@@ -133,39 +142,56 @@ export function DonutChart({
         </div>
 
         <figcaption className="flex w-full min-w-0 flex-1 flex-col gap-1">
-          {segments.map((segment, index) => (
-            <button
-              aria-pressed={pinnedIndex === index}
-              className={cn(
-                'flex w-full cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-left text-sm transition-[background-color,opacity] duration-200 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none',
-                pinnedIndex === index && 'bg-muted',
-                activeIndex !== null && activeIndex !== index && 'opacity-60',
-              )}
-              key={segment.label}
-              onBlur={() => setHoveredIndex(null)}
-              onClick={() => setPinnedIndex((current) => (current === index ? null : index))}
-              onFocus={() => setHoveredIndex(index)}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
-              type="button"
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'size-2.5 shrink-0 rounded-full bg-current transition-transform duration-200 motion-reduce:transition-none',
-                  DONUT_TONE_CLASSES[segment.tone],
-                  activeIndex === index && 'scale-150',
-                )}
-              />
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{segment.label}</span>
-              <span className="shrink-0 font-medium tabular-nums text-foreground">
-                {segment.value}
-              </span>
-              <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {percentOf(segment.value, total)}
-              </span>
-            </button>
-          ))}
+          {segments.map((segment, index) => {
+            const className = cn(
+              'flex w-full cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-left text-sm transition-[background-color,opacity] duration-200 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none',
+              pinnedIndex === index && 'bg-muted',
+              activeIndex !== null && activeIndex !== index && 'opacity-60',
+            );
+            const highlight = {
+              onBlur: () => setHoveredIndex(null),
+              onFocus: () => setHoveredIndex(index),
+              onMouseEnter: () => setHoveredIndex(index),
+              onMouseLeave: () => setHoveredIndex(null),
+            };
+            const content: ReactNode = (
+              <>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'size-2.5 shrink-0 rounded-full bg-current transition-transform duration-200 motion-reduce:transition-none',
+                    DONUT_TONE_CLASSES[segment.tone],
+                    activeIndex === index && 'scale-150',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {segment.label}
+                </span>
+                <span className="shrink-0 font-medium tabular-nums text-foreground">
+                  {segment.value}
+                </span>
+                <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                  {percentOf(segment.value, total)}
+                </span>
+              </>
+            );
+            return segment.href === undefined ? (
+              <button
+                aria-pressed={pinnedIndex === index}
+                className={className}
+                key={segment.label}
+                onClick={() => setPinnedIndex((current) => (current === index ? null : index))}
+                type="button"
+                {...highlight}
+              >
+                {content}
+              </button>
+            ) : (
+              <Link className={className} href={segment.href} key={segment.label} {...highlight}>
+                {content}
+              </Link>
+            );
+          })}
         </figcaption>
       </figure>
     </div>

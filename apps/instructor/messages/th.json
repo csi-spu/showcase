@@ -566,7 +566,7 @@
     },
     "review": {
       "pageTitle": "ตรวจคำตอบ",
-      "pageDescription": "ดูคำตอบและเอกสารที่นักศึกษาส่ง แล้วบันทึกผลการตรวจ",
+      "pageDescription": "ดูคำตอบทั้งภาพรวม รายคำถาม และรายคน แล้วบันทึกผลการตรวจ",
       "openAction": "ตรวจคำตอบ",
       "empty": "ยังไม่มีนักศึกษาในแบบฟอร์มนี้",
       "emptyDescription": "เพิ่มนักศึกษาเข้ากลุ่มก่อน จึงจะมีคำตอบให้ตรวจ",
@@ -593,11 +593,9 @@
       "requestChangesTitle": "ขอให้นักศึกษาแก้ไข",
       "requestChangesDescription": "นักศึกษาจะกลับมาแก้ไขคำตอบได้อีกครั้ง และจะเห็นเหตุผลที่ระบุไว้",
       "confirm": "บันทึกผล",
-      "cancel": "ยกเลิก",
       "saving": "กำลังบันทึก…",
       "saved": "บันทึกผลการตรวจแล้ว",
       "latestReason": "เหตุผลที่ขอให้แก้ไขล่าสุด",
-      "submissionVersion": "ฉบับที่ {version}",
       "filtersLabel": "ค้นหาและจัดเรียงรายการ",
       "searchLabel": "ค้นหาชื่อหรือรหัสนักศึกษา",
       "searchPlaceholder": "พิมพ์ชื่อ นามสกุล หรือรหัสนักศึกษา",
@@ -610,13 +608,13 @@
       "sortSubmittedAsc": "ส่งก่อนขึ้นก่อน",
       "displayMenu": "ตัวเลือกการแสดงผล",
       "displayColumns": "คอลัมน์",
-      "displayActions": "ปุ่มการจัดการ",
       "columnFirstSubmittedAt": "ส่งครั้งแรก",
       "columnVersion": "ฉบับที่",
-      "showHistoryAction": "ปุ่มดูประวัติ",
       "resultCount": "แสดง {from}–{to} จาก {total} คน",
       "noMatch": "ไม่พบนักศึกษาที่ตรงกับเงื่อนไข",
       "noMatchDescription": "ลองเปลี่ยนคำค้นหาหรือสถานะที่เลือก",
+      "loadFailed": "โหลดรายการไม่สำเร็จ รายการที่แสดงอยู่ยังเป็นผลก่อนหน้า",
+      "retry": "ลองอีกครั้ง",
       "clearFilters": "ล้างตัวกรอง",
       "paginationLabel": "เลือกหน้า",
       "pageSizeLabel": "แถวต่อหน้า",
@@ -625,7 +623,8 @@
       "pageLabel": "หน้า {page}",
       "late": "ส่งช้า",
       "overdue": "เลยกำหนด",
-      "noSubmissionAction": "ยังไม่มีคำตอบ"
+      "noSubmissionAction": "ยังไม่มีคำตอบ",
+      "openActionLabel": "ตรวจคำตอบของ {name}"
     },
     "share": {
       "action": "แชร์ให้นักศึกษา",
@@ -674,15 +673,9 @@
       "notFound": "ไม่พบเทมเพลตนี้"
     },
     "history": {
-      "pageTitle": "ประวัติการส่ง",
-      "pageDescription": "ทุกฉบับที่นักศึกษาเคยส่ง พร้อมผลการตรวจของแต่ละฉบับ เรียงจากล่าสุดไปเก่าสุด",
-      "openAction": "ดูประวัติการส่ง",
-      "openActionLabel": "ดูประวัติการส่งของ {name}",
       "empty": "ยังไม่มีประวัติการส่ง",
       "emptyDescription": "นักศึกษาคนนี้ยังไม่เคยส่งคำตอบ จึงยังไม่มีประวัติให้ดู",
       "versionHeading": "ฉบับที่ {version}",
-      "submittedAt": "ส่งเมื่อ {date}",
-      "currentVersion": "ฉบับล่าสุด",
       "checkingHeading": "ผลการตรวจ",
       "notCheckedYet": "ฉบับนี้ยังไม่ได้ตรวจ",
       "decisionPassed": "ผ่าน",
@@ -690,8 +683,7 @@
       "decisionBy": "โดย {name} เมื่อ {date}",
       "firstSubmittedAt": "ส่งครั้งแรกเมื่อ {date}",
       "late": "ส่งครั้งแรกช้ากว่ากำหนด",
-      "onTime": "ส่งครั้งแรกภายในกำหนด",
-      "backToReview": "กลับไปหน้าตรวจคำตอบ"
+      "onTime": "ส่งครั้งแรกภายในกำหนด"
     },
     "editHistory": {
       "action": "ประวัติการแก้ไข",
@@ -789,6 +781,99 @@
       "buildingHint": "ไฟล์กำลังถูกสร้างเบื้องหลัง กดรีเฟรชเพื่อดูสถานะล่าสุด",
       "expiryHint": "ไฟล์ที่สร้างเสร็จจะเก็บไว้ 24 ชั่วโมง หลังจากนั้นต้องสั่งส่งออกใหม่",
       "notAvailable": "—"
+    },
+    "responses": {
+      "viewsLabel": "มุมมองคำตอบ",
+      "views": {
+        "summary": "ภาพรวม",
+        "question": "รายคำถาม",
+        "individual": "รายคน"
+      },
+      "loadFailed": "โหลดคำตอบไม่สำเร็จ",
+      "loadFailedDescription": "กรุณาโหลดหน้านี้ใหม่อีกครั้งในภายหลัง",
+      "showMore": "ดูเพิ่มเติม",
+      "loadingMore": "กำลังโหลด…",
+      "loadMoreFailed": "โหลดรายการเพิ่มไม่สำเร็จ รายการที่แสดงอยู่ยังคงอยู่",
+      "retry": "ลองอีกครั้ง",
+      "people": "{count} คน",
+      "summary": {
+        "anonymousNote": "ภาพรวมไม่แสดงชื่อผู้ตอบ นับจากคำตอบล่าสุดของนักศึกษาที่ส่งแล้ว",
+        "totalsTitle": "สถานะการส่งคำตอบ",
+        "totalsCenter": "คน",
+        "submittedOf": "ส่งแล้ว {submitted} จาก {assigned} คน",
+        "segmentLabel": "{status} {count} คน ดูรายชื่อ",
+        "empty": "ยังไม่มีคำตอบ",
+        "emptyDescription": "เมื่อนักศึกษาส่งคำตอบ ภาพรวมของแต่ละคำถามจะแสดงที่นี่",
+        "answeredBy": "ตอบ {count} คน",
+        "multipleAllowed": "เลือกได้หลายข้อ",
+        "otherOption": "ตัวเลือกที่ถูกเปลี่ยนหรือลบ",
+        "optionBar": "{option}: {count} คน ({percent})",
+        "optionBarLabel": "{option}: {count} คน ({percent}) ดูรายชื่อผู้ตอบ",
+        "stats": {
+          "count": "จำนวนคำตอบ",
+          "min": "ต่ำสุด",
+          "median": "มัธยฐาน",
+          "mean": "ค่าเฉลี่ย",
+          "max": "สูงสุด"
+        },
+        "histogramTitle": "การกระจายของคำตอบ",
+        "rangeBar": "{from} ถึง {to}: {count} คน",
+        "valueBar": "{value}: {count} คน",
+        "dateRange": "ตั้งแต่ {earliest} ถึง {latest}",
+        "monthsTitle": "จำนวนคำตอบรายเดือน",
+        "fileStudents": "นักศึกษาที่แนบไฟล์",
+        "fileTotal": "ไฟล์ทั้งหมด",
+        "fileNotReady": "ไฟล์ที่ยังตรวจสอบไม่ผ่าน",
+        "noAnswers": "ยังไม่มีคำตอบสำหรับคำถามนี้"
+      },
+      "question": {
+        "selectLabel": "เลือกคำถาม",
+        "previous": "คำถามก่อนหน้า",
+        "next": "คำถามถัดไป",
+        "position": "คำถามที่ {position} จาก {total}",
+        "readOnlyNote": "หน้านี้ใช้ดูคำตอบอย่างเดียว บันทึกผลการตรวจได้ที่หน้ารายคน",
+        "empty": "ยังไม่มีคำตอบสำหรับคำถามนี้",
+        "emptyDescription": "คำตอบจะแสดงที่นี่เมื่อนักศึกษาส่งแบบฟอร์มที่ตอบคำถามนี้",
+        "highlighted": "ตัวเลือกที่เลือกจากภาพรวม",
+        "openStudent": "ดูคำตอบทั้งหมดของ {name}"
+      },
+      "individual": {
+        "pageDescription": "คำตอบของนักศึกษาหนึ่งคน พร้อมบันทึกผลการตรวจ",
+        "backToList": "กลับไปหน้ารายคน",
+        "studentsLabel": "เลื่อนดูนักศึกษา",
+        "previousStudent": "นักศึกษาก่อนหน้า",
+        "nextStudent": "นักศึกษาถัดไป",
+        "position": "{position} จาก {total} คน",
+        "outsideFilter": "นักศึกษาคนนี้ไม่อยู่ในรายการที่กรองไว้ ({total} คน)",
+        "studentSelectLabel": "ไปยังนักศึกษาในหน้าเดียวกันของรายการ",
+        "versionLabel": "ฉบับที่แสดง",
+        "versionOption": "ฉบับที่ {version} · {date} · {outcome}",
+        "versionOutcome": {
+          "passed": "ผ่าน",
+          "changes_required": "ขอให้แก้ไข",
+          "pending": "ยังไม่ได้ตรวจ"
+        },
+        "olderVersionNote": "กำลังดูฉบับเก่า ซึ่งดูได้อย่างเดียว บันทึกผลการตรวจได้เฉพาะฉบับล่าสุด",
+        "showLatest": "ดูฉบับล่าสุด",
+        "panelHeading": "สถานะและผลการตรวจ",
+        "roundClosed": "ชุดงานนี้ปิดแล้ว จึงดูคำตอบได้อย่างเดียวและบันทึกผลการตรวจไม่ได้",
+        "withdrawn": "นักศึกษาคนนี้ถอนออกจากกลุ่มแล้ว จึงบันทึกผลการตรวจไม่ได้",
+        "saved": "บันทึกแล้ว",
+        "removedField": "คำถามนี้ถูกลบออกจากแบบฟอร์มแล้ว"
+      },
+      "files": {
+        "openPreview": "ดูภาพ {filename}",
+        "previewFailed": "แสดงภาพไม่ได้ ดาวน์โหลดไฟล์แทนได้",
+        "close": "ปิด",
+        "kilobytes": "{size} KB",
+        "megabytes": "{size} MB",
+        "status": {
+          "quarantined": "รอตรวจสอบไฟล์",
+          "inspecting": "กำลังตรวจสอบไฟล์",
+          "ready": "ตรวจสอบแล้ว",
+          "failed": "ตรวจสอบไฟล์ไม่ผ่าน"
+        }
+      }
     }
   },
   "Students": {

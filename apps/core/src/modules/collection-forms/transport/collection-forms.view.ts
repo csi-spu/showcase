@@ -4,11 +4,23 @@ import type {
   CollectionForm,
   CollectionNotification,
   CollectionReviewEntry,
+  CollectionStudentAnswer,
   CollectionSubmissionHistory,
   DraftFileSelection,
   StudentObligation,
 } from '../application/collection-forms.ports';
 import type { CollectionFormHistoryPage } from '../application/collection-form-history';
+import type {
+  CollectionReviewPage,
+  CollectionReviewPosition,
+  CollectionReviewStudent,
+} from '../application/collection-review-queue';
+import { isPreviewableFile } from '../application/collection-files';
+import type {
+  CollectionFieldSummary,
+  CollectionResponseTotals,
+  CollectionValueCount,
+} from '../application/collection-responses';
 
 /*
  * Transport views for the collection surfaces.
@@ -43,45 +55,64 @@ export function toFileView(file: CollectionFile): CollectionFileView {
   };
 }
 
-function toFileSelectionView(selection: DraftFileSelection): Record<string, CollectionFileView[]> {
+/**
+ * A submitted file as the Instructor sees it.
+ *
+ * `isPreviewable` is derived here so the detected content type, which is
+ * inspection metadata, stays inside Core.
+ */
+export interface InstructorCollectionFileView extends CollectionFileView {
+  isPreviewable: boolean;
+}
+
+export function toInstructorFileView(file: CollectionFile): InstructorCollectionFileView {
+  return { ...toFileView(file), isPreviewable: isPreviewableFile(file) };
+}
+
+function toFileSelectionView<T>(
+  selection: DraftFileSelection,
+  projectFile: (file: CollectionFile) => T,
+): Record<string, T[]> {
   return Object.fromEntries(
-    Object.entries(selection).map(([fieldId, files]) => [fieldId, files.map(toFileView)]),
+    Object.entries(selection).map(([fieldId, files]) => [fieldId, files.map(projectFile)]),
   );
 }
 
 /**
  * The Instructor review queue as an HTTP response.
  *
- * A submitted file still carries ownership and inspection metadata inside Core.
- * Project every file explicitly so those persistence fields cannot cross the
- * transport boundary when the domain object gains a new property.
+ * An index of Students and where each response stands. Answers and files are
+ * read per Student or per question, so they are not part of this list.
  */
-export function toReviewQueueView(input: {
-  entries: CollectionReviewEntry[];
-  form: CollectionForm;
-}) {
+function toReviewEntryView(entry: CollectionReviewEntry) {
   return {
-    entries: input.entries.map((entry) => ({
-      firstSubmittedAt: entry.firstSubmittedAt?.toISOString() ?? null,
-      isLate: entry.isLate,
-      latestCheckingReason: entry.latestCheckingReason,
-      latestSubmission:
-        entry.latestSubmission === null
-          ? null
-          : {
-              answers: entry.latestSubmission.answers,
-              fields: entry.latestSubmission.fields,
-              files: toFileSelectionView(entry.latestSubmission.files),
-              formVersion: entry.latestSubmission.formVersion,
-              id: entry.latestSubmission.id,
-              submittedAt: entry.latestSubmission.submittedAt.toISOString(),
-              version: entry.latestSubmission.version,
-            },
-      rosterName: entry.rosterName,
-      status: entry.status,
-      studentAccountId: entry.studentAccountId,
-      studentId: entry.studentId,
-    })),
+    firstSubmittedAt: entry.firstSubmittedAt?.toISOString() ?? null,
+    isLate: entry.isLate,
+    latestCheckingReason: entry.latestCheckingReason,
+    latestSubmission:
+      entry.latestSubmission === null
+        ? null
+        : {
+            formVersion: entry.latestSubmission.formVersion,
+            id: entry.latestSubmission.id,
+            submittedAt: entry.latestSubmission.submittedAt.toISOString(),
+            version: entry.latestSubmission.version,
+          },
+    rosterName: entry.rosterName,
+    status: entry.status,
+    studentAccountId: entry.studentAccountId,
+    studentId: entry.studentId,
+  };
+}
+
+/* A Student as a jump list names them: never their Student ID. */
+function toReviewStudentView(student: CollectionReviewStudent) {
+  return { rosterName: student.rosterName, studentAccountId: student.studentAccountId };
+}
+
+export function toReviewQueueView(input: CollectionReviewPage & { form: CollectionForm }) {
+  return {
+    entries: input.entries.map(toReviewEntryView),
     form: {
       createdFromTemplateId: input.form.createdFromTemplateId,
       deadlineAt: input.form.deadlineAt?.toISOString() ?? null,
@@ -93,6 +124,21 @@ export function toReviewQueueView(input: {
       title: input.form.title,
       version: input.form.version,
     },
+    page: input.page,
+    statusCounts: input.statusCounts,
+    total: input.total,
+  };
+}
+
+export function toReviewPositionView(position: CollectionReviewPosition) {
+  return {
+    entry: toReviewEntryView(position.entry),
+    next: position.next === null ? null : toReviewStudentView(position.next),
+    page: position.page,
+    pageStudents: position.pageStudents.map(toReviewStudentView),
+    position: position.position,
+    previous: position.previous === null ? null : toReviewStudentView(position.previous),
+    total: position.total,
   };
 }
 
@@ -103,7 +149,7 @@ export function toObligationView(obligation: StudentObligation) {
         ? null
         : {
             answers: obligation.draft.answers,
-            files: toFileSelectionView(obligation.draft.files),
+            files: toFileSelectionView(obligation.draft.files, toFileView),
             updatedAt: obligation.draft.updatedAt.toISOString(),
             version: obligation.draft.version,
           },
@@ -129,7 +175,7 @@ export function toObligationView(obligation: StudentObligation) {
         : {
             answers: obligation.latestSubmission.answers,
             fields: obligation.latestSubmission.fields,
-            files: toFileSelectionView(obligation.latestSubmission.files),
+            files: toFileSelectionView(obligation.latestSubmission.files, toFileView),
             formVersion: obligation.latestSubmission.formVersion,
             id: obligation.latestSubmission.id,
             submittedAt: obligation.latestSubmission.submittedAt.toISOString(),
@@ -145,9 +191,13 @@ export function toObligationView(obligation: StudentObligation) {
  *
  * The same projection serves both audiences: it carries only submitted content
  * and the decisions against it, so there is nothing here an Instructor may see
- * that the Student who wrote it may not.
+ * that the Student who wrote it may not. The Instructor passes
+ * `toInstructorFileView` to learn which images can be shown inline.
  */
-export function toSubmissionHistoryView(history: CollectionSubmissionHistory) {
+export function toSubmissionHistoryView(
+  history: CollectionSubmissionHistory,
+  projectFile: (file: CollectionFile) => CollectionFileView = toFileView,
+) {
   return {
     entries: history.entries.map((entry) => ({
       answers: entry.answers,
@@ -158,7 +208,7 @@ export function toSubmissionHistoryView(history: CollectionSubmissionHistory) {
         reason: event.reason,
       })),
       fields: entry.fields,
-      files: toFileSelectionView(entry.files),
+      files: toFileSelectionView(entry.files, projectFile),
       formVersion: entry.formVersion,
       id: entry.id,
       submittedAt: entry.submittedAt.toISOString(),
@@ -251,4 +301,60 @@ export function toFormHistoryView(history: CollectionFormHistoryPage) {
     })),
     nextCursor: history.nextCursor,
   };
+}
+
+/**
+ * The Summary view. Totals and aggregates only: no row here can name a
+ * Student, which is what makes the view anonymous.
+ */
+export function toResponseSummaryView(summary: {
+  fields: CollectionFieldSummary[];
+  form: CollectionForm;
+  totals: CollectionResponseTotals;
+}) {
+  return {
+    fields: summary.fields,
+    form: {
+      fields: summary.form.fields,
+      id: summary.form.id,
+      status: summary.form.status,
+      title: summary.form.title,
+    },
+    totals: summary.totals,
+  };
+}
+
+/** One page of one question's answers, shaped by what was asked for. */
+export function toFieldAnswersView(
+  page:
+    | { items: CollectionStudentAnswer[]; kind: 'students'; nextCursor: string | null }
+    | { items: CollectionValueCount[]; kind: 'groups'; nextCursor: string | null }
+    | { items: string[]; kind: 'texts'; nextCursor: string | null },
+) {
+  switch (page.kind) {
+    case 'students':
+      return {
+        items: page.items.map((answer) => ({
+          files: answer.files.map(toInstructorFileView),
+          rosterName: answer.rosterName,
+          studentAccountId: answer.studentAccountId,
+          studentId: answer.studentId,
+          value: answer.value,
+        })),
+        kind: page.kind,
+        nextCursor: page.nextCursor,
+      };
+    case 'groups':
+      return {
+        items: page.items.map((group) => ({ count: group.count, value: group.value })),
+        kind: page.kind,
+        nextCursor: page.nextCursor,
+      };
+    case 'texts':
+      return {
+        items: page.items.map((value) => ({ value })),
+        kind: page.kind,
+        nextCursor: page.nextCursor,
+      };
+  }
 }

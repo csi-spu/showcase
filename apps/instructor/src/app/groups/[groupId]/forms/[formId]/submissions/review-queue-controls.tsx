@@ -20,14 +20,12 @@ import {
 /** What the Instructor has chosen to show; the name and review action always show. */
 export interface ReviewDisplay {
   firstSubmittedAt: boolean;
-  historyAction: boolean;
   submittedAt: boolean;
   version: boolean;
 }
 
 export const DEFAULT_REVIEW_DISPLAY: ReviewDisplay = {
   firstSubmittedAt: false,
-  historyAction: true,
   submittedAt: true,
   version: true,
 };
@@ -216,22 +214,6 @@ function DisplayMenu({
                   <span className="col-start-2">{column.label}</span>
                 </Menu.CheckboxItem>
               ))}
-            </Menu.Group>
-            <Menu.Separator className="my-1 h-px bg-border" />
-            <Menu.Group>
-              <Menu.GroupLabel className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                {t('review.displayActions')}
-              </Menu.GroupLabel>
-              <Menu.CheckboxItem
-                checked={display.historyAction}
-                className={MENU_ITEM_CLASS}
-                onCheckedChange={(checked) => onChange({ ...display, historyAction: checked })}
-              >
-                <Menu.CheckboxItemIndicator className="col-start-1">
-                  <CheckIcon aria-hidden="true" className="size-4 text-primary" />
-                </Menu.CheckboxItemIndicator>
-                <span className="col-start-2">{t('review.showHistoryAction')}</span>
-              </Menu.CheckboxItem>
             </Menu.Group>
           </Menu.Popup>
         </Menu.Positioner>

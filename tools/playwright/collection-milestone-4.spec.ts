@@ -167,7 +167,7 @@ async function passSubmission(
   await page.goto(`/groups/${scenario.groupId}/forms/${scenario.formId}/submissions`);
   const row = page.getByRole('row', { name: new RegExp(scenario.studentName, 'u') });
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: /ตรวจคำตอบ/u }).click();
+  await row.getByRole('link', { name: /ตรวจคำตอบ/u }).click();
   await expect(page.getByText(expectedAnswer, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'ผ่าน', exact: true }).click();
   await page.getByRole('button', { name: 'บันทึกผล' }).click();

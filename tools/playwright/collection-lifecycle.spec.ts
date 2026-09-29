@@ -56,11 +56,50 @@ test.describe('Collection lifecycle', () => {
       await instructorPage.goto(
         `/groups/${collectionScenario.groupId}/forms/${collectionScenario.formId}/submissions`,
       );
+      const views = instructorPage.getByRole('navigation', { name: 'มุมมองคำตอบ' });
+
+      await test.step('Summary counts the answer without naming who gave it', async () => {
+        await views.getByRole('link', { name: 'ภาพรวม' }).click();
+        await expect(views.getByRole('link', { name: 'ภาพรวม' })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+        const card = instructorPage.getByRole('region', { name: collectionScenario.answerLabel });
+        await expect(card.getByText(firstAnswer, { exact: true })).toBeVisible();
+        await expect(card.getByText('1 คน', { exact: true })).toBeVisible();
+        await expect(instructorPage.getByText(collectionScenario.studentName)).toHaveCount(0);
+      });
+
+      await test.step('Question names the Student and links to their page', async () => {
+        await views.getByRole('link', { name: 'รายคำถาม' }).click();
+        await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
+        await expect(
+          instructorPage.getByRole('link', {
+            name: `ดูคำตอบทั้งหมดของ ${collectionScenario.studentName}`,
+          }),
+        ).toBeVisible();
+      });
+
+      await views.getByRole('link', { name: 'รายคน' }).click();
       const row = instructorPage.getByRole('row', {
         name: new RegExp(collectionScenario.studentName, 'u'),
       });
-      await expect(row).toBeVisible();
-      await row.getByRole('button', { name: /ตรวจคำตอบ/u }).click();
+
+      await test.step('Individual searches by Student ID without putting it in the URL', async () => {
+        await instructorPage
+          .getByLabel('ค้นหาชื่อหรือรหัสนักศึกษา')
+          .fill(collectionScenario.studentId);
+        await expect(instructorPage.getByText('แสดง 1–1 จาก 1 คน')).toBeVisible();
+        await expect(row).toBeVisible();
+        expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
+      });
+
+      await row.getByRole('link', { name: /ตรวจคำตอบ/u }).click();
+      await expect(
+        instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
+      ).toBeVisible();
+      await expect(instructorPage.getByText('1 จาก 1 คน', { exact: true })).toBeVisible();
+      expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
       await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
       await instructorPage.getByRole('button', { name: 'ขอให้แก้ไข' }).click();
 

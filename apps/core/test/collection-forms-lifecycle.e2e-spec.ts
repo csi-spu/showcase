@@ -40,6 +40,22 @@ describe('collection forms lifecycle (e2e)', () => {
   let instructorSecret: string;
   let studentSecret: string;
 
+  const reviewEntry = {
+    firstSubmittedAt: new Date('2026-09-20T02:00:00.000Z'),
+    isLate: false,
+    latestCheckingReason: null,
+    latestSubmission: {
+      formVersion: 2,
+      id: SUBMISSION_ID,
+      submittedAt: new Date('2026-09-20T02:00:00.000Z'),
+      version: 1,
+    },
+    rosterName: { firstNameTh: 'สมชาย', lastNameTh: 'ตัวอย่าง' },
+    status: 'awaiting_checking' as const,
+    studentAccountId: STUDENT_ACCOUNT,
+    studentId: '69000001',
+  };
+
   const history = {
     entries: [
       {
@@ -108,6 +124,80 @@ describe('collection forms lifecycle (e2e)', () => {
       nextCursor: 'bmV4dC1wYWdl',
     }),
     getRoundPendingWork: jest.fn().mockResolvedValue({ ...pendingWork(), total: 3 }),
+    createPreview: jest.fn().mockResolvedValue({
+      contentType: 'image/png',
+      previewUrl: 'https://media.internal/objects/poster?expires=1&signature=x',
+    }),
+    listFormSubmissions: jest.fn().mockResolvedValue({
+      entries: [reviewEntry],
+      form: {
+        ...history.form,
+        createdFromTemplateId: null,
+        description: '',
+        groupId: GROUP_ID,
+        version: 2,
+      },
+      page: 1,
+      statusCounts: {
+        awaiting_checking: 1,
+        changes_required: 0,
+        not_submitted: 1,
+        passed: 0,
+        withdrawn: 0,
+      },
+      total: 2,
+    }),
+    readReviewPosition: jest.fn().mockResolvedValue({
+      entry: reviewEntry,
+      next: {
+        rosterName: { firstNameTh: 'สมหญิง', lastNameTh: 'ตัวอย่าง' },
+        studentAccountId: OTHER_STUDENT_ACCOUNT,
+      },
+      page: 1,
+      pageStudents: [
+        { rosterName: reviewEntry.rosterName, studentAccountId: STUDENT_ACCOUNT },
+        {
+          rosterName: { firstNameTh: 'สมหญิง', lastNameTh: 'ตัวอย่าง' },
+          studentAccountId: OTHER_STUDENT_ACCOUNT,
+        },
+      ],
+      position: 1,
+      previous: null,
+      total: 2,
+    }),
+    readFieldAnswers: jest.fn().mockResolvedValue({
+      items: [
+        {
+          files: [],
+          position: { accountId: STUDENT_ACCOUNT, number: '0', rank: 1, text: 'ก' },
+          rosterName: { firstNameTh: 'สมชาย', lastNameTh: 'ตัวอย่าง' },
+          studentAccountId: STUDENT_ACCOUNT,
+          studentId: '69000001',
+          value: 'ก',
+        },
+      ],
+      kind: 'students' as const,
+      nextCursor: null,
+    }),
+    readResponseSummary: jest.fn().mockResolvedValue({
+      fields: [
+        {
+          answeredCount: 1,
+          fieldId: 'track',
+          options: [{ count: 1, value: 'ก' }],
+          otherCount: 0,
+          type: 'single_choice' as const,
+        },
+      ],
+      form: {
+        ...history.form,
+        createdFromTemplateId: null,
+        description: '',
+        groupId: GROUP_ID,
+        version: 2,
+      },
+      totals: { assigned: 2, awaitingChecking: 1, changesRequired: 0, notSubmitted: 1, passed: 0 },
+    }),
     getSubmissionHistory: jest.fn().mockResolvedValue(history),
     previewFormReopen: jest.fn().mockResolvedValue({ newlyAssignedCount: 2 }),
     reopenForm: jest
@@ -681,6 +771,292 @@ describe('collection forms lifecycle (e2e)', () => {
       await instructorRequest('get', `forms/${FORM_ID}/history`)
         .expect(404)
         .expect({ error: { code: 'FORM_NOT_FOUND' } });
+    });
+  });
+
+  describe('responses area', () => {
+    it('lists the review queue as an index without answers or files', async () => {
+      const response = await instructorRequest('get', `forms/${FORM_ID}/submissions`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toMatchObject({
+        entries: [
+          {
+            latestSubmission: {
+              formVersion: 2,
+              id: SUBMISSION_ID,
+              submittedAt: '2026-09-20T02:00:00.000Z',
+              version: 1,
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(/"answers"|"files"/u);
+      expect(response.body).toMatchObject({
+        page: 1,
+        statusCounts: { awaiting_checking: 1, not_submitted: 1 },
+        total: 2,
+      });
+      expect(forms.listFormSubmissions).toHaveBeenCalledWith({
+        formId: FORM_ID,
+        page: 1,
+        pageSize: 10,
+        search: null,
+        sort: 'status',
+        status: null,
+      });
+    });
+
+    it('passes the page, order and status filter of the queue through', async () => {
+      await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/submissions?page=3&pageSize=25&sort=name&status=passed`,
+      ).expect(200);
+
+      expect(forms.listFormSubmissions).toHaveBeenCalledWith({
+        formId: FORM_ID,
+        page: 3,
+        pageSize: 25,
+        search: null,
+        sort: 'name',
+        status: 'passed',
+      });
+    });
+
+    it('rejects a search in the query string and an out-of-range page or order', async () => {
+      for (const query of [
+        'search=6900',
+        'page=0',
+        'pageSize=101',
+        'sort=random',
+        'status=archived',
+      ]) {
+        await instructorRequest('get', `forms/${FORM_ID}/submissions?${query}`)
+          .expect(400)
+          .expect({ error: { code: 'INVALID_REQUEST' } });
+      }
+      expect(forms.listFormSubmissions).not.toHaveBeenCalled();
+    });
+
+    it('searches the queue from the request body so the term stays out of the URL', async () => {
+      const response = await instructorRequest('post', `forms/${FORM_ID}/submissions/search`)
+        .send({ page: 2, pageSize: 50, search: '6900', sort: 'submittedDesc' })
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toMatchObject({ page: 1, total: 2 });
+      expect(forms.listFormSubmissions).toHaveBeenCalledWith({
+        formId: FORM_ID,
+        page: 2,
+        pageSize: 50,
+        search: '6900',
+        sort: 'submittedDesc',
+        status: null,
+      });
+    });
+
+    it('rejects a search with no term, a term beyond the bound, or an unknown field', async () => {
+      for (const body of [
+        {},
+        { search: 'ก'.repeat(101) },
+        { search: 'สมชาย', studentAccountId: STUDENT_ACCOUNT },
+      ]) {
+        await instructorRequest('post', `forms/${FORM_ID}/submissions/search`)
+          .send(body)
+          .expect(400)
+          .expect({ error: { code: 'INVALID_REQUEST' } });
+      }
+      expect(forms.listFormSubmissions).not.toHaveBeenCalled();
+    });
+
+    it("returns a Student's place in the queue under the given order, marked no-store", async () => {
+      const response = await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/students/${STUDENT_ACCOUNT}/review-position?pageSize=25&sort=name&status=awaiting_checking`,
+      )
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(forms.readReviewPosition).toHaveBeenCalledWith({
+        formId: FORM_ID,
+        pageSize: 25,
+        sort: 'name',
+        status: 'awaiting_checking',
+        studentAccountId: STUDENT_ACCOUNT,
+      });
+      expect(response.body).toMatchObject({
+        entry: {
+          latestSubmission: { submittedAt: '2026-09-20T02:00:00.000Z' },
+          studentAccountId: STUDENT_ACCOUNT,
+          studentId: '69000001',
+        },
+        next: { studentAccountId: OTHER_STUDENT_ACCOUNT },
+        page: 1,
+        position: 1,
+        previous: null,
+        total: 2,
+      });
+      /* Only the entry being reviewed carries a Student ID; the jump list names Students. */
+      const { pageStudents } = response.body as { pageStudents: unknown };
+      expect(JSON.stringify(pageStudents)).not.toMatch(/studentId/u);
+    });
+
+    it('rejects a place read with a page or a search, and reports an unassigned Student', async () => {
+      const path = `forms/${FORM_ID}/students/${STUDENT_ACCOUNT}/review-position`;
+      await instructorRequest('get', `${path}?page=2`).expect(400);
+      await instructorRequest('get', `${path}?search=6900`).expect(400);
+      expect(forms.readReviewPosition).not.toHaveBeenCalled();
+
+      forms.readReviewPosition.mockRejectedValueOnce(
+        new CollectionFormsError('OBLIGATION_NOT_FOUND', 404),
+      );
+      await instructorRequest('get', path)
+        .expect(404)
+        .expect({ error: { code: 'OBLIGATION_NOT_FOUND' } });
+    });
+
+    it('returns an anonymous Summary, marked no-store', async () => {
+      const response = await instructorRequest('get', `forms/${FORM_ID}/responses/summary`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toEqual({
+        fields: [
+          {
+            answeredCount: 1,
+            fieldId: 'track',
+            options: [{ count: 1, value: 'ก' }],
+            otherCount: 0,
+            type: 'single_choice',
+          },
+        ],
+        form: { fields: [], id: FORM_ID, status: 'open', title: 'แบบฟอร์มสหกิจศึกษา' },
+        totals: {
+          assigned: 2,
+          awaitingChecking: 1,
+          changesRequired: 0,
+          notSubmitted: 1,
+          passed: 0,
+        },
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(/studentId|accountId|rosterName/i);
+      expect(forms.readResponseSummary).toHaveBeenCalledWith(FORM_ID);
+    });
+
+    it("returns a question's answers with their Students but not the internal sort position", async () => {
+      const response = await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/fields/track/answers?mode=question&cursor=Y3Vyc29y`,
+      )
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toEqual({
+        items: [
+          {
+            files: [],
+            rosterName: { firstNameTh: 'สมชาย', lastNameTh: 'ตัวอย่าง' },
+            studentAccountId: STUDENT_ACCOUNT,
+            studentId: '69000001',
+            value: 'ก',
+          },
+        ],
+        kind: 'students',
+        nextCursor: null,
+      });
+      expect(forms.readFieldAnswers).toHaveBeenCalledWith({
+        cursor: 'Y3Vyc29y',
+        fieldId: 'track',
+        formId: FORM_ID,
+        mode: 'question',
+      });
+    });
+
+    it('rejects a missing or unknown mode, a malformed field id, and an unknown parameter', async () => {
+      await instructorRequest('get', `forms/${FORM_ID}/fields/track/answers`)
+        .expect(400)
+        .expect({ error: { code: 'INVALID_REQUEST' } });
+      await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/fields/track/answers?mode=individual`,
+      ).expect(400);
+      await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/fields/bad%20id/answers?mode=summary`,
+      ).expect(400);
+      await instructorRequest(
+        'get',
+        `forms/${FORM_ID}/fields/track/answers?mode=summary&limit=500`,
+      ).expect(400);
+      await instructorRequest('get', 'forms/not-a-uuid/fields/track/answers?mode=summary').expect(
+        400,
+      );
+      expect(forms.readFieldAnswers).not.toHaveBeenCalled();
+    });
+
+    it('reports a missing form, a removed question and a tampered cursor with stable codes', async () => {
+      forms.readResponseSummary.mockRejectedValueOnce(
+        new CollectionFormsError('FORM_NOT_FOUND', 404),
+      );
+      forms.readFieldAnswers
+        .mockRejectedValueOnce(new CollectionFormsError('FIELD_NOT_FOUND', 404))
+        .mockRejectedValueOnce(new CollectionFormsError('RESPONSE_CURSOR_INVALID', 400));
+      await instructorRequest('get', `forms/${FORM_ID}/responses/summary`)
+        .expect(404)
+        .expect({ error: { code: 'FORM_NOT_FOUND' } });
+      await instructorRequest('get', `forms/${FORM_ID}/fields/gone/answers?mode=question`)
+        .expect(404)
+        .expect({ error: { code: 'FIELD_NOT_FOUND' } });
+      await instructorRequest('get', `forms/${FORM_ID}/fields/track/answers?mode=question&cursor=x`)
+        .expect(400)
+        .expect({ error: { code: 'RESPONSE_CURSOR_INVALID' } });
+    });
+
+    it('issues an image preview for the session Instructor, and refuses other files', async () => {
+      const response = await instructorRequest('get', `files/${SUBMISSION_ID}/preview`)
+        .expect(200)
+        .expect('Cache-Control', 'no-store');
+
+      expect(response.body).toEqual({
+        contentType: 'image/png',
+        previewUrl: 'https://media.internal/objects/poster?expires=1&signature=x',
+      });
+      expect(forms.createPreview).toHaveBeenCalledWith({
+        actorAccountId: INSTRUCTOR_ACCOUNT,
+        fileId: SUBMISSION_ID,
+      });
+
+      forms.createPreview.mockRejectedValueOnce(
+        new CollectionFormsError('FILE_NOT_PREVIEWABLE', 409),
+      );
+      await instructorRequest('get', `files/${SUBMISSION_ID}/preview`)
+        .expect(409)
+        .expect({ error: { code: 'FILE_NOT_PREVIEWABLE' } });
+    });
+
+    it('refuses every responses read without an Instructor session, and on the Student surface', async () => {
+      instructorAuthorized = false;
+      for (const path of [
+        `forms/${FORM_ID}/submissions`,
+        `forms/${FORM_ID}/students/${STUDENT_ACCOUNT}/review-position`,
+        `forms/${FORM_ID}/responses/summary`,
+        `forms/${FORM_ID}/fields/track/answers?mode=summary`,
+        `files/${SUBMISSION_ID}/preview`,
+      ]) {
+        await instructorRequest('get', path)
+          .expect(403)
+          .expect({ error: { code: 'FORBIDDEN' } });
+        await studentRequest('get', path).expect(404);
+      }
+      await instructorRequest('post', `forms/${FORM_ID}/submissions/search`)
+        .send({ search: 'สมชาย' })
+        .expect(403);
+      expect(forms.listFormSubmissions).not.toHaveBeenCalled();
+      expect(forms.readReviewPosition).not.toHaveBeenCalled();
+      expect(forms.readResponseSummary).not.toHaveBeenCalled();
+      expect(forms.readFieldAnswers).not.toHaveBeenCalled();
+      expect(forms.createPreview).not.toHaveBeenCalled();
     });
   });
 

@@ -1,99 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import type { InstructorReviewEntry } from '@/lib/instructor-collection-forms-contract';
-import { viewReviewQueue } from './review-queue-view';
+import { reviewPageCount, toReviewOrder, toStatusTabCounts } from './review-queue-view';
 
-function entry(
-  index: number,
-  status: InstructorReviewEntry['status'],
-  submittedAt: string | null,
-  firstNameTh = `ชื่อ${index}`,
-  studentId: string | null = String(66000000 + index),
-): InstructorReviewEntry {
-  return {
-    firstSubmittedAt: submittedAt,
-    isLate: false,
-    latestCheckingReason: null,
-    latestSubmission:
-      submittedAt === null
-        ? null
-        : {
-            answers: {},
-            fields: [],
-            files: {},
-            formVersion: 1,
-            id: `50000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-            submittedAt,
-            version: 1,
-          },
-    rosterName: { firstNameTh, lastNameTh: `สกุล${index}` },
-    status,
-    studentAccountId: `40000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    studentId,
-  };
-}
-
-const ENTRIES = [
-  entry(1, 'passed', '2026-09-01T02:00:00.000Z', 'กมล'),
-  entry(2, 'not_submitted', null, 'ขวัญ', null),
-  entry(3, 'awaiting_checking', '2026-09-03T02:00:00.000Z', 'คณิน'),
-  entry(4, 'awaiting_checking', '2026-09-02T02:00:00.000Z', 'งามตา'),
-];
-
-const QUERY = { page: 1, pageSize: 10, search: '', sort: 'status', status: 'all' } as const;
-
-function names(rows: InstructorReviewEntry[]): string[] {
-  return rows.map((row) => row.rosterName.firstNameTh);
-}
-
-describe('viewReviewQueue', () => {
-  it('opens on the work waiting for review, then by name', () => {
-    expect(names(viewReviewQueue(ENTRIES, QUERY).rows)).toEqual(['คณิน', 'งามตา', 'ขวัญ', 'กมล']);
+describe('toReviewOrder', () => {
+  it('asks Core for no status filter when every status is shown', () => {
+    expect(toReviewOrder({ pageSize: 25, sort: 'name', status: 'all' })).toEqual({
+      pageSize: 25,
+      sort: 'name',
+      status: null,
+    });
   });
 
-  it('sorts by submission time either way and keeps unsubmitted entries last', () => {
-    expect(names(viewReviewQueue(ENTRIES, { ...QUERY, sort: 'submittedDesc' }).rows)).toEqual([
-      'คณิน',
-      'งามตา',
-      'กมล',
-      'ขวัญ',
-    ]);
-    expect(names(viewReviewQueue(ENTRIES, { ...QUERY, sort: 'submittedAsc' }).rows)).toEqual([
-      'กมล',
-      'งามตา',
-      'คณิน',
-      'ขวัญ',
-    ]);
+  it('passes a chosen status through', () => {
+    expect(toReviewOrder({ pageSize: 10, sort: 'status', status: 'passed' }).status).toBe('passed');
+  });
+});
+
+describe('toStatusTabCounts', () => {
+  it('adds the "all" tab as the sum of every status', () => {
+    expect(
+      toStatusTabCounts({
+        awaiting_checking: 3,
+        changes_required: 1,
+        not_submitted: 4,
+        passed: 2,
+        withdrawn: 1,
+      }),
+    ).toEqual({
+      all: 11,
+      awaiting_checking: 3,
+      changes_required: 1,
+      not_submitted: 4,
+      passed: 2,
+      withdrawn: 1,
+    });
+  });
+});
+
+describe('reviewPageCount', () => {
+  it('counts a partial last page', () => {
+    expect(reviewPageCount(21, 10)).toBe(3);
   });
 
-  it('counts statuses within the search and filters by the chosen one', () => {
-    const view = viewReviewQueue(ENTRIES, { ...QUERY, search: '  สกุล3 ', status: 'all' });
-    expect(names(view.rows)).toEqual(['คณิน']);
-    expect(view.statusCounts).toMatchObject({ all: 1, awaiting_checking: 1, passed: 0 });
-
-    const filtered = viewReviewQueue(ENTRIES, { ...QUERY, status: 'awaiting_checking' });
-    expect(filtered.total).toBe(2);
-    expect(filtered.statusCounts.all).toBe(4);
-  });
-
-  it('finds Students by a Student ID prefix of any length', () => {
-    expect(names(viewReviewQueue(ENTRIES, { ...QUERY, search: '6' }).rows)).toEqual([
-      'คณิน',
-      'งามตา',
-      'กมล',
-    ]);
-    expect(names(viewReviewQueue(ENTRIES, { ...QUERY, search: ' 66000003 ' }).rows)).toEqual([
-      'คณิน',
-    ]);
-  });
-
-  it('matches a Student ID only from its start', () => {
-    expect(viewReviewQueue(ENTRIES, { ...QUERY, search: '0003' }).total).toBe(0);
-  });
-
-  it('pages the result and clamps a page that no longer exists', () => {
-    const many = Array.from({ length: 23 }, (_, index) => entry(index, 'not_submitted', null));
-    const last = viewReviewQueue(many, { ...QUERY, page: 9 });
-    expect(last).toMatchObject({ page: 3, pageCount: 3, total: 23 });
-    expect(last.rows).toHaveLength(3);
+  it('keeps one page for an empty list', () => {
+    expect(reviewPageCount(0, 10)).toBe(1);
   });
 });

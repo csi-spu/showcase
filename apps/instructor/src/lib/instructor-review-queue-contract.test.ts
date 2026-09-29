@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reviewQueueSchema } from './instructor-collection-forms-contract';
+import { reviewPositionSchema, reviewQueueSchema } from './instructor-collection-forms-contract';
 
 const file = {
   byteSize: 1_024,
@@ -43,6 +43,15 @@ const queue = {
     title: 'เอกสารฝึกงาน',
     version: 2,
   },
+  page: 1,
+  statusCounts: {
+    awaiting_checking: 1,
+    changes_required: 0,
+    not_submitted: 0,
+    passed: 0,
+    withdrawn: 0,
+  },
+  total: 1,
 };
 
 describe('reviewQueueSchema', () => {
@@ -72,5 +81,44 @@ describe('reviewQueueSchema', () => {
     };
 
     expect(reviewQueueSchema.safeParse(response).success).toBe(false);
+  });
+});
+
+describe('reviewQueueSchema across the responses-area rollout', () => {
+  it('accepts the index row a Core with the responses area sends', () => {
+    const { formVersion, id, submittedAt, version } = queue.entries[0]!.latestSubmission;
+    const slim = { formVersion, id, submittedAt, version };
+    const response = { ...queue, entries: [{ ...queue.entries[0], latestSubmission: slim }] };
+
+    expect(reviewQueueSchema.safeParse(response).success).toBe(true);
+  });
+});
+
+describe('reviewPositionSchema', () => {
+  const student = {
+    rosterName: queue.entries[0]!.rosterName,
+    studentAccountId: queue.entries[0]!.studentAccountId,
+  };
+  const position = {
+    entry: queue.entries[0],
+    next: null,
+    page: 1,
+    pageStudents: [student],
+    position: null,
+    previous: null,
+    total: 0,
+  };
+
+  it('accepts a Student the status filter no longer lists', () => {
+    expect(reviewPositionSchema.safeParse(position).success).toBe(true);
+  });
+
+  it('rejects a Student ID on the jump list', () => {
+    const response = {
+      ...position,
+      pageStudents: [{ ...student, studentId: queue.entries[0]!.studentId }],
+    };
+
+    expect(reviewPositionSchema.safeParse(response).success).toBe(false);
   });
 });

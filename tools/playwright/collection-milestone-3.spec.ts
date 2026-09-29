@@ -79,11 +79,17 @@ test.describe('Collection Milestone 3', () => {
 
       await test.step('the Instructor reads the same history', async () => {
         await openInstructorHistory(instructorPage, collectionScenario);
-        await expect(instructorPage.getByRole('heading', { name: 'ฉบับที่ 2' })).toBeVisible();
-        await expect(instructorPage.getByRole('heading', { name: 'ฉบับที่ 1' })).toBeVisible();
+        const versions = instructorPage.getByLabel('ฉบับที่แสดง');
+        await expect(versions.getByRole('option')).toHaveText([/^ฉบับที่ 2 /u, /^ฉบับที่ 1 /u]);
+        await expect(instructorPage.getByText(correctedAnswer, { exact: true })).toBeVisible();
+        await expect(instructorPage.getByText('ส่งครั้งแรกช้ากว่ากำหนด')).toBeVisible();
+
+        /* An older version is read-only, so it carries its decision but no form. */
+        await versions.selectOption('1');
+        await expect(instructorPage).toHaveURL(/[?&]version=1(&|$)/u);
         await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
         await expect(instructorPage.getByText(correctionReason, { exact: true })).toBeVisible();
-        await expect(instructorPage.getByText('ส่งครั้งแรกช้ากว่ากำหนด')).toBeVisible();
+        await expect(instructorPage.getByRole('button', { name: 'บันทึกผล' })).toHaveCount(0);
       });
 
       await test.step('extending the deadline clears the recorded lateness', async () => {
@@ -209,7 +215,7 @@ async function requestCorrection(
   await page.goto(`/groups/${scenario.groupId}/forms/${scenario.formId}/submissions`);
   const row = page.getByRole('row', { name: new RegExp(scenario.studentName, 'u') });
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: /ตรวจคำตอบ/u }).click();
+  await row.getByRole('link', { name: /ตรวจคำตอบ/u }).click();
   await expect(page.getByText(expectedAnswer, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'ขอให้แก้ไข' }).click();
   await page.getByLabel('เหตุผลและสิ่งที่ต้องแก้ไข').fill(reason);
@@ -224,8 +230,9 @@ async function openInstructorHistory(
   await page.goto(`/groups/${scenario.groupId}/forms/${scenario.formId}/submissions`);
   await page
     .getByRole('row', { name: new RegExp(scenario.studentName, 'u') })
-    .getByRole('link', { name: /ดูประวัติการส่ง/u })
+    .getByRole('link', { name: /ตรวจคำตอบ/u })
     .click();
+  await expect(page.getByRole('heading', { name: scenario.studentName })).toBeVisible();
 }
 
 /**

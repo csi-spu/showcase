@@ -78,6 +78,13 @@ export const fileSchema = z
     fieldId: z.string(),
     id: z.uuid(),
     inspectionErrorCode: z.string().nullable(),
+    /*
+     * Whether inspection found a JPEG or PNG the Instructor may view inline.
+     * Core derives it so the detected type itself never leaves Core. Optional
+     * because a Core without the responses area does not send it; absent reads
+     * as not previewable.
+     */
+    isPreviewable: z.boolean().optional(),
     originalFilename: z.string(),
     status: z.enum(['quarantined', 'inspecting', 'ready', 'failed']),
   })
@@ -103,8 +110,10 @@ export const obligationStatusSchema = z.enum([
 /**
  * One Student's standing on a form, as the review queue shows it.
  *
- * Carries submitted content only. What a Student is still drafting is not part
- * of this contract, because Core does not send it.
+ * An index row: answers and files are read per Student or per question. The
+ * content fields stay optional only so this app can deploy before a Core that
+ * still sends them; nothing here reads them. What a Student is still drafting
+ * is never part of this contract.
  */
 export const reviewEntrySchema = z
   .object({
@@ -115,9 +124,9 @@ export const reviewEntrySchema = z
     latestCheckingReason: z.string().nullable(),
     latestSubmission: z
       .object({
-        answers: z.record(z.string(), z.unknown()),
-        fields: z.array(fieldSchema),
-        files: fileSelectionSchema,
+        answers: z.record(z.string(), z.unknown()).optional(),
+        fields: z.array(fieldSchema).optional(),
+        files: fileSelectionSchema.optional(),
         formVersion: z.number().int().positive(),
         id: z.uuid(),
         submittedAt: z.iso.datetime(),
@@ -132,8 +141,44 @@ export const reviewEntrySchema = z
   })
   .strict();
 
+/** One page of the review queue; Core filters, orders and pages it. */
 export const reviewQueueSchema = z
-  .object({ entries: z.array(reviewEntrySchema), form: formSchema })
+  .object({
+    entries: z.array(reviewEntrySchema),
+    form: formSchema,
+    /** The page returned, which Core clamps to the last page that exists. */
+    page: z.number().int().positive(),
+    /** Students matching the search, per status; the status filter is not applied. */
+    statusCounts: z.record(obligationStatusSchema, z.number().int().nonnegative()),
+    /** Students matching both the search and the status filter. */
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** A Student as the jump list names them: no Student ID. */
+export const reviewStudentSchema = z
+  .object({
+    rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
+    studentAccountId: z.uuid(),
+  })
+  .strict();
+
+/**
+ * One Student's place in the review queue under a status filter and order.
+ *
+ * `position` is null when the filter no longer lists the Student, such as
+ * after a decision; the neighbours are then where the Student would sort.
+ */
+export const reviewPositionSchema = z
+  .object({
+    entry: reviewEntrySchema,
+    next: reviewStudentSchema.nullable(),
+    page: z.number().int().positive(),
+    pageStudents: z.array(reviewStudentSchema),
+    position: z.number().int().positive().nullable(),
+    previous: reviewStudentSchema.nullable(),
+    total: z.number().int().nonnegative(),
+  })
   .strict();
 
 /**
@@ -366,12 +411,177 @@ export const formHistoryPageSchema = z
   })
   .strict();
 
+/*
+ * The responses area.
+ *
+ * Summary is anonymous: counts and text values only, never who gave them.
+ * Question pages name the Student behind each answer. Text pages and question
+ * pages continue with an opaque cursor that is null on the last page.
+ */
+export const responseTotalsSchema = z
+  .object({
+    /** Current members; a withdrawn Student is no longer assigned. */
+    assigned: z.number().int(),
+    awaitingChecking: z.number().int(),
+    changesRequired: z.number().int(),
+    notSubmitted: z.number().int(),
+    passed: z.number().int(),
+  })
+  .strict();
+
+const valueCountSchema = z.object({ count: z.number().int(), value: z.string() }).strict();
+const textValueSchema = z.object({ value: z.string() }).strict();
+
+function textPageSchema<T extends z.ZodType>(item: T) {
+  return z.object({ items: z.array(item), nextCursor: z.string().nullable() }).strict();
+}
+
+const choiceSummaryShape = {
+  answeredCount: z.number().int(),
+  fieldId: z.string(),
+  options: z.array(valueCountSchema),
+  /** Selections of a value that is no longer one of the options. */
+  otherCount: z.number().int(),
+};
+
+export const fieldSummarySchema = z.discriminatedUnion('type', [
+  z.object({ ...choiceSummaryShape, type: z.literal('single_choice') }).strict(),
+  z.object({ ...choiceSummaryShape, type: z.literal('multiple_choice') }).strict(),
+  z
+    .object({
+      answeredCount: z.number().int(),
+      fieldId: z.string(),
+      /** A bar whose `from` equals `to` stands for one whole number. */
+      histogram: z.array(
+        z.object({ count: z.number().int(), from: z.number(), to: z.number() }).strict(),
+      ),
+      stats: z
+        .object({ max: z.number(), mean: z.number(), median: z.number(), min: z.number() })
+        .strict()
+        .nullable(),
+      type: z.literal('number'),
+    })
+    .strict(),
+  z
+    .object({
+      answeredCount: z.number().int(),
+      earliest: z.iso.date().nullable(),
+      fieldId: z.string(),
+      latest: z.iso.date().nullable(),
+      months: z.array(
+        z.object({ count: z.number().int(), month: z.string().regex(/^\d{4}-\d{2}$/u) }).strict(),
+      ),
+      type: z.literal('date'),
+    })
+    .strict(),
+  z
+    .object({
+      answeredCount: z.number().int(),
+      fieldId: z.string(),
+      groups: textPageSchema(valueCountSchema),
+      type: z.literal('short_text'),
+    })
+    .strict(),
+  z
+    .object({
+      answeredCount: z.number().int(),
+      answers: textPageSchema(textValueSchema),
+      fieldId: z.string(),
+      type: z.literal('long_text'),
+    })
+    .strict(),
+  z
+    .object({
+      answeredCount: z.number().int(),
+      fieldId: z.string(),
+      fileCount: z.number().int(),
+      notReadyCount: z.number().int(),
+      type: z.literal('file_upload'),
+    })
+    .strict(),
+]);
+
+export const responseSummarySchema = z
+  .object({
+    fields: z.array(fieldSummarySchema),
+    form: z
+      .object({
+        fields: z.array(fieldSchema),
+        id: z.uuid(),
+        status: z.enum(['draft', 'open', 'closed']),
+        title: z.string(),
+      })
+      .strict(),
+    totals: responseTotalsSchema,
+  })
+  .strict();
+
+export const studentAnswerSchema = z
+  .object({
+    files: z.array(fileSchema),
+    rosterName: z.object({ firstNameTh: z.string(), lastNameTh: z.string() }).strict(),
+    studentAccountId: z.uuid(),
+    /** Instructor-only (ADR 0020). */
+    studentId: studentIdSchema,
+    /** One option for a choice question: a multiple-choice answer is a row per option. */
+    value: z.union([z.string(), z.number()]).nullable(),
+  })
+  .strict();
+
+export const fieldAnswersPageSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      items: z.array(studentAnswerSchema),
+      kind: z.literal('students'),
+      nextCursor: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      items: z.array(valueCountSchema),
+      kind: z.literal('groups'),
+      nextCursor: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      items: z.array(textValueSchema),
+      kind: z.literal('texts'),
+      nextCursor: z.string().nullable(),
+    })
+    .strict(),
+]);
+
+/** A short-lived signed URL for one submitted image, with the type inspection detected. */
+export const previewTicketSchema = z
+  .object({
+    contentType: z.enum(['image/jpeg', 'image/png']),
+    previewUrl: z.url(),
+  })
+  .strict();
+
 export type InstructorCollectionField = z.infer<typeof fieldSchema>;
 export type InstructorCollectionFile = z.infer<typeof fileSchema>;
 export type InstructorCollectionForm = z.infer<typeof formSchema>;
 export type InstructorCollectionTemplate = z.infer<typeof templateSchema>;
 export type InstructorReviewEntry = z.infer<typeof reviewEntrySchema>;
 export type InstructorReviewQueue = z.infer<typeof reviewQueueSchema>;
+export type InstructorReviewStudent = z.infer<typeof reviewStudentSchema>;
+export type InstructorReviewPosition = z.infer<typeof reviewPositionSchema>;
+/** What the Individual table shows of a queue page; the form is read once with the page. */
+export type InstructorReviewQueuePage = Omit<InstructorReviewQueue, 'form'>;
+export const REVIEW_SORTS = ['status', 'name', 'submittedDesc', 'submittedAsc'] as const;
+export type InstructorReviewSort = (typeof REVIEW_SORTS)[number];
+/* The highest queue page Core accepts; Core clamps it back to the last page that exists. */
+export const MAX_REVIEW_PAGE = 10_000;
+
+/** Which Students a review queue read lists, and in what order. */
+export interface InstructorReviewOrder {
+  pageSize: number;
+  sort: InstructorReviewSort;
+  /** Null lists every status. */
+  status: InstructorReviewEntry['status'] | null;
+}
 export type InstructorPendingWork = z.infer<typeof pendingWorkSchema>;
 export type InstructorReopenPreview = z.infer<typeof reopenPreviewSchema>;
 export type InstructorReopenResult = z.infer<typeof reopenResultSchema>;
@@ -388,6 +598,18 @@ export type InstructorExportStatus = InstructorExportJob['status'];
 export type InstructorFormHistoryChange = z.infer<typeof formHistoryChangeSchema>;
 export type InstructorFormHistoryPage = z.infer<typeof formHistoryPageSchema>;
 export type InstructorFormHistoryEntry = InstructorFormHistoryPage['entries'][number];
+export type InstructorResponseTotals = z.infer<typeof responseTotalsSchema>;
+export type InstructorFieldSummary = z.infer<typeof fieldSummarySchema>;
+export type InstructorResponseSummary = z.infer<typeof responseSummarySchema>;
+export type InstructorStudentAnswer = z.infer<typeof studentAnswerSchema>;
+export type InstructorFieldAnswersPage = z.infer<typeof fieldAnswersPageSchema>;
+export type InstructorPreviewTicket = z.infer<typeof previewTicketSchema>;
 
 /* What the history panel's server function returns; failures carry no detail. */
 export type FormHistoryReadResult = { ok: true; page: InstructorFormHistoryPage } | { ok: false };
+
+/* What the Individual table receives for a new page, order or search; failures carry no detail. */
+export type ReviewQueueReadResult = { ok: true; queue: InstructorReviewQueuePage } | { ok: false };
+
+/* What "show more" in the responses area receives; failures carry no detail. */
+export type FieldAnswersReadResult = { ok: true; page: InstructorFieldAnswersPage } | { ok: false };
