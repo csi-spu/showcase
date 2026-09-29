@@ -18,6 +18,10 @@ test.describe('Collection lifecycle', () => {
       baseURL: collectionScenario.instructorUrl,
     });
     const instructorPage = await instructorContext.newPage();
+    const failedResponseStatuses: number[] = [];
+    instructorPage.on('response', (response) => {
+      if (response.status() >= 400) failedResponseStatuses.push(response.status());
+    });
     const firstAnswer = 'บริษัททดสอบรอบแรก';
     const correctedAnswer = 'บริษัททดสอบหลังรับคำขอแก้ไข';
     const correctionReason = 'กรุณาระบุชื่อบริษัทให้ครบถ้วนและตรวจสอบการสะกดก่อนส่งอีกครั้ง';
@@ -94,10 +98,32 @@ test.describe('Collection lifecycle', () => {
         expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
       });
 
+      failedResponseStatuses.length = 0;
       await row.getByRole('link', { name: /ตรวจคำตอบ/u }).click();
-      await expect(
-        instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
-      ).toBeVisible();
+      const studentHeading = instructorPage.getByRole('heading', {
+        name: collectionScenario.studentName,
+      });
+      try {
+        await expect(studentHeading).toBeVisible();
+      } catch (error: unknown) {
+        const headings = await instructorPage.locator('h1, h2').allTextContents();
+        const headingKinds = headings.map((heading) =>
+          heading === collectionScenario.studentName
+            ? 'student'
+            : heading === '404'
+              ? 'not-found'
+              : 'other',
+        );
+        console.error(
+          'Safe Instructor page diagnostic',
+          JSON.stringify({
+            failedResponseStatuses,
+            headingKinds,
+            isStudentRoute: new URL(instructorPage.url()).pathname.includes('/students/'),
+          }),
+        );
+        throw error;
+      }
       await expect(instructorPage.getByText('1 จาก 1 คน', { exact: true })).toBeVisible();
       expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
       await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
