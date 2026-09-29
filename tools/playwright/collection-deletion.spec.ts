@@ -41,8 +41,10 @@ test.describe('Collection deletion', () => {
 
       /* The toast is timed, so it is checked before the redirect finishes compiling. */
       await expect(instructorPage.getByText(`ลบ “${title}” แล้ว`)).toBeVisible();
+      /* The group page may be compiled cold here, like the first page after login. */
       await expect(instructorPage).toHaveURL(
         new RegExp(`/groups/${collectionScenario.groupId}$`, 'u'),
+        { timeout: 60_000 },
       );
       await expect(instructorPage.getByRole('link', { name: title })).toHaveCount(0);
 
