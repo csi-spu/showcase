@@ -8,7 +8,10 @@ const services = vi.hoisted(() => ({
   getStudentAttention: vi.fn(),
 }));
 
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  redirect: vi.fn(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock('next-intl/server', () => ({
   getTranslations: vi.fn(async () => (key: string) => key),
 }));
