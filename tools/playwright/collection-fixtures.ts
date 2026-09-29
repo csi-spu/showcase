@@ -316,6 +316,25 @@ async function cleanupCollectionResources(
       await transaction`
         delete from private.collection_exports where group_id = ${resources.groupId}
       `;
+      /*
+       * A deletion and the items it stamped reference each other, so the stamps
+       * are cleared first. Every deletion in the round names the round.
+       */
+      await transaction`
+        update public.collection_forms set deletion_id = null
+        where group_id in (
+          select id from public.collection_groups where round_id = ${resources.roundId}
+        )
+      `;
+      await transaction`
+        update public.collection_groups set deletion_id = null where round_id = ${resources.roundId}
+      `;
+      await transaction`
+        update public.collection_rounds set deletion_id = null where id = ${resources.roundId}
+      `;
+      await transaction`
+        delete from private.collection_deletions where round_id = ${resources.roundId}
+      `;
       /* An obligation announces itself, so a Student who was never on an export
        * surface still owns notification rows for this form. */
       await transaction`
