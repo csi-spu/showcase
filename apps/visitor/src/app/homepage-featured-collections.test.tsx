@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { PeopleCatalogCard, WorkCatalogCard } from '@/lib/public-catalog-core';
 import { HomepageFeaturedCollections } from './homepage-featured-collections';
 
+const STATS = { competitionEntries: 34, people: 1250, works: 215 };
+
 describe('Homepage featured collections', () => {
   it('renders four bounded discovery sections with links to each full collection', () => {
     const html = renderToStaticMarkup(
@@ -23,6 +25,7 @@ describe('Homepage featured collections', () => {
           work('ผลงานในชั้นเรียนรองสอง', 'course_work', 5),
         ]}
         labels={collectionLabels()}
+        stats={STATS}
         people={[person()]}
       />,
     );
@@ -46,9 +49,9 @@ describe('Homepage featured collections', () => {
     expect(html).toContain('data-section-layout="academic-article"');
     expect(html).toContain('data-section-layout="people"');
     expect(html.match(/data-work-card-layout="poster"/g)).toHaveLength(9);
-    expect(html.match(/aspect-\[5\/7\]/g)).toHaveLength(9);
+    expect(html.match(/aspect-\[7\/8\]/g)).toHaveLength(9);
     expect(html.match(/data-section-artwork="true"/g)).toHaveLength(4);
-    expect(html.match(/data-header-surface="panel"/g)).toHaveLength(4);
+    expect(html.match(/data-header-surface="open"/g)).toHaveLength(4);
     expect(html.match(/data-artwork-emphasis="balanced"/g)).toHaveLength(4);
     expect(html.match(/data-artwork-shape="landscape"/g)).toHaveLength(1);
     expect(html.match(/data-artwork-shape="portrait"/g)).toHaveLength(1);
@@ -56,8 +59,6 @@ describe('Homepage featured collections', () => {
     expect(html.match(/data-artwork-shadow="wide"/g)).toHaveLength(1);
     expect(html.match(/data-artwork-shadow="deep"/g)).toHaveLength(1);
     expect(html.match(/data-artwork-shadow="soft"/g)).toHaveLength(2);
-    expect(html.match(/data-header-direction="normal"/g)).toHaveLength(2);
-    expect(html.match(/data-header-direction="reverse"/g)).toHaveLength(2);
     expect(html.match(/data-poster-fallback="true"/g)).toHaveLength(9);
     expect(html.match(/data-person-card-layout="portrait"/g)).toHaveLength(1);
     expect(html.match(/data-person-photo-fallback="true"/g)).toHaveLength(1);
@@ -79,6 +80,7 @@ describe('Homepage featured collections', () => {
         competitionEntries={[]}
         courseWorks={[]}
         labels={collectionLabels()}
+        stats={STATS}
         people={[]}
       />,
     );
@@ -107,6 +109,7 @@ describe('Homepage featured collections', () => {
           publishedWork('ผลงานในชั้นเรียนเก่าสุด', 'course_work', 7, '2026-05-01'),
         ]}
         labels={collectionLabels()}
+        stats={STATS}
         people={[person()]}
       />,
     );
@@ -139,6 +142,7 @@ describe('Homepage featured collections', () => {
           work('ผลงานในชั้นเรียนสอง', 'course_work', 3),
         ]}
         labels={collectionLabels()}
+        stats={STATS}
         people={[person()]}
       />,
     );
@@ -161,6 +165,7 @@ describe('Homepage featured collections', () => {
           work(`ผลงานในชั้นเรียนที่ ${index}`, 'course_work', index + 10),
         )}
         labels={collectionLabels()}
+        stats={STATS}
         people={[]}
       />,
     );
@@ -188,6 +193,7 @@ describe('Homepage featured collections', () => {
         competitionEntries={[]}
         courseWorks={[work('ผลงานเดี่ยว', 'course_work', 30)]}
         labels={collectionLabels()}
+        stats={STATS}
         people={[]}
       />,
     );
@@ -200,6 +206,142 @@ describe('Homepage featured collections', () => {
     expect(headingIndex).toBeGreaterThan(-1);
     expect(badgeIndex).toBeLessThan(headingIndex);
     expect(html).toContain('absolute inset-x-3 top-3');
+  });
+});
+
+describe('Homepage featured collection header', () => {
+  it('shows catalogue totals once, in the first work section, in both layouts', () => {
+    const merged = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[]}
+        competitionEntries={[]}
+        courseWorks={[work('ผลงานเดี่ยว', 'course_work', 40)]}
+        labels={collectionLabels()}
+        people={[]}
+        stats={STATS}
+      />,
+    );
+    const split = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[1, 2, 3].map((i) => work(`บทความ ${i}`, 'academic_article', i))}
+        competitionEntries={[4, 5, 6].map((i) => work(`แข่งขัน ${i}`, 'competition_entry', i))}
+        courseWorks={[7, 8, 9].map((i) => work(`รายวิชา ${i}`, 'course_work', i))}
+        labels={collectionLabels()}
+        people={[]}
+        stats={STATS}
+      />,
+    );
+
+    for (const html of [merged, split]) {
+      expect(html.match(/data-catalog-stats="true"/g)).toHaveLength(1);
+      expect(html).toContain('aria-label="ภาพรวมผลงานที่เผยแพร่"');
+      expect(html).toContain('>215<');
+      expect(html).toContain('>1,250<');
+      expect(html).toContain('>34<');
+      expect(html).toContain('นักศึกษาที่ร่วมแชร์');
+    }
+    expect(merged.indexOf('data-catalog-stats') < merged.indexOf('featured-people')).toBe(true);
+    expect(
+      split.indexOf('data-catalog-stats') < split.indexOf('featured-competition-entries'),
+    ).toBe(true);
+  });
+
+  it('sets a two-line section title with a solid lead and a gradient accent line', () => {
+    const labels = collectionLabels();
+    const html = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[]}
+        competitionEntries={[]}
+        courseWorks={[]}
+        labels={{
+          ...labels,
+          combined: {
+            ...labels.combined,
+            title: 'ผลงานและนวัตกรรม',
+            titleSecondLine: 'จากนักศึกษาของเรา',
+          },
+        }}
+        people={[]}
+        stats={STATS}
+      />,
+    );
+
+    const heading = html.match(/<h2[^>]*id="featured-combined-works"[^>]*>(.*?)<\/h2>/)?.[1];
+    expect(heading).toMatch(
+      /^<span class="block">ผลงานและนวัตกรรม<\/span><span class="[^"]*bg-clip-text[^"]*">จากนักศึกษาของเรา<\/span>$/,
+    );
+    // The people heading has no second line and stays a single solid run of text.
+    expect(html).toMatch(/<h2[^>]*id="featured-people"[^>]*>นักศึกษา<\/h2>/);
+    expect(html.match(/bg-clip-text/g)).toHaveLength(1);
+  });
+
+  it('heads each person card with the entry year, clear of the name block', () => {
+    const labels = collectionLabels();
+    const html = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[]}
+        competitionEntries={[]}
+        courseWorks={[]}
+        labels={{
+          ...labels,
+          people: { ...labels.people, titleSecondLine: 'เบื้องหลังผลงาน' },
+        }}
+        people={[person()]}
+        stats={STATS}
+      />,
+    );
+
+    expect(html).toMatch(
+      /<h2[^>]*id="featured-people"[^>]*><span class="block">นักศึกษา<\/span><span[^>]*>เบื้องหลังผลงาน<\/span><\/h2>/,
+    );
+    const card = html.slice(html.indexOf('data-person-card-layout'));
+    const badgeIndex = card.indexOf('ปีที่เข้าศึกษา 2567');
+    const metaIndex = card.indexOf('data-person-card-meta');
+    expect(badgeIndex).toBeGreaterThan(-1);
+    expect(badgeIndex).toBeLessThan(metaIndex);
+    expect(card.slice(metaIndex)).not.toContain('ปีที่เข้าศึกษา');
+  });
+
+  it('ends the people rail on whole cards under a copy-first header', () => {
+    const html = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[]}
+        competitionEntries={[]}
+        courseWorks={[]}
+        labels={collectionLabels()}
+        people={Array.from({ length: 6 }, (_, index) => ({
+          ...person(),
+          publicId: `9c000000-0000-4000-8000-00000000001${index}`,
+        }))}
+        stats={STATS}
+      />,
+    );
+
+    const peopleSection = html.slice(html.indexOf('data-section-layout="people"'));
+    expect(peopleSection).toContain('data-featured-layout="carousel"');
+    expect(peopleSection).toContain('lg:basis-1/5');
+    expect(peopleSection).not.toContain('lg:basis-[18%]');
+    // Every header reads copy then artwork, matching the first section.
+    expect(peopleSection.indexOf('id="featured-people"')).toBeLessThan(
+      peopleSection.indexOf('data-section-artwork'),
+    );
+    expect(html).not.toContain('md:order-');
+  });
+
+  it('leads each header with a filled call to action to the full collection', () => {
+    const html = renderToStaticMarkup(
+      <HomepageFeaturedCollections
+        academicArticles={[]}
+        competitionEntries={[]}
+        courseWorks={[]}
+        labels={collectionLabels()}
+        people={[]}
+        stats={STATS}
+      />,
+    );
+
+    expect(html.match(/data-collection-cta="true"/g)).toHaveLength(2);
+    expect(html).toMatch(/<a(?=[^>]*data-collection-cta="true")(?=[^>]*href="\/works")/);
   });
 });
 
@@ -219,7 +361,14 @@ function collectionLabels() {
     people: sectionLabels('นักศึกษา'),
     personPhotoAlt: (name: string) => `รูปโปรไฟล์ของ ${name}`,
     posterAlt: (title: string) => `โปสเตอร์ ${title}`,
+    formatCount: (count: number) => count.toLocaleString('en-US'),
     publishedWorks: (count: number) => `ผลงานเผยแพร่ ${count} ชิ้น`,
+    stats: {
+      competitionEntries: 'รางวัลและประกวด',
+      label: 'ภาพรวมผลงานที่เผยแพร่',
+      people: 'นักศึกษาที่ร่วมแชร์',
+      works: 'ผลงานทั้งหมด',
+    },
     studentEntryYear: (year: number) => `ปีที่เข้าศึกษา ${year}`,
   };
 }

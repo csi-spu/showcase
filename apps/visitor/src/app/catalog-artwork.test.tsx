@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { personInitials, portraitFallbackVariant } from './catalog-artwork';
+import {
+  CARD_SCRIM_CLASS,
+  personInitials,
+  personScrimClass,
+  portraitFallbackVariant,
+} from './catalog-artwork';
 
 describe('personInitials', () => {
   it('takes the first consonant of each name', () => {
@@ -40,5 +45,24 @@ describe('portraitFallbackVariant', () => {
 
     expect(variants.every((variant) => Number.isInteger(variant) && variant >= 0)).toBe(true);
     expect(new Set(variants).size).toBeGreaterThan(1);
+  });
+});
+
+describe('personScrimClass', () => {
+  const publicId = '9c000000-0000-4000-8000-000000000001';
+
+  it('keeps the neutral scrim over a photo', () => {
+    expect(
+      personScrimClass({ photo: { height: 1, url: 'https://x.test/p.jpg', width: 1 }, publicId }),
+    ).toBe(CARD_SCRIM_CLASS);
+  });
+
+  it('tints an initials tile scrim with its own palette ink instead of black', () => {
+    const scrim = personScrimClass({ photo: null, publicId });
+
+    expect(scrim).not.toContain('rgba(0,0,0');
+    expect(scrim).toMatch(/linear-gradient\(to_top,rgb\(\d+_\d+_\d+_\/_0\.95\)/);
+    // Stable per Person, like the tile it sits on.
+    expect(personScrimClass({ photo: null, publicId })).toBe(scrim);
   });
 });
