@@ -70,3 +70,8 @@ Existing Core HTTP E2E, frontend interaction, domain, and Postgres integration s
 remain responsible for invalid-input, authorization, stale-version, idempotency, and
 provider-failure permutations. Browser tests use semantic locators and retrying
 assertions; fixed sleeps and browser-visible test bypasses are prohibited.
+
+CI runs only the specifications that drive an affected application. When adding a
+specification, map it to the browser applications it uses in
+`tools/ci/select-browser-e2e.mjs`; CI fails on an unmapped specification. See
+`docs/infrastructure/ci-cd.md` for the selection rules.

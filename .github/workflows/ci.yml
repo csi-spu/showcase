@@ -13,8 +13,49 @@ permissions:
   contents: read
 
 jobs:
+  browser-e2e-scope:
+    name: Select affected browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      TURBO_SCM_HEAD: ${{ github.sha }}
+    outputs:
+      specs: ${{ steps.select.outputs.specs }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup
+
+      - name: Select browser journeys
+        id: select
+        env:
+          CHANGED_FILES_PATH: ${{ runner.temp }}/changed-files.txt
+          TURBO_LS_PATH: ${{ runner.temp }}/turbo-affected.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TURBO_SCM_BASE" ] || [ "$TURBO_SCM_BASE" = "0000000000000000000000000000000000000000" ]; then
+            specs="$(node tools/ci/select-browser-e2e.mjs --all)"
+          else
+            pnpm turbo ls --affected --output=json > "$TURBO_LS_PATH"
+            git diff --name-only "$TURBO_SCM_BASE" "$TURBO_SCM_HEAD" > "$CHANGED_FILES_PATH"
+            specs="$(node tools/ci/select-browser-e2e.mjs \
+              --turbo-json "$TURBO_LS_PATH" \
+              --changed-files "$CHANGED_FILES_PATH")"
+          fi
+          echo "specs=$specs" >> "$GITHUB_OUTPUT"
+          jq . <<< "$specs"
+
   browser-e2e:
-    name: Profile Consent and Work lifecycle browser E2E
+    name: Affected browser E2E
+    needs: browser-e2e-scope
+    if: needs.browser-e2e-scope.outputs.specs != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -32,8 +73,14 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run the focused browser journey
-        run: pnpm e2e
+      - name: Run the affected browser journeys
+        env:
+          SPECS: ${{ needs.browser-e2e-scope.outputs.specs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t specs < <(jq -r '.[]' <<< "$SPECS")
+          pnpm e2e "${specs[@]}"
 
       - name: Upload browser diagnostics
         if: failure()
