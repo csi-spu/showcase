@@ -14,6 +14,7 @@ import {
   createAdminAction,
   createInstructorAction,
   grantInstructorRoleAction,
+  resetInstructorPasswordAction,
   revokeInstructorRoleAction,
   setAdminStatusAction,
 } from '../accounts.actions';
@@ -170,6 +171,8 @@ export default async function AccountsPage({
                       action={revokeInstructorRoleAction}
                       idempotencyKey={randomUUID()}
                       instructor={instructor}
+                      resetAction={resetInstructorPasswordAction}
+                      resetIdempotencyKey={randomUUID()}
                     />
                   </TableCell>
                 </TableRow>

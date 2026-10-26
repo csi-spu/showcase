@@ -255,8 +255,10 @@ describe('AdminAccountControlsCoreClient', () => {
       accountId,
       createdAt: '2026-08-25T06:00:00.000Z',
       firstNameTh: 'ผู้ดูแล',
+      hasAdminRole: true,
       lastNameTh: 'ระบบ',
       status: 'active',
+      version: 1,
     };
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -281,5 +283,37 @@ describe('AdminAccountControlsCoreClient', () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       `https://core.example.test/v1/internal/admin/account-controls/instructors/${accountId}/revoke`,
     );
+  });
+
+  it('resets an Instructor password with an optimistic version and returns it once', async () => {
+    const accountId = '20000000-0000-4000-8000-000000000011';
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      Response.json({
+        instructor: {
+          accountId,
+          createdAt: '2026-08-25T06:00:00.000Z',
+          firstNameTh: 'อาจารย์',
+          hasAdminRole: false,
+          lastNameTh: 'ทดสอบ',
+          status: 'active',
+          version: 3,
+        },
+        temporaryPassword: 'one-time-random-instructor-password',
+      }),
+    );
+    const client = new AdminAccountControlsCoreClient(config, fetchMock);
+    const input = { expectedVersion: 2, idempotencyKey: '30000000-0000-4000-8000-000000000007' };
+
+    await expect(
+      client.resetInstructorPassword('opaque-admin-session', accountId, input),
+    ).resolves.toMatchObject({
+      instructor: { accountId, version: 3 },
+      temporaryPassword: 'one-time-random-instructor-password',
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://core.example.test/v1/internal/admin/account-controls/instructors/${accountId}/password-reset`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(input);
   });
 });

@@ -11,6 +11,8 @@ describe('Account control action errors', () => {
     ['STUDENT_ACCESS_CANNOT_BE_SHORTENED', 'shortening'],
     ['STUDENT_ACCOUNT_NOT_FOUND', 'notFound'],
     ['ADMIN_ACCOUNT_NOT_FOUND', 'notFound'],
+    ['INSTRUCTOR_ACCOUNT_NOT_FOUND', 'notFound'],
+    ['INSTRUCTOR_PASSWORD_RESET_ADMIN_ACCOUNT', 'adminAccount'],
     ['ADMIN_LOGIN_TAKEN', 'loginTaken'],
     ['ADMIN_LAST_ACTIVE_ACCOUNT', 'lastActiveAdmin'],
     ['ADMIN_SELF_STATUS_CHANGE_FORBIDDEN', 'forbidden'],

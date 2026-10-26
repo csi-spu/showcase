@@ -1,4 +1,5 @@
 export type AccountControlErrorMessage =
+  | 'adminAccount'
   | 'alreadyGranted'
   | 'backward'
   | 'completed'

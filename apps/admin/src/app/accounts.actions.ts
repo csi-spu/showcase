@@ -9,6 +9,7 @@ import {
 import type {
   CreateAdminActionState,
   CreateInstructorActionState,
+  InstructorPasswordResetActionState,
   InstructorRoleActionState,
   SetAdminStatusActionState,
 } from './accounts-state';
@@ -18,6 +19,7 @@ import { getAdminServerEnvironment } from '@/lib/server-environment';
 import {
   validateCreateAdmin,
   validateCreateInstructor,
+  validateInstructorPasswordReset,
   validateInstructorRoleAction,
   validateSetAdminStatus,
 } from '@/lib/accounts-validation';
@@ -147,6 +149,42 @@ export async function revokeInstructorRoleAction(
         idempotencyKey: input.idempotencyKey,
       }),
   );
+}
+
+export async function resetInstructorPasswordAction(
+  previousState: InstructorPasswordResetActionState,
+  formData: FormData,
+): Promise<InstructorPasswordResetActionState> {
+  const input = validateInstructorPasswordReset(formData);
+  if (input === null) {
+    return {
+      error: 'invalid',
+      idempotencyKey: previousState.idempotencyKey,
+      instructor: previousState.instructor,
+      temporaryPassword: null,
+    };
+  }
+  const sessionToken = await requireSessionToken();
+  try {
+    const result = await coreClient().resetInstructorPassword(sessionToken, input.accountId, {
+      expectedVersion: input.expectedVersion,
+      idempotencyKey: input.idempotencyKey,
+    });
+    return {
+      error: null,
+      idempotencyKey: randomUUID(),
+      instructor: result.instructor,
+      temporaryPassword: result.temporaryPassword,
+    };
+  } catch (error: unknown) {
+    await expireSessionIfRequired(error);
+    return {
+      error: mapAccountControlError(error),
+      idempotencyKey: input.idempotencyKey,
+      instructor: previousState.instructor,
+      temporaryPassword: null,
+    };
+  }
 }
 
 async function applyInstructorRoleAction(

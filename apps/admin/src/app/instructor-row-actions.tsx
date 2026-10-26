@@ -2,17 +2,19 @@
 
 import { Button } from '@showcase/ui/button';
 import { toast } from '@showcase/ui/toast';
-import { ArrowLeftIcon, GraduationCapIcon, ShieldOffIcon } from 'lucide-react';
+import { ArrowLeftIcon, GraduationCapIcon, KeyRoundIcon, ShieldOffIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { ActionGroup } from '@/components/ui/action-group';
 import { ActionTooltip } from '@/components/ui/action-tooltip';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Spinner } from '@/components/ui/spinner';
 import type {
   InstructorAccountRow,
+  InstructorPasswordResetAction,
+  InstructorPasswordResetActionState,
   InstructorRoleAction,
   InstructorRoleActionState,
 } from './accounts-state';
@@ -76,52 +78,111 @@ function GrantSubmitButton({ label }: { label: string }) {
   );
 }
 
+/**
+ * The control a row is currently collecting confirmation for. `null` shows the
+ * icon actions; a password reset keeps its control open after success so the
+ * one-time password stays readable.
+ */
+type ActiveControl = 'reset' | 'revoke' | null;
+
 export function InstructorRowActions({
   action,
   idempotencyKey,
   instructor,
+  resetAction,
+  resetIdempotencyKey,
 }: {
   action: InstructorRoleAction;
   idempotencyKey: string;
   instructor: InstructorAccountRow;
+  resetAction: InstructorPasswordResetAction;
+  resetIdempotencyKey: string;
 }) {
   const t = useTranslations('Accounts');
-  const errorT = useTranslations('AccountControls');
+  const controlsT = useTranslations('AccountControls');
   const router = useRouter();
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [activeControl, setActiveControl] = useState<ActiveControl>(null);
   const [state, formAction] = useActionState(
     async (previousState: InstructorRoleActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.error !== null) {
-        toast.error(errorT(`errors.${nextState.error}`));
+        toast.error(controlsT(`errors.${nextState.error}`));
         return nextState;
       }
       toast.success(t('instructorRole.revokeSuccess'));
-      setIsConfirming(false);
+      setActiveControl(null);
       router.refresh();
       return nextState;
     },
     { error: null, idempotencyKey, instructor: null },
   );
+  const [resetState, resetFormAction] = useActionState(
+    async (previousState: InstructorPasswordResetActionState, formData: FormData) => {
+      const nextState = await resetAction(previousState, formData);
+      if (nextState.error !== null) {
+        toast.error(controlsT(`errors.${nextState.error}`));
+        return nextState;
+      }
+      toast.success(controlsT('reset.success'));
+      router.refresh();
+      return nextState;
+    },
+    { error: null, idempotencyKey: resetIdempotencyKey, instructor, temporaryPassword: null },
+  );
+  const current = resetState.instructor ?? instructor;
 
-  if (!isConfirming) {
+  if (activeControl === null) {
     return (
       <div className="flex justify-end">
         <ActionGroup>
-          <ActionTooltip label={t('instructorRole.revoke')}>
-            <Button
-              aria-label={t('instructorRole.revoke')}
-              onClick={() => setIsConfirming(true)}
-              size="icon-sm"
-              title={t('instructorRole.revoke')}
-              type="button"
-              variant="ghost"
-            >
-              <ShieldOffIcon aria-hidden="true" />
-            </Button>
-          </ActionTooltip>
+          {current.hasAdminRole ? null : (
+            <IconAction label={controlsT('reset.submit')} onClick={() => setActiveControl('reset')}>
+              <KeyRoundIcon aria-hidden="true" />
+            </IconAction>
+          )}
+          <IconAction label={t('instructorRole.revoke')} onClick={() => setActiveControl('revoke')}>
+            <ShieldOffIcon aria-hidden="true" />
+          </IconAction>
         </ActionGroup>
       </div>
+    );
+  }
+
+  if (activeControl === 'reset') {
+    return (
+      <form
+        action={resetFormAction}
+        aria-label={controlsT('reset.submit')}
+        className="ml-auto grid min-w-72 gap-3 text-left"
+        key={`reset-${current.version}`}
+      >
+        <input name="accountId" type="hidden" value={current.accountId} />
+        <input name="expectedVersion" type="hidden" value={current.version} />
+        <input name="idempotencyKey" type="hidden" value={resetState.idempotencyKey} />
+        <p className="text-sm text-muted-foreground">{controlsT('reset.description')}</p>
+        {resetState.error === null ? null : (
+          <Alert variant="destructive">
+            <AlertDescription>{controlsT(`errors.${resetState.error}`)}</AlertDescription>
+          </Alert>
+        )}
+        {resetState.temporaryPassword === null ? null : (
+          <Alert variant="success">
+            <AlertTitle>{controlsT('reset.success')}</AlertTitle>
+            <AlertDescription>
+              <p>{controlsT('reset.once')}</p>
+              <code className="mt-3 block select-all rounded-control border border-success/30 bg-card p-3 text-base text-foreground">
+                {resetState.temporaryPassword}
+              </code>
+            </AlertDescription>
+          </Alert>
+        )}
+        <ConfirmActions
+          cancelLabel={t('cancel')}
+          loading={controlsT('reset.loading')}
+          onCancel={() => setActiveControl(null)}
+          submitLabel={controlsT('reset.confirm')}
+        />
+      </form>
     );
   }
 
@@ -137,16 +198,41 @@ export function InstructorRowActions({
       <p className="text-sm text-muted-foreground">{t('instructorRole.revokeConfirm')}</p>
       {state.error === null ? null : (
         <Alert variant="destructive">
-          <AlertDescription>{errorT(`errors.${state.error}`)}</AlertDescription>
+          <AlertDescription>{controlsT(`errors.${state.error}`)}</AlertDescription>
         </Alert>
       )}
       <ConfirmActions
         cancelLabel={t('cancel')}
         loading={t('saving')}
-        onCancel={() => setIsConfirming(false)}
+        onCancel={() => setActiveControl(null)}
         submitLabel={t('instructorRole.revoke')}
       />
     </form>
+  );
+}
+
+function IconAction({
+  children,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <ActionTooltip label={label}>
+      <Button
+        aria-label={label}
+        onClick={onClick}
+        size="icon-sm"
+        title={label}
+        type="button"
+        variant="ghost"
+      >
+        {children}
+      </Button>
+    </ActionTooltip>
   );
 }
 

@@ -14,8 +14,10 @@ export interface InstructorAccountRow {
   accountId: string;
   createdAt: string;
   firstNameTh: string;
+  hasAdminRole: boolean;
   lastNameTh: string;
   status: 'active' | 'suspended';
+  version: number;
 }
 
 export interface CreateAdminActionState {
@@ -44,6 +46,13 @@ export interface InstructorRoleActionState {
   instructor: InstructorAccountRow | null;
 }
 
+export interface InstructorPasswordResetActionState {
+  error: AccountControlErrorMessage | null;
+  idempotencyKey: string;
+  instructor: InstructorAccountRow | null;
+  temporaryPassword: string | null;
+}
+
 export type CreateAdminAction = (
   state: CreateAdminActionState,
   formData: FormData,
@@ -63,3 +72,8 @@ export type InstructorRoleAction = (
   state: InstructorRoleActionState,
   formData: FormData,
 ) => Promise<InstructorRoleActionState>;
+
+export type InstructorPasswordResetAction = (
+  state: InstructorPasswordResetActionState,
+  formData: FormData,
+) => Promise<InstructorPasswordResetActionState>;

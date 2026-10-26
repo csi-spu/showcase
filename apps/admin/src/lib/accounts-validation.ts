@@ -33,6 +33,12 @@ const instructorRoleActionSchema = z.object({
   idempotencyKey: z.uuid(),
 });
 
+const instructorPasswordResetSchema = z.object({
+  accountId: z.uuid(),
+  expectedVersion: z.coerce.number().int().positive(),
+  idempotencyKey: z.uuid(),
+});
+
 export function validateCreateAdmin(formData: FormData) {
   const result = createAdminSchema.safeParse({
     adminLogin: formData.get('adminLogin'),
@@ -65,6 +71,15 @@ export function validateCreateInstructor(formData: FormData) {
 export function validateInstructorRoleAction(formData: FormData) {
   const result = instructorRoleActionSchema.safeParse({
     accountId: formData.get('accountId'),
+    idempotencyKey: formData.get('idempotencyKey'),
+  });
+  return result.success ? result.data : null;
+}
+
+export function validateInstructorPasswordReset(formData: FormData) {
+  const result = instructorPasswordResetSchema.safeParse({
+    accountId: formData.get('accountId'),
+    expectedVersion: formData.get('expectedVersion'),
     idempotencyKey: formData.get('idempotencyKey'),
   });
   return result.success ? result.data : null;
