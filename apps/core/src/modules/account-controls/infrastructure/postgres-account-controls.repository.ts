@@ -5,7 +5,9 @@ import type {
   AccountControlsRepository,
   AcademicYearSettings,
   AdminAccountControls,
+  BeginInstructorPasswordResetResult,
   BeginPasswordResetResult,
+  CompleteInstructorPasswordResetResult,
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
@@ -66,6 +68,14 @@ interface PasswordResetOperationRow {
   student_account_id: string;
 }
 
+interface InstructorPasswordResetOperationRow {
+  actor_account_id: string;
+  attempt_number: number;
+  expected_version: number;
+  instructor_account_id: string;
+  status: 'completed' | 'pending' | 'provider_failed';
+}
+
 interface PersonNameCorrectionAuditRow {
   actor_account_id: string;
   expected_version: number;
@@ -110,14 +120,20 @@ interface AdminStatusAuditRow {
 
 interface InstructorRow {
   account_id: string;
+  control_version: number;
   created_at: Date;
   first_name_th: string;
+  has_admin_role: boolean;
   last_name_th: string;
   status: 'active' | 'suspended';
 }
 
 interface InstructorEligibleRow extends InstructorRow {
   has_instructor_role: boolean;
+}
+
+interface InstructorPasswordResetTargetRow extends InstructorRow {
+  provider_user_id: string;
 }
 
 interface InstructorRoleChangeAuditRow {
@@ -226,14 +242,18 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     const rows = await this.database.sql<InstructorRow[]>`
       select
         account.id as account_id,
+        account.control_version,
         account.created_at,
         account.status,
         person_name.first_name_th,
-        person_name.last_name_th
+        person_name.last_name_th,
+        (admin_role.account_id is not null) as has_admin_role
       from public.accounts as account
       join public.account_roles as instructor_role
         on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
       join private.person_names as person_name on person_name.person_id = account.person_id
+      left join public.account_roles as admin_role
+        on admin_role.account_id = account.id and admin_role.role = 'admin'
       where (
           ${input.search}::text is null
           or lower(person_name.first_name_th || ' ' || person_name.last_name_th)
@@ -1058,6 +1078,246 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
     });
   }
 
+  async beginInstructorPasswordReset(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<BeginInstructorPasswordResetResult> {
+    return this.database.sql.begin(async (transaction) => {
+      await this.lockIdempotencyKey(transaction, input.idempotencyKey);
+      const operationRows = await transaction<InstructorPasswordResetOperationRow[]>`
+        select
+          actor_account_id,
+          attempt_number,
+          expected_version,
+          instructor_account_id,
+          status
+        from private.instructor_password_reset_operations
+        where idempotency_key = ${input.idempotencyKey}
+        for update
+      `;
+      const operation = operationRows[0];
+      if (operation !== undefined) {
+        if (
+          operation.actor_account_id !== input.actorAccountId ||
+          operation.expected_version !== input.expectedVersion ||
+          operation.instructor_account_id !== input.instructorAccountId
+        ) {
+          return { outcome: 'idempotency_conflict' };
+        }
+        if (operation.status === 'completed') return { outcome: 'already_completed' };
+        if (operation.status === 'pending') return { outcome: 'in_progress' };
+        const target = await this.findInstructorPasswordResetTarget(
+          transaction,
+          input.instructorAccountId,
+        );
+        if (target === null) return { outcome: 'not_found' };
+        if (target.has_admin_role) return { outcome: 'admin_account' };
+        if (
+          await this.hasPendingInstructorPasswordReset(
+            transaction,
+            input.instructorAccountId,
+            input.idempotencyKey,
+          )
+        ) {
+          return { outcome: 'in_progress' };
+        }
+        const attemptNumber = operation.attempt_number + 1;
+        await transaction`
+          update private.instructor_password_reset_operations
+          set status = 'pending',
+              attempt_number = ${attemptNumber},
+              error_code = null,
+              finished_at = null,
+              lease_until = ${new Date(input.now.getTime() + 90_000)}
+          where idempotency_key = ${input.idempotencyKey}
+        `;
+        return { attemptNumber, outcome: 'ready', providerUserId: target.provider_user_id };
+      }
+
+      const target = await this.findInstructorPasswordResetTarget(
+        transaction,
+        input.instructorAccountId,
+      );
+      if (target === null) return { outcome: 'not_found' };
+      // Admin credentials are managed only through the audited operational
+      // flow, so an Account that also holds the Admin role is never reset here.
+      if (target.has_admin_role) return { outcome: 'admin_account' };
+      if (
+        await this.hasPendingInstructorPasswordReset(
+          transaction,
+          input.instructorAccountId,
+          input.idempotencyKey,
+        )
+      ) {
+        return { outcome: 'in_progress' };
+      }
+      if (target.control_version !== input.expectedVersion) return { outcome: 'version_conflict' };
+      const resultingVersion = target.control_version + 1;
+      await transaction`
+        insert into private.instructor_password_reset_operations (
+          idempotency_key,
+          actor_account_id,
+          instructor_account_id,
+          expected_version,
+          resulting_version,
+          attempt_number,
+          status,
+          started_at,
+          lease_until
+        ) values (
+          ${input.idempotencyKey},
+          ${input.actorAccountId},
+          ${input.instructorAccountId},
+          ${input.expectedVersion},
+          ${resultingVersion},
+          1,
+          'pending',
+          ${input.now},
+          ${new Date(input.now.getTime() + 90_000)}
+        )
+      `;
+      await transaction`
+        update public.accounts
+        set credential_state = 'reset_required',
+            control_version = ${resultingVersion},
+            updated_at = ${input.now}
+        where id = ${input.instructorAccountId}
+      `;
+      await transaction`
+        update private.authentication_sessions
+        set revoked_at = ${input.now}, revocation_reason = 'password_reset'
+        where account_id = ${input.instructorAccountId} and revoked_at is null
+      `;
+      await transaction`
+        insert into private.authentication_audit_events (
+          account_id, event_type, occurred_at
+        ) values (
+          ${input.instructorAccountId}, 'instructor_password_reset_started', ${input.now}
+        )
+      `;
+      return { attemptNumber: 1, outcome: 'ready', providerUserId: target.provider_user_id };
+    });
+  }
+
+  async completeInstructorPasswordReset(input: {
+    attemptNumber: number;
+    idempotencyKey: string;
+    now: Date;
+  }): Promise<CompleteInstructorPasswordResetResult> {
+    return this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<{ instructor_account_id: string }[]>`
+        update private.instructor_password_reset_operations
+        set status = 'completed',
+            error_code = null,
+            finished_at = ${input.now},
+            lease_until = null
+        where idempotency_key = ${input.idempotencyKey}
+          and attempt_number = ${input.attemptNumber}
+          and status = 'pending'
+        returning instructor_account_id
+      `;
+      const operation = rows[0];
+      if (operation === undefined) return { outcome: 'not_pending' };
+      await transaction`
+        insert into private.authentication_audit_events (
+          account_id, event_type, occurred_at
+        ) values (
+          ${operation.instructor_account_id}, 'instructor_password_reset_completed', ${input.now}
+        )
+      `;
+      const instructor = await this.findInstructorPasswordResetTarget(
+        transaction,
+        operation.instructor_account_id,
+      );
+      return instructor === null
+        ? { outcome: 'not_pending' }
+        : { instructor: this.mapInstructor(instructor), outcome: 'completed' };
+    });
+  }
+
+  async failInstructorPasswordReset(input: {
+    attemptNumber: number;
+    errorCode: 'provider_unavailable';
+    idempotencyKey: string;
+    now: Date;
+  }): Promise<void> {
+    await this.database.sql.begin(async (transaction) => {
+      const rows = await transaction<{ instructor_account_id: string }[]>`
+        update private.instructor_password_reset_operations
+        set status = 'provider_failed',
+            error_code = ${input.errorCode},
+            finished_at = ${input.now},
+            lease_until = null
+        where idempotency_key = ${input.idempotencyKey}
+          and attempt_number = ${input.attemptNumber}
+          and status = 'pending'
+        returning instructor_account_id
+      `;
+      const operation = rows[0];
+      if (operation !== undefined) {
+        await transaction`
+          insert into private.authentication_audit_events (
+            account_id, event_type, error_code, occurred_at
+          ) values (
+            ${operation.instructor_account_id},
+            'instructor_password_reset_failed',
+            ${input.errorCode},
+            ${input.now}
+          )
+        `;
+      }
+    });
+  }
+
+  private async findInstructorPasswordResetTarget(
+    transaction: postgres.TransactionSql,
+    accountId: string,
+  ): Promise<InstructorPasswordResetTargetRow | null> {
+    // Instructor credentials live on the shared staff identity, so the target
+    // must hold the Instructor role and an Admin staff identity.
+    const rows = await transaction<InstructorPasswordResetTargetRow[]>`
+      select
+        account.id as account_id,
+        account.control_version,
+        account.created_at,
+        account.provider_user_id,
+        account.status,
+        person_name.first_name_th,
+        person_name.last_name_th,
+        (admin_role.account_id is not null) as has_admin_role
+      from public.accounts as account
+      join public.account_roles as instructor_role
+        on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
+      join private.admin_auth_identities as identity on identity.account_id = account.id
+      join private.person_names as person_name on person_name.person_id = account.person_id
+      left join public.account_roles as admin_role
+        on admin_role.account_id = account.id and admin_role.role = 'admin'
+      where account.id = ${accountId}
+      for update of account
+    `;
+    return rows[0] ?? null;
+  }
+
+  private async hasPendingInstructorPasswordReset(
+    transaction: postgres.TransactionSql,
+    instructorAccountId: string,
+    excludedIdempotencyKey: string,
+  ): Promise<boolean> {
+    const rows = await transaction<{ exists: boolean }[]>`
+      select exists (
+        select 1
+        from private.instructor_password_reset_operations
+        where instructor_account_id = ${instructorAccountId}
+          and idempotency_key <> ${excludedIdempotencyKey}
+          and status = 'pending'
+      ) as exists
+    `;
+    return rows[0]?.exists ?? false;
+  }
+
   private async findStudentByAccount(
     transaction: postgres.TransactionSql,
     accountId: string,
@@ -1166,14 +1426,18 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       ? await transaction<InstructorEligibleRow[]>`
           select
             account.id as account_id,
+            account.control_version,
             account.created_at,
             account.status,
             person_name.first_name_th,
             person_name.last_name_th,
+            (admin_role.account_id is not null) as has_admin_role,
             (instructor_role.account_id is not null) as has_instructor_role
           from public.accounts as account
           join private.admin_auth_identities as identity on identity.account_id = account.id
           join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as admin_role
+            on admin_role.account_id = account.id and admin_role.role = 'admin'
           left join public.account_roles as instructor_role
             on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
           where account.id = ${accountId}
@@ -1182,14 +1446,18 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       : await transaction<InstructorEligibleRow[]>`
           select
             account.id as account_id,
+            account.control_version,
             account.created_at,
             account.status,
             person_name.first_name_th,
             person_name.last_name_th,
+            (admin_role.account_id is not null) as has_admin_role,
             (instructor_role.account_id is not null) as has_instructor_role
           from public.accounts as account
           join private.admin_auth_identities as identity on identity.account_id = account.id
           join private.person_names as person_name on person_name.person_id = account.person_id
+          left join public.account_roles as admin_role
+            on admin_role.account_id = account.id and admin_role.role = 'admin'
           left join public.account_roles as instructor_role
             on instructor_role.account_id = account.id and instructor_role.role = 'instructor'
           where account.id = ${accountId}
@@ -1235,8 +1503,10 @@ export class PostgresAccountControlsRepository implements AccountControlsReposit
       accountId: row.account_id,
       createdAt: row.created_at,
       firstNameTh: row.first_name_th,
+      hasAdminRole: row.has_admin_role,
       lastNameTh: row.last_name_th,
       status: row.status,
+      version: row.control_version,
     };
   }
 

@@ -7,7 +7,9 @@ import type {
   AccountControlsRepository,
   AcademicYearSettings,
   AdminAccountControls,
+  BeginInstructorPasswordResetResult,
   BeginPasswordResetResult,
+  CompleteInstructorPasswordResetResult,
   CompletePasswordResetResult,
   CorrectStudentNameResult,
   ExtendStudentAccessResult,
@@ -677,8 +679,10 @@ describe('AccountControlsService Instructor management', () => {
     accountId: INSTRUCTOR_ACCOUNT_ID,
     createdAt: NOW,
     firstNameTh: 'วิชัย',
+    hasAdminRole: false,
     lastNameTh: 'มั่นคง',
     status: 'active',
+    version: 1,
   } satisfies InstructorAccountControls;
 
   beforeEach(() => {
@@ -818,6 +822,129 @@ describe('AccountControlsService Instructor management', () => {
   });
 });
 
+describe('AccountControlsService Instructor password reset', () => {
+  let repository: TestRepository;
+  let resetPassword: jest.MockedFunction<
+    (providerUserId: string, password: string) => Promise<void>
+  >;
+  const generate = jest.fn(() => 'random-temporary-password');
+  let service: AccountControlsService;
+  const INSTRUCTOR_ACCOUNT_ID = '30000000-0000-4000-8000-000000000010';
+  const PROVIDER_USER_ID = '40000000-0000-4000-8000-000000000010';
+  const RESET_INPUT = {
+    actorAccountId: ACTOR_ACCOUNT_ID,
+    expectedVersion: 2,
+    idempotencyKey: IDEMPOTENCY_KEY,
+    instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+  };
+
+  beforeEach(() => {
+    repository = new TestRepository();
+    resetPassword = jest.fn().mockResolvedValue(undefined);
+    generate.mockClear();
+    service = new AccountControlsService(
+      repository,
+      { resetPassword },
+      { now: () => NOW },
+      {
+        hashAdminLogin: jest.fn(),
+        hashSessionToken: jest.fn(),
+        hashSourceAddress: jest.fn(),
+        hashStudentId: jest.fn(),
+        toAdminSyntheticIdentity: jest.fn(),
+        toSyntheticIdentity: jest.fn(),
+      },
+      { generate },
+      new FakeAdminProvisioningService(),
+    );
+  });
+
+  it('returns one random temporary password only after provider and audit completion', async () => {
+    repository.beginInstructorPasswordResetResult = {
+      attemptNumber: 1,
+      outcome: 'ready',
+      providerUserId: PROVIDER_USER_ID,
+    };
+    repository.completeInstructorPasswordResetResult = {
+      instructor: {
+        accountId: INSTRUCTOR_ACCOUNT_ID,
+        createdAt: NOW,
+        firstNameTh: 'วิชัย',
+        hasAdminRole: false,
+        lastNameTh: 'มั่นคง',
+        status: 'active',
+        version: 3,
+      },
+      outcome: 'completed',
+    };
+
+    await expect(service.resetInstructorPassword(RESET_INPUT)).resolves.toMatchObject({
+      instructor: { accountId: INSTRUCTOR_ACCOUNT_ID, version: 3 },
+      temporaryPassword: 'random-temporary-password',
+    });
+    expect(generate).toHaveBeenCalledWith(18);
+    expect(resetPassword).toHaveBeenCalledWith(PROVIDER_USER_ID, 'random-temporary-password');
+    expect(repository.beginInstructorPasswordResetInput).toEqual({ ...RESET_INPUT, now: NOW });
+    expect(repository.completeInstructorPasswordResetInput).toEqual({
+      attemptNumber: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+    });
+  });
+
+  it('records provider failure, returns no password, and leaves the operation retryable', async () => {
+    repository.beginInstructorPasswordResetResult = {
+      attemptNumber: 2,
+      outcome: 'ready',
+      providerUserId: PROVIDER_USER_ID,
+    };
+    resetPassword.mockRejectedValue(new Error('provider detail must stay private'));
+
+    await expect(service.resetInstructorPassword(RESET_INPUT)).rejects.toEqual(
+      expect.objectContaining({ code: 'PASSWORD_RESET_PROVIDER_UNAVAILABLE', status: 503 }),
+    );
+    expect(repository.failInstructorPasswordResetInput).toEqual({
+      attemptNumber: 2,
+      errorCode: 'provider_unavailable',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      now: NOW,
+    });
+    expect(repository.completeInstructorPasswordResetInput).toBeNull();
+  });
+
+  it('fails closed when the operation is no longer pending at completion', async () => {
+    repository.beginInstructorPasswordResetResult = {
+      attemptNumber: 1,
+      outcome: 'ready',
+      providerUserId: PROVIDER_USER_ID,
+    };
+
+    await expect(service.resetInstructorPassword(RESET_INPUT)).rejects.toEqual(
+      expect.objectContaining({ code: 'PASSWORD_RESET_FINALIZATION_FAILED', status: 503 }),
+    );
+  });
+
+  it.each([
+    ['admin_account', 'INSTRUCTOR_PASSWORD_RESET_ADMIN_ACCOUNT', 403],
+    ['already_completed', 'PASSWORD_RESET_ALREADY_COMPLETED', 409],
+    ['idempotency_conflict', 'ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409],
+    ['in_progress', 'PASSWORD_RESET_IN_PROGRESS', 409],
+    ['not_found', 'INSTRUCTOR_ACCOUNT_NOT_FOUND', 404],
+    ['version_conflict', 'ACCOUNT_CONTROL_VERSION_CONFLICT', 409],
+  ] as const)(
+    'maps %s reset preparation outcome to a stable error',
+    async (outcome, code, status) => {
+      repository.beginInstructorPasswordResetResult = { outcome };
+
+      await expect(service.resetInstructorPassword(RESET_INPUT)).rejects.toEqual(
+        expect.objectContaining({ code, status }),
+      );
+      expect(generate).not.toHaveBeenCalled();
+      expect(resetPassword).not.toHaveBeenCalled();
+    },
+  );
+});
+
 class TestRepository implements AccountControlsRepository {
   settings: AcademicYearSettings = {
     currentAcademicYear: null,
@@ -846,6 +973,18 @@ class TestRepository implements AccountControlsRepository {
   completePasswordResetResult: CompletePasswordResetResult = { outcome: 'not_pending' };
   failPasswordResetInput: Parameters<AccountControlsRepository['failPasswordReset']>[0] | null =
     null;
+  beginInstructorPasswordResetInput:
+    Parameters<AccountControlsRepository['beginInstructorPasswordReset']>[0] | null = null;
+  beginInstructorPasswordResetResult: BeginInstructorPasswordResetResult = {
+    outcome: 'not_found',
+  };
+  completeInstructorPasswordResetInput:
+    Parameters<AccountControlsRepository['completeInstructorPasswordReset']>[0] | null = null;
+  completeInstructorPasswordResetResult: CompleteInstructorPasswordResetResult = {
+    outcome: 'not_pending',
+  };
+  failInstructorPasswordResetInput:
+    Parameters<AccountControlsRepository['failInstructorPasswordReset']>[0] | null = null;
   correctStudentNameInput: Parameters<AccountControlsRepository['correctStudentName']>[0] | null =
     null;
   correctStudentNameResult: CorrectStudentNameResult = {
@@ -945,6 +1084,27 @@ class TestRepository implements AccountControlsRepository {
     input: Parameters<AccountControlsRepository['failPasswordReset']>[0],
   ): Promise<void> {
     this.failPasswordResetInput = input;
+    return Promise.resolve();
+  }
+
+  beginInstructorPasswordReset(
+    input: Parameters<AccountControlsRepository['beginInstructorPasswordReset']>[0],
+  ): Promise<BeginInstructorPasswordResetResult> {
+    this.beginInstructorPasswordResetInput = input;
+    return Promise.resolve(this.beginInstructorPasswordResetResult);
+  }
+
+  completeInstructorPasswordReset(
+    input: Parameters<AccountControlsRepository['completeInstructorPasswordReset']>[0],
+  ): Promise<CompleteInstructorPasswordResetResult> {
+    this.completeInstructorPasswordResetInput = input;
+    return Promise.resolve(this.completeInstructorPasswordResetResult);
+  }
+
+  failInstructorPasswordReset(
+    input: Parameters<AccountControlsRepository['failInstructorPasswordReset']>[0],
+  ): Promise<void> {
+    this.failInstructorPasswordResetInput = input;
     return Promise.resolve();
   }
 

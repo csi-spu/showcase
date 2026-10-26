@@ -8,13 +8,20 @@ export function mapAccountControlError(error: unknown): AccountControlErrorMessa
   if (error.code === 'PASSWORD_RESET_IN_PROGRESS') return 'inProgress';
   if (error.code === 'PASSWORD_RESET_PROVIDER_UNAVAILABLE') return 'providerUnavailable';
   if (error.code === 'STUDENT_ACCESS_CANNOT_BE_SHORTENED') return 'shortening';
-  if (['STUDENT_ACCOUNT_NOT_FOUND', 'ADMIN_ACCOUNT_NOT_FOUND'].includes(error.code)) {
+  if (
+    [
+      'STUDENT_ACCOUNT_NOT_FOUND',
+      'ADMIN_ACCOUNT_NOT_FOUND',
+      'INSTRUCTOR_ACCOUNT_NOT_FOUND',
+    ].includes(error.code)
+  ) {
     return 'notFound';
   }
   if (error.code === 'ADMIN_LOGIN_TAKEN') return 'loginTaken';
   if (error.code === 'ADMIN_LAST_ACTIVE_ACCOUNT') return 'lastActiveAdmin';
   if (error.code === 'ADMIN_SELF_STATUS_CHANGE_FORBIDDEN') return 'forbidden';
   if (error.code === 'INSTRUCTOR_ROLE_ALREADY_GRANTED') return 'alreadyGranted';
+  if (error.code === 'INSTRUCTOR_PASSWORD_RESET_ADMIN_ACCOUNT') return 'adminAccount';
   if (['INSTRUCTOR_ROLE_NOT_GRANTED'].includes(error.code)) return 'notFound';
   if (
     [

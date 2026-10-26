@@ -49,8 +49,17 @@ const instructorAccountControlsSchema = z
     accountId: z.uuid(),
     createdAt: z.iso.datetime(),
     firstNameTh: z.string().min(1),
+    hasAdminRole: z.boolean(),
     lastNameTh: z.string().min(1),
     status: z.enum(['active', 'suspended']),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+const instructorPasswordResetSchema = z
+  .object({
+    instructor: instructorAccountControlsSchema,
+    temporaryPassword: z.string().min(12).max(128),
   })
   .strict();
 
@@ -99,6 +108,7 @@ export type AdminCreateAdminResult = z.infer<typeof createAdminResultSchema>;
 export type AdminInstructorAccountControls = z.infer<typeof instructorAccountControlsSchema>;
 export type AdminInstructorListPage = z.infer<typeof instructorListPageSchema>;
 export type AdminCreateInstructorResult = z.infer<typeof createInstructorResultSchema>;
+export type AdminInstructorPasswordReset = z.infer<typeof instructorPasswordResetSchema>;
 
 interface AdminAccountControlsCoreConfig {
   adminBffSecret: string;
@@ -325,6 +335,20 @@ export class AdminAccountControlsCoreClient {
       method: 'POST',
       path: `/v1/internal/admin/account-controls/instructors/${accountId}/revoke`,
       responseSchema: instructorAccountControlsSchema,
+      sessionToken,
+    });
+  }
+
+  resetInstructorPassword(
+    sessionToken: string,
+    accountId: string,
+    input: { expectedVersion: number; idempotencyKey: string },
+  ): Promise<AdminInstructorPasswordReset> {
+    return this.client.request({
+      body: input,
+      method: 'POST',
+      path: `/v1/internal/admin/account-controls/instructors/${accountId}/password-reset`,
+      responseSchema: instructorPasswordResetSchema,
       sessionToken,
     });
   }
