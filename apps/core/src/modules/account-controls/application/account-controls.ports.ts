@@ -32,8 +32,10 @@ export interface InstructorAccountControls {
   accountId: string;
   createdAt: Date;
   firstNameTh: string;
+  hasAdminRole: boolean;
   lastNameTh: string;
   status: 'active' | 'suspended';
+  version: number;
 }
 
 export interface ListPage<T> {
@@ -84,6 +86,21 @@ export type BeginPasswordResetResult =
 export type CompletePasswordResetResult =
   { outcome: 'completed'; student: StudentAccountControls } | { outcome: 'not_pending' };
 
+export type BeginInstructorPasswordResetResult =
+  | {
+      outcome:
+        | 'admin_account'
+        | 'already_completed'
+        | 'idempotency_conflict'
+        | 'in_progress'
+        | 'not_found'
+        | 'version_conflict';
+    }
+  | { attemptNumber: number; outcome: 'ready'; providerUserId: string };
+
+export type CompleteInstructorPasswordResetResult =
+  { instructor: InstructorAccountControls; outcome: 'completed' } | { outcome: 'not_pending' };
+
 export type GrantInstructorRoleResult =
   | { outcome: 'already_granted' | 'idempotency_conflict' | 'not_eligible' }
   | { instructor: InstructorAccountControls; outcome: 'granted' | 'replayed' };
@@ -110,6 +127,18 @@ export interface AccountControlsRepository {
     now: Date;
     studentAccountId: string;
   }): Promise<BeginPasswordResetResult>;
+  beginInstructorPasswordReset(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    instructorAccountId: string;
+    now: Date;
+  }): Promise<BeginInstructorPasswordResetResult>;
+  completeInstructorPasswordReset(input: {
+    attemptNumber: number;
+    idempotencyKey: string;
+    now: Date;
+  }): Promise<CompleteInstructorPasswordResetResult>;
   completePasswordReset(input: {
     attemptNumber: number;
     idempotencyKey: string;
@@ -126,6 +155,12 @@ export interface AccountControlsRepository {
   }): Promise<ExtendStudentAccessResult>;
   findStudent(studentIdHash: string): Promise<StudentAccountControls | null>;
   failPasswordReset(input: {
+    attemptNumber: number;
+    errorCode: 'provider_unavailable';
+    idempotencyKey: string;
+    now: Date;
+  }): Promise<void>;
+  failInstructorPasswordReset(input: {
     attemptNumber: number;
     errorCode: 'provider_unavailable';
     idempotencyKey: string;

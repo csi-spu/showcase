@@ -320,6 +320,63 @@ export class AccountControlsService {
     };
   }
 
+  async resetInstructorPassword(input: {
+    actorAccountId: string;
+    expectedVersion: number;
+    idempotencyKey: string;
+    instructorAccountId: string;
+  }): Promise<{
+    instructor: InstructorAccountControls;
+    temporaryPassword: string;
+  }> {
+    const now = this.clock.now();
+    const preparation = await this.repository.beginInstructorPasswordReset({ ...input, now });
+    if (preparation.outcome === 'admin_account') {
+      throw new AccountControlsError('INSTRUCTOR_PASSWORD_RESET_ADMIN_ACCOUNT', 403);
+    }
+    if (preparation.outcome === 'already_completed') {
+      throw new AccountControlsError('PASSWORD_RESET_ALREADY_COMPLETED', 409);
+    }
+    if (preparation.outcome === 'idempotency_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_IDEMPOTENCY_CONFLICT', 409);
+    }
+    if (preparation.outcome === 'in_progress') {
+      throw new AccountControlsError('PASSWORD_RESET_IN_PROGRESS', 409);
+    }
+    if (preparation.outcome === 'not_found') {
+      throw new AccountControlsError('INSTRUCTOR_ACCOUNT_NOT_FOUND', 404);
+    }
+    if (preparation.outcome === 'version_conflict') {
+      throw new AccountControlsError('ACCOUNT_CONTROL_VERSION_CONFLICT', 409);
+    }
+    if (!('providerUserId' in preparation)) {
+      throw new AccountControlsError('PASSWORD_RESET_FINALIZATION_FAILED', 503);
+    }
+
+    const temporaryPassword = this.tokenGenerator.generate(18);
+    try {
+      await this.passwordProvider.resetPassword(preparation.providerUserId, temporaryPassword);
+    } catch {
+      await this.repository.failInstructorPasswordReset({
+        attemptNumber: preparation.attemptNumber,
+        errorCode: 'provider_unavailable',
+        idempotencyKey: input.idempotencyKey,
+        now,
+      });
+      throw new AccountControlsError('PASSWORD_RESET_PROVIDER_UNAVAILABLE', 503);
+    }
+
+    const completion = await this.repository.completeInstructorPasswordReset({
+      attemptNumber: preparation.attemptNumber,
+      idempotencyKey: input.idempotencyKey,
+      now,
+    });
+    if (completion.outcome === 'not_pending') {
+      throw new AccountControlsError('PASSWORD_RESET_FINALIZATION_FAILED', 503);
+    }
+    return { instructor: completion.instructor, temporaryPassword };
+  }
+
   async extendStudentAccess(input: {
     accessEndsAcademicYear: number;
     actorAccountId: string;

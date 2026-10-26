@@ -33,6 +33,7 @@ import {
   ExtendStudentAccessDto,
   InstructorRoleActionDto,
   ListAccountsQueryDto,
+  ResetInstructorPasswordDto,
   ResetStudentPasswordDto,
   SetAdminStatusDto,
   SetStudentStatusDto,
@@ -176,6 +177,24 @@ export class AdminAccountControlsController {
       actorAccountId: actor.accountId,
       idempotencyKey: body.idempotencyKey,
       instructorAccountId,
+    });
+  }
+
+  @Post('instructors/:accountId/password-reset')
+  @Header('Cache-Control', 'no-store')
+  async resetInstructorPassword(
+    @Param('accountId', new ParseUUIDPipe({ version: '4' })) instructorAccountId: string,
+    @Body() body: ResetInstructorPasswordDto,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{
+    instructor: InstructorAccountControls;
+    temporaryPassword: string;
+  }> {
+    const actor = await this.authorize(authorization);
+    return this.controls.resetInstructorPassword({
+      actorAccountId: actor.accountId,
+      instructorAccountId,
+      ...body,
     });
   }
 

@@ -26,6 +26,16 @@ const STUDENT = {
   version: 2,
 };
 const ADMIN_ACCOUNT_ID = '40000000-0000-4000-8000-000000000001';
+const INSTRUCTOR_ACCOUNT_ID = '50000000-0000-4000-8000-000000000001';
+const INSTRUCTOR = {
+  accountId: INSTRUCTOR_ACCOUNT_ID,
+  createdAt: UPDATED_AT,
+  firstNameTh: 'อาจารย์',
+  hasAdminRole: false,
+  lastNameTh: 'ทดสอบ',
+  status: 'active' as const,
+  version: 2,
+};
 const ADMIN = {
   accountId: ADMIN_ACCOUNT_ID,
   createdAt: UPDATED_AT,
@@ -65,6 +75,10 @@ describe('Admin Account Controls API (e2e)', () => {
       .mockResolvedValue({ currentAcademicYear: 2577, updatedAt: UPDATED_AT, version: 4 }),
     listAdmins: jest.fn().mockResolvedValue({ items: [ADMIN], nextCursor: null }),
     listStudents: jest.fn().mockResolvedValue({ items: [STUDENT], nextCursor: null }),
+    resetInstructorPassword: jest.fn().mockResolvedValue({
+      instructor: INSTRUCTOR,
+      temporaryPassword: 'one-time-random-instructor-password',
+    }),
     resetStudentPassword: jest.fn().mockResolvedValue({
       student: { ...STUDENT, version: 3 },
       temporaryPassword: 'one-time-random-password',
@@ -181,6 +195,39 @@ describe('Admin Account Controls API (e2e)', () => {
       idempotencyKey: IDEMPOTENCY_KEY,
       studentAccountId: STUDENT_ACCOUNT_ID,
     });
+  });
+
+  it('resets an Instructor password with a server-owned actor and a no-store response', async () => {
+    const reset = await authorized(
+      request(app.getHttpServer()).post(
+        `/v1/internal/admin/account-controls/instructors/${INSTRUCTOR_ACCOUNT_ID}/password-reset`,
+      ),
+    )
+      .send({ expectedVersion: 1, idempotencyKey: IDEMPOTENCY_KEY })
+      .expect(201)
+      .expect('Cache-Control', 'no-store');
+    const resetBody = reset.body as unknown as { temporaryPassword: unknown };
+    expect(resetBody.temporaryPassword).toBe('one-time-random-instructor-password');
+    expect(controls.resetInstructorPassword).toHaveBeenCalledWith({
+      actorAccountId: ACTOR_ACCOUNT_ID,
+      expectedVersion: 1,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      instructorAccountId: INSTRUCTOR_ACCOUNT_ID,
+    });
+
+    await authorized(
+      request(app.getHttpServer()).post(
+        `/v1/internal/admin/account-controls/instructors/${INSTRUCTOR_ACCOUNT_ID}/password-reset`,
+      ),
+    )
+      .send({
+        actorAccountId: ADMIN_ACCOUNT_ID,
+        expectedVersion: 1,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      })
+      .expect(400)
+      .expect({ error: { code: 'INVALID_REQUEST' } });
+    expect(controls.resetInstructorPassword).toHaveBeenCalledTimes(1);
   });
 
   it('corrects Roster Name through an audited Admin-only mutation', async () => {
@@ -334,6 +381,9 @@ describe('Admin Account Controls API (e2e)', () => {
       request(app.getHttpServer()).post(
         `/v1/internal/admin/account-controls/students/${STUDENT_ACCOUNT_ID}/status`,
       ),
+      request(app.getHttpServer()).post(
+        `/v1/internal/admin/account-controls/instructors/${INSTRUCTOR_ACCOUNT_ID}/password-reset`,
+      ),
     ]) {
       await test.set('x-admin-bff-secret', ADMIN_BFF_SECRET).expect(401);
     }
@@ -342,6 +392,7 @@ describe('Admin Account Controls API (e2e)', () => {
     expect(controls.createAdmin).not.toHaveBeenCalled();
     expect(controls.setAdminStatus).not.toHaveBeenCalled();
     expect(controls.setStudentStatus).not.toHaveBeenCalled();
+    expect(controls.resetInstructorPassword).not.toHaveBeenCalled();
   });
 
   it('rejects unknown fields and invalid Student IDs before account lookup', async () => {

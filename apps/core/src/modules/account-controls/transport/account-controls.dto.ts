@@ -60,6 +60,15 @@ export class ResetStudentPasswordDto {
   idempotencyKey!: string;
 }
 
+export class ResetInstructorPasswordDto {
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @IsUUID('4')
+  idempotencyKey!: string;
+}
+
 export class ListAccountsQueryDto {
   @IsOptional()
   @IsString()
