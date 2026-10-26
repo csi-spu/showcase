@@ -14,14 +14,20 @@ flowchart LR
 
 ## Workflows
 
-| File                 | Responsibility                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `ci.yml`             | quality gates plus the trusted deployment-plan artifact for successful `main` pushes |
-| `build-image.yml`    | reusable OCI build, SBOM, provenance, and GHCR push                                  |
-| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, and poll terminal status                         |
-| `production.yml`     | build and deploy only applications named by the CI plan after production approval    |
+| File                 | Responsibility                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `ci.yml`             | affected quality gates, affected browser E2E, and the `main` deployment-plan artifact |
+| `build-image.yml`    | reusable OCI build, SBOM, provenance, and GHCR push                                   |
+| `deploy-coolify.yml` | pin immutable tag, trigger Coolify, and poll terminal status                          |
+| `production.yml`     | build and deploy only applications named by the CI plan after production approval     |
 
 CI checks out full Git history because Turbo affected calculation depends on the real push base and head. Formatting and delivery-workflow contract tests are repository-wide and cheap; application gates remain package-aware.
+
+## Affected browser journeys
+
+Unit tests, lint, typecheck, and build already run per package through `turbo run ... --affected`. Browser E2E follows the same graph: `tools/ci/select-browser-e2e.mjs` maps each Playwright specification to the browser applications it drives and selects only the specifications whose applications Turbo reports as affected. The browser job is skipped when nothing is selected.
+
+Every specification runs when Core is affected (it backs every journey), when anything under `tools/playwright/` or `playwright.config.ts` changes, when `ci.yml` or the setup action changes, or when the push base is unavailable. Turbo global dependencies such as `pnpm-lock.yaml` mark Core affected, so they also run everything. A new specification must be added to the selector map; an unmapped or stale entry fails CI instead of silently skipping coverage.
 
 ## Affected application plan
 

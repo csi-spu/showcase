@@ -13,6 +13,24 @@ test('CI publishes the Turbo-derived deployment plan for a successful main push'
   assert.ok(steps.some((step) => step.name === 'Upload deployment plan'));
 });
 
+test('CI runs only the browser journeys selected from the Turbo-affected graph', () => {
+  const scope = ci.jobs['browser-e2e-scope'];
+  const selectStep = scope.steps.find((step) => step.id === 'select');
+  assert.equal(scope.outputs.specs, '${{ steps.select.outputs.specs }}');
+  assert.match(selectStep.run, /pnpm turbo ls --affected --output=json/u);
+  assert.match(selectStep.run, /node tools\/ci\/select-browser-e2e\.mjs --all/u);
+  assert.match(selectStep.run, /--changed-files/u);
+
+  const browserE2E = ci.jobs['browser-e2e'];
+  assert.equal(browserE2E.needs, 'browser-e2e-scope');
+  assert.equal(browserE2E.if, "needs.browser-e2e-scope.outputs.specs != '[]'");
+  const runStep = browserE2E.steps.find(
+    (step) => step.name === 'Run the affected browser journeys',
+  );
+  assert.equal(runStep.env.SPECS, '${{ needs.browser-e2e-scope.outputs.specs }}');
+  assert.match(runStep.run, /pnpm e2e "\$\{specs\[@\]\}"/u);
+});
+
 test('production consumes the CI plan and builds only its application matrix', () => {
   assert.deepEqual(production.on.workflow_run.workflows, ['CI']);
   assert.equal(
