@@ -110,9 +110,15 @@ test.describe('Collection lifecycle', () => {
 
       failedResponseStatuses.length = 0;
       await test.step('Instructor requests a correction for the answer', async () => {
+        const openAnswerLink = row.getByRole('link', { name: /ตรวจคำตอบ/u });
+        await expect(row.locator('xpath=..')).toHaveAttribute('aria-busy', 'false');
+        await expect(openAnswerLink).toHaveAttribute('href', /\/students\/[^/?]+/u);
         await Promise.all([
-          instructorPage.waitForURL((url) => url.pathname.includes('/students/')),
-          row.getByRole('link', { name: /ตรวจคำตอบ/u }).click(),
+          instructorPage.waitForURL((url) => url.pathname.includes('/students/'), {
+            timeout: 30_000,
+            waitUntil: 'commit',
+          }),
+          openAnswerLink.click(),
         ]);
         await expect(
           instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
