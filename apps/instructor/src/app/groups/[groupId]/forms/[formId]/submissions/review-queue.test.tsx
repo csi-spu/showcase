@@ -192,6 +192,16 @@ describe('ReviewQueue', () => {
     expect(readReviewQueue.mock.calls.length).toBeLessThan('66000012'.length);
   });
 
+  it('does not rewrite the submissions URL when searching on the first page', async () => {
+    const user = userEvent.setup();
+    renderQueue();
+
+    await user.type(screen.getByLabelText('review.searchLabel'), '66000012');
+
+    await waitFor(() => expect(lastRead()).toMatchObject({ page: 1, search: '66000012' }));
+    expect(writtenUrls()).toEqual([]);
+  });
+
   it('keeps status, order, page and page size in the URL', async () => {
     const user = userEvent.setup();
     renderQueue();
