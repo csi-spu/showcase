@@ -257,17 +257,22 @@ describe('AdminReviewsCoreClient', () => {
         },
       ],
       nextCursor: null,
+      page: 2,
+      pageSize: 20,
+      totalCount: 21,
+      totalPages: 2,
     };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(page));
 
     await expect(
       new AdminReviewsCoreClient(config, fetchMock).listPublishedWorks({
         limit: 20,
+        page: 2,
         q: 'ผลงาน',
       }),
     ).resolves.toEqual(page);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      'https://core.example.test/v1/public/works?limit=20&sort=recent&q=%E0%B8%9C%E0%B8%A5%E0%B8%87%E0%B8%B2%E0%B8%99',
+      'https://core.example.test/v1/public/works?limit=20&page=2&sort=recent&q=%E0%B8%9C%E0%B8%A5%E0%B8%87%E0%B8%B2%E0%B8%99',
     );
   });
 

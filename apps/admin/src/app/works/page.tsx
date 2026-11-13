@@ -38,6 +38,7 @@ import {
   decideRemovalRequestAction,
 } from '../recovery/recovery.actions';
 import {
+  resolveWorkManagementPage,
   resolveWorkManagementView,
   WORK_MANAGEMENT_VIEWS,
   workManagementHref,
@@ -46,7 +47,7 @@ import {
 export default async function WorkManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cursor?: string; q?: string; view?: string }>;
+  searchParams: Promise<{ cursor?: string; page?: string; q?: string; view?: string }>;
 }) {
   const [authState, query, t] = await Promise.all([
     getAdminAuthPageState(),
@@ -58,6 +59,7 @@ export default async function WorkManagementPage({
   if (token === null) redirect('/?expired=1');
 
   const view = resolveWorkManagementView(query.view);
+  const page = resolveWorkManagementPage(query.page);
   const search = view === 'published' ? query.q?.trim() || undefined : undefined;
   const core = new AdminReviewsCoreClient(getAdminServerEnvironment());
   const reviews =
@@ -78,8 +80,8 @@ export default async function WorkManagementPage({
   const published =
     view === 'published'
       ? await core.listPublishedWorks({
-          ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
           limit: 20,
+          page,
           ...(search === undefined ? {} : { q: search }),
         })
       : null;
@@ -88,8 +90,16 @@ export default async function WorkManagementPage({
       removals?.items.length ??
       attributions?.items.length ??
       published?.items.length) === 0;
-  const nextCursor =
-    reviews?.nextCursor ?? attributions?.nextCursor ?? published?.nextCursor ?? null;
+  const nextCursor = reviews?.nextCursor ?? attributions?.nextCursor ?? null;
+  const nextHref =
+    view === 'published' && published?.hasNextPage
+      ? workManagementHref('published', {
+          page: published.page + 1,
+          ...(search === undefined ? {} : { q: search }),
+        })
+      : nextCursor === null
+        ? null
+        : workManagementHref(view, { cursor: nextCursor });
 
   return (
     <AdminWorkspaceShell activePage="works">
@@ -304,13 +314,10 @@ export default async function WorkManagementPage({
             </TableBody>
           </Table>
 
-          {nextCursor === null ? null : (
+          {nextHref === null ? null : (
             <Link
               className={buttonVariants({ className: 'w-fit', variant: 'outline' })}
-              href={workManagementHref(view, {
-                cursor: nextCursor,
-                ...(search === undefined ? {} : { q: search }),
-              })}
+              href={nextHref}
             >
               {t('next')}
               <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />

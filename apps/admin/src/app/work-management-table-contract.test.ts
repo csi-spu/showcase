@@ -40,13 +40,13 @@ describe('legacy Work Management routes', () => {
     ).rejects.toThrow(`redirect:/recovery/${workPublicId}`);
   });
 
-  it('preserves Published Work search and pagination state', async () => {
+  it('preserves Published Work search and page state', async () => {
     await expect(
       LegacyCorrectionsPage({
-        searchParams: Promise.resolve({ cursor: 'next/cursor', q: 'ระบบ แนะนำ' }),
+        searchParams: Promise.resolve({ page: '2', q: 'ระบบ แนะนำ' }),
       }),
     ).rejects.toThrow(
-      'redirect:/works?view=published&cursor=next%2Fcursor&q=%E0%B8%A3%E0%B8%B0%E0%B8%9A%E0%B8%9A+%E0%B9%81%E0%B8%99%E0%B8%B0%E0%B8%99%E0%B8%B3',
+      'redirect:/works?view=published&page=2&q=%E0%B8%A3%E0%B8%B0%E0%B8%9A%E0%B8%9A+%E0%B9%81%E0%B8%99%E0%B8%B0%E0%B8%99%E0%B8%B3',
     );
   });
 });
