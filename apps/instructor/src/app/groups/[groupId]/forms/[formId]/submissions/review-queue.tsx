@@ -109,7 +109,7 @@ export function ReviewQueue({
       const next = searchInput.trim();
       if (next === search) return;
       setSearch(next);
-      setQuery((current) => ({ ...current, page: 1 }));
+      setQuery((current) => (current.page === 1 ? current : { ...current, page: 1 }));
     }, SEARCH_DEBOUNCE_MILLISECONDS);
     return () => clearTimeout(timeout);
   }, [search, searchInput]);
