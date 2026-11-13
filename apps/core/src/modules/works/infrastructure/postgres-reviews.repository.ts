@@ -153,10 +153,19 @@ export class PostgresReviewsRepository implements ReviewRepository {
     const rows = await this.database.sql<Array<{ asset_id: string; master_object_key: string }>>`
       select asset.id as asset_id, asset.master_object_key
       from private.work_revisions as revision
+      join public.works as work on work.id = revision.work_id
       join private.work_revision_media as media on media.revision_id = revision.id
       join private.work_media_assets as asset on asset.id = media.asset_id
       where revision.public_id = ${revisionPublicId}
-        and revision.status = 'pending_review'
+        and (
+          revision.status = 'pending_review'
+          or (
+            revision.status = 'approved'
+            and work.activity_state = 'active'
+            and work.publication_state = 'published'
+            and work.published_revision_id = revision.id
+          )
+        )
         and asset.id = ${assetId}
         and asset.status = 'ready'
         and asset.master_object_key is not null

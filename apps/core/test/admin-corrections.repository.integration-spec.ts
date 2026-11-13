@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import type postgres from 'postgres';
 import { DatabaseClient } from '../src/modules/auth/infrastructure/database.client';
 import { PostgresPublicationRepository } from '../src/modules/works/infrastructure/postgres-publication.repository';
+import { PostgresReviewsRepository } from '../src/modules/works/infrastructure/postgres-reviews.repository';
 import { PostgresWorkRevisionsRepository } from '../src/modules/works/infrastructure/postgres-work-revisions.repository';
 
 const STUDENT_PERSON_ID = id(1);
@@ -27,6 +28,7 @@ describe('Postgres Admin corrections integration', () => {
   const database = new DatabaseClient(new ConfigService({ DATABASE_URL }));
   const revisions = new PostgresWorkRevisionsRepository(database);
   const publication = new PostgresPublicationRepository(database);
+  const reviews = new PostgresReviewsRepository(database);
 
   beforeEach(async () => {
     await cleanup();
@@ -123,6 +125,21 @@ describe('Postgres Admin corrections integration', () => {
       database.sql`update private.admin_correction_audits set reason = 'แก้ย้อนหลังไม่ได้'
         where idempotency_key = ${CORRECTION_KEY}`,
     ).rejects.toMatchObject({ code: '23514' });
+  });
+
+  it('loads media from the current Published Revision for the Admin correction preview', async () => {
+    await expect(
+      reviews.findRevisionMediaObject(BASE_REVISION_PUBLIC_ID, POSTER_ID),
+    ).resolves.toEqual({
+      assetId: POSTER_ID,
+      masterObjectKey: `media/${POSTER_ID}/master.webp`,
+    });
+
+    await database.sql`update public.works set publication_state = 'unpublished' where id = ${WORK_ID}`;
+
+    await expect(
+      reviews.findRevisionMediaObject(BASE_REVISION_PUBLIC_ID, POSTER_ID),
+    ).resolves.toBeNull();
   });
 
   it('serializes equivalent concurrent retries into one audit without a derived event', async () => {

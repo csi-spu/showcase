@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buttonVariants } from '@showcase/ui/button';
 import { cn } from '@showcase/ui/cn';
-import { ArrowLeftIcon, RotateCcwIcon } from 'lucide-react';
+import { ArrowLeftIcon, ExternalLinkIcon, RotateCcwIcon } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -32,9 +32,10 @@ export default async function AdminCorrectionPage({
   if (state.kind !== 'active') redirect(state.kind === 'expired' ? '/?expired=1' : '/');
   const sessionToken = await readAdminSessionToken();
   if (sessionToken === null) redirect('/?expired=1');
+  const environment = getAdminServerEnvironment();
   let base;
   try {
-    base = await new AdminReviewsCoreClient(getAdminServerEnvironment()).getCorrectionBase(
+    base = await new AdminReviewsCoreClient(environment).getCorrectionBase(
       sessionToken,
       parsedWorkPublicId.data,
     );
@@ -48,6 +49,15 @@ export default async function AdminCorrectionPage({
       <AdminWorkspacePage
         actions={
           <>
+            <a
+              className={buttonVariants({ variant: 'outline' })}
+              href={`${environment.visitorUrl}/works/${base.workPublicId}`}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <ExternalLinkIcon aria-hidden="true" data-icon="inline-start" />
+              {t('previewPublished')}
+            </a>
             <Link className={buttonVariants({ variant: 'outline' })} href="/works?view=published">
               <ArrowLeftIcon aria-hidden="true" data-icon="inline-start" />
               {t('back')}
