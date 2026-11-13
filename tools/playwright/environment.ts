@@ -1,7 +1,7 @@
 import { URL } from 'node:url';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
-const LOCAL_DATABASE_PORT = 54322;
+const LOCAL_DATABASE_PORT = 54329;
 
 export interface LocalE2EEnvironment {
   adminUrl: string;

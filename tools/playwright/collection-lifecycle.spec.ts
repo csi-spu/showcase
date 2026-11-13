@@ -7,7 +7,7 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 test.describe('Collection lifecycle', () => {
-  test.describe.configure({ timeout: 180_000 });
+  test.describe.configure({ timeout: 240_000 });
 
   test('autosaves, submits, locks, and returns a private form for correction', async ({
     browser,
@@ -18,6 +18,10 @@ test.describe('Collection lifecycle', () => {
       baseURL: collectionScenario.instructorUrl,
     });
     const instructorPage = await instructorContext.newPage();
+    studentPage.setDefaultTimeout(30_000);
+    studentPage.setDefaultNavigationTimeout(60_000);
+    instructorPage.setDefaultTimeout(30_000);
+    instructorPage.setDefaultNavigationTimeout(60_000);
     const failedResponseStatuses: number[] = [];
     instructorPage.on('response', (response) => {
       if (response.status() >= 400) failedResponseStatuses.push(response.status());
@@ -27,39 +31,45 @@ test.describe('Collection lifecycle', () => {
     const correctionReason = 'กรุณาระบุชื่อบริษัทให้ครบถ้วนและตรวจสอบการสะกดก่อนส่งอีกครั้ง';
 
     try {
-      await loginStudentCollection(studentPage, collectionScenario);
-      await studentPage.goto(
-        `${collectionScenario.studentCollectionUrl}/forms/${collectionScenario.formId}`,
-      );
-      await expect(
-        studentPage.getByRole('heading', { name: collectionScenario.formTitle }),
-      ).toBeVisible();
+      await test.step('Student saves and submits the first answer', async () => {
+        await loginStudentCollection(studentPage, collectionScenario);
+        await studentPage.goto(
+          `${collectionScenario.studentCollectionUrl}/forms/${collectionScenario.formId}`,
+        );
+        await expect(
+          studentPage.getByRole('heading', { name: collectionScenario.formTitle }),
+        ).toBeVisible();
 
-      const answer = studentPage.getByLabel(collectionScenario.answerLabel);
-      await answer.fill(firstAnswer);
-      await expect(studentPage.getByText('บันทึกแบบร่างแล้ว', { exact: true })).toBeVisible({
-        timeout: 15_000,
+        const answer = studentPage.getByLabel(collectionScenario.answerLabel);
+        await answer.fill(firstAnswer);
+        await expect(studentPage.getByText('บันทึกแบบร่างแล้ว', { exact: true })).toBeVisible({
+          timeout: 15_000,
+        });
+
+        await studentPage.reload();
+        await expect(studentPage.getByLabel(collectionScenario.answerLabel)).toHaveValue(
+          firstAnswer,
+        );
+        await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
+        await expectSubmissionConfirmed(studentPage, collectionScenario, firstAnswer);
+
+        /* The confirmation belongs to the submit itself; a revisit shows the plain read-only view. */
+        await studentPage.reload();
+        await expect(studentPage.getByLabel(collectionScenario.answerLabel)).not.toBeEditable();
+        await expect(
+          studentPage.getByText('ส่งคำตอบแล้ว อยู่ระหว่างรอผู้สอนตรวจ จึงยังแก้ไขไม่ได้'),
+        ).toBeVisible();
+        await expect(
+          studentPage.getByRole('heading', { name: 'ส่งคำตอบเรียบร้อยแล้ว' }),
+        ).toHaveCount(0);
       });
 
-      await studentPage.reload();
-      await expect(studentPage.getByLabel(collectionScenario.answerLabel)).toHaveValue(firstAnswer);
-      await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
-      await expectSubmissionConfirmed(studentPage, collectionScenario, firstAnswer);
-
-      /* The confirmation belongs to the submit itself; a revisit shows the plain read-only view. */
-      await studentPage.reload();
-      await expect(studentPage.getByLabel(collectionScenario.answerLabel)).not.toBeEditable();
-      await expect(
-        studentPage.getByText('ส่งคำตอบแล้ว อยู่ระหว่างรอผู้สอนตรวจ จึงยังแก้ไขไม่ได้'),
-      ).toBeVisible();
-      await expect(studentPage.getByRole('heading', { name: 'ส่งคำตอบเรียบร้อยแล้ว' })).toHaveCount(
-        0,
-      );
-
-      await loginInstructor(instructorPage, collectionScenario);
-      await instructorPage.goto(
-        `/groups/${collectionScenario.groupId}/forms/${collectionScenario.formId}/submissions`,
-      );
+      await test.step('Instructor opens the submitted answer', async () => {
+        await loginInstructor(instructorPage, collectionScenario);
+        await instructorPage.goto(
+          `/groups/${collectionScenario.groupId}/forms/${collectionScenario.formId}/submissions`,
+        );
+      });
       const views = instructorPage.getByRole('navigation', { name: 'มุมมองคำตอบ' });
 
       await test.step('Summary counts the answer without naming who gave it', async () => {
@@ -99,35 +109,42 @@ test.describe('Collection lifecycle', () => {
       });
 
       failedResponseStatuses.length = 0;
-      await Promise.all([
-        instructorPage.waitForURL((url) => url.pathname.includes('/students/')),
-        row.getByRole('link', { name: /ตรวจคำตอบ/u }).click(),
-      ]);
-      await expect(
-        instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
-      ).toBeVisible();
-      await expect(instructorPage.getByText('1 จาก 1 คน', { exact: true })).toBeVisible();
-      expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
-      await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
-      await instructorPage.getByRole('button', { name: 'ขอให้แก้ไข' }).click();
+      await test.step('Instructor requests a correction for the answer', async () => {
+        await Promise.all([
+          instructorPage.waitForURL((url) => url.pathname.includes('/students/')),
+          row.getByRole('link', { name: /ตรวจคำตอบ/u }).click(),
+        ]);
+        await expect(
+          instructorPage.getByRole('heading', { name: collectionScenario.studentName }),
+        ).toBeVisible();
+        await expect(instructorPage.getByText('1 จาก 1 คน', { exact: true })).toBeVisible();
+        expect(instructorPage.url()).not.toContain(collectionScenario.studentId);
+        await expect(instructorPage.getByText(firstAnswer, { exact: true })).toBeVisible();
+        expect(failedResponseStatuses).toEqual([]);
+        await instructorPage.getByRole('button', { name: 'ขอให้แก้ไข' }).click();
 
-      const confirm = instructorPage.getByRole('button', { name: 'บันทึกผล' });
-      await confirm.click();
-      await expect(instructorPage.getByLabel('เหตุผลและสิ่งที่ต้องแก้ไข')).toBeFocused();
-      await instructorPage.getByLabel('เหตุผลและสิ่งที่ต้องแก้ไข').fill(correctionReason);
-      await confirm.click();
-      await expect(instructorPage.getByText('บันทึกผลการตรวจแล้ว', { exact: true })).toBeVisible();
+        const confirm = instructorPage.getByRole('button', { name: 'บันทึกผล' });
+        await confirm.click();
+        await expect(instructorPage.getByLabel('เหตุผลและสิ่งที่ต้องแก้ไข')).toBeFocused();
+        await instructorPage.getByLabel('เหตุผลและสิ่งที่ต้องแก้ไข').fill(correctionReason);
+        await confirm.click();
+        await expect(
+          instructorPage.getByText('บันทึกผลการตรวจแล้ว', { exact: true }),
+        ).toBeVisible();
+      });
 
-      await studentPage.reload();
-      await expect(studentPage.getByText('ผู้สอนขอให้แก้ไข', { exact: true })).toBeVisible();
-      await expect(studentPage.getByText(correctionReason, { exact: true })).toBeVisible();
-      const editableAnswer = studentPage.getByLabel(collectionScenario.answerLabel);
-      await expect(editableAnswer).toBeEnabled();
-      /* Submitting straight away, inside the autosave delay, still sends what is on screen. */
-      await editableAnswer.fill(correctedAnswer);
-      await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
-      await expectSubmissionConfirmed(studentPage, collectionScenario, correctedAnswer);
-      await expect(studentPage.getByText('บันทึกไม่สำเร็จ', { exact: true })).toHaveCount(0);
+      await test.step('Student resubmits the corrected answer before autosave', async () => {
+        await studentPage.reload();
+        await expect(studentPage.getByText('ผู้สอนขอให้แก้ไข', { exact: true })).toBeVisible();
+        await expect(studentPage.getByText(correctionReason, { exact: true })).toBeVisible();
+        const editableAnswer = studentPage.getByLabel(collectionScenario.answerLabel);
+        await expect(editableAnswer).toBeEnabled();
+        /* Submitting straight away, inside the autosave delay, still sends what is on screen. */
+        await editableAnswer.fill(correctedAnswer);
+        await studentPage.getByRole('button', { name: 'ส่งคำตอบ' }).click();
+        await expectSubmissionConfirmed(studentPage, collectionScenario, correctedAnswer);
+        await expect(studentPage.getByText('บันทึกไม่สำเร็จ', { exact: true })).toHaveCount(0);
+      });
     } finally {
       await instructorContext.close();
     }

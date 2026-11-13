@@ -1,17 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { createConnection } from 'node:net';
 import { assertLocalE2EEnvironment } from './environment.ts';
 import { sanitizeSensitiveArtifacts } from './sensitive-artifacts.ts';
 
 const repositoryRoot = new URL('../../', import.meta.url).pathname;
-const POSTGRES_CONTAINER = 'showcase-e2e-postgres';
+const POSTGRES_CONTAINER = 'showcase-e2e-postgres-54329';
 const localDefaults: Record<string, string> = {
   APP_ENV: 'test',
   ADMIN_URL: 'http://127.0.0.1:3001',
   API_KEY: 'local-development-only-shared-api-key',
   BETTER_AUTH_SECRET: 'local-development-only-better-auth-secret',
   CORE_URL: 'http://127.0.0.1:4100',
-  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54329/postgres',
   E2E_LOCAL_ONLY: '1',
   INSTRUCTOR_URL: 'http://127.0.0.1:3003',
   MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
@@ -131,9 +130,6 @@ function run(
 }
 
 async function ensureLocalPostgres(env: Record<string, string | undefined>): Promise<void> {
-  const databaseUrl = env.DATABASE_URL;
-  if (databaseUrl !== undefined && (await canConnect(databaseUrl))) return;
-
   const inspect = spawnSync(
     'docker',
     ['inspect', '--format={{.State.Running}}', POSTGRES_CONTAINER],
@@ -154,7 +150,7 @@ async function ensureLocalPostgres(env: Record<string, string | undefined>): Pro
         '--env',
         'POSTGRES_PASSWORD=postgres',
         '--publish',
-        '127.0.0.1:54322:5432',
+        '127.0.0.1:54329:5432',
         'postgres:17.6-alpine',
       ],
       env,
@@ -172,23 +168,6 @@ async function ensureLocalPostgres(env: Record<string, string | undefined>): Pro
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }
   fail('E2E_SETUP_POSTGRES_UNAVAILABLE');
-}
-
-function canConnect(databaseUrl: string): Promise<boolean> {
-  const url = new URL(databaseUrl);
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: url.hostname,
-      port: Number(url.port || '5432'),
-    });
-    const finish = (isConnected: boolean) => {
-      socket.destroy();
-      resolve(isConnected);
-    };
-    socket.setTimeout(1_000, () => finish(false));
-    socket.once('connect', () => finish(true));
-    socket.once('error', () => finish(false));
-  });
 }
 
 function fail(message: string): never {

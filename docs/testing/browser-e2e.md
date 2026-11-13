@@ -7,8 +7,8 @@ lifecycle journeys:
 pnpm e2e
 ```
 
-It starts or reuses the local Supabase stack, resets the local database once for the
-run, starts Core on `http://127.0.0.1:4100`, Student on `http://127.0.0.1:3002`, and
+It starts or reuses a dedicated Postgres container on `127.0.0.1:54329` and resets
+that test database once for the run, starts Core on `http://127.0.0.1:4100`, Student on `http://127.0.0.1:3002`, and
 Admin on `http://127.0.0.1:3001`, Visitor on `http://127.0.0.1:3000`, and the
 deterministic local media provider on `http://127.0.0.1:4191`. A local media
 processor consumes the provider objects and runs the same Core processing path.
@@ -51,10 +51,10 @@ Change Request states, and verifies that correction resubmission creates the nex
 immutable Revision before publication.
 The database reset happens once before Playwright starts, not before each test.
 
-The harness fails closed unless `APP_ENV=test`, `E2E_LOCAL_ONLY=1`, Postgres is
-`127.0.0.1`/`localhost` on port `54322`, and Supabase Auth is local HTTP on port
-`54321`. It obtains local keys from `supabase status --output env` after `supabase
-start`; no linked project is queried. Do not set remote URLs, linked-project flags,
+The harness fails closed unless `APP_ENV=test`, `E2E_LOCAL_ONLY=1`, and Postgres is
+`127.0.0.1`/`localhost` on port `54329`. Its named test container is created or
+started explicitly; another local service responding on that port is never treated
+as the test database. Do not set remote URLs, linked-project flags,
 or production/staging mode. A target or credential failure is reported as an
 `E2E_SETUP_*` error before reset, fixture setup, cleanup, or browser execution.
 

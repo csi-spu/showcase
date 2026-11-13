@@ -7,7 +7,7 @@ const validEnvironment = {
   API_KEY: 'local-test-identity-secret',
   APP_ENV: 'test',
   CORE_URL: 'http://127.0.0.1:4100',
-  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54329/postgres',
   E2E_LOCAL_ONLY: '1',
   INSTRUCTOR_URL: 'http://127.0.0.1:3003',
   MEDIA_PROVIDER_URL: 'http://127.0.0.1:4191',
@@ -30,6 +30,14 @@ test('rejects a linked or remote database before privileged work', () => {
       assertLocalE2EEnvironment({
         ...validEnvironment,
         DATABASE_URL: 'postgresql://postgres:secret@db.example.com:5432/postgres',
+      }),
+    /E2E_SETUP_UNSAFE_TARGET/,
+  );
+  assert.throws(
+    () =>
+      assertLocalE2EEnvironment({
+        ...validEnvironment,
+        DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
       }),
     /E2E_SETUP_UNSAFE_TARGET/,
   );
