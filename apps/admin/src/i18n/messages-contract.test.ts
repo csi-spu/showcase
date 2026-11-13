@@ -20,5 +20,6 @@ describe('Thai Admin messages', () => {
       /ADMIN ACCESS|Harness|Phase 1|JavaScript|เซสชัน|บริการยืนยันตัวตน|ช่องทางปฏิบัติการ/,
     );
     expect(messages.Home.description).toBe('พื้นที่สำหรับตรวจสอบและจัดการผลงานของนักศึกษา');
+    expect(messages.Correction.title).toBe('สร้างฉบับแก้ไข');
   });
 });
