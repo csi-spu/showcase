@@ -151,6 +151,10 @@ const publishedWorkPageSchema = z
     hasNextPage: z.boolean(),
     items: z.array(publishedWorkSchema).max(48),
     nextCursor: z.string().min(1).nullable(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    totalCount: z.number().int().nonnegative(),
+    totalPages: z.number().int().positive(),
   })
   .strict();
 const workRecoverySchema = z
@@ -235,9 +239,12 @@ export class AdminReviewsCoreClient {
     });
   }
 
-  listPublishedWorks(input: { cursor?: string; limit: number; q?: string }) {
-    const query = new URLSearchParams({ limit: String(input.limit), sort: 'recent' });
-    if (input.cursor !== undefined) query.set('cursor', input.cursor);
+  listPublishedWorks(input: { limit: number; page: number; q?: string }) {
+    const query = new URLSearchParams({
+      limit: String(input.limit),
+      page: String(input.page),
+      sort: 'recent',
+    });
     if (input.q !== undefined) query.set('q', input.q);
     return this.client.request({
       method: 'GET',

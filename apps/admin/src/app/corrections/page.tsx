@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation';
 import { parseAdminWorkReference } from '@/lib/admin-work-reference';
-import { workManagementHref } from '../works/work-management-view';
+import { resolveWorkManagementPage, workManagementHref } from '../works/work-management-view';
 
 export default async function LegacyCorrectionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cursor?: string; q?: string; workPublicId?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; workPublicId?: string }>;
 }) {
   const query = await searchParams;
   const workPublicId = parseAdminWorkReference(query.workPublicId);
@@ -14,7 +14,7 @@ export default async function LegacyCorrectionsPage({
   const search = query.q?.trim() || undefined;
   redirect(
     workManagementHref('published', {
-      ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+      page: resolveWorkManagementPage(query.page),
       ...(search === undefined ? {} : { q: search }),
     }),
   );
